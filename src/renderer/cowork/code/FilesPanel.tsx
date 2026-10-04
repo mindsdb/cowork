@@ -320,7 +320,7 @@ export function FilesPanel({
           {!query && file && (
             <div className="code-files__viewer">
               <div className="code-files__viewer-bar">
-                <button type="button" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} Files</button>
+                <Button size="xxs" variant="subtle" className="code-files__viewer-back" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} Files</Button>
                 <strong title={file.path}>{file.name}</strong>
                 <span>Lines {file.line_start}–{file.line_end} of {file.line_count}</span>
               </div>

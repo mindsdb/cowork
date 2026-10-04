@@ -64,6 +64,14 @@ import {
 // fall back to a monospace block.
 
 
+// Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
+// carry over from the artifact the report started from.
+function isSameArtifact(a, b) {
+  if (!a || !b) return false;
+  if (a.id || b.id) return a.id === b.id;
+  return (a.path || '') === (b.path || '');
+}
+
 export function ArtifactViewer({
   open,
   artifact,
@@ -147,8 +155,23 @@ export function ArtifactViewer({
 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
-  const pub = usePublish(artifact, { onChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  // The hooks below report back from async work (status refreshes, saves) that
+  // can settle after the viewer closed or moved to another artifact. Hosts
+  // handle onChange by setting their preview state to the updated artifact, so
+  // a late report would reopen a closed viewer or swap the one on screen
+  // (ENG-3070). Refs are written during render so a close is seen immediately.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const artifactRef = useRef(artifact);
+  artifactRef.current = artifact;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const reportChange = useCallback((updated) => {
+    if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
+    onChangeRef.current?.(updated);
+  }, []);
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
+  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -187,6 +210,14 @@ export function ArtifactViewer({
   // it does not need to wait for the comments transport to finish provisioning.
   // Waiting used to remount the whole HTML artifact as commentsReady flipped.
   const commentLayerRequested = !!artifactKey;
+  // Read by the load effect below rather than listed as its dependency. The key
+  // can arrive from the status refresh after the preview painted — late on a
+  // slow connection — and swapping `src` then reloads the page the user is
+  // looking at just to add an inert bridge (ENG-3070).
+  const commentLayerRequestedRef = useRef(commentLayerRequested);
+  commentLayerRequestedRef.current = commentLayerRequested;
+  // Whether the mounted preview was loaded with the bridge.
+  const commentLayerMountedRef = useRef(false);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -438,6 +469,8 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     let cancelled = false;
+    const withCommentLayer = commentLayerRequestedRef.current;
+    commentLayerMountedRef.current = withCommentLayer;
     if (isText) {
       const previewRequest = draftPreviewUrl
         ? loadArtifactDraftText(draftPreviewUrl, {
@@ -483,7 +516,7 @@ export function ArtifactViewer({
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      const fetchUrl = commentLayerRequested
+      const fetchUrl = withCommentLayer
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
@@ -569,7 +602,7 @@ export function ArtifactViewer({
           // layer into the root HTML on the same activation flag (see
           // preview_proxy.py). Bake it in at mount time — same rationale as the
           // static branch below (stable src, no reactive reload).
-          setPreviewUrl(commentLayerRequested
+          setPreviewUrl(withCommentLayer
             ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
             : withArtifactVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
@@ -581,7 +614,7 @@ export function ArtifactViewer({
         // Bake the inert comment bridge into the first URL whenever the card
         // has a stable identity. Transport readiness can then change without
         // swapping this cross-origin iframe's `src` or flashing the preview.
-        setPreviewUrl(commentLayerRequested
+        setPreviewUrl(withCommentLayer
           ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
           : withArtifactVersion(url, cacheVersion));
         // NOTE (ENG-931): we deliberately do NOT adopt the server's published
@@ -597,7 +630,15 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, commentLayerRequested]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+
+  // Opening comments on a preview mounted before the key arrived is the one
+  // time a reload is worth it: the user asked for the markers.
+  useEffect(() => {
+    if (!open || !commentsOpen || !commentLayerRequested) return;
+    if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
+    setReloadNonce((n) => n + 1);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -884,6 +925,7 @@ export function ArtifactViewer({
         review={headerReview}
         publication={publication}
         actions={artifactActions}
+        diagnostics={diagnostics}
         onClose={onClose}
       />
 
@@ -914,15 +956,6 @@ export function ArtifactViewer({
         >
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
-      )}
-      {diagnostics.errors.length > 0 && !diagnostics.dismissed && (
-        <div className="artifact-workspace-notice" role="status">
-          <span>
-            {`The preview reported an error: ${diagnostics.errors[0].message}`}
-            {diagnostics.errors.length > 1 && ` (+${diagnostics.errors.length - 1} more)`}
-          </span>
-          <button type="button" onClick={diagnostics.dismiss}>Dismiss</button>
-        </div>
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather
           than taking over the canvas the way a current one does. */}

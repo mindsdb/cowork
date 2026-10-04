@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import Button from '../components/ui/Button';
+import Ico from '../components/Icons';
 import type { PendingQuestion } from './api';
-import './task-control.css';
+import { DecisionTray } from './DecisionTray';
 
 export function QuestionCard({ pending, busy, onAnswer }: {
   pending: PendingQuestion;
@@ -20,8 +21,8 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       setError(reason instanceof Error ? reason.message : 'Could not send your answers. Try again.');
     }
   };
-  return <section className="code-decision" aria-label="Agent questions">
-    <header className="code-decision__header"><span className="code-decision__eyebrow">Your input</span><h3>A quick decision before continuing</h3></header>
+  return <DecisionTray label="Agent questions" kind={pending.questions.length > 1 ? `${pending.questions.length} questions` : 'Question'} icon={Ico.user(12)}>
+    <form className="code-decision-tray__form" onSubmit={event => { event.preventDefault(); void submit(); }}>
     {pending.questions.map(question => <fieldset key={question.id} disabled={busy} className="code-question">
       <legend>{question.question}</legend>
       {!question.isSecret && question.options?.map((option, index) => <label className="code-question__option" key={`${option.label}-${index}`}>
@@ -37,6 +38,10 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       </label>}
     </fieldset>)}
     {error && <p className="code-decision__error" role="alert">{error}</p>}
-    <footer><span>No answer is sent until you continue.</span><Button variant="primary" size="sm" disabled={busy || !complete} onClick={() => void submit()}>{busy ? 'Sending…' : 'Continue'}</Button></footer>
-  </section>;
+    <div className="code-decision-tray__actions">
+      <span className="code-decision-tray__spacer" aria-hidden="true" />
+      <Button type="submit" variant="primary" size="sm" disabled={busy || !complete}>{busy ? 'Sending…' : 'Continue'}</Button>
+    </div>
+    </form>
+  </DecisionTray>;
 }

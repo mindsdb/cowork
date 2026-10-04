@@ -241,6 +241,7 @@ export default function Sidebar({
   onSetCodingSessionPinned,
   onNewCodingTask,
   onOpenCodingProjects,
+  onOpenCodingTasks,
   onOpenCodingConnectors,
   onOpenCodingSkills,
   onOpenSearch,
@@ -660,6 +661,12 @@ export default function Sidebar({
                 active={activeCodeRoute === 'projects'}
               />
               <NavItem
+                icon={Ico.list(15)}
+                label="All tasks"
+                onClick={onOpenCodingTasks}
+                active={activeCodeRoute === 'tasks'}
+              />
+              <NavItem
                 icon={Ico.link(15)}
                 label="Connectors"
                 onClick={onOpenCodingConnectors}
@@ -734,7 +741,7 @@ export default function Sidebar({
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span className="flex-1">RECENT TASKS</span>
+          <span className="flex-1">Recent tasks</span>
           <Tooltip content="View all tasks">
             <button
               type="button"

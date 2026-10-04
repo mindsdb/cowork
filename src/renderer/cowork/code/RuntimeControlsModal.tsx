@@ -29,6 +29,7 @@ export function RuntimeControlsModal({
   models,
   modelMeta,
   busy,
+  applyBlockedReason,
   onClose,
   onApply,
 }: {
@@ -38,6 +39,9 @@ export function RuntimeControlsModal({
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
   busy: boolean;
+  // Set while the server would reject the update (e.g. mid-turn). Fields stay
+  // editable so a draft survives until Apply unlocks.
+  applyBlockedReason?: string;
   onClose: () => void;
   onApply: (value: RuntimeControls) => Promise<void> | void;
 }) {
@@ -237,7 +241,15 @@ export function RuntimeControlsModal({
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy || !draft.model} onClick={() => void apply()}>Apply</Button>
+        {/* `.btn:disabled` sets pointer-events: none, so a title on the button
+            itself never shows. The wrapper takes the hover instead. */}
+        <span className="inline-flex" title={applyBlockedReason}>
+          <Button
+            variant="primary"
+            disabled={busy || !draft.model || !!applyBlockedReason}
+            onClick={() => void apply()}
+          >Apply</Button>
+        </span>
       </ModalFooter>
     </Modal>
   );

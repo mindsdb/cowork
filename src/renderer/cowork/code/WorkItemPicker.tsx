@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import type { ProjectConnection, WorkItemSummary } from './api';
 import { developerProviderLabel, type DeveloperProvider } from './developerTools';
 
@@ -72,20 +73,14 @@ export function WorkItemPicker({
       {hasConnections ? (
         <>
           <div className="code-work-picker__filters">
-            <div className="code-work-picker__providers" role="tablist" aria-label="Developer tool">
-              {providers.map((item) => (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={item === provider}
-                  key={item}
-                  disabled={busy}
-                  onClick={() => onProviderChange(item)}
-                >
-                  {developerProviderLabel(item)}
-                </button>
-              ))}
-            </div>
+            <ToggleGroup
+              size="sm"
+              aria-label="Developer tool"
+              disabled={busy}
+              value={provider}
+              onValueChange={(value) => onProviderChange(value as DeveloperProvider)}
+              options={providers.map((item) => ({ value: item, label: developerProviderLabel(item) }))}
+            />
             {providerConnections.length > 1 && (
               <Select
                 value={connectionName}

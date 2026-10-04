@@ -45,8 +45,6 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
   const onStop = vi.fn(async () => {});
   const onClientCommand = vi.fn();
   const onPermissionChange = vi.fn(async () => {});
-  const onSteerQueued = vi.fn(async () => {});
-  const onRemoveQueued = vi.fn(async () => {});
   const element = (
     <CodeComposer
       session={session}
@@ -58,14 +56,12 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
       commands={commands}
       onClientCommand={onClientCommand}
       onPermissionChange={onPermissionChange}
-      onSteerQueued={onSteerQueued}
-      onRemoveQueued={onRemoveQueued}
       history={history}
       referenceRequest={referenceRequest}
     />
   );
   const { unmount, container, rerender } = render(element);
-  return { onSend, onModeSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued, unmount, container,
+  return { onSend, onModeSend, onClientCommand, onPermissionChange, unmount, container,
     rerenderSession: (next: CodingSession, nextModeSend = onModeSend) => rerender(<CodeComposer {...element.props} session={next} onModeSend={nextModeSend} />),
     rerenderPlanning: (supported: boolean, loading: boolean) => rerender(<CodeComposer {...element.props} supportsPlanning={supported} planningLoading={loading} />),
   };
@@ -158,7 +154,7 @@ describe('CodeComposer', () => {
     const { onModeSend } = renderComposer({ ...baseSession, status: 'completed' }, [], { id: 1, item: attachment }, true);
     onModeSend.mockRejectedValue(new Error('Task changed'));
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
     await user.type(input, 'Plan the change');
     await user.keyboard('{Enter}');
@@ -277,7 +273,7 @@ describe('CodeComposer', () => {
 
   it('changes task permissions from the composer', async () => {
     const user = userEvent.setup();
-    const { onPermissionChange } = renderComposer();
+    const { onPermissionChange } = renderComposer({ ...baseSession, status: 'completed' });
     const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
 
     expect(permissionPicker).toHaveClass('meta-pill', 'code-composer-picker', 'code-permission-picker');
@@ -286,6 +282,21 @@ describe('CodeComposer', () => {
     await user.click(screen.getByRole('option', { name: 'Full access' }));
 
     expect(onPermissionChange).toHaveBeenCalledWith('full_access');
+  });
+
+  it('locks task permissions while a turn is active', () => {
+    const { rerenderSession } = renderComposer();
+    const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
+
+    expect(permissionPicker).toBeDisabled();
+    expect(permissionPicker).toHaveAttribute('title', 'Permissions can be changed after the current turn finishes');
+
+    rerenderSession({ ...baseSession, status: 'awaiting_approval' });
+    expect(permissionPicker).toBeDisabled();
+
+    rerenderSession({ ...baseSession, status: 'completed' });
+    expect(permissionPicker).toBeEnabled();
+    expect(permissionPicker).not.toHaveAttribute('title');
   });
 
   it('restores an immediate slash command when submission fails', async () => {
@@ -299,8 +310,6 @@ describe('CodeComposer', () => {
         commands={commands}
         onClientCommand={vi.fn()}
         onPermissionChange={vi.fn(async () => {})}
-        onSteerQueued={vi.fn(async () => {})}
-        onRemoveQueued={vi.fn(async () => {})}
       />,
     );
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
@@ -359,37 +368,15 @@ describe('CodeComposer', () => {
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
-  it.each(['approval', 'question'] as const)('keeps queued work removable but not steerable during a pending %s', async kind => {
+  it.each(['approval', 'question'] as const)('queues a new follow-up during a pending %s', async kind => {
     const pending = kind === 'approval'
       ? { pending_approval: { id: 'a1', kind: 'command', title: 'Run tests', detail: 'npm test', risk: '', scope: '', allow_session: false } }
       : { pending_question: { id: 'q1', questions: [] } };
-    const queued = [{ id: 'queued-1', prompt: 'Check Windows next', created_at: baseSession.created_at }];
-    const view = renderComposer({ ...baseSession, status: 'awaiting_approval', ...pending, queued_instructions: queued });
-    expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).not.toBeInTheDocument();
+    const view = renderComposer({ ...baseSession, status: 'awaiting_approval', ...pending });
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove queued instruction 1' }));
-    expect(view.onRemoveQueued).toHaveBeenCalledWith('queued-1');
     fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'Then document it' } });
     fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
     await waitFor(() => expect(view.onSend).toHaveBeenCalledWith('Then document it', 'queue', []));
-    expect(view.onSteerQueued).not.toHaveBeenCalled();
-    view.rerenderSession({ ...baseSession, queued_instructions: queued });
-    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
-    expect(view.onSteerQueued).toHaveBeenCalledWith('queued-1');
-  });
-
-  it('shows persisted queued work and lets the user remove it', () => {
-    const { onSteerQueued, onRemoveQueued } = renderComposer({
-      ...baseSession,
-      queued_instructions: [{ id: 'queued-1', prompt: 'Run Windows tests', created_at: '2026-08-22T10:01:00Z' }],
-    });
-
-    expect(screen.getByText('Run Windows tests')).toBeInTheDocument();
-    expect(screen.getByText('Queued')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
-    expect(onSteerQueued).toHaveBeenCalledWith('queued-1');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove queued instruction 1' }));
-    expect(onRemoveQueued).toHaveBeenCalledWith('queued-1');
   });
 
   it('resolves @ mentions to native workspace file references', async () => {
@@ -479,5 +466,22 @@ describe('CodeComposer drafts', () => {
 
     renderComposer(completed);
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('');
+  });
+
+  it('blocks follow-ups on a local task whose workspace was never prepared', () => {
+    const view = renderComposer({ ...baseSession, status: 'failed', run_status: 'failed', workspace_path: '' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute('placeholder', 'Start a new task to continue');
+    expect(screen.getByRole('button', { name: 'Send follow-up' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(view.onSend).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reopen instruction for a failed task that has a workspace', () => {
+    renderComposer({ ...baseSession, status: 'failed', run_status: 'failed' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    expect(input).toBeEnabled();
+    expect(input).toHaveAttribute('placeholder', 'Reopen the task, then say how to continue…');
   });
 });

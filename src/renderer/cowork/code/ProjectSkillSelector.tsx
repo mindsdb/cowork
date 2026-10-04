@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Checkbox } from '../components/ui/Checkbox';
 import Input from '../components/ui/Input';
 import type { ProjectSkillSource, SkillLibraryItem } from './api';
 import { skillSupersedesHint } from './presentation';
@@ -153,14 +154,15 @@ export function ProjectSkillSelector({
                 <header>{group.name}</header>
                 {group.items.map((item) => (
                   <label key={item.id}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
+                      size="sm"
+                      aria-label={item.name}
                       checked={includesPath(selected, sourceId, item.path)}
-                      onChange={(event) => onChange(toggleProjectSkill(
+                      onCheckedChange={(checked) => onChange(toggleProjectSkill(
                         selected,
                         sourceId,
                         item.path,
-                        event.target.checked,
+                        checked,
                       ))}
                     />
                     <span>

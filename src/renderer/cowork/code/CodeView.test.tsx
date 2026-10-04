@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   projectsSetSelectedId: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
+  trackBillingOpened: vi.fn(),
+  openCodeExternalUrl: vi.fn(async () => true),
 }));
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
@@ -120,7 +122,7 @@ vi.mock('./CodeConnectorsView', () => ({
   ),
 }));
 vi.mock('./CodeProjectsView', () => ({
-  CodeProjectsView: ({ onEdit }: { onEdit: (id: string) => void }) => <button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button>,
+  CodeProjectsView: ({ onEdit, onOpen }: { onEdit: (id: string) => void; onOpen: (id: string) => void }) => <><button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button><button type="button" onClick={() => onOpen('project-1')}>View project tasks stub</button></>,
 }));
 vi.mock('./ProjectSettingsModal', () => ({
   ProjectSettingsModal: ({ open, suspended, onOpenConnectors }: { open: boolean; suspended?: boolean; onOpenConnectors?: () => void }) => (
@@ -128,6 +130,14 @@ vi.mock('./ProjectSettingsModal', () => ({
   ),
 }));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
+vi.mock('../lib/analytics', async importOriginal => ({
+  ...await importOriginal<typeof import('../lib/analytics')>(),
+  trackBillingOpened: mocks.trackBillingOpened,
+}));
+vi.mock('./shellLinks', async importOriginal => ({
+  ...await importOriginal<typeof import('./shellLinks')>(),
+  openCodeExternalUrl: mocks.openCodeExternalUrl,
+}));
 vi.mock('./FilesPanel', () => ({
   FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
     <button type="button" onClick={() => onReference({ name: 'notes.md', path: '/work/first-task/notes.md', kind: 'mention' })}>Reference file</button>
@@ -168,6 +178,7 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
 
@@ -249,6 +260,81 @@ describe('CodeView session-list reconciliation', () => {
       refresh: vi.fn(async () => {}),
       refreshReview: vi.fn(async () => {}),
     }));
+  });
+
+  it('bills an Add credits click in the composer lip to the Code workspace', () => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const allowance: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'included_allowance_exhausted', detail: 'upstream 429' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [allowance],
+      latestEvents: { error: { latest: allowance } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({ sessions: [failed], selectedId: failed.id });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+
+    expect(mocks.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted', 'code');
+    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('opens project history instead of starting a task when a project is selected', async () => {
+    const onOpenTasks = vi.fn();
+    const { props } = renderCode({ projectsOpen: true, onOpenTasks });
+    fireEvent.click(screen.getByRole('button', { name: 'View project tasks stub' }));
+    expect(onOpenTasks).toHaveBeenCalledWith('project-1');
+    await act(async () => {});
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the task browser open during polling and opens a task without creating one', async () => {
+    const existing = session('existing');
+    mocks.sessions.mockResolvedValue({ items: [existing] });
+    const { props } = renderCode({ sessions: [existing], selectedId: 'existing', tasksOpen: true });
+    await waitFor(() => expect(mocks.sessions).toHaveBeenCalledWith(true));
+    expect(mocks.useCodingSession).toHaveBeenLastCalledWith(null, true);
+    expect(screen.queryByText('Delete menu action')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument();
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Task existing' }));
+    expect(props.onSelectionChange).toHaveBeenCalledWith('existing', false);
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.turn).not.toHaveBeenCalled();
+  });
+
+  it('creates a draft with the browsed project selected', async () => {
+    const { props } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
+    const newTaskButton = await screen.findByRole('button', { name: 'New task' });
+    await waitFor(() => expect(newTaskButton).not.toBeDisabled());
+    fireEvent.click(newTaskButton);
+    expect(mocks.projectsSetSelectedId).toHaveBeenCalledWith('project-1');
+    expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
+  });
+
+  it.each([
+    { tasksOpen: false, tasksProjectId: 'project-1' },
+    { tasksOpen: true, tasksProjectId: null },
+  ])('closes project settings when task-list navigation changes to %j', async (destination) => {
+    const { props, rerender } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Web app' }));
+    expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+    rerender(<CodeView {...props} {...destination} />);
+    expect(screen.queryByText('Project settings modal')).not.toBeInTheDocument();
   });
 
   it('does not send a Build turn while a Plan draft waits for refreshed capabilities', async () => {
@@ -411,6 +497,9 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(await screen.findByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
     expect(mocks.steerQueued).toHaveBeenCalledWith(active.id, 'queued-1');
+    // The error takes the lip's one place; the queue waits one step behind it.
+    expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more notice' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
   });
@@ -674,6 +763,22 @@ describe('CodeView session-list reconciliation', () => {
       preview_url: 'http://127.0.0.1:41004',
     });
     expect(await screen.findByText('Terminal terminal-preview')).toBeInTheDocument();
+  });
+
+  it('keeps an open terminal outside the stage the composer dock floats over', async () => {
+    const active = session('terminal-layout');
+    mocks.runProjectAction.mockReturnValueOnce(deferred().promise);
+    mocks.sessions.mockResolvedValue({ items: [active] });
+
+    const { container } = renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Run project action' }));
+
+    const terminal = screen.getByText('Terminal loading');
+    const stage = container.querySelector('.code-conversation__stage');
+    expect(stage?.querySelector(':scope > .code-composer-dock')).toBeInTheDocument();
+    expect(stage).toContainElement(screen.getByText('Timeline'));
+    expect(stage).not.toContainElement(terminal);
+    expect(stage?.parentElement).toContainElement(terminal);
   });
 
   it('does not re-render the composer across a reconcile poll that returns identical data', async () => {

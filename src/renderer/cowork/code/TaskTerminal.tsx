@@ -327,16 +327,19 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
               </button>
             </div>
           ))}
-          <button
-            type="button"
-            className="code-terminal__new"
-            aria-label="New terminal"
-            title={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}
-            disabled={busy || tabs.length >= MAX_TERMINALS}
-            onClick={() => void addTerminal()}
-          >
-            {Ico.plus(12)}
-          </button>
+          {/* The hint lives on a wrapper: disabled .btn drops pointer events. */}
+          <span className="code-terminal__new" title={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}>
+            <Button
+              icon
+              size="sm"
+              variant="subtle"
+              aria-label="New terminal"
+              disabled={busy || tabs.length >= MAX_TERMINALS}
+              onClick={() => void addTerminal()}
+            >
+              {Ico.plus(12)}
+            </Button>
+          </span>
         </div>
         <div className="code-terminal__actions">
           {selected?.status === 'running' ? (

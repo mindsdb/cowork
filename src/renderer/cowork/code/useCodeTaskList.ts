@@ -78,6 +78,17 @@ export function useCodeTaskList({
     return page.items;
   }, []);
 
+  const retry = useCallback(async () => {
+    setLoading(true);
+    try {
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.');
+    } finally {
+      setLoading(false);
+    }
+  }, [load]);
+
   useEffect(() => {
     if (!active) return undefined;
     load()
@@ -111,5 +122,5 @@ export function useCodeTaskList({
     );
   }, [currentSession]);
 
-  return { loading, error, load };
+  return { loading, error, load, retry };
 }

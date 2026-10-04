@@ -93,7 +93,7 @@ import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -1417,6 +1417,12 @@ function AppCore() {
   const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
     ? 'code'
     : 'cowork';
+  // Keyed on the effective mode so every entry point reports the switch, and a
+  // Code preference that is off never records a visit. The tracker keeps only
+  // the first per launch.
+  useEffect(() => {
+    if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
+  }, [effectiveWorkspaceMode]);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
@@ -1436,11 +1442,15 @@ function AppCore() {
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
+    tasksOpen: codeTasksOpen,
+    tasksProjectId: codeTasksProjectId,
+    managementRoute: codeManagementRoute,
     connectorsOpen: codeConnectorsOpen,
     skillsOpen: codeSkillsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
+    openTasks: openCodingTasks,
     openConnectors: openCodingConnectors,
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
@@ -4693,7 +4703,7 @@ function AppCore() {
           activeWorkspace={effectiveWorkspaceMode}
           showWorkspaceSwitch={codeModeEnabled}
           activeCodeRoute={effectiveWorkspaceMode === 'code'
-            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            ? codeManagementRoute
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4701,7 +4711,7 @@ function AppCore() {
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeManagementRoute
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4715,6 +4725,7 @@ function AppCore() {
           onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
+          onOpenCodingTasks={() => openCodingTasks()}
           onOpenCodingConnectors={openCodingConnectors}
           onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
@@ -4845,6 +4856,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            onPrefillConsumed={() => setComposerPrefill(null)}
             codingModeEnabled={false}
           />
         )}
@@ -5175,6 +5187,8 @@ function AppCore() {
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
+              tasksOpen={codeTasksOpen}
+              tasksProjectId={codeTasksProjectId}
               connectorsOpen={codeConnectorsOpen}
               skillsOpen={codeSkillsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
@@ -5186,6 +5200,7 @@ function AppCore() {
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
               onOpenProjects={openCodingProjects}
+              onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}

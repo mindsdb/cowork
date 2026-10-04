@@ -29,8 +29,10 @@ const ENV_TO_SETTING: Record<string, string> = {
   // which we now preserve). Models enter the DB only via explicit writes —
   // the Settings picker, or onboarding's dedicated model PUT. .env model lines
   // are CLI-only.
-  ANTON_MEMORY_MODE: 'memory_mode',
-  ANTON_EPISODIC_MEMORY: 'episodic_memory',
+  //
+  // ANTON_MEMORY_MODE / ANTON_EPISODIC_MEMORY are absent for the same reason:
+  // Settings writes them to the DB only, so the .env copy is stale and
+  // re-syncing it on login resets the user's choice to the onboarding default.
 };
 
 /**

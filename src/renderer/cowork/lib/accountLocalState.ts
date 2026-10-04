@@ -32,6 +32,7 @@ const ACCOUNT_SCOPED_PREFIXES = [
   'anton.settingsCache', // settingsCache.js — first-paint settings
   'anton:pinned-projects', // ProjectsView.jsx — which projects were pinned
   'mindshub-code:last-project', // useCodeProjects.ts — last code project opened
+  'mindshub-code:last-folder', // useNewTaskDraft.ts — last folder-only task's folder
   'mindshub-code-terminal:', // TaskTerminal.tsx — per coding session, one each
 ];
 

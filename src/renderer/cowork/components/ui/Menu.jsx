@@ -47,11 +47,11 @@
 // email/org block.
 
 import { useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import { OutsidePressLayer } from './OutsidePressLayer';
 
 // Popup shell — background/radius/shadow + the open/close fade+scale.
 // Borderless and token-shadowed per ENG-790; this keeps that visual
@@ -234,26 +234,11 @@ export function Menu({
   return (
     <>
       {/* Outside-press dismiss for anchored mode. We can't use a document
-          mousedown listener: the whole window is `-webkit-app-region:
-          drag` (App.jsx), and Electron swallows mouse events over drag
-          regions — so clicking the empty canvas would never reach a
-          listener. A transparent `no-drag` layer painted just under the
-          popup DOES receive those presses, so it dismisses on a click
-          anywhere outside the popup — including drag regions and the
-          trigger itself. Because the press lands on this layer (not the
-          trigger), the trigger's own onClick never fires, so re-clicking
-          it can't flicker the menu back open. */}
-      {anchoredMode && open && createPortal(
-        <div
-          onMouseDown={() => onClose?.()}
-          style={{
-            position: 'fixed', inset: 0,
-            zIndex: zIndex - 1,
-            background: 'transparent',
-            WebkitAppRegion: 'no-drag',
-          }}
-        />,
-        document.body,
+          mousedown listener: Electron swallows mouse events over the
+          window's drag regions, so clicking the empty canvas would never
+          reach one. See OutsidePressLayer for the rest. */}
+      {anchoredMode && open && (
+        <OutsidePressLayer onPress={() => onClose?.()} zIndex={zIndex - 1} />
       )}
       <BaseMenu.Root {...rootProps}>
         {trigger && (

@@ -1,5 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
-// any module that reads app.getPath('userData') at load time (e.g. token-store).
+// any module that reads app.getPath('userData') at load time (e.g. token-store),
+// then starts the crash reporter so a native crash while the rest loads leaves
+// a minidump.
 import './app-identity';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
@@ -801,6 +803,7 @@ function setupIPC() {
       }
 
       let oauthBlock: Record<string, any>;
+      let oauthMethodId: string;
       let declaredFieldNames: string[] = [];
       try {
         const specRes = await fetch(
@@ -809,8 +812,19 @@ function setupIPC() {
         );
         if (!specRes.ok) throw new Error(`HTTP ${specRes.status}`);
         const spec = await specRes.json() as Record<string, any>;
-        const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+        // 'mcp' (HubSpot, ENG-487) drives this identical PKCE flow under a
+        // different method id — it authenticates against a provider's MCP
+        // server rather than its REST API, same OAuth 2.1 + PKCE shape as
+        // browser_oauth_builtin otherwise. Live-tested miss: this was the
+        // actual entry point that never got widened alongside the renderer's
+        // hardcoded 'browser_oauth_builtin' checks (methodHero.js,
+        // DataVaultFormPanel.jsx) during code review — this is main-process
+        // code, not renderer, so that pass never looked here.
+        const builtinMethod = spec?.form?.methods?.find(
+          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+        );
         oauthBlock = builtinMethod?.oauth;
+        oauthMethodId = builtinMethod?.id;
         if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
           return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
         }
@@ -879,7 +893,13 @@ function setupIPC() {
           headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({
             connector_id: engine,
-            method: 'browser_oauth_builtin',
+            // Save whichever method actually authenticated (e.g. 'mcp' for
+            // HubSpot) — hardcoding 'browser_oauth_builtin' here would save
+            // the wrong _method tag, breaking every downstream check keyed
+            // off it (MCP tool discovery, the access-mode default, the
+            // "Tool access" UI's gate) even though the PKCE flow itself
+            // completed fine.
+            method: oauthMethodId,
             name: labelName,
             replace_existing: Boolean(labelName),
             values: {
@@ -996,7 +1016,9 @@ function setupIPC() {
         );
         if (specRes.ok) {
           const spec = await specRes.json() as Record<string, any>;
-          const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+          const builtinMethod = spec?.form?.methods?.find(
+            (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+          );
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
             // Some providers' revoke endpoints require the app's own
@@ -1577,11 +1599,19 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
   }
 }
 
+// One line per startup step up to [channels], so the stdout of a startup that
+// dies natively names the last step it reached.
+console.log('[boot] modules loaded');
+
 app.whenReady().then(async () => {
+  console.log('[boot] app ready');
+
+  console.log('[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
+  console.log('[boot] account data root');
   // Answer, once and before anything can create a database, whether this
   // install already held data. It decides whether an account may take the
   // default root or has to be asked, and it can only be observed BEFORE the
@@ -1605,11 +1635,13 @@ app.whenReady().then(async () => {
     void refreshMindsCredentialAfterResume();
   });
 
+  console.log('[boot] uv isolation');
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
   // build kinds on one machine don't share one binary. Must run before the
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
 
+  console.log('[boot] channel consistency');
   // Guard the two environment axes against silent disagreement: the build kind
   // (data home / branch) must target the API host the canonical channel model
   // says it should. A mismatch means a build was wired to talk to the wrong
@@ -2000,7 +2032,13 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const fields = detail.fields || {};
         // Use _method (underscore-prefixed, never masked by the API) rather than
         // auth_type or token_url which are in secure_keys and come back as sentinels.
-        if (detail.method !== 'browser_oauth_builtin') continue;
+        // 'mcp' (HubSpot, ENG-487) needs this loop just as much as
+        // browser_oauth_builtin connectors — its refresh tokens rotate
+        // (single-use), so skipping it here would silently stop refreshing
+        // until the access token expires and the connection needs a full
+        // reconnect. Live-tested miss, same class as the OAUTH_CONNECT
+        // handler's method-id check above.
+        if (detail.method !== 'browser_oauth_builtin' && detail.method !== 'mcp') continue;
         if (fields.status === 'needs_reconnect') continue;
         const accountEmail = fields.account_email;
         const expiresAt = fields.expires_at;
@@ -2009,7 +2047,9 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
         if (!specRes.ok) continue;
         const spec = await specRes.json() as Record<string, any>;
-        const oauthBlock = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth;
+        const oauthBlock = spec?.form?.methods?.find(
+          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+        )?.oauth;
         if (oauthBlock?.supports_refresh === false) continue;
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
