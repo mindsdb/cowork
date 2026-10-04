@@ -92,6 +92,11 @@ on:
         description: "Public CloudFront URL of the uploaded arm64 .deb, empty when not built"
         value: ${{ jobs.upload-linux-arm64.outputs.download_url }}
 
+# Every job reads the tree and nothing more, except the four uploads below,
+# which also mint the OIDC token their installer role is assumed with.
+permissions:
+  contents: read
+
 jobs:
   build-macos:
     if: inputs.macos
@@ -107,12 +112,14 @@ jobs:
 
   upload-macos:
     needs: build-macos
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: mac
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-macos.outputs.artifact_name }}
-    secrets: inherit
 
   build-windows:
     if: inputs.windows
@@ -128,12 +135,14 @@ jobs:
 
   upload-windows:
     needs: build-windows
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: windows
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
-    secrets: inherit
 
   build-linux-amd64:
     if: inputs.linux_amd64
@@ -150,12 +159,14 @@ jobs:
 
   upload-linux-amd64:
     needs: build-linux-amd64
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: linux-amd64
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-linux-amd64.outputs.artifact_name }}
-    secrets: inherit
 
   build-linux-arm64:
     if: inputs.linux_arm64
@@ -172,9 +183,11 @@ jobs:
 
   upload-linux-arm64:
     needs: build-linux-arm64
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: linux-arm64
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-linux-arm64.outputs.artifact_name }}
-    secrets: inherit

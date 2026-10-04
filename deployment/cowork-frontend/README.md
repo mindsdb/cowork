@@ -54,6 +54,17 @@ this chart was added); nginx routes the more specific `/api` prefix to
 cowork-server and everything else to the SPA. Keep the two in sync when adding
 an environment.
 
+## Image repository
+
+The chart pulls from one of two ECR repositories in the DEV account (`168681354662`):
+
+| Environment | Repository | Written by |
+| --- | --- | --- |
+| PR environments, `dev`, `staging` | `mindsdb-cowork-dev` | pull request and staging builds |
+| `prod` | `mindsdb-cowork` | `main` builds only |
+
+`values.yaml` names the dev tier, because PR environments load only that file. The argocd-envs parent chart also sets `deployment.image.repository` to the dev tier for every PR environment, in [`parent/templates/cowork-frontend-app.yaml`](https://github.com/mindsdb/argocd-envs/blob/main/parent/templates/cowork-frontend-app.yaml). A PR environment renders this chart at the PR's head, so that override keeps a PR's own `values.yaml` from choosing the repository. `values-prod.yaml` switches prod to the prod tier, which only `main` builds write, so prod never runs a pull request or staging image.
+
 ## Required cluster secrets
 
 None. The chart deploys a static asset server only.

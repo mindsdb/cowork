@@ -1,8 +1,8 @@
 name: Dev - Build and Deploy on PR
 
 # THE pull-request pipeline. Everything a PR triggers lands in this one run tree:
-# unit tests, the web SPA image, the per-PR environment, and — when the PR asks for
-# them by label — the signed desktop installers.
+# unit tests, the web SPA image, the wait for the per-PR environment, and, when
+# the PR asks for them by label, the signed desktop installers.
 #
 # It used to be three separate runs on the same event (this file, tests-unit.yml,
 # and dev-build-installer.yml), so "did this commit pass" had three answers in three
@@ -29,13 +29,11 @@ jobs:
   # One gate answering "should the cluster-side pipeline run at all", for two
   # reasons that were previously handled in different places or not at all.
   #
-  # FORK PRs. This repo is PUBLIC and `mdb-dev` is a pod inside the newdev cluster
-  # with IRSA into the build/ECR account, so without a guard a pull request from
-  # any GitHub account executes its own code there. Fork PRs get no secrets and a
-  # read-only token, but the runner itself is the prize: cloud credentials, a
-  # network position inside the cluster, and a tool cache later internal jobs
-  # reuse. GitHub's first-time-contributor approval does not cover anyone with a
-  # merged PR.
+  # FORK PRs. A fork's run gets no secrets, and GitHub will not mint it the OIDC
+  # token that the image build and the installer upload trade for AWS
+  # credentials. Both would fail, so the gate skips them and says why. Every job
+  # runs on a GitHub-hosted runner, so a fork's code never reaches our
+  # infrastructure either way.
   #
   # PROMOTION PRs. A `staging` -> `main` PR promotes commits the staging pipeline
   # already built. This cannot be a trigger filter: for `pull_request`, GitHub's
@@ -60,8 +58,8 @@ jobs:
             {
               echo "### Build skipped: fork pull request"
               echo
-              echo "The image and installer builds run on self-hosted runners inside our"
-              echo "infrastructure, so they do not execute code from a fork. The unit tests"
+              echo "The image and installer builds need repository secrets and AWS"
+              echo "credentials, which GitHub does not give a fork's run. The unit tests"
               echo "below still run."
             } >> "$GITHUB_STEP_SUMMARY"
           elif [ "$HEAD_REF" = "staging" ] || [ "$HEAD_REF" = "main" ]; then
@@ -97,19 +95,79 @@ jobs:
     if: needs.gate.outputs.run == 'true'
     permissions:
       contents: read
+      id-token: write # the build and the scan assume the dev-tier ECR role
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: development
-      pr-environment: true
     secrets: inherit
 
+  # mindsdb/deployer rolls the PR environment out, not this run. Every ten
+  # minutes its reconciler syncs each open same-repo pull request labelled
+  # `deploy` whose `development-head-<head sha>` image exists. So this job asks
+  # the environment itself, over its public host, until the host serves a build
+  # of this pull request's head.
+  #
+  # The build stamps that head into the bundle as VITE_APP_VERSION (see
+  # build-deploy.yml), in the entry chunk that index-web.html loads. The shell is
+  # served no-cache, and a chunk's name is its content hash, so each chunk is
+  # read once. No secrets and no token scope: the host is public.
+  #
+  # It waits on the whole build-deploy call, scan included. On a pull request
+  # the scan's findings are advisory, but a scan that cannot run (a failed Snyk
+  # or ECR login) still fails the call. This job is then skipped and the comment
+  # reports `absent`, while the reconciler still rolls the pushed image out.
+  pr-env-wait:
+    needs: [gate, build-deploy]
+    if: needs.gate.outputs.run == 'true' && contains(github.event.pull_request.labels.*.name, 'deploy')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions: {}
+    environment:
+      name: pr-cowork-${{ github.event.pull_request.number }}
+      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
+    outputs:
+      up: ${{ steps.wait.outputs.up }}
+    steps:
+      - name: Wait for the PR environment to serve this build
+        id: wait
+        env:
+          HOST: https://cowork-pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # An empty value would match any bundle.
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unexpected pull request head SHA: '${HEAD_SHA}'"
+            exit 1
+          fi
+          entry_re='<script type="module"[^>]* src="(/assets/[^"]+\.js)"'
+          checked=""
+          deadline=$((SECONDS + 40 * 60))
+          while ((SECONDS < deadline)); do
+            if shell=$(curl -fsS --max-time 20 "$HOST/") && [[ "$shell" =~ $entry_re ]]; then
+              entry="${BASH_REMATCH[1]}"
+              if [ "$entry" != "$checked" ] && curl -fsS --max-time 120 -o entry.js "${HOST}${entry}"; then
+                if grep -qF "$HEAD_SHA" entry.js; then
+                  echo "up=true" >> "$GITHUB_OUTPUT"
+                  echo "${HOST} serves a build of ${HEAD_SHA}."
+                  exit 0
+                fi
+                checked="$entry"
+              fi
+            fi
+            sleep 30
+          done
+          echo "::error::${HOST} did not serve a build of ${HEAD_SHA} within 40 minutes. The mindsdb/deployer reconciler rolls PR environments out every 10 minutes, so its pr-envs runs say why."
+          exit 1
+
   pr-env-comment:
-    # Only when an environment actually exists — `build-deploy` succeeding does not
-    # mean one does, since the rollout is skipped without the `deploy` label.
+    # `up` once the PR host serves this head's build, and `absent` otherwise:
+    # without the `deploy` label no environment exists, and a wait that ran out
+    # means the reconciler never rolled this build out.
     #
     # This repo is PUBLIC, so the shared reusable drops the runbook link and the
     # notes by itself; the hosts stay because they are what a reviewer came for.
-    needs: [gate, build-deploy]
+    needs: [gate, pr-env-wait]
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' }}
     permissions:
       contents: read
@@ -117,14 +175,14 @@ jobs:
     uses: mindsdb/github-actions/.github/workflows/pr-env-comment.yml@main
     with:
       env-name: pr-cowork-${{ github.event.pull_request.number }}
-      status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
+      status: ${{ needs.pr-env-wait.outputs.up == 'true' && 'up' || 'absent' }}
     secrets: inherit
 
   # Installers, per platform, by label. Not only a build-cost question: the
   # upload jobs carry no `if:` of their own, so a platform's label is also what
-  # stops `upload-installer-to-s3.yml` — which runs on `mdb-prod` — writing a
-  # preview build into the production installer bucket and posting its public
-  # URL on the PR. So every platform opts in, linux included.
+  # stops `upload-installer-to-s3.yml`, which holds a write role on the
+  # production installer bucket, from writing a preview build there and posting
+  # its public URL on the PR. So every platform opts in, linux included.
   build-installers:
     needs: [gate]
     if: >-
@@ -132,6 +190,9 @@ jobs:
           && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
               || contains(github.event.pull_request.labels.*.name, 'signed-windows-ev')
               || contains(github.event.pull_request.labels.*.name, 'build-linux-deb')) }}
+    permissions:
+      contents: read
+      id-token: write # the uploads assume the preview installer role
     uses: ./.github/workflows/build-installers.yml
     with:
       build_kind: preview
