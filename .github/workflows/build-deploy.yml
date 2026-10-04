@@ -1,9 +1,9 @@
 # The cowork web SPA image build, defined once.
 #
 # The three per-env workflows each carried the same build and scan, differing only
-# in the tag prefix, plus a per-PR environment rollout on the dev one. The static
-# staging/prod Helm rollout lives here too, as one `deploy` job that maps the
-# build environment to the target rather than two near-identical copies.
+# in the tag prefix. The static staging/prod rollout lives here too, as one
+# `deploy` job that maps the build environment to the target rather than two
+# near-identical copies.
 #
 # The SPA is env-agnostic: it derives every MindsHub service URL from the page
 # origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every dev
@@ -15,13 +15,29 @@
 # back to a stale package.json version). `-f Dockerfile.frontend` selects the
 # SPA build rather than the all-in-one ./Dockerfile.
 #
+# WHERE IT RUNS. This repo is public, so every job runs on a GitHub-hosted
+# runner. The build and the scan get AWS credentials from GitHub OIDC. The
+# rollout is handed to mindsdb/deployer, which runs helm.
+#
+# TWO IMAGE TIERS. A pull request or staging build pushes to mindsdb-cowork-dev
+# through the gha-cowork-ecr-dev role. A main build pushes to mindsdb-cowork
+# through gha-cowork-ecr-prod. A job with no GitHub environment gets the
+# `pull_request` OIDC subject, and a job holding `staging` or `prod` gets that
+# environment's subject. The roles' trust policies live in terraform (DEV
+# account). gha-cowork-ecr-dev trusts two subjects: `pull_request`, and `staging`
+# on refs/heads/staging. gha-cowork-ecr-prod trusts only `prod` on
+# refs/heads/main, and the `prod` environment admits only main. So neither a
+# pull request nor a staging build can write the image prod runs.
+#
 # ON PERMISSIONS. A called workflow can never exceed its caller's grant, and that
 # cap is checked when the workflow FILE IS LOADED, not when a job runs. A job here
 # naming a scope any one caller does not grant rejects that caller's whole run as a
 # `startup_failure` with zero jobs, and with no job in the run no notify job can
 # report it. So: declare only what EVERY caller grants. Nothing here declares a PR
 # scope — the environment comment lives in the pull-request caller, where the grant
-# belongs. The shared `workflow-lint.yml` gate checks this on every PR.
+# belongs. `id-token: write` is one that every caller grants, because the build and
+# the scan trade it for their ECR role. The shared `workflow-lint.yml` gate checks
+# this on every PR.
 
 name: Build and Deploy
 
@@ -32,45 +48,49 @@ on:
         description: "Image tag prefix in ECR (development | staging | production)"
         type: string
         required: true
-      build-runner:
-        description: "Runner label for the build and scan"
-        type: string
-        default: mdb-dev
-      pr-environment:
-        description: "Run the per-PR environment rollout"
-        type: boolean
-        default: false
-    outputs:
-      pr-env-deployed:
-        description: >-
-          "true" only when the per-PR environment actually rolled out. The pipeline
-          succeeding does not mean one exists: without the `deploy` label the
-          rollout is skipped and everything else still passes, so a caller keying
-          off the pipeline result advertises a URL for an environment nobody
-          created.
-        value: ${{ jobs.deploy-pr-env.outputs.deployed }}
 
 defaults:
   run:
     shell: bash
 
+env:
+  # The tier this build writes and the scan reads. Only a main build reaches the
+  # prod tier.
+  ECR_REPOSITORY: ${{ inputs.build-environment == 'production' && 'mindsdb-cowork' || 'mindsdb-cowork-dev' }}
+  ECR_ROLE: ${{ inputs.build-environment == 'production' && 'arn:aws:iam::168681354662:role/gha-cowork-ecr-prod' || 'arn:aws:iam::168681354662:role/gha-cowork-ecr-dev' }}
+
 jobs:
   build:
-    # Always build on dev runner because thats where buildkit is  
-    runs-on: mdb-dev
+    runs-on: ubuntu-latest
+    # The environment picks the OIDC subject, and with it the role that trusts
+    # this job. A pull request build holds none. `environment` cannot read `env`,
+    # so `scan` and `deploy` spell the same mapping out again.
+    environment: ${{ inputs.build-environment == 'production' && 'prod' || inputs.build-environment == 'staging' && 'staging' || '' }}
+    permissions:
+      contents: read
+      id-token: write # traded for the ECR role below
     outputs:
       image: ${{ steps.build.outputs.image }}
     env:
       AWS_REGION: us-east-1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: mindsdb/github-actions/setup-env@main
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.ECR_ROLE }}
+          aws-region: us-east-1
       - id: build
         uses: mindsdb/github-actions/build-push-ecr@main
         with:
-          # Repo-slug default image name (mindsdb-cowork); the web SPA is the only
-          # image this repo pushes to ECR.
-          module-name: ${{ env.CI_REPOSITORY_SLUG }}
+          # The repository of this build's tier. The web SPA is the only image
+          # this repo pushes to ECR.
+          module-name: ${{ env.ECR_REPOSITORY }}
+          # Build with buildx's own builder on this runner, pushing with the
+          # credentials configured above.
+          builder: local
           # Every desktop build workflow (build-linux-deb.yml, build-macos-pkg.yml,
           # build-windows-installer.yml, publish-ui.yml) passes this so `vite build`
           # bakes a real PostHog key; the web SPA never did, so `capture()`'s own
@@ -82,22 +102,58 @@ jobs:
           # chat_turn_failed series with no way to filter it back out. Non-prod
           # builds fall back to Dockerfile.frontend's empty ARG default, which
           # degrades to today's silent no-op rather than failing the build.
-          # VITE_APP_VERSION stamps the deployed commit (env.SLUG, the same value
-          # as the image tag) as analytics app_version. The in-container build
+          # VITE_APP_VERSION stamps the deployed commit as analytics app_version.
+          # On staging and main that is the branch head (env.SLUG, the same value
+          # as the image tag). On a pull request it is the PR head, not the merge
+          # commit GitHub builds from. GitHub regenerates the merge commit whenever
+          # the base moves, while the deployer keeps serving the head's
+          # `development-head-<sha>` image, and dev-build-deploy.yml's pr-env-wait
+          # looks for this value in the served bundle. The in-container build
           # drops .git, so vite.config.ts's git-describe step falls back to a
           # stale package.json version without it.
           extra-build-args: >-
             -f Dockerfile.frontend
             --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ inputs.build-environment == 'production' && secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || '' }}
-            --build-arg VITE_APP_VERSION=${{ env.SLUG }}
+            --build-arg VITE_APP_VERSION=${{ github.event.pull_request.head.sha || env.SLUG }}
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
-    runs-on: mdb-dev
+    runs-on: ubuntu-latest
     needs: [build]
     name: Scan Minds Image
+    # The same environment as `build`, so the same role trusts it.
+    environment: ${{ inputs.build-environment == 'production' && 'prod' || inputs.build-environment == 'staging' && 'staging' || '' }}
+    permissions:
+      contents: read
+      id-token: write # traded for a pull-only session of the ECR role
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.ECR_ROLE }}
+          aws-region: us-east-1
+          # Pull only. The role can also push to this tier, and the scan runs the
+          # Snyk CLI with these credentials in its environment. A session gets
+          # only what both this policy and the role's own policy allow, so the
+          # scan's session cannot push.
+          inline-session-policy: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchGetImage",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchCheckLayerAvailability"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
       - uses: mindsdb/github-actions/snyk-docker-scan@main
         with:
           image: ${{ needs.build.outputs.image }}
@@ -107,33 +163,15 @@ jobs:
           dockerfile: Dockerfile.frontend
           # Advisory on a PR, blocking on a deploy branch: an upstream CVE should
           # not stop someone iterating, and should stop a release.
-          allow-vulns: ${{ inputs.pr-environment && 'true' || '' }}
-
-  deploy-pr-env:
-    runs-on: ${{ inputs.build-runner }}
-    needs: [build]
-    if: inputs.pr-environment && contains(github.event.pull_request.labels.*.name, 'deploy')
-    environment:
-      name: pr-cowork-${{ github.event.pull_request.number }}
-      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
-    outputs:
-      deployed: ${{ steps.rollout.outputs.deployed }}
-    steps:
-      - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
-        with:
-          argocd-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
-          gh-token: ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}
-      - name: Record that the environment is up
-        id: rollout
-        run: echo "deployed=true" >> "$GITHUB_OUTPUT"
+          allow-vulns: ${{ inputs.build-environment == 'development' && 'true' || '' }}
 
   deploy:
-    runs-on: ${{ inputs.build-runner }}
+    runs-on: ubuntu-latest
     # `scan` too: it is blocking on a deploy branch (see `allow-vulns` above), so
     # needing only `build` would let a rollout run beside a failing scan.
     needs: [build, scan]
-    # Only the two long-lived environments have a static rollout. A `development`
-    # build is either a PR (handled by `deploy-pr-env`) or nothing.
+    # Only the two long-lived environments have a static rollout. A pull
+    # request's environment is rolled out by the deployer's reconciler instead.
     if: inputs.build-environment == 'staging' || inputs.build-environment == 'production'
     env:
       # `build-environment` names the image tag prefix (production); the Helm
@@ -145,17 +183,35 @@ jobs:
       # the job's `env` block exists, and only takes github/needs/strategy/matrix/
       # vars/inputs.
       name: ${{ inputs.build-environment == 'production' && 'prod' || 'staging' }}
+    timeout-minutes: 45
+    # The GitHub token goes unused: the dispatch runs on the deployer App's token,
+    # which only this environment's secret can mint.
+    permissions: {}
     steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/setup-env@main
-      - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v8
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app
         with:
-          environment-slug: ${{ env.DEPLOY_ENV }}
-          k8s-namespace: ${{ env.DEPLOY_ENV }}
-          image-tag: ${{ inputs.build-environment }}-${{ env.SLUG }}
-          timeout: 600s
-          wait: "true"
-      # rollout status, not `wait ... pod -l <selector>`: the selector also
-      # matches the old ReplicaSet's terminating pods, and `wait` fails when one
-      # disappears mid-wait even though the deploy succeeded.
-      - run: kubectl -n "$DEPLOY_ENV" rollout status deployment/cowork-frontend --timeout=10m
+          client-id: ${{ vars.DEPLOYER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPLOYER_APP_PRIVATE_KEY }}
+          owner: mindsdb
+          repositories: deployer
+          # Dispatching and watching a run is all the step below does.
+          permission-actions: write
+      # mindsdb/deployer checks that this commit is the branch head and that its
+      # image exists, then runs the helm rollout. Watching its run keeps the
+      # rollout's result in this pipeline, where the notify job reports it.
+      # `--ref main` because the deployer runs its workflow only from main.
+      - name: Roll out through mindsdb/deployer
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          # gh >= 2.87 prints the created run's URL
+          url=$(gh workflow run deploy.yml -R mindsdb/deployer --ref main -f repo=cowork -f env="$DEPLOY_ENV" -f sha="$GITHUB_SHA")
+          # gh prints nothing when the API answers without the run's details, and
+          # then there is no run to watch.
+          if [[ ! "${url##*/}" =~ ^[0-9]+$ ]]; then
+            echo "::error::gh workflow run did not report the deployer run it created (output: '${url}'), so there is nothing to watch."
+            exit 1
+          fi
+          gh run watch "${url##*/}" -R mindsdb/deployer --exit-status
