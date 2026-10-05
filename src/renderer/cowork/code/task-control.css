@@ -34,9 +34,10 @@
 .code-composer-lip__actions { display: flex; flex: none; align-items: center; gap: 4px; }
 .code-composer-lip__detail { max-height: 96px; margin: 6px 0 2px 20px; padding: 6px 8px; overflow: auto; border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); white-space: pre-wrap; font: 10px/1.45 var(--font-mono); }
 .code-decision-tray { max-height: 48vh; padding: 12px 12px calc(12px + var(--code-attach-overlap)); overflow-y: auto; color: var(--ink); transition: border-color var(--dur-hover, .15s); }
-/* Focus moves here so Enter and Escape answer the tray; show it the way the composer shows its own focus. */
+/* Focus moves here on open so Enter and Escape answer the tray. That focus is
+   programmatic, so it draws nothing: the tray keeps its neutral edge and the
+   buttons show their own focus rings when tabbed to. */
 .code-decision-tray:focus { outline: 0; }
-.code-decision-tray:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-01)); }
 .code-decision-tray__kind { display: flex; min-width: 0; align-items: center; gap: 6px; margin-bottom: 4px; color: var(--ink-3); font-size: 11px; }
 .code-decision-tray__kind > svg { flex: none; }
 .code-decision-tray__aside { min-width: 0; margin-left: auto; overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--font-mono); }
