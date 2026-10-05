@@ -391,7 +391,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-prompt-queue__actions { display: flex; align-items: center; gap: 1px; }
 .code-prompt-queue__actions .btn:not(.icon) { gap: 4px; }
 .code-composer__shell { position: relative; width: min(var(--code-measure), 100%); margin: 0 auto; padding: 8px 10px 8px 13px; border: 1px solid var(--border-01); border-radius: var(--r-xl); background: var(--surface-0); box-shadow: var(--sh-1); transition: border-color var(--dur-hover), box-shadow var(--dur-hover); }
-.code-composer__shell:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), var(--sh-1); }
+/* Ring tracks the textarea only: :focus-within flashed when clicking a picker trigger before its menu took focus. */
+.code-composer__shell:has(textarea:focus) { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), var(--sh-1); }
 .code-start-composer.is-dragging-files,
 .code-composer__shell.is-dragging-files { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-1); }
 .code-drop-hint { position: absolute; inset: 5px; z-index: 4; display: grid; place-items: center; border: 1px dashed var(--accent); border-radius: calc(var(--r-xl) - 4px); background: color-mix(in srgb, var(--surface-0) 92%, var(--accent)); color: var(--ink); font-size: 12px; font-weight: 650; pointer-events: none; }
