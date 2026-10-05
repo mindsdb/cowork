@@ -43,11 +43,15 @@ function ProjectMeta({ projectName, projects, onOpenProject }) {
   // `projectLabel(null)` is null, so an unresolved project falls back to the
   // slug exactly as before (ENG-1676).
   const projectDisplay = projectLabel(projectMatch) || projectName;
+  // The cap keeps a long name from widening the row's meta, which does not
+  // shrink (it sizes to its content, even on its own phone-width line);
+  // `shrink` lets the link give way inside the cap so the label truncates
+  // (HoverActions is shrink-0 by default).
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
+    <span className="flex min-w-0 max-w-[16rem] items-center gap-1.5 max-sm:max-w-[8rem]">
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
       {projectMatch && typeof onOpenProject === 'function' ? (
-        <HoverActions reveal className="min-w-0">
+        <HoverActions reveal className="min-w-0 shrink">
           <Tooltip content={`Open ${projectDisplay}`}>
             <button
               type="button"
