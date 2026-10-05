@@ -49,6 +49,26 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
+// Exported for tests. The setSetting calls that put each edited key back at
+// its `lastSavedJson` value. Edits write straight into App-level `settings`,
+// which outlives this view, so without a revert an unsaved or server-rejected
+// edit survives close/reopen and the remount snapshots it as "Saved"
+// (ENG-3200). Only keys the user edited are reverted: server-driven updates
+// that landed while the view was open must stand. Keys absent from the
+// snapshot are skipped (status maps are excluded from it on purpose).
+export function unsavedEditReverts(savedJson, current, editedKeys) {
+  if (savedJson == null || !current) return [];
+  let saved;
+  try { saved = JSON.parse(savedJson); } catch { return []; }
+  const reverts = [];
+  for (const key of editedKeys) {
+    if (!(key in saved)) continue;
+    if (JSON.stringify(current[key]) === JSON.stringify(saved[key])) continue;
+    reverts.push([key, saved[key]]);
+  }
+  return reverts;
+}
+
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
 // ever stacks two utilities for the same property.
@@ -735,7 +755,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
 }
 
 export default function SettingsView({
-  settings, setSetting, onSave,
+  settings, setSetting: setSettingProp, onSave,
   theme, onThemeChange,
   skin, onSkinChange, customTheme, onCustomThemeChange,
   agentLabel,
@@ -866,6 +886,21 @@ export default function SettingsView({
   // the await but the ref tracks every render).
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; });
+
+  // Keys edited since the last successful save; closing the view reverts
+  // them to the saved snapshot (see unsavedEditReverts).
+  const editedKeysRef = useRef(new Set());
+  const setSetting = (key, value) => {
+    editedKeysRef.current.add(key);
+    setSettingProp(key, value);
+  };
+  const lastSavedJsonRef = useRef(lastSavedJson);
+  useEffect(() => { lastSavedJsonRef.current = lastSavedJson; });
+  useEffect(() => () => {
+    const reverts = unsavedEditReverts(lastSavedJsonRef.current, settingsRef.current, editedKeysRef.current);
+    reverts.forEach(([key, value]) => setSettingProp(key, value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // First load: snapshot once `settings` is populated so the resting
   // state is "Saved" until the user touches anything.
@@ -1209,6 +1244,7 @@ export default function SettingsView({
       // pre-save copy and stale by now).
       const { providerStatus: _ps2, providerStatusDetails: _psd2, providerStatusReasons: _psr2, ...savedForDirty } = settingsRef.current || {};
       setLastSavedJson(JSON.stringify(savedForDirty));
+      editedKeysRef.current.clear();
       setSaved(true);
       setTimeout(() => setTested(false), 2400);
     } catch (err) {
@@ -2010,6 +2046,7 @@ export default function SettingsView({
         // unsaved Provider edit as "Saved" just because Appearance also
         // changed at the same time.
         setLastSavedJson((prev) => patchSavedJson(prev, key, value));
+        editedKeysRef.current.delete(key);
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
         // Hold at full opacity, then fade out, then unmount — a plain status
         // message, not a button, and it disappears on its own.
