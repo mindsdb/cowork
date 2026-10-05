@@ -67,6 +67,12 @@ function ProjectMeta({ projectName, projects, onOpenProject }) {
   );
 }
 
+// A row's meta: project, status and time. Wraps onto a second line when a
+// narrow phone can't fit all three, instead of widening the page.
+function RowMeta({ children }) {
+  return <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">{children}</span>;
+}
+
 function TaskRow({ task, projects = [], onOpen, onOpenProject, onDelete }) {
   // Prefer the same field the rest of the app uses for "last seen"
   // (updatedAt). Fall back to subtitle (legacy mock-time string)
@@ -79,11 +85,11 @@ function TaskRow({ task, projects = [], onOpen, onOpenProject, onDelete }) {
       description={task.subtitle && task.subtitle !== updated ? task.subtitle : undefined}
       onActivate={() => onOpen?.(task)}
       meta={(
-        <>
+        <RowMeta>
           <ProjectMeta projectName={task.projectName || task.project || ''} projects={projects} onOpenProject={onOpenProject} />
           {task.status === 'active' && <StatusDot tone="success">Running</StatusDot>}
           <span className="whitespace-nowrap">{updated}</span>
-        </>
+        </RowMeta>
       )}
       actions={(
         <Tooltip content="Delete task">
@@ -127,7 +133,7 @@ function ScheduleGroupRow({
       onActivate={onOpenSchedule}
       className="bg-[color-mix(in_srgb,var(--accent)_4%,transparent)]"
       meta={(
-        <>
+        <RowMeta>
           <ProjectMeta
             projectName={schedule?.project || runs[0]?.projectName || runs[0]?.project || ''}
             projects={projects}
@@ -135,7 +141,7 @@ function ScheduleGroupRow({
           />
           {runs.some((r) => r.status === 'active') && <StatusDot tone="success">Running</StatusDot>}
           <span className="whitespace-nowrap">{updated}</span>
-        </>
+        </RowMeta>
       )}
       actions={(
         <Tooltip content="Open latest run">

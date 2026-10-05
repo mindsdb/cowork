@@ -4,7 +4,7 @@ import { test, expect, type Locator } from '@playwright/test';
 // row needs a real browser. Covers both row types: a task and a schedule group.
 
 const ROWS = ['Unbroken task', 'Spaced task', 'Unbroken schedule', 'Spaced schedule'];
-const VIEWPORTS = [{ width: 390, height: 800 }, { width: 1280, height: 900 }];
+const VIEWPORTS = [{ width: 320, height: 700 }, { width: 390, height: 800 }, { width: 1280, height: 900 }];
 
 // The row is the closest ancestor that holds both the title and the project link.
 function rowOf(title: string, page: import('@playwright/test').Page): Locator {
