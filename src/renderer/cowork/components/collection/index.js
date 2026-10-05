@@ -17,5 +17,5 @@ export { HoverMenu }            from './HoverMenu';
 export { useCollectionShortcut } from './useCollectionShortcut';
 export { CardGrid, ItemCard }   from './ItemCard';
 export { ListGroup, ListItem, NewRow, ListNotice } from './ListGroup';
-export { HoverActions, REVEAL_ON_HOVER, ITEM_MENU_TRIGGER } from './itemParts';
+export { HoverActions, REVEAL_ON_HOVER } from './itemParts';
 export { StatusDot }            from './StatusDot';
