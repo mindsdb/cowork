@@ -53,7 +53,8 @@ view === 'grid' ? <ItemCard as="article" {...slots} /> : <ListItem as="article" 
   They stay in the tab order, so Tab from the title reaches them. To show a
   control at rest, such as Connectors' labelled Disconnect, put it in `meta`
   inside `<HoverActions reveal>`. That also lifts it above the item's
-  click area.
+  click area, and a row then gives `actions` their own space instead of
+  overlaying the meta.
 - **`busy`** dims the item, sets `aria-busy`, and disables opening.
 - **`selected`** gives cards an accent border and rows a firmer fill.
 

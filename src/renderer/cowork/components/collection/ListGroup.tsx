@@ -132,11 +132,16 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
         </div>
       )}
       {/* Overlays the meta's end on hover (over the row's hover fill) so the
-          meta keeps the right edge at rest. On touch it flows in place. */}
+          meta keeps the right edge at rest. It flows in place on touch, and
+          whenever the row shows a control at rest, which it would cover. */}
       {actions && (
         <HoverActions
           reveal={revealActions}
-          className="absolute inset-y-0 right-0 rounded-[inherit] pr-3 bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8 [@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0"
+          className={cn(
+            'absolute inset-y-0 right-0 rounded-[inherit] pr-3 bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8',
+            '[@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0',
+            'group-has-[[data-revealed]]/item:static group-has-[[data-revealed]]/item:bg-none group-has-[[data-revealed]]/item:p-0',
+          )}
         >
           {actions}
         </HoverActions>

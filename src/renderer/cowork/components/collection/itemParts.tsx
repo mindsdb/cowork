@@ -72,7 +72,7 @@ export interface HoverActionsProps {
 /** The control cluster on an item. Sits above the stretched activator. */
 export function HoverActions({ children, reveal = false, className }: HoverActionsProps) {
   return (
-    <div className={cn('relative z-10 flex shrink-0 items-center gap-1', !reveal && REVEAL_ON_HOVER, className)}>
+    <div data-revealed={reveal || undefined} className={cn('relative z-10 flex shrink-0 items-center gap-1', !reveal && REVEAL_ON_HOVER, className)}>
       {children}
     </div>
   );
