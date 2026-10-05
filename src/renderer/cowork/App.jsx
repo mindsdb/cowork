@@ -5,6 +5,7 @@ import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -4633,6 +4634,33 @@ function AppCore() {
     },
   };
 
+  // Desktop corner button. Each Appearance switch gates only its own control
+  // (ENG-3201): both on opens Display settings, one on flips just that one.
+  const displayToggle = (() => {
+    switch (displayToggleMode(settings)) {
+      case 'menu':
+        return {
+          label: 'Display settings',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setThemeModalOpen(true),
+        };
+      case 'theme':
+        return {
+          label: 'Toggle dark/light mode',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
+        };
+      case 'style':
+        return {
+          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          icon: Ico.gamepad(15),
+          onClick: () => setSkin(nextToggledSkin(skin)),
+        };
+      default:
+        return null;
+    }
+  })();
+
   // The app chrome — sidebar, content column, modals. Still holds the
   // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
   // via context.
@@ -4683,21 +4711,15 @@ function AppCore() {
       {/* Code has one deliberate entry point while it is opt-in: Settings.
           Keeping this corner control exclusively about appearance prevents a
           hidden product from leaking into ordinary Cowork. */}
-      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+      {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+          <Tooltip content={displayToggle.label}>
             <button
-              onClick={() => {
-                if (settings.show8bitToggle === false) {
-                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                } else {
-                  setThemeModalOpen(true);
-                }
-              }}
-              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              onClick={displayToggle.onClick}
+              aria-label={displayToggle.label}
               className="floating-toggle"
             >
-              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              {displayToggle.icon}
             </button>
           </Tooltip>
         </div>

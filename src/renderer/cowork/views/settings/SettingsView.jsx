@@ -2332,7 +2332,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
@@ -2342,7 +2342,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
+          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
             <div className="flex items-center">
               <Switch
                 checked={settings.show8bitToggle !== false}
