@@ -495,6 +495,7 @@ describe('artifacts rail grouping by conversation', () => {
     const separator = screen.getByRole('separator');
     expect(separator.previousElementSibling).toHaveTextContent('Mine B');
     expect(separator.nextElementSibling).toHaveTextContent('Other A');
+    expect(separator).toHaveAttribute('aria-label', 'Other artifacts in this project');
   });
 
   it('draws no separator when only one group has rows', async () => {
@@ -532,11 +533,20 @@ describe('artifacts rail grouping by conversation', () => {
     expect(fetchArtifacts.mock.calls.length).toBe(calls);
   });
 
+  it('closes an open row menu when the chat changes', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+    fireEvent.click(screen.getAllByLabelText('More actions')[1]);
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+
+    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
   // Moving to a chat of another project changes `project` and `conversationId`
   // in one commit. The rows effect then still sees the old project's rows, so
   // the project-switch effect must run after it and win.
   it('resets the marker column when switching to a chat of another project', async () => {
-    setOrgMode(true);
     const FOUR = 'grid-cols-[14px_12px_minmax(0,1fr)_auto]';
     const THREE = 'grid-cols-[14px_minmax(0,1fr)_auto]';
     const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };

@@ -10,6 +10,10 @@ describe('isFromConversation', () => {
     expect(isFromConversation(art('/a', 'c2'), 'c1')).toBe(false);
   });
 
+  it('compares ids as strings', () => {
+    expect(isFromConversation(art('/a', '42'), 42)).toBe(true);
+  });
+
   it('never matches without a conversation or provenance', () => {
     expect(isFromConversation(art('/a', ''), '')).toBe(false);
     expect(isFromConversation(art('/a', ''), null)).toBe(false);

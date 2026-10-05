@@ -117,7 +117,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
 
   // The request is scoped server-side, so the response is already this
   // project's list; `railArtifactRows` picks what the rail shows.
-  const applyArtifacts = (proj, list, ticket) => {
+  const applyArtifacts = (list, ticket) => {
     if (ticket !== loadVersion.current) return;
     setArtifacts(Array.isArray(list) ? list : []);
   };
@@ -143,7 +143,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     }
     setArtifacts([]);
     fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
-      .then((list) => applyArtifacts(proj, list, ticket))
+      .then((list) => applyArtifacts(list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setArtifacts([]); });
   }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
 
@@ -159,7 +159,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       if (!proj?.name || !(proj?.id || proj?.path)) return;
       const ticket = ++loadVersion.current;
       fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
-        .then((list) => applyArtifacts(proj, list, ticket))
+        .then((list) => applyArtifacts(list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };
     if (isStreaming) {
@@ -251,6 +251,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       document.removeEventListener('scroll', onClose, true);
     };
   }, [openMenuPath]);
+  // A chat switch regroups the rows, so an open menu would stay pinned to
+  // where its row used to be.
+  useEffect(() => { setOpenMenuPath(null); }, [conversationId]);
 
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
@@ -409,7 +412,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
             return (
               <Fragment key={a.path}>
                 {i > 0 && i === othersStart && (
-                  <div role="separator" className="h-px bg-[var(--border-0)] my-1 mx-1" />
+                  <div
+                    role="separator"
+                    aria-label="Other artifacts in this project"
+                    className="h-px bg-[var(--border-0)] my-1 mx-1"
+                  />
                 )}
                 <div
                   role="button"
