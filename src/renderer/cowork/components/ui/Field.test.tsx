@@ -111,4 +111,9 @@ describe('Field', () => {
     );
     expect(screen.getByRole('group', { name: 'Environment' })).toContainElement(screen.getByRole('textbox', { name: 'Ports' }));
   });
+
+  it('sizes a heading label like a field set legend', () => {
+    render(<Field label="Name" heading><input /></Field>);
+    expect(screen.getByText('Name')).toHaveClass('text-base', 'font-semibold');
+  });
 });

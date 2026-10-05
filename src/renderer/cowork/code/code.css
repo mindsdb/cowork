@@ -617,7 +617,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-team-setup__details dd { margin: 0; overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font: var(--text-xs) var(--font-mono); }
 .code-team-setup__details dl + div { padding-top: 6px; display: flex; gap: 6px; }
 .code-project-error { margin-top: 10px; }
-.code-project-footer-actions { display: flex; gap: 8px; margin-left: auto; }
 .code-project-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .code-project-columns button { width: 100%; }
 .code-project-columns > div { min-width: 0; }

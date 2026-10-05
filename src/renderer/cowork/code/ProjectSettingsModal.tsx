@@ -11,7 +11,6 @@ import { Field, FieldSet } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import { ConfirmModal } from '../components/ConfirmModal';
 import type { ConnectorConnection } from '../api';
 import {
   buildModelPickerOptions,
@@ -65,7 +64,6 @@ export function ProjectSettingsModal({
   busy,
   onClose,
   onSave,
-  onDelete,
   onOpenConnectors = () => {},
   onOpenSkills = () => {},
   defaultEngineId = 'codex',
@@ -81,7 +79,6 @@ export function ProjectSettingsModal({
   busy: boolean;
   onClose: () => void;
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => Promise<CodeProject>;
-  onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
   onOpenSkills?: () => void;
   defaultEngineId?: string;
@@ -110,9 +107,6 @@ export function ProjectSettingsModal({
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
@@ -181,9 +175,6 @@ export function ProjectSettingsModal({
     setProjectPermission(project?.permission_mode || 'supervised');
     setProjectReasoningEffort(project?.default_reasoning_effort || null);
     setError('');
-    setDeleteOpen(false);
-    setDeleteBusy(false);
-    setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
       codingApi.playbook(project.id).then((status) => {
@@ -301,11 +292,12 @@ export function ProjectSettingsModal({
   };
 
   return (
-    <>
     <Modal
       open={open}
       onClose={onClose}
       size="md"
+      // Creating asks only for a name and code, so it keeps the narrower width.
+      width={project ? undefined : 'min(560px, 92vw)'}
       maxHeight="min(720px, 88vh)"
       labelledBy="code-project-settings-title"
       closeOnBackdrop={!busy && !skillsSaving}
@@ -319,7 +311,7 @@ export function ProjectSettingsModal({
       />
       <ModalBody>
         <div className="code-project-settings">
-          <Field label="Project name">
+          <Field label="Project name" heading>
             <Input value={name} onChange={setName} placeholder="atlas" spellCheck={false} autoFocus />
           </Field>
 
@@ -439,22 +431,22 @@ export function ProjectSettingsModal({
               <div className="code-project-columns">
                 <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
                 <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
-                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
-                  if (isPermissionMode(value)) setProjectPermission(value);
-                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
                 {projectEffortLevels && (
                   <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                 )}
+                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
+                  if (isPermissionMode(value)) setProjectPermission(value);
+                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
               </div>
             </FieldSet>
 
             <FieldSet legend="Environment">
-              <div className="code-project-columns">
-                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
-                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
-                </Field>
+              <div className="grid gap-3">
                 <Field label="Development ports" help="Each task gets its own free port under each name.">
                   <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
+                </Field>
+                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
+                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
                 </Field>
               </div>
             </FieldSet>
@@ -462,41 +454,14 @@ export function ProjectSettingsModal({
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
-        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>Delete project</Button>}
-        <div className="code-project-footer-actions">
-          <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
-            {busy || skillsSaving || playbookBusy
-              ? (project ? 'Saving…' : 'Creating…')
-              : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
-          </Button>
-        </div>
+      <ModalFooter>
+        <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
+          {busy || skillsSaving || playbookBusy
+            ? (project ? 'Saving…' : 'Creating…')
+            : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
+        </Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal
-      open={deleteOpen}
-      title="Delete this Code Project?"
-      message="This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted."
-      confirmLabel="Delete project"
-      destructive
-      busy={busy || deleteBusy}
-      busyLabel="Deleting…"
-      error={deleteError}
-      onClose={() => { setDeleteOpen(false); setDeleteError(''); }}
-      onConfirm={async () => {
-        setDeleteBusy(true);
-        setDeleteError('');
-        try {
-          await onDelete?.();
-          setDeleteOpen(false);
-        } catch (reason) {
-          setDeleteError(reason instanceof Error ? reason.message : 'Could not delete this Code Project.');
-        } finally {
-          setDeleteBusy(false);
-        }
-      }}
-    />
-    </>
   );
 }

@@ -20,12 +20,17 @@ import { cn } from '../../lib/cn';
 // set) — so callers don't repeat that wiring. Pass an explicit `htmlFor`/`id`
 // to opt out of the generated id.
 
+const headingClass = 'mb-2 text-base font-semibold text-ink';
+
 export interface FieldProps {
   label?: ReactNode;
   help?: ReactNode;
   error?: ReactNode;
   required?: boolean;
   optional?: boolean;
+  // A field that sits beside FieldSets takes their heading size so the
+  // form's top level reads evenly.
+  heading?: boolean;
   // Override the generated control id (must match the control's own `id`).
   htmlFor?: string;
   children: ReactNode;
@@ -33,7 +38,7 @@ export interface FieldProps {
   className?: string;
 }
 
-export function Field({ label, help, error, required, optional, htmlFor, children, className }: FieldProps) {
+export function Field({ label, help, error, required, optional, heading, htmlFor, children, className }: FieldProps) {
   const generatedId = useId();
 
   // Wire id + aria onto a single control child. Anything that isn't a single
@@ -80,7 +85,7 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
   return (
     <div className={cn('flex flex-col', className)}>
       {label != null && (
-        <label htmlFor={controlId} className="mb-1.5 text-sm font-medium text-ink-2">
+        <label htmlFor={controlId} className={heading ? headingClass : 'mb-1.5 text-sm font-medium text-ink-2'}>
           {label}
           {required && <span className="text-danger"> *</span>}
           {optional && <span className="font-normal text-ink-4"> (optional)</span>}
@@ -106,7 +111,7 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
 export function FieldSet({ legend, children }: { legend: ReactNode; children: ReactNode }) {
   return (
     <fieldset className="m-0 flex min-w-0 flex-col border-0 p-0">
-      <legend className="mb-2 p-0 text-base font-semibold text-ink">{legend}</legend>
+      <legend className={cn('p-0', headingClass)}>{legend}</legend>
       {children}
     </fieldset>
   );

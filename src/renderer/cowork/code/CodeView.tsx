@@ -25,6 +25,7 @@ import { PreviewPanel } from './PreviewPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
 import { RenameTaskModal } from './RenameTaskModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
@@ -142,6 +143,7 @@ export default function CodeView({
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
   // Back returns to the originating draft/settings. Project-scoped visits also
   // add newly connected accounts to that project; folder-only visits do not.
@@ -401,7 +403,6 @@ export default function CodeView({
             onRunProjectAction={(action) => void startProjectAction(action)}
             onOpenControls={() => setControlsOpen(true)}
             onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
-            onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
             onRename={() => setRenameOpen(true)}
             onFork={() => void forkTask()}
             onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
@@ -460,6 +461,7 @@ export default function CodeView({
             onOpen={onOpenTasks}
             onCreate={() => setProjectEditor({ id: null })}
             onEdit={(id) => setProjectEditor({ id })}
+            onDelete={setDeletingProjectId}
           />
         ) : tasksOpen ? (
           <CodeTasksView
@@ -477,6 +479,7 @@ export default function CodeView({
               onSelectionChange(null, true);
             }}
             onEditProject={(id) => setProjectEditor({ id })}
+            onDeleteProject={setDeletingProjectId}
             onBack={onOpenProjects}
             onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
@@ -819,15 +822,15 @@ export default function CodeView({
             setProjectEditor(null);
             onOpenSkills();
           }}
-          onDelete={projectEditor?.id ? async () => {
-            setProjectBusy(true);
-            try {
-              await projects.remove(projectEditor.id!);
-              setProjectEditor(null);
-            } finally {
-              setProjectBusy(false);
-            }
-          } : undefined}
+        />
+        <DeleteProjectModal
+          open={deletingProjectId !== null}
+          onClose={() => setDeletingProjectId(null)}
+          onDelete={async () => {
+            await projects.remove(deletingProjectId!);
+            // The project's own page has nothing left to show.
+            if (tasksOpen && tasksProjectId === deletingProjectId) onOpenProjects();
+          }}
         />
         {session && can('extensions') && (
           <ExtensionsModal
