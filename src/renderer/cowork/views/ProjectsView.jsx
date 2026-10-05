@@ -131,6 +131,11 @@ function NewProjectButton({ onClick }) {
   );
 }
 
+// Page padding of the card grid and the row group, shared with their
+// loading skeletons so loading does not shift the layout.
+const GRID_CLASS = 'mt-[18px] px-8 pb-[60px] pt-1.5';
+const LIST_CLASS = 'mx-8 mb-[60px] mt-6';
+
 // Sort options for the projects collection. Kept here (and not in
 // the kit) because the choices are page-specific.
 const SORT_OPTIONS = [
@@ -844,8 +849,9 @@ export default function ProjectsView({
         shown={visibleProjects.length}
         query={search}
         onClear={() => setSearch('')}
-        skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
-        skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        // The skeleton takes the loaded layout's own wrapper classes.
+        skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
+        skeletonClassName={effectiveView === 'grid' ? GRID_CLASS : LIST_CLASS}
         empty={{
           icon: <span className="inline-flex text-ink-4">{Ico.folder(32)}</span>,
           title: 'No projects yet',
@@ -855,7 +861,7 @@ export default function ProjectsView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <CardGrid className="mt-[18px] px-8 pb-[60px] pt-1.5">
+          <CardGrid className={GRID_CLASS}>
             {visibleProjects.map((p) => (
               <ProjectCard key={p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.name === p.name} />
             ))}
@@ -864,7 +870,7 @@ export default function ProjectsView({
             <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </CardGrid>
         ) : (
-          <ListGroup className="mx-8 mb-[60px] mt-6">
+          <ListGroup className={LIST_CLASS}>
             {visibleProjects.map((p) => (
               <ProjectRow key={p.name || p.path} {...itemProps(p)} />
             ))}
