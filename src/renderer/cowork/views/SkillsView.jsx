@@ -564,6 +564,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             onClear={() => setSearch('')}
             skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
             skeletonClassName="pt-5 px-8 pb-[60px]"
+            skeletonGridClassName="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
             empty={{
               icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
               title: 'No saved skills yet',
