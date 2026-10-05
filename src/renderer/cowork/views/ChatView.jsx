@@ -195,7 +195,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
           onMouseEnter={() => onHoverChange?.(true)}
           onMouseLeave={() => onHoverChange?.(false)}
-          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
@@ -257,7 +257,7 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-hover ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
           : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
@@ -326,7 +326,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   }, [content]);
   return (
     <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       <div className="user-turn-inner">
@@ -433,7 +433,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       {children}
@@ -950,7 +950,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
+            transition: 'color var(--dur-hover) ease',
             opacity: canActivate ? 1 : 0.7,
           }}
           onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
@@ -2074,7 +2074,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2110,8 +2110,8 @@ export default function ChatView({
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
               pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
               transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
@@ -2130,7 +2130,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2264,7 +2264,7 @@ export default function ChatView({
                       opacity: titleControlsShown ? 1 : 0,
                       pointerEvents: titleControlsShown ? 'auto' : 'none',
                     }}
-                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
                     {Ico.moreVert(13)}
                   </button>
@@ -2922,7 +2922,7 @@ export default function ChatView({
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
               <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
@@ -2932,7 +2932,7 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <Tooltip content="Remove from queue">
@@ -2989,7 +2989,7 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
@@ -3001,8 +3001,8 @@ export default function ChatView({
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

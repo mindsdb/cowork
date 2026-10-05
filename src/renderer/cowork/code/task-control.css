@@ -33,7 +33,7 @@
 .code-composer-lip__text strong { color: var(--ink); font-weight: 560; }
 .code-composer-lip__actions { display: flex; flex: none; align-items: center; gap: 4px; }
 .code-composer-lip__detail { max-height: 96px; margin: 6px 0 2px 20px; padding: 6px 8px; overflow: auto; border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); white-space: pre-wrap; font: 10px/1.45 var(--font-mono); }
-.code-decision-tray { max-height: 48vh; padding: 12px 12px calc(12px + var(--code-attach-overlap)); overflow-y: auto; color: var(--ink); transition: border-color var(--dur-hover, .15s); }
+.code-decision-tray { max-height: 48vh; padding: 12px 12px calc(12px + var(--code-attach-overlap)); overflow-y: auto; color: var(--ink); transition: border-color var(--dur-hover); }
 /* Focus moves here on open so Enter and Escape answer the tray. That focus is
    programmatic, so it draws nothing: the tray keeps its neutral edge and the
    buttons show their own focus rings when tabbed to. */

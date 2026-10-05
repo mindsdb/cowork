@@ -1,10 +1,9 @@
 import { useLayoutEffect } from 'react';
 
-// Mirrors the active workspace onto <html data-workspace="code|cowork">.
-// Stylesheets key workspace-wide tokens off it (Code Mode's instant motion
-// in globals.css), and because it sits on <html> it also reaches menus,
-// tooltips and modals that portal to <body>. A layout effect sets it before
-// paint, so the first Code frame already has Code timing.
+// Mirrors the active workspace onto <html data-workspace="code|cowork">, a
+// hook for workspace-scoped styles. Because it sits on <html> it also
+// reaches menus, tooltips and modals that portal to <body>. A layout effect
+// sets it before paint, so the first frame already has the right styles.
 export function useWorkspaceAttribute(mode) {
   useLayoutEffect(() => {
     const root = document.documentElement;

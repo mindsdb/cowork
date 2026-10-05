@@ -22,7 +22,7 @@
   background: transparent;
   font: 500 12px/1 var(--font-body);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  transition: color var(--dur-hover) ease, background var(--dur-hover) ease, box-shadow var(--dur-hover) ease;
 }
 
 .artifact-mode-tab:hover:not(:disabled) { color: var(--ink); }
@@ -287,8 +287,4 @@
   .artifact-revision-actions { width: 100%; justify-content: flex-end; }
   .artifact-html-edit-guidance > span:last-child { display: none; }
   .artifact-html-edit-actions button { padding: 0 8px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .artifact-mode-tab { transition: none; }
 }

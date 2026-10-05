@@ -1466,7 +1466,7 @@ function AppCore() {
   useEffect(() => {
     if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
   }, [effectiveWorkspaceMode]);
-  // Code Mode's instant motion tokens key off <html data-workspace>.
+  // Mirror the active workspace onto <html data-workspace> for workspace-scoped styles.
   useWorkspaceAttribute(effectiveWorkspaceMode);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
@@ -4687,8 +4687,8 @@ function AppCore() {
         isMobile — MobileShell replaces it with a mobile drawer below 640.
       */}
       {/* Narrow-band popout backdrop — dims content behind the slid-in
-          sidebar. Same 320ms curve as the drawer so the two read as one
-          motion (the old overlay used mismatched 280/380ms durations). */}
+          sidebar. Same --dur-layout timing as the drawer so the two read as
+          one motion. */}
       {sidebarPopout && !isMobile && (
         <div
           onClick={() => setNavPopoutOpen(false)}
@@ -4708,7 +4708,7 @@ function AppCore() {
             WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
-            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+            transition: 'opacity var(--dur-layout) var(--ease-out)',
           }}
         />
       )}
@@ -4734,11 +4734,11 @@ function AppCore() {
       <div
         style={sidebarPopout ? {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
-          // 320ms curve as the scrim above. Docked (display:contents)
+          // timing as the scrim above. Docked (display:contents)
           // otherwise — a wide desktop viewport with Coding Mode off.
           position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
           transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          transition: 'transform var(--dur-layout) var(--ease-out)',
           willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
@@ -5326,7 +5326,7 @@ function AppCore() {
                       color: 'var(--ink-3)',
                       fontFamily: 'var(--font-body)', fontSize: 12.5,
                       cursor: 'pointer', flexShrink: 0,
-                      transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                      transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease, border-color var(--dur-hover) ease',
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
@@ -5512,7 +5512,7 @@ function AppCore() {
                   color: 'var(--ink)',
                   fontFamily: 'var(--font-body)', fontSize: 13.5,
                   cursor: 'pointer', textAlign: 'left',
-                  transition: 'background 120ms ease',
+                  transition: 'background var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}

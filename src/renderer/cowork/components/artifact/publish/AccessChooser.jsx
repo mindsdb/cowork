@@ -143,7 +143,7 @@ function OptionCard({ value, active, icon, title, desc }) {
         padding: '10px 12px', borderRadius: 'var(--card-radius)',
         background: active ? 'var(--accent-bg)' : 'var(--surface-2)',
         border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-        transition: 'background 120ms ease, border-color 120ms ease',
+        transition: 'background var(--dur-hover) ease, border-color var(--dur-hover) ease',
       }}
     >
       <span
@@ -160,7 +160,7 @@ function OptionCard({ value, active, icon, title, desc }) {
         className="shrink-0 w-[16px] h-[16px] rounded-full inline-grid place-items-center"
         style={{
           border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-4)'}`,
-          transition: 'border-color 120ms ease',
+          transition: 'border-color var(--dur-hover) ease',
         }}
       >
         {active && <span className="w-[8px] h-[8px] rounded-full bg-accent" />}

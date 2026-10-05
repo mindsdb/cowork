@@ -90,9 +90,9 @@ function ToastBubble({ toast }: { toast: any }) {
       className={cn(
         'relative flex items-center gap-[10px] rounded-[10px] border px-4 py-[10px]',
         'font-body text-[13px] shadow-sh-popup bg-surface border-line text-ink',
-        '[transition:opacity_var(--dur-popover-in,180ms)_ease-out,transform_var(--dur-popover-in,180ms)_ease-out]',
+        '[transition:opacity_var(--dur-popover-in)_ease-out,transform_var(--dur-popover-in)_ease-out]',
         'data-[starting-style]:opacity-0 data-[starting-style]:translate-y-2',
-        'data-[ending-style]:opacity-0 data-[ending-style]:duration-[var(--dur-popover-out,100ms)]',
+        'data-[ending-style]:opacity-0 data-[ending-style]:duration-popover-out',
         // Tailwind's opacity modifier (bg-x/10) only works when the color
         // is a literal value it can see at build time — danger/warning are
         // `var(--x)` references, so it silently produces no rule at all.

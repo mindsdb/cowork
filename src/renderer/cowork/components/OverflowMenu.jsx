@@ -32,6 +32,10 @@ export function OverflowMenu({
       variant="subtle"
       aria-label={label}
       disabled={disabled}
+      // Stay focusable while disabled (aria-disabled): a caller that disables
+      // the trigger while its action runs would otherwise drop the focus the
+      // menu hands back on close.
+      focusableWhenDisabled
       // A caller that stretches the trigger over a slot (`absolute inset-0`,
       // as ContextCard's row kebab does) keeps the icon where it asked for
       // it: auto margins place the fixed-size button inside the inset box.
@@ -45,6 +49,11 @@ export function OverflowMenu({
         if (stopPropagation) e.stopPropagation();
         onTriggerKeyDown?.(e);
       }}
+      // Base UI's disabled branch returns before the handlers above run, and
+      // an aria-disabled button still dispatches clicks and keys, so they'd
+      // reach a clickable row and activate it. Stop them on the way down.
+      onClickCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
+      onKeyDownCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
     >
       {icon}
     </Button>

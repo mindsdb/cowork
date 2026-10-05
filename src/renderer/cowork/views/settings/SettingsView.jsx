@@ -494,7 +494,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
                 // only pops in and holds — it's cleared by state (next attempt
                 // or blur), not by the animation, so it stays legible.
-                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
+                animation: copyState === 'failed' ? 'failed-pop var(--dur-layout) ease forwards' : 'copied-pop 1.5s ease forwards',
               }}
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
@@ -577,7 +577,7 @@ function SetBadge({ hasValue, active }) {
         // we explicitly clear any inherited shadow.
         boxShadow: active ? undefined : 'none',
         animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
-        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+        transition: 'box-shadow var(--dur-hover) ease, background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
     >
       Set
@@ -678,7 +678,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
     </span>
   );
   return (
-    <div className={`[transition:opacity_.15s_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
+    <div className={`[transition:opacity_var(--dur-hover)_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
       <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
@@ -714,7 +714,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
             aria-disabled={disabled ? 'true' : undefined}
-            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
@@ -1521,7 +1521,7 @@ export default function SettingsView({
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
                     title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
-                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
                       transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
@@ -1534,7 +1534,7 @@ export default function SettingsView({
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
                 <div
-                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_220ms_ease,transform_220ms_ease]"
+                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                   style={{
                     opacity: addPickerOpen ? 1 : 0,
                     transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',

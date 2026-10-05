@@ -39,6 +39,28 @@ describe('OverflowMenu', () => {
     render(<OverflowMenu items={[{ label: 'Rename' }]} size="sm" disabled />);
     const trigger = screen.getByRole('button', { name: 'More actions' });
     expect(trigger).toHaveClass('sm');
-    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('stays focusable while disabled but does not open', async () => {
+    const user = userEvent.setup();
+    render(<OverflowMenu items={[{ label: 'Rename' }]} disabled />);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+  });
+
+  it('keeps a disabled trigger\'s clicks and keys from activating the row it sits in', async () => {
+    const user = userEvent.setup();
+    const onRow = vi.fn();
+    render(<div onClick={onRow} onKeyDown={onRow}><OverflowMenu items={[{ label: 'Rename' }]} disabled /></div>);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    await user.click(trigger);
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onRow).not.toHaveBeenCalled();
   });
 });

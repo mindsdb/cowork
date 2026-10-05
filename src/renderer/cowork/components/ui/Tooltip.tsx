@@ -13,12 +13,11 @@
 //     <button>{icon}</button>
 //   </Tooltip>
 
-import { useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
 
-// Tooltips that hint a frequently-used control should appear fast; the
-// Base UI default (600ms) feels sluggish for top-bar icons.
-const DEFAULT_DELAY_MS = 250;
+// Used only until globals.css has loaded; the token sets the real delay.
+const DEFAULT_DELAY_MS = 0;
 
 // Parses a CSS time ("0", "0ms", "0s", "250ms", "0.8s"). Returns null for
 // an empty or unreadable value so the caller falls back to the default.
@@ -28,38 +27,20 @@ export function parseTooltipDelay(raw: string): number | null {
   return parseFloat(match[1]) * (match[2] === 's' ? 1000 : 1);
 }
 
-// The open delay comes from the `--tooltip-delay` token (globals.css), which
-// Code Mode sets to 0ms through html[data-workspace]. The value is cached
-// per workspace, and a workspace switch re-renders every mounted tooltip, so
-// a tooltip never opens with the previous workspace's delay.
-function workspaceKey(): string {
-  return typeof document === 'undefined' ? '' : document.documentElement.dataset.workspace ?? '';
-}
+// The open delay comes from the `--tooltip-delay` motion token on :root
+// (globals.css). The first readable value is cached for the session; an
+// unreadable one (stylesheet not loaded yet) is retried on the next render.
+let cachedDelay: number | null = null;
 
-let cached: { key: string; delay: number } | null = null;
-
-function delayFor(key: string): number {
-  if (cached?.key === key) return cached.delay;
-  const raw = typeof document === 'undefined'
-    ? ''
-    : getComputedStyle(document.documentElement).getPropertyValue('--tooltip-delay');
-  cached = { key, delay: parseTooltipDelay(raw) ?? DEFAULT_DELAY_MS };
-  return cached.delay;
-}
-
-function subscribeToWorkspace(onChange: () => void): () => void {
-  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return () => {};
-  const observer = new MutationObserver(() => {
-    cached = null;
-    onChange();
-  });
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-workspace'] });
-  return () => observer.disconnect();
-}
-
-function useTooltipDelay(): number {
-  const key = useSyncExternalStore(subscribeToWorkspace, workspaceKey, () => '');
-  return delayFor(key);
+function tokenDelay(): number {
+  if (cachedDelay != null) return cachedDelay;
+  if (typeof document === 'undefined') return DEFAULT_DELAY_MS;
+  const parsed = parseTooltipDelay(
+    getComputedStyle(document.documentElement).getPropertyValue('--tooltip-delay'),
+  );
+  if (parsed == null) return DEFAULT_DELAY_MS;
+  cachedDelay = parsed;
+  return parsed;
 }
 
 export interface TooltipProps {
@@ -80,13 +61,12 @@ export function Tooltip({
   delay,
   className,
 }: TooltipProps) {
-  const tokenDelay = useTooltipDelay();
   // No content → render the trigger bare so callers can pass a
   // possibly-empty label without branching.
   if (content == null || content === '') return children;
   return (
     <BaseTooltip.Root>
-      <BaseTooltip.Trigger delay={delay ?? tokenDelay} render={children} />
+      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
           <BaseTooltip.Popup
