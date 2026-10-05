@@ -1,11 +1,11 @@
-// `<ScheduledView>` — list of scheduled tasks with grid/list view
-// toggle + create modal + per-card hover actions.
+// `<ScheduledView>` — scheduled tasks as rows (default) or cards, with a
+// grid/list toggle, a create modal, and per-item hover actions.
 //
 // Click on a card → host opens the schedule detail page (set via
 // onOpenSchedule prop, wired in App.jsx to setRoute('schedule-detail')).
 //
 // Create + edit happen in <ScheduleTaskModal>. Per-task actions (Edit,
-// Pause/Resume, Delete) live in an overflow menu on each card/row; Delete
+// Pause/Resume, Delete) live in an overflow menu on each card or row; Delete
 // opens a <ConfirmModal> here rather than deleting from inside the edit form.
 //
 // Run-now happens inline (no modal) — optimistic UI at the host via the
@@ -16,13 +16,12 @@ import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
   PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState,
-  useCollectionShortcut, useCollectionView,
+  CardGrid, ListGroup, useCollectionShortcut, useCollectionView,
 } from '../components/collection';
-import { Alert, Button, CardRow, Tooltip } from '../components/ui';
-import OverflowMenu from '../components/OverflowMenu';
+import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
-import ScheduleCard, { taskMenuItems } from '../components/schedule/ScheduleCard';
+import ScheduleCard, { ScheduleRow } from '../components/schedule/ScheduleCard';
 
 const SORT_OPTIONS = [
   { id: 'next', label: 'Next run' },
@@ -31,7 +30,10 @@ const SORT_OPTIONS = [
 ];
 
 // Same key convention as ArtifactsView / ProjectsView (`anton:<surface>-view`).
-const VIEW_MODE_KEY = 'anton:scheduled-view';
+// v2: the old `anton:scheduled-view` key was written on every mount, so a stored
+// 'grid' there was usually the old default, not a choice. A fresh key lets
+// everyone start on rows; only a choice made in this layout is remembered.
+const VIEW_MODE_KEY = 'anton:scheduled-view-v2';
 
 export default function ScheduledView({
   scheduled,
@@ -54,8 +56,9 @@ export default function ScheduledView({
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
-  // Phones always get the grid, like the other collection pages.
-  const { view: viewMode, setView: setViewMode, effectiveView } = useCollectionView(VIEW_MODE_KEY);
+  // Rows by default: a schedule is something you manage (status, next run,
+  // run now), not a place you work in. Phones get rows too.
+  const { view: viewMode, setView: setViewMode, effectiveView } = useCollectionView(VIEW_MODE_KEY, { defaultView: 'list' });
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
   // form). `deletingTask` holds the task awaiting confirmation.
   const [deletingTask, setDeletingTask] = useState(null);
@@ -140,6 +143,23 @@ export default function ScheduledView({
     finally { setBusyId(null); }
   }
 
+  // The card and the row take the same props.
+  const itemFor = (Item, task) => (
+    <Item
+      key={task.id}
+      task={task}
+      projects={projects}
+      busy={busyId === task.id}
+      onOpen={() => onOpenSchedule?.(task)}
+      onRunNow={() => runAction(task.id, onRunNow)}
+      onPause={() => runAction(task.id, onPause)}
+      onResume={() => runAction(task.id, onResume)}
+      onEdit={() => openEdit(task)}
+      onDelete={() => setDeletingTask(task)}
+      onOpenProject={onOpenProject}
+    />
+  );
+
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
@@ -184,7 +204,7 @@ export default function ScheduledView({
       )}
 
       {error && (
-        <Alert variant="danger" className="mx-7 mb-3">{error}</Alert>
+        <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
       )}
 
       {/* Body — empty state, grid, or list. */}
@@ -207,46 +227,13 @@ export default function ScheduledView({
               {Ico.plus(14)} Schedule your first task
             </Button>
           ),
-          style: { margin: '40px 28px' },
+          className: 'mx-8 my-10',
         }}
       >
         {effectiveView === 'grid' ? (
-          <div className="pt-2 px-7 pb-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
-            {visible.map((task) => (
-              <ScheduleCard
-                key={task.id}
-                task={task}
-                projects={projects}
-                busy={busyId === task.id}
-                onOpen={() => onOpenSchedule?.(task)}
-                onRunNow={() => runAction(task.id, onRunNow)}
-                onPause={() => runAction(task.id, onPause)}
-                onResume={() => runAction(task.id, onResume)}
-                onEdit={() => openEdit(task)}
-                onDelete={() => setDeletingTask(task)}
-                onOpenProject={onOpenProject}
-              />
-            ))}
-          </div>
+          <CardGrid className="px-8 pt-2 pb-8">{visible.map((task) => itemFor(ScheduleCard, task))}</CardGrid>
         ) : (
-          <div className="pt-2 px-7 pb-7">
-            <ListHeaderRow />
-            {visible.map((task) => (
-              <ScheduleListRow
-                key={task.id}
-                task={task}
-                projects={projects}
-                busy={busyId === task.id}
-                onOpen={() => onOpenSchedule?.(task)}
-                onRunNow={() => runAction(task.id, onRunNow)}
-                onPause={() => runAction(task.id, onPause)}
-                onResume={() => runAction(task.id, onResume)}
-                onEdit={() => openEdit(task)}
-                onDelete={() => setDeletingTask(task)}
-                onOpenProject={onOpenProject}
-              />
-            ))}
-          </div>
+          <ListGroup className="mx-8 mt-2 mb-8">{visible.map((task) => itemFor(ScheduleRow, task))}</ListGroup>
         )}
       </CollectionState>
 
@@ -278,209 +265,3 @@ export default function ScheduledView({
   );
 }
 
-
-// ── List view ──
-//
-// Slick table that mirrors the rhythm used by Live Artifacts and
-// Projects: monospaced uppercase header, tight bordered rows, hover
-// reveals row-level actions in the right meta slot. Columns:
-//   • status dot
-//   • Title (with prompt subtitle)
-//   • Cadence
-//   • Project (clickable when resolved)
-//   • Next run
-//   • Last run
-//   • action menu (hover-revealed)
-
-// 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
-// 110px last · fixed-width actions slot.
-//
-// The action column needs a *fixed* width because each row is its
-// own CSS-grid, not a child of one shared grid — `auto` would size
-// the header's empty slot to 0 while the rows' slot would size to
-// the inline action buttons (~190px), throwing the columns off by
-// the difference. Width is chosen to fit Run + Pause/Resume + Edit
-// without wrapping.
-const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px';
-
-function ListHeaderRow() {
-  const Cell = ({ children, align }) => (
-    <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase ${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'}`}>{children}</div>
-  );
-  return (
-    <div
-      className="grid gap-[14px] py-2.5 px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      <Cell />
-      <Cell>Title</Cell>
-      <Cell>Cadence</Cell>
-      <Cell>Project</Cell>
-      <Cell>Next run</Cell>
-      <Cell>Last run</Cell>
-      <Cell />
-    </div>
-  );
-}
-
-function ScheduleListRow({
-  task, busy, projects = [], onOpen,
-  onRunNow, onPause, onResume, onEdit, onDelete, onOpenProject,
-}) {
-  const [hover, setHover] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const open = () => onOpen?.(task);
-  const stop = (e) => { e.stopPropagation(); };
-
-  const status = (() => {
-    if (task.running) return { label: 'Running', dot: 'var(--accent)' };
-    if (!task.enabled) return { label: 'Paused', dot: 'var(--ink-4)' };
-    if (task.lastError) return { label: 'Failed', dot: 'var(--danger)' };
-    return { label: 'Active', dot: 'var(--success)' };
-  })();
-  const missedRuns = Number(task.missedRuns) || 0;
-
-  const cadenceLabel = {
-    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
-  }[task.cadence] || task.cadence;
-
-  // Resolve the project name from the stored id (ENG-1255) — the server keys
-  // by project id (a UUID), not a name.
-  const projectMatch = task.projectId
-    ? projects.find((p) => p.id === task.projectId) || null
-    : null;
-  // Holds the label, not the slug. The id lookup above means this row -- unlike
-  // TasksView's, which matches a project by name -- needs the slug for nothing
-  // (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || '';
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-
-  return (
-    <CardRow
-      as="div"
-      onActivate={open}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="grid gap-[14px] py-3 px-[14px] items-center"
-      style={{
-        gridTemplateColumns: LIST_GRID,
-        borderBottom: '1px solid var(--line)',
-      }}
-    >
-      <div className="flex justify-center">
-        <span aria-hidden title={status.label}
-          className="w-2 h-2 rounded-full"
-          style={{
-            background: status.dot,
-            boxShadow: status.dot === 'var(--success)'
-              ? '0 0 6px var(--success-glow)'
-              : 'none',
-          }}
-        />
-      </div>
-
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{task.title || 'Untitled schedule'}</span>
-          {/* Missed-runs annotation — shows alongside the title so the
-              user sees how many cadence ticks were skipped while the
-              app was off. Cleared on the next successful run. */}
-          {missedRuns > 0 && (
-            <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0">
-              missed {missedRuns}
-            </span>
-          )}
-        </div>
-        {task.prompt && (
-          <div className="font-[family-name:var(--font-body)] text-[11.5px] text-ink-4 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">{task.prompt}</div>
-        )}
-      </div>
-
-      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.06em] uppercase">{cadenceLabel}</div>
-
-      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-        {projectDisplay ? (
-          canOpenProject ? (
-            <Tooltip content={`Open ${projectDisplay}`}>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: 'var(--ink-2)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  maxWidth: '100%', display: 'inline-block',
-                  transition: 'color var(--dur-hover) ease',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.color = 'var(--accent)';
-                  e.currentTarget.style.textDecoration = 'underline';
-                  e.currentTarget.style.textUnderlineOffset = '2px';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.color = 'var(--ink-2)';
-                  e.currentTarget.style.textDecoration = 'none';
-                }}
-              >{projectDisplay}</button>
-            </Tooltip>
-          ) : projectDisplay
-        ) : <span className="text-ink-5">—</span>}
-      </div>
-
-      <div title={absoluteFull(task.nextRunAt)} className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
-
-      <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
-
-      <div onClick={stop} onMouseDown={stop}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          justifyContent: 'flex-end',
-          opacity: (hover || menuOpen) ? 1 : 0,
-          transition: 'opacity var(--dur-hover) ease',
-          pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
-        }}
-      >
-        <RowAction icon={Ico.send(12)} label="Run" onClick={onRunNow} busy={busy} />
-        <OverflowMenu
-          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
-          disabled={busy}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          // Ghost icon button (matches the grid card / Live-artifacts kebab):
-          // a real hit target + hover surface instead of the bare icon.
-          icon={Ico.moreVert(16)}
-          size="sm"
-        />
-      </div>
-    </CardRow>
-  );
-}
-
-function absoluteFull(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function formatAbsolute(iso) {
-  if (!iso) return 'not set';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'not set';
-  return d.toLocaleString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function RowAction({ icon, label, onClick, busy }) {
-  return (
-    <Button
-      onClick={onClick}
-      disabled={busy}
-    >{icon}{label}</Button>
-  );
-}

@@ -45,8 +45,8 @@ describe('CollectionState', () => {
   });
 });
 
-function Harness({ storageKey }) {
-  const { view, setView, effectiveView } = useCollectionView(storageKey);
+function Harness({ storageKey, defaultView }) {
+  const { view, setView, effectiveView } = useCollectionView(storageKey, { defaultView });
   return (
     <>
       <ViewToggle value={view} onValueChange={setView} />
@@ -80,6 +80,26 @@ describe('ViewToggle + useCollectionView', () => {
     expect(screen.queryByRole('button', { name: 'List' })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('grid');
     expect(localStorage.getItem(KEY)).toBe('list');
+  });
+
+  it('starts on the page default and stores nothing until the user picks', () => {
+    render(<Harness storageKey={KEY} defaultView="list" />);
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('keeps a stored grid choice over a list default', () => {
+    localStorage.setItem(KEY, 'grid');
+    render(<Harness storageKey={KEY} defaultView="list" />);
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('gives phones the page default', () => {
+    localStorage.setItem(KEY, 'grid');
+    window.innerWidth = 390;
+    render(<Harness storageKey={KEY} defaultView="list" />);
+    expect(screen.getByRole('status')).toHaveTextContent('list');
+    expect(localStorage.getItem(KEY)).toBe('grid');
   });
 });
 
