@@ -99,3 +99,43 @@ describe('liveSegmentIndex', () => {
     expect(liveSegmentIndex([])).toBe(-1);
   });
 });
+
+const brief = (id, completedAt) => ({
+  id, label: '', badge: 'Message', status: 'completed', startedAt: completedAt, completedAt,
+  data: { markdown: `brief ${id}` },
+});
+const shapeAll = (segments) => segments.map((s) => {
+  if (s.kind === 'question') return `Q:${s.step.id}`;
+  if (s.kind === 'message') return `M:${s.step.id}`;
+  return s.steps.map((x) => x.id);
+});
+
+describe('splitTurnSegments — tool messages', () => {
+  it('puts a message between the steps before and after it', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50), work('b', 60)], { startedAt: 1 });
+    expect(shapeAll(segments)).toEqual([['a'], 'M:m1', ['b']]);
+    expect(segments[1]).toMatchObject({ kind: 'message', key: 'm1' });
+  });
+
+  it('starts the segment after a message when the message showed', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50), work('b', 60)]);
+    expect(segments[2].startedAt).toBe(50);
+  });
+
+  it('keeps an empty segment after a trailing message for the live header', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50)]);
+    expect(shapeAll(segments)).toEqual([['a'], 'M:m1', []]);
+    expect(liveSegmentIndex(segments)).toBe(2);
+  });
+
+  it('mixes with questions in event order', () => {
+    const segments = splitTurnSegments([
+      work('a'),
+      question('q1', { answer: ANSWER, completedAt: 100 }),
+      brief('m1', 150),
+      work('b', 160),
+    ]);
+    expect(shapeAll(segments)).toEqual([['a'], 'Q:question-q1', [], 'M:m1', ['b']]);
+    expect(liveSegmentIndex(segments)).toBe(4);
+  });
+});

@@ -19,13 +19,18 @@
 // cancel, or the server's 300 s timeout) before the turn ends. This repo can
 // neither see nor enforce that cross-repo contract, so an earlier unanswered
 // card is treated as expired rather than trusted to still be answerable.
+//
+// A tool's message to the user (a `Message` step) is a boundary too: it renders
+// as an agent message between the work before and after it.
 
 const isQuestion = (step) => step?.badge === 'AskUser';
+const isMessage = (step) => step?.badge === 'Message';
 
 /**
  * Returns, in event order:
  *   { kind: 'steps', key, steps, startedAt }
  *   { kind: 'question', key, step, expired }
+ *   { kind: 'message', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
  * between any two questions, so callers can always pick the live one.
  */
@@ -46,6 +51,12 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
+    if (isMessage(step)) {
+      pushSteps(current);
+      segments.push({ kind: 'message', key: step.id, step });
+      current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
+      continue;
+    }
     if (!isQuestion(step)) {
       current.steps.push(step);
       continue;
