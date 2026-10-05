@@ -52,6 +52,7 @@ import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import { OutsidePressLayer } from './OutsidePressLayer';
+import { Tooltip } from './Tooltip';
 
 // Popup shell — background/radius/shadow + the open/close fade+scale.
 // Borderless and token-shadowed per ENG-790; this keeps that visual
@@ -180,6 +181,10 @@ export function Menu({
   // over the modal chrome. Bump for menus inside system-layer modals.
   zIndex = 95,
   ariaLabel,
+  // Trigger mode: a hover/focus hint for the trigger. The Tooltip wraps
+  // Base UI's Menu.Trigger (not the trigger element) so the two triggers
+  // compose onto one element instead of competing for its ref.
+  tooltip,
   // Controlled open state. Pass for anchored mode (the call site owns
   // the trigger); omit for the common uncontrolled trigger case.
   open,
@@ -242,13 +247,15 @@ export function Menu({
       )}
       <BaseMenu.Root {...rootProps}>
         {trigger && (
-          <BaseMenu.Trigger
-            // !important beats the trigger's own inline background,
-            // which an onMouseOut handler would otherwise reset the
-            // moment the pointer leaves to travel into the menu.
-            className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
-            render={trigger}
-          />
+          <Tooltip content={tooltip}>
+            <BaseMenu.Trigger
+              // !important beats the trigger's own inline background,
+              // which an onMouseOut handler would otherwise reset the
+              // moment the pointer leaves to travel into the menu.
+              className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
+              render={trigger}
+            />
+          </Tooltip>
         )}
         <BaseMenu.Portal>
           <BaseMenu.Positioner
