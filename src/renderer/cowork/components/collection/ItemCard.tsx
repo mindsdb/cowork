@@ -13,7 +13,7 @@ import { forwardRef } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Card } from '../ui/Card';
 import { cn } from '../../lib/cn';
-import { HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
+import { ACTIONS_IN_FLOW_ON_TOUCH, HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
 import type { ItemElement, ItemSlots } from './itemParts';
 
 export interface CardGridProps {
@@ -58,24 +58,23 @@ export const ItemCard = forwardRef<HTMLElement, ItemCardProps>(function ItemCard
           className="font-body text-base font-medium text-ink has-[input]:flex-1"
         />
         {badges}
-        {/* Actions shown at rest take their own width at the end of the title
-            row, so the title truncates beside them instead of under them. */}
-        {actions && revealActions && (
-          <HoverActions reveal className="ml-auto">
+        {/* Actions shown at rest (revealActions, touch) take their own width
+            at the end of the title row, so the title truncates beside them
+            instead of under them. Hover-only actions overlay the title's end
+            (aligned to the card padding), so the title keeps the full card at
+            rest. */}
+        {actions && (
+          <HoverActions
+            reveal={revealActions}
+            className={cn(
+              'ml-auto',
+              !revealActions && ['absolute right-[var(--card-pad-x)] top-[var(--card-pad-y)] rounded-md bg-surface pl-2', ACTIONS_IN_FLOW_ON_TOUCH],
+            )}
+          >
             {actions}
           </HoverActions>
         )}
       </div>
-      {/* Hover-only actions overlay the title's end rather than reserving
-          width, so the title keeps the full card at rest. On touch they flow
-          in place. */}
-      {actions && !revealActions && (
-        <HoverActions
-          className="absolute right-2.5 top-3 rounded-md bg-surface pl-2 [@media(hover:none)]:static [@media(hover:none)]:pl-0"
-        >
-          {actions}
-        </HoverActions>
-      )}
       {description && <div className="line-clamp-2 font-body text-sm leading-normal text-ink-3">{description}</div>}
       {children}
       {meta && <div className="mt-auto flex min-w-0 items-center gap-3 pt-1 font-body text-xs text-ink-4">{meta}</div>}
