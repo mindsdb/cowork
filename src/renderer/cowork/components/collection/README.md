@@ -15,7 +15,7 @@ single shell owns a page.
 | Loading, empty, no match | `CollectionState` wraps the body |
 | Cards | `CardGrid` › `ItemCard` … `NewTile` |
 | Rows | `ListGroup` › `ListItem` … `NewRow`, plus `ListNotice` for an inline line |
-| Item controls | `HoverActions` (a kebab menu using `ITEM_MENU_TRIGGER`) |
+| Item controls | `HoverActions` (a kebab: `<OverflowMenu size="sm">`) |
 | Status in meta | `StatusDot` |
 
 ## Choosing cards or rows
@@ -36,7 +36,7 @@ const slots = {
   badges: <Badge>Built-in</Badge>,
   description: 'work@example.com',
   meta: <StatusDot tone="success">Connected</StatusDot>,
-  actions: <OverflowMenu triggerClassName={ITEM_MENU_TRIGGER} items={…} />,
+  actions: <OverflowMenu size="sm" items={…} />,
   onActivate: () => open(conn),
   activateLabel: 'Manage Gmail: work@example.com',
 };

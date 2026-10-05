@@ -78,9 +78,6 @@ export function HoverActions({ children, reveal = false, className }: HoverActio
   );
 }
 
-/** Ghost icon-button classes for an `<OverflowMenu triggerClassName>` inside an item. */
-export const ITEM_MENU_TRIGGER = 'h-7 w-7 justify-center rounded-md text-ink-4 hover:bg-surface-2 hover:text-ink';
-
 /** Slots both item layouts share, so a page builds an item once and renders it
  *  as a card or a row. */
 export interface ItemSlots {

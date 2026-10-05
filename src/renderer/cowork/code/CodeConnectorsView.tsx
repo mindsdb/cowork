@@ -13,7 +13,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { DataVaultForm } from '../components/datavault/DataVaultForm';
 import Ico from '../components/Icons';
 import OverflowMenu from '../components/OverflowMenu';
-import { ITEM_MENU_TRIGGER, ListGroup, ListItem, ListNotice, PageHeader, StatusDot } from '../components/collection';
+import { ListGroup, ListItem, ListNotice, PageHeader, StatusDot } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
@@ -350,7 +350,7 @@ export function CodeConnectorsView({
                         label={`More actions for ${label}`}
                         icon={Ico.more(14)}
                         disabled={providerBusy}
-                        triggerClassName={ITEM_MENU_TRIGGER}
+                        size="sm"
                         items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(13), danger: true, onClick: () => setDisconnecting(connection) }]}
                       />
                     </>}
