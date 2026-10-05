@@ -32,7 +32,8 @@ const isMessage = (step) => step?.badge === 'Message';
  *   { kind: 'question', key, step, expired }
  *   { kind: 'message', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
- * between any two questions, so callers can always pick the live one.
+ * between any two boundaries (questions or messages), so callers can always
+ * pick the live one.
  */
 export function splitTurnSegments(steps, { startedAt = null, conversationLive = false } = {}) {
   const list = Array.isArray(steps) ? steps : [];
