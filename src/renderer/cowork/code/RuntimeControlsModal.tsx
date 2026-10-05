@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Select from '../components/ui/Select';
 import Switch from '../components/ui/Switch';
@@ -116,8 +117,7 @@ export function RuntimeControlsModal({
       />
       <ModalBody>
         <div className="code-controls-grid">
-          <label className="code-controls-field">
-            <span>Model</span>
+          <Field className="min-w-0" label="Model">
             <ModelSelect
               value={draft.model}
               onValueChange={chooseModel}
@@ -126,10 +126,9 @@ export function RuntimeControlsModal({
               ariaLabel="Task model"
               disabled={busy}
             />
-          </label>
+          </Field>
           {effortLevels && (
-            <label className="code-controls-field">
-              <span>Reasoning</span>
+            <Field className="min-w-0" label="Reasoning">
               <Select
                 value={resolveEffort(draft.reasoning_effort, null, effortLevels) || ''}
                 onValueChange={(next: string) => update('reasoning_effort', next)}
@@ -142,10 +141,9 @@ export function RuntimeControlsModal({
                 placeholder="Effort"
                 disabled={busy}
               />
-            </label>
+            </Field>
           )}
-          <label className="code-controls-field">
-            <span>Permissions</span>
+          <Field className="min-w-0" label="Permissions">
             <Select
               value={draft.permission_mode}
               onValueChange={(next: string) => setDraft((current) => ({
@@ -157,9 +155,8 @@ export function RuntimeControlsModal({
               ariaLabel="Task permissions"
               disabled={busy}
             />
-          </label>
-          <label className="code-controls-field">
-            <span>Personality</span>
+          </Field>
+          <Field className="min-w-0" label="Personality">
             <Select
               value={draft.personality}
               onValueChange={(next: string) => update('personality', next as Personality)}
@@ -167,7 +164,7 @@ export function RuntimeControlsModal({
               ariaLabel="Agent personality"
               disabled={busy}
             />
-          </label>
+          </Field>
           <div className="code-controls-toggle">
             <div><strong>Fast</strong><small>Use priority inference when the model supports it.</small></div>
             <Switch checked={draft.service_tier === 'priority'} onCheckedChange={(checked) => update('service_tier', checked ? 'priority' : 'standard')} disabled={busy} aria-label="Fast inference" />

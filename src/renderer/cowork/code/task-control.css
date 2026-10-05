@@ -68,8 +68,7 @@
 .code-question__option strong { display: block; font-weight: 500; font-size: 13px; }
 .code-question__option small { display: block; color: var(--text-muted); margin-top: 2px; font-size: 11.5px; }
 .code-question__custom { display: grid; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 10px; }
-.code-question__custom input { width: 100%; padding: 7px 10px; border: 1px solid var(--border-01); border-radius: var(--r-lg); color: var(--text); background: var(--bg); font: inherit; }
-.code-question input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.code-question input[type=radio]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .code-plan-indicator { flex-shrink: 0; }
 .code-composer__delivery { display: flex; gap: 6px; align-items: center; }
 .code-composer__permission-label { font-size: 11px; color: var(--text-muted); }
