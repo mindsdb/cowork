@@ -67,5 +67,16 @@ for (const { view, width, rendered } of CASES) {
       });
       expect(shown).toBe(true);
     }
+    // Actions shown at rest must take their own space, not overlay the title
+    // (an absolutely positioned cluster covers long titles on cards).
+    for (const control of controls) {
+      const overlaid = await control.evaluate((el) => {
+        for (let n: Element | null = el.parentElement; n && !n.className.toString().includes('group/item'); n = n.parentElement) {
+          if (getComputedStyle(n).position === 'absolute') return true;
+        }
+        return false;
+      });
+      expect(overlaid).toBe(false);
+    }
   });
 }

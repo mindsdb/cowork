@@ -58,12 +58,19 @@ export const ItemCard = forwardRef<HTMLElement, ItemCardProps>(function ItemCard
           className="font-body text-base font-medium text-ink has-[input]:flex-1"
         />
         {badges}
+        {/* Actions shown at rest take their own width at the end of the title
+            row, so the title truncates beside them instead of under them. */}
+        {actions && revealActions && (
+          <HoverActions reveal className="ml-auto">
+            {actions}
+          </HoverActions>
+        )}
       </div>
-      {/* Overlays the title's end rather than reserving width, so the title
-          keeps the full card at rest. On touch it flows in place. */}
-      {actions && (
+      {/* Hover-only actions overlay the title's end rather than reserving
+          width, so the title keeps the full card at rest. On touch they flow
+          in place. */}
+      {actions && !revealActions && (
         <HoverActions
-          reveal={revealActions}
           className="absolute right-2.5 top-3 rounded-md bg-surface pl-2 [@media(hover:none)]:static [@media(hover:none)]:pl-0"
         >
           {actions}
