@@ -18,6 +18,7 @@ export { default as Menu } from './Menu.jsx';
 export { default as OutsidePressLayer } from './OutsidePressLayer.jsx';
 export { default as Select } from './Select.jsx';
 export { default as Combobox } from './Combobox.jsx';
+export { default as Command, CommandInput, CommandList, CommandGroup, CommandItem, CommandStatus, CommandFooter } from './Command.tsx';
 export { default as Tooltip } from './Tooltip.tsx';
 export { default as Checkbox } from './Checkbox.tsx';
 export { default as RadioGroup, Radio } from './RadioGroup.tsx';

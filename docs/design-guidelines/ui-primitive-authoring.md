@@ -62,3 +62,4 @@ note in `Badge.tsx` for the full explanation.
 | Alert | ✅ | ✅ | ✅ | new (ENG-1146) — cva variants danger/warning/info/success, icon + title slots |
 | Field | n/a | ✅ | ✅ | new (ENG-1147) — clones the control to wire id / aria-describedby / aria-invalid |
 | ActionBar | ✅ | ✅ | ✅ | new — composes Button + Menu + Tooltip; cva size/align |
+| Command | n/a | ✅ | ✅ | new — Base UI Autocomplete (`inline`, always open) for palettes inside `Modal` |
