@@ -210,6 +210,14 @@ export function ArtifactViewer({
   // it does not need to wait for the comments transport to finish provisioning.
   // Waiting used to remount the whole HTML artifact as commentsReady flipped.
   const commentLayerRequested = !!artifactKey;
+  // Read by the load effect below rather than listed as its dependency. The key
+  // can arrive from the status refresh after the preview painted — late on a
+  // slow connection — and swapping `src` then reloads the page the user is
+  // looking at just to add an inert bridge (ENG-3070).
+  const commentLayerRequestedRef = useRef(commentLayerRequested);
+  commentLayerRequestedRef.current = commentLayerRequested;
+  // Whether the mounted preview was loaded with the bridge.
+  const commentLayerMountedRef = useRef(false);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -461,6 +469,8 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     let cancelled = false;
+    const withCommentLayer = commentLayerRequestedRef.current;
+    commentLayerMountedRef.current = withCommentLayer;
     if (isText) {
       const previewRequest = draftPreviewUrl
         ? loadArtifactDraftText(draftPreviewUrl, {
@@ -506,7 +516,7 @@ export function ArtifactViewer({
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      const fetchUrl = commentLayerRequested
+      const fetchUrl = withCommentLayer
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
@@ -592,7 +602,7 @@ export function ArtifactViewer({
           // layer into the root HTML on the same activation flag (see
           // preview_proxy.py). Bake it in at mount time — same rationale as the
           // static branch below (stable src, no reactive reload).
-          setPreviewUrl(commentLayerRequested
+          setPreviewUrl(withCommentLayer
             ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
             : withArtifactVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
@@ -604,7 +614,7 @@ export function ArtifactViewer({
         // Bake the inert comment bridge into the first URL whenever the card
         // has a stable identity. Transport readiness can then change without
         // swapping this cross-origin iframe's `src` or flashing the preview.
-        setPreviewUrl(commentLayerRequested
+        setPreviewUrl(withCommentLayer
           ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
           : withArtifactVersion(url, cacheVersion));
         // NOTE (ENG-931): we deliberately do NOT adopt the server's published
@@ -620,7 +630,15 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, commentLayerRequested]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+
+  // Opening comments on a preview mounted before the key arrived is the one
+  // time a reload is worth it: the user asked for the markers.
+  useEffect(() => {
+    if (!open || !commentsOpen || !commentLayerRequested) return;
+    if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
+    setReloadNonce((n) => n + 1);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
