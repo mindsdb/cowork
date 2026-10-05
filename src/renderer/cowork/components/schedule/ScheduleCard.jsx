@@ -52,11 +52,14 @@ function scheduleSlots({
   const missed = Number(task.missedRuns) || 0;
   const status = scheduleStatusBadge(task);
 
+  // A fixed cap so a long name truncates. The row's meta sizes to its content
+  // (shrink-0 on desktop, min-width:auto on phones), and only a definite max
+  // width limits that; a percentage would not. 11rem fits a 320px phone row.
   const project = projectDisplay && (
-    <span className="flex min-w-0 items-center gap-1.5">
+    <span className="flex min-w-0 max-w-[11rem] items-center gap-1.5 sm:max-w-[16rem]">
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
       {projectMatch && typeof onOpenProject === 'function' ? (
-        <HoverActions reveal className="min-w-0">
+        <HoverActions reveal className="min-w-0 shrink">
           <Tooltip content={`Open ${projectDisplay}`}>
             <button
               type="button"
