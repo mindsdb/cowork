@@ -674,7 +674,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({
-  artifacts: initial = EMPTY_ARTIFACTS,
+  artifacts: list = EMPTY_ARTIFACTS,
+  // App owns the list (it also feeds the sidebar count), so publish-state
+  // changes go up rather than into a local copy that the next prop would reset.
+  // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
+  onArtifactChanged,
   projects = [],
   onOpenProject,
   onAddressWithAgent,
@@ -685,8 +689,11 @@ export default function ArtifactsView({
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
-  const [list, setList] = useState(initial);
-  const [viewer, setViewer] = useState(null);
+  // By path, so the viewer always shows the current card and closes once the
+  // card leaves the list (e.g. after a delete).
+  const [viewerPath, setViewerPath] = useState(null);
+  const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
+  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
   const { isMobile } = useBreakpoint();
   const [view, setView] = useState(() =>
     localStorage.getItem('anton:artifacts-view') === 'list' ? 'list' : 'grid'
@@ -724,19 +731,6 @@ export default function ArtifactsView({
   const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
-  // Reflect parent refreshes exactly. The parent refetches when the
-  // route opens and after streams complete; if a file was trashed from
-  // another surface, the refreshed prop is the source of truth and the
-  // local grid must drop the stale card.
-  useEffect(() => {
-    setList(initial);
-    setViewer((cur) => {
-      if (!cur) return cur;
-      const fresh = initial.find((a) => a.path === cur.path);
-      return fresh ? { ...cur, ...fresh } : null;
-    });
-  }, [initial]);
-
   // Persist view toggle.
   useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
 
@@ -744,15 +738,7 @@ export default function ArtifactsView({
   useCollectionShortcut(searchRef);
 
 
-  const updateOne = (updated) => {
-    setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
-    setViewer((cur) => (cur && cur.path === updated.path ? { ...cur, ...updated } : cur));
-  };
-
-  const removeOne = (path) => {
-    setList((prev) => prev.filter((a) => a.path !== path));
-    setViewer((cur) => (cur && cur.path === path ? null : cur));
-  };
+  const updateOne = (updated) => onArtifactChanged?.(updated);
 
   const setBusy = (path, isBusy) => {
     setBusyPaths((prev) => {
@@ -781,7 +767,7 @@ export default function ArtifactsView({
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
   // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into the local list so the UI flips to "Published"
+  // the returned URL into App's list so the UI flips to "Published"
   // without a refetch.
   // Publishing is two steps: choose visibility (public / password) in a
   // small dialog, then confirmPublish does the actual POST. Re-publishing
@@ -902,7 +888,6 @@ export default function ArtifactsView({
         await unpublishArtifact(artifact.path);
       }
       await deleteArtifactAndSync(artifact);
-      removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
@@ -1007,7 +992,7 @@ export default function ArtifactsView({
               key={a.id || a.path}
               artifact={a}
               projects={projects}
-              onOpenViewer={setViewer}
+              onOpenViewer={openViewer}
               onMenuOpen={(art, rect) => setMenuFor((prev) =>
                 prev?.artifact?.path === art.path ? null : { artifact: art, rect },
               )}
@@ -1026,7 +1011,7 @@ export default function ArtifactsView({
               key={a.id || a.path}
               artifact={a}
               projects={projects}
-              onOpenViewer={setViewer}
+              onOpenViewer={openViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
               onUpdate={handleUpdate}
@@ -1042,9 +1027,8 @@ export default function ArtifactsView({
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewer(null)}
+        onClose={() => setViewerPath(null)}
         onChange={updateOne}
-        onDelete={removeOne}
         onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
@@ -1107,7 +1091,7 @@ export default function ArtifactsView({
               id: 'preview',
               label: 'Preview',
               icon: (Ico.eye?.(13) || Ico.sparkle(13)),
-              onClick: () => setViewer(a),
+              onClick: () => openViewer(a),
             });
           }
           /*
