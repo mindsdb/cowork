@@ -27,7 +27,7 @@ export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | nu
 export { CardGrid, ItemCard } from './ItemCard';
 export { ListGroup, ListItem, NewRow, ListNotice } from './ListGroup';
 export type { ListDensity } from './ListGroup';
-export { HoverActions, REVEAL_ON_HOVER, ITEM_MENU_TRIGGER } from './itemParts';
+export { HoverActions, REVEAL_ON_HOVER } from './itemParts';
 export type { ItemSlots } from './itemParts';
 export { StatusDot } from './StatusDot';
 export type { StatusTone } from './StatusDot';
