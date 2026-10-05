@@ -35,7 +35,7 @@ import { cn } from '../../lib/cn';
 const indicatorVariants = cva(
   // `border-solid` is explicit because this app disables Tailwind's preflight
   // (see Checkbox) — without it the unchecked ring would not render.
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-solid transition-colors duration-[var(--dur-hover,150ms)]',
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-solid transition-colors duration-hover',
   {
     variants: {
       size: {
@@ -81,7 +81,7 @@ const rowVariants = cva('group cursor-pointer outline-none data-[disabled]:curso
       card: cn(
         // Same preflight caveat as the indicator: `border-solid` is explicit.
         'flex w-full items-start gap-2.5 rounded-card-row border border-solid border-line bg-transparent p-3 text-left text-ink',
-        'transition-colors duration-[var(--dur-hover,150ms)] [&:not([data-checked])]:hover:bg-surface-2',
+        'transition-colors duration-hover [&:not([data-checked])]:hover:bg-surface-2',
         'data-[checked]:border-accent data-[checked]:bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]',
       ),
     },

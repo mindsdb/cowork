@@ -12,9 +12,10 @@ const probe = () => {
   return durations;
 };
 
-test('Code Mode sidebar and base interactive hovers are instant', async ({ page }) => {
+test('sidebar and base interactive hovers are instant in both workspaces', async ({ page }) => {
   await page.goto('/');
-  expect(await page.evaluate(probe)).toEqual({ nav: '0.1s, 0.1s', recent: '0.1s, 0.1s', link: '0.15s, 0.15s, 0.15s, 0.15s, 0.15s' });
+  const instant = { nav: '0s, 0s', recent: '0s, 0s', link: '0s, 0s, 0s, 0s, 0s' };
+  expect(await page.evaluate(probe)).toEqual(instant);
   await page.evaluate(() => document.documentElement.setAttribute('data-workspace', 'code'));
-  expect(await page.evaluate(probe)).toEqual({ nav: '0s, 0s', recent: '0s, 0s', link: '0s, 0s, 0s, 0s, 0s' });
+  expect(await page.evaluate(probe)).toEqual(instant);
 });

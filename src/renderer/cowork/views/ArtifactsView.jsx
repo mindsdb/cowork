@@ -182,7 +182,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
         width: 28, height: 28, borderRadius: 7,
         display: 'inline-grid', placeItems: 'center',
         background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-        color: 'var(--ink-4)', transition: 'background .12s ease, color .12s ease',
+        color: 'var(--ink-4)', transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-4)'; }}
@@ -363,7 +363,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
                 all: 'unset', cursor: 'pointer',
                 fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-3)',
                 minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                transition: 'color 120ms ease',
+                transition: 'color var(--dur-hover) ease',
               }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
@@ -562,7 +562,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
         {...hoverProps}
-        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
+        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_var(--dur-hover)_ease]"
         style={{
           gridTemplateColumns: LIST_GRID,
           background: hovered ? 'var(--surface-2)' : 'transparent',
@@ -608,7 +608,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
                   all: 'unset', cursor: 'pointer',
                   fontFamily: 'var(--font-body)', fontSize: 12.5, color: 'var(--ink-2)',
                   minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
+                  display: 'inline-block', maxWidth: '100%', transition: 'color var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
                 onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}

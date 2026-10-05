@@ -380,7 +380,7 @@ function ListRow({
       aria-busy={deleting || undefined}
       {...hoverProps}
       onKeyDown={(e) => { if (!editing && !deleting && e.key === 'Enter') onOpen?.(project); }}
-      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease,opacity_.12s_ease] ${hovered && !deleting ? 'bg-surface' : 'bg-transparent'} ${editing || deleting ? 'cursor-default' : 'cursor-pointer'} ${deleting ? 'opacity-60' : ''}`}
+      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_var(--dur-hover)_ease,opacity_var(--dur-hover)_ease] ${hovered && !deleting ? 'bg-surface' : 'bg-transparent'} ${editing || deleting ? 'cursor-default' : 'cursor-pointer'} ${deleting ? 'opacity-60' : ''}`}
     >
       {/* Name */}
       <div className="flex flex-col gap-0.5 min-w-0">
@@ -445,7 +445,7 @@ function ListRow({
           onFocus={() => setActionFocused(true)}
           onBlur={() => setActionFocused(false)}
           aria-label="Project menu"
-          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved || deleting ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
+          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] ${isReserved || deleting ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
         >
           {Ico.moreVert(15)}
         </button>
@@ -537,7 +537,7 @@ function ProjectDetail({
   };
 
   return (
-    <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_220ms_cubic-bezier(.2,.7,.3,1)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
+    <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_var(--dur-layout)_var(--ease-out)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
       <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
         {/* Floating expand-rail button (mirrors ChatView). */}
         {!showMobileContext && (
@@ -548,10 +548,10 @@ function ProjectDetail({
               aria-label="Expand panel"
               style={{
                 // Dynamic: the resting/hover-mirroring transition delay differs
-                // by railOpen (0ms vs 120ms/80ms) — not a clean binary class swap.
+                // by railOpen (none vs three/two stagger steps) — not a clean binary class swap.
                 transition:
-                  `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
-                  `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
+                  `opacity var(--dur-layout) var(--ease-out) ${railOpen ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                  `transform var(--dur-layout) var(--ease-out) ${railOpen ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
               }}
               className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
             >
@@ -621,7 +621,7 @@ function ProjectDetail({
                   }}
                   onFocus={() => setActionFocused(true)}
                   onBlur={() => setActionFocused(false)}
-                  className={`project-action-trigger w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                  className={`project-action-trigger w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -708,7 +708,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
             <Tooltip content="Collapse panel">
               <button

@@ -1,32 +1,34 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Tooltip, parseTooltipDelay } from './Tooltip';
+import { parseTooltipDelay } from './Tooltip';
 
-// The real Code Mode token block from globals.css, so the test breaks if the
-// stylesheet stops making Code tooltips instant.
+// The real :root motion-token block from globals.css, so the test breaks if
+// the stylesheet stops making tooltips instant.
 const globals = readFileSync(resolve(__dirname, '../../styles/globals.css'), 'utf8');
-const codeBlock = /html\[data-workspace="code"\] \{[^}]*\}/.exec(globals)?.[0];
+const rootBlock = /:root \{[^}]*--tooltip-delay[^}]*\}/.exec(globals)?.[0];
 
-let style: HTMLStyleElement;
-beforeAll(() => {
-  style = document.createElement('style');
-  style.textContent = codeBlock ?? '';
-  document.head.appendChild(style);
-});
-afterAll(() => style.remove());
+let style: HTMLStyleElement | null = null;
 afterEach(() => {
   cleanup();
-  delete document.documentElement.dataset.workspace;
+  style?.remove();
+  style = null;
 });
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function renderTooltip() {
+// The token is cached per module load, so each case injects its stylesheet
+// and then imports a fresh Tooltip.
+async function renderTooltip(css: string, delay?: number) {
+  style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+  vi.resetModules();
+  const { Tooltip } = await import('./Tooltip');
   render(
-    <Tooltip content="Hint">
+    <Tooltip content="Hint" delay={delay}>
       <button type="button">Trigger</button>
     </Tooltip>,
   );
@@ -48,47 +50,28 @@ describe('parseTooltipDelay', () => {
   });
 });
 
-describe('Tooltip delay per workspace', () => {
-  it('declares a 0ms tooltip delay for Code Mode in globals.css', () => {
-    expect(codeBlock).toMatch(/--tooltip-delay:\s*0ms;/);
+describe('Tooltip delay token', () => {
+  it('declares a 0ms tooltip delay on :root in globals.css', () => {
+    expect(rootBlock).toMatch(/--tooltip-delay:\s*0ms;/);
   });
 
-  it('keeps the 250ms wait outside Code Mode', async () => {
-    document.documentElement.dataset.workspace = 'cowork';
-    renderTooltip();
+  it('opens without waiting under the real token', async () => {
+    await renderTooltip(rootBlock ?? '');
+    await userEvent.hover(screen.getByText('Trigger'));
+    await wait(30);
+    expect(screen.getByText('Hint')).toBeInTheDocument();
+  });
+
+  it('waits for a non-zero token before opening', async () => {
+    await renderTooltip(':root { --tooltip-delay: 0.8s; }');
     await userEvent.hover(screen.getByText('Trigger'));
     await wait(100);
     expect(screen.queryByText('Hint')).toBeNull();
     expect(await screen.findByText('Hint', {}, { timeout: 2000 })).toBeInTheDocument();
   });
 
-  it('opens without waiting in Code Mode', async () => {
-    document.documentElement.dataset.workspace = 'code';
-    renderTooltip();
-    await userEvent.hover(screen.getByText('Trigger'));
-    await wait(30);
-    expect(screen.getByText('Hint')).toBeInTheDocument();
-  });
-
-  it('picks up a workspace switch on an already-mounted tooltip', async () => {
-    document.documentElement.dataset.workspace = 'cowork';
-    renderTooltip();
-    await act(async () => {
-      document.documentElement.dataset.workspace = 'code';
-      await wait(0);
-    });
-    await userEvent.hover(screen.getByText('Trigger'));
-    await wait(30);
-    expect(screen.getByText('Hint')).toBeInTheDocument();
-  });
-
   it('lets an explicit delay prop win over the token', async () => {
-    document.documentElement.dataset.workspace = 'code';
-    render(
-      <Tooltip content="Hint" delay={800}>
-        <button type="button">Trigger</button>
-      </Tooltip>,
-    );
+    await renderTooltip(rootBlock ?? '', 800);
     await userEvent.hover(screen.getByText('Trigger'));
     await wait(100);
     expect(screen.queryByText('Hint')).toBeNull();

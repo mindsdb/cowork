@@ -719,8 +719,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         boxShadow: highlighted
           ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
           : 'none',
-        transition: 'box-shadow 180ms ease',
-        animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+        transition: 'box-shadow var(--dur-hover) ease',
+        animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
       }}
     >
       {/* Header bar — during the connect flow it's the
@@ -741,7 +741,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             style={{
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
-              transition: 'background 120ms ease',
+              transition: 'background var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -765,7 +765,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onClick={handleClose}
             aria-label="Close form"
             className="shrink-0 w-[38px] self-stretch bg-transparent border-0 text-ink-4 inline-grid place-items-center cursor-pointer"
-            style={{ transition: 'color 140ms ease, background 140ms ease' }}
+            style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
           >
@@ -851,7 +851,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 style={{
                   background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
                   border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+                  animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
                 }}
               >
                 <span
@@ -872,7 +872,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     onClick={() => setDismissedStatus(spec.status_text)}
                     aria-label="Dismiss status"
                     className="w-[20px] h-[20px] rounded-[5px] bg-transparent border-0 p-0 text-ink-4 inline-grid place-items-center cursor-pointer flex-[0_0_20px]"
-                    style={{ transition: 'color 120ms ease, background 120ms ease' }}
+                    style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
