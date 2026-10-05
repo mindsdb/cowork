@@ -1,7 +1,7 @@
 .code-files-scrim { display: none; }
 .code-files { position: relative; display: flex; flex: 0 0 var(--code-files-width); width: var(--code-files-width); min-width: 400px; min-height: 0; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); }
 .code-files__resize { position: absolute; z-index: 2; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; }
-.code-files__resize::after { position: absolute; top: 44%; bottom: 44%; left: 3px; width: 2px; border-radius: 2px; background: transparent; content: ''; transition: background .12s ease; }
+.code-files__resize::after { position: absolute; top: 44%; bottom: 44%; left: 3px; width: 2px; border-radius: 2px; background: transparent; content: ''; transition: background var(--dur-hover, .12s) ease; }
 .code-files__resize:hover::after { background: var(--line-2); }
 .code-files__resize:focus-visible { outline: none; box-shadow: 2px 0 0 var(--accent); }
 .code-files__header { min-height: 60px; padding: 13px 12px 10px 15px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }

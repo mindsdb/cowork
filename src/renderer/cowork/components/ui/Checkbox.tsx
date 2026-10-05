@@ -18,7 +18,7 @@ const boxVariants = cva(
   // (which is what normally sets `border-style: solid`) — without it the
   // `border` utility sets a width but no style, so the box renders borderless
   // and the unchecked state is invisible against a light surface.
-  'inline-flex shrink-0 items-center justify-center rounded-[4px] border border-solid cursor-pointer outline-none transition-colors duration-150',
+  'inline-flex shrink-0 items-center justify-center rounded-[4px] border border-solid cursor-pointer outline-none transition-colors duration-[var(--dur-hover,150ms)]',
   {
     variants: {
       size: {

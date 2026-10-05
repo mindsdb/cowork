@@ -66,7 +66,7 @@ const metaVariants = cva('flex-none tabular-nums text-ink-4', {
 function Chevron() {
   return (
     <ChevronDown
-      className="flex-none text-ink-4 transition-transform duration-200 group-data-[panel-open]:rotate-180"
+      className="flex-none text-ink-4 transition-transform duration-[var(--dur-layout,200ms)] group-data-[panel-open]:rotate-180"
       size={12}
       strokeWidth={1.5}
       aria-hidden="true"
@@ -131,7 +131,7 @@ export function Collapsible({
           non-portaled popover/tooltip inside the panel should portal it out. */}
       <BaseCollapsible.Panel
         className={cn(
-          'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 ease-out',
+          'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-[var(--dur-layout,200ms)] ease-out',
           'data-[starting-style]:h-0 data-[ending-style]:h-0',
         )}
       >
