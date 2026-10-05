@@ -128,22 +128,32 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
         {children}
       </div>
       {/* Phone width: meta drops under the title instead of squeezing it, and
-          wraps rather than widening the page. Desktop never wraps (shrink-0). */}
+          wraps rather than widening the page; it may shrink so a long unbroken
+          name stays in the row. Desktop never wraps (shrink-0). */}
       {meta && (
-        <div className={cn('flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-4 max-sm:basis-full', leading && 'max-sm:pl-9')}>
+        <div
+          className={cn(
+            'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-4',
+            'max-sm:min-w-0 max-sm:basis-full max-sm:[overflow-wrap:anywhere]',
+            leading && 'max-sm:pl-9',
+          )}
+        >
           {meta}
         </div>
       )}
       {/* Overlays the meta's end on hover (over the row's hover fill) so the
-          meta keeps the right edge at rest. It flows in place on touch, and
-          whenever the row shows a control at rest, which it would cover. */}
+          meta keeps the right edge at rest. It flows in place on touch, when
+          the actions themselves show at rest, and from sm up whenever the row
+          shows a control at rest, which it would cover. Below sm the meta has
+          its own line, so flowing there would add a blank line under it. */}
       {actions && (
         <HoverActions
           reveal={revealActions}
           className={cn(
             'absolute inset-y-0 right-0 rounded-[inherit] pr-3 bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8',
             '[@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0',
-            'group-has-[[data-revealed]]/item:static group-has-[[data-revealed]]/item:bg-none group-has-[[data-revealed]]/item:p-0',
+            'data-[revealed]:static data-[revealed]:bg-none data-[revealed]:p-0',
+            'sm:group-has-[[data-revealed]]/item:static sm:group-has-[[data-revealed]]/item:bg-none sm:group-has-[[data-revealed]]/item:p-0',
           )}
         >
           {actions}
