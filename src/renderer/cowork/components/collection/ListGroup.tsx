@@ -44,7 +44,9 @@ export function ListGroup({
   const hasHeader = title || description || meta || actions;
   return (
     <DensityContext.Provider value={density}>
-      <section className={cn('grid gap-2', className)} {...rest}>
+      {/* min-w-0 and minmax(0,1fr) stop a long unwrapped description from
+          widening the group past its parent, so rows truncate instead. */}
+      <section className={cn('grid min-w-0 grid-cols-1 gap-2', className)} {...rest}>
         {hasHeader && (
           <header className="flex min-h-8 items-center gap-3 px-1">
             <div className="flex min-w-0 flex-1 items-baseline gap-2">
