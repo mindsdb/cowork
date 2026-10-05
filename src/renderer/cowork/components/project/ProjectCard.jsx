@@ -9,9 +9,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
-import { Tooltip } from '../ui';
+import { Button, Tooltip } from '../ui';
 import { cn } from '../../lib/cn';
-import { ItemCard, ListItem, ITEM_MENU_TRIGGER, StatusDot } from '../collection';
+import { ItemCard, ListItem, StatusDot } from '../collection';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
@@ -110,12 +110,9 @@ export function visibleStats(stats = {}) {
   return out;
 }
 
-// The pin and kebab share the kit's item-trigger look. The legacy class
-// keeps their 44px coarse-pointer tap target (globals.css).
-const ACTION_TRIGGER = cn(
-  'project-action-trigger inline-flex shrink-0 cursor-pointer items-center border-0 bg-transparent p-0 font-[inherit]',
-  ITEM_MENU_TRIGGER,
-);
+// The pin and kebab are small ghost icon Buttons, like the kit's item menus.
+// The legacy class keeps their 44px coarse-pointer tap target (globals.css).
+const ACTION_TRIGGER = 'project-action-trigger';
 
 // One slot set for the grid card and the list row.
 function useProjectSlots({
@@ -197,22 +194,27 @@ function useProjectSlots({
   const actions = !deleting && (
     <>
       <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
-        <button
-          type="button"
+        <Button
+          icon
+          size="sm"
+          variant="subtle"
           onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
           onKeyDown={(e) => e.stopPropagation()}
           aria-label={pinned ? 'Unpin project' : 'Pin project'}
           aria-pressed={pinned}
-          className={cn(ACTION_TRIGGER, pinned && 'text-accent hover:text-accent')}
+          className={ACTION_TRIGGER}
         >
-          {Ico.pin(13)}
-        </button>
+          {/* A pinned project's pin keeps the accent, hover included. */}
+          <span className={cn('inline-flex', pinned && 'text-accent')}>{Ico.pin(13)}</span>
+        </Button>
       </Tooltip>
       {!isReserved && (
         <Tooltip content="Project menu">
-          <button
+          <Button
             ref={triggerRef}
-            type="button"
+            icon
+            size="sm"
+            variant="subtle"
             onClick={(e) => {
               e.stopPropagation();
               onMenuOpen?.(project, triggerRef.current?.getBoundingClientRect());
@@ -222,7 +224,7 @@ function useProjectSlots({
             className={ACTION_TRIGGER}
           >
             {Ico.moreVert(15)}
-          </button>
+          </Button>
         </Tooltip>
       )}
     </>
