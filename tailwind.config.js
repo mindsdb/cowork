@@ -171,10 +171,10 @@ export default {
         'fade-out':  { from: { opacity: 1 }, to: { opacity: 0 } },
       },
       animation: {
-        'scale-in':  'scale-in 130ms ease-out',
-        'scale-out': 'scale-out 90ms ease-in',
+        'scale-in':  'scale-in var(--dur-popover-in, 130ms) ease-out',
+        'scale-out': 'scale-out var(--dur-popover-out, 90ms) ease-in',
         'chip-in':   'chip-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both',
-        'fade-in':   'fade-in 160ms ease-out',
+        'fade-in':   'fade-in var(--dur-popover-in, 160ms) ease-out',
         // `forwards` holds opacity at 0 between the animation's end and the
         // moment the exiting element is actually unmounted.
         'fade-out':  'fade-out 320ms ease-in forwards',

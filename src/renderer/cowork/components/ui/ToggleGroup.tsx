@@ -105,7 +105,7 @@ export function ToggleGroup({
                   // items.
                   background: 'color-mix(in srgb, var(--line) 55%, transparent)',
                   opacity: dividerHidden ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
+                  transition: 'opacity var(--dur-hover, 0.15s) ease',
                 }}
               />
             )}
@@ -127,7 +127,7 @@ export function ToggleGroup({
                 boxShadow: state.pressed
                   ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
                   : 'none',
-                transition: 'background 0.15s ease, color 0.15s ease',
+                transition: 'background var(--dur-hover, 0.15s) ease, color var(--dur-hover, 0.15s) ease',
               })}
             >
               {opt.icon && <span className="inline-flex">{opt.icon}</span>}

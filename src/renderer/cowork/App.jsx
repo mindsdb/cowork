@@ -95,6 +95,7 @@ import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from '
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -1459,6 +1460,8 @@ function AppCore() {
   useEffect(() => {
     if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
   }, [effectiveWorkspaceMode]);
+  // Code Mode's instant motion tokens key off <html data-workspace>.
+  useWorkspaceAttribute(effectiveWorkspaceMode);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.

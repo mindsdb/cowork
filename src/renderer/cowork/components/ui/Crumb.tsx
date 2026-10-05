@@ -24,7 +24,7 @@ export function Crumb({ label, title, maxWidth, className, style, ...rest }: Cru
         'shrink cursor-pointer appearance-none border-0 bg-transparent px-1.5 py-0.5',
         'overflow-hidden text-ellipsis whitespace-nowrap rounded-[5px]',
         'font-display text-[13px] font-semibold tracking-normal text-ink-3',
-        'transition-colors duration-[120ms] hover:bg-surface-2 hover:text-ink',
+        'transition-colors duration-[var(--dur-hover,120ms)] hover:bg-surface-2 hover:text-ink',
         '[-webkit-app-region:no-drag]',
         className,
       )}

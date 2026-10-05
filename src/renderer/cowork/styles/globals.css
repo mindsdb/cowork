@@ -249,6 +249,40 @@ body, body[data-theme="light"] {
   --stone-400: var(--ink-4);
 }
 
+/* ─── Motion tokens ──────────────────────────────────────────────────────
+   The shared ui/ primitives and the Code Mode stylesheets read their
+   durations from these tokens as `var(--dur-hover, .12s)`, where the
+   fallback is each rule's original timing. Cowork leaves the tokens unset,
+   so every rule keeps its fallback. Code Mode (App sets
+   html[data-workspace="code"]) makes hovers, presses, popovers, modals and
+   tooltips instant; layout motion keeps its timing. Menus and tooltips
+   portal to body, so the html attribute reaches them too. Keep these on
+   html, never in the themed body blocks: a body declaration would shadow
+   them for every element.
+     --dur-press        button :active nudge
+     --dur-hover        color, background, border, shadow, small reveals
+     --dur-popover-in   menu, select, combobox and toast open
+     --dur-popover-out  popover close, toast exit
+     --dur-modal        modal backdrop and popup fade
+     --dur-layout       height, rotation and panel motion (Collapsible)
+     --tooltip-delay    hover wait before a tooltip opens (ui/Tooltip) */
+html[data-workspace="code"] {
+  --dur-press: 0ms;
+  --dur-hover: 0ms;
+  --dur-popover-in: 0ms;
+  --dur-popover-out: 0ms;
+  --dur-modal: 0ms;
+  --tooltip-delay: 0ms;
+}
+
+/* Reduced motion (WCAG 2.3.3): in Code Mode, layout motion goes instant
+   too. Ambient loops are halted separately below. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-workspace="code"] {
+    --dur-layout: 0ms;
+  }
+}
+
 /* ─── Dark mode ──────────────────────────────────────────────────────────
    Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
    cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
@@ -402,9 +436,9 @@ textarea,
 .btn,
 .meta-pill,
 .artifact-card {
-  transition: background 0.15s ease, color 0.15s ease,
-              border-color 0.15s ease, box-shadow 0.15s ease,
-              opacity 0.15s ease;
+  transition: background var(--dur-hover, 0.15s) ease, color var(--dur-hover, 0.15s) ease,
+              border-color var(--dur-hover, 0.15s) ease, box-shadow var(--dur-hover, 0.15s) ease,
+              opacity var(--dur-hover, 0.15s) ease;
 }
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
@@ -1866,11 +1900,11 @@ button.meta-pill:active { background: var(--ghost-press); }
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease,
-    border-color .12s ease,
-    box-shadow .12s ease,
-    transform .04s ease,
-    color .12s ease;
+    background-color var(--dur-hover, .12s) ease,
+    border-color var(--dur-hover, .12s) ease,
+    box-shadow var(--dur-hover, .12s) ease,
+    transform var(--dur-press, .04s) ease,
+    color var(--dur-hover, .12s) ease;
 }
 .btn:hover {
   background: var(--bg-h);
@@ -1962,8 +1996,8 @@ body[data-theme="dark"] .btn.default:active {
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, transform .04s ease, color .12s ease;
+    background-color var(--dur-hover, .12s) ease, border-color var(--dur-hover, .12s) ease,
+    box-shadow var(--dur-hover, .12s) ease, transform var(--dur-press, .04s) ease, color var(--dur-hover, .12s) ease;
 }
 .btn.primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
@@ -2209,7 +2243,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   letter-spacing: 0;
   padding: 8px 12px;
   outline: 0;
-  transition: border-color .12s ease, box-shadow .15s ease, background .12s ease;
+  transition: border-color var(--dur-hover, .12s) ease, box-shadow var(--dur-hover, .15s) ease, background var(--dur-hover, .12s) ease;
 }
 .field-input  { height: 34px; }
 .field-textarea { min-height: 84px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
@@ -2334,8 +2368,8 @@ body {
   --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
   --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
   --card-lift:          -1px;
-  --card-transition:    border-color .15s ease, box-shadow .15s ease,
-                        transform .15s ease, background-color .15s ease;
+  --card-transition:    border-color var(--dur-hover, .15s) ease, box-shadow var(--dur-hover, .15s) ease,
+                        transform var(--dur-hover, .15s) ease, background-color var(--dur-hover, .15s) ease;
 }
 
 .card {
@@ -2396,7 +2430,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   color: inherit;
   font: inherit;
   text-align: left;
-  transition: background-color .12s ease;
+  transition: background-color var(--dur-hover, .12s) ease;
 }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
@@ -2657,7 +2691,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   width: 100%;
   text-align: left;
   /* Snappy hover — the rail should react to the cursor immediately. */
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover, .1s) ease, color var(--dur-hover, .1s) ease;
 }
 .app-sidebar .nav-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -2722,7 +2756,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover, .1s) ease, color var(--dur-hover, .1s) ease;
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .app-sidebar .recent-item:hover {
