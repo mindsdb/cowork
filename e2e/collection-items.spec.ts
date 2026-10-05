@@ -31,3 +31,11 @@ test('hover actions still overlay plain meta and open from the row', async ({ pa
   await page.getByRole('button', { name: 'Notion', exact: true }).click();
   await expect(page.getByLabel('Events')).toHaveText(/Notion open$/);
 });
+
+test('a long description truncates inside the page width', async ({ page }) => {
+  await page.goto('/');
+  const group = await page.getByRole('region', { name: 'Long' }).boundingBox();
+  expect(group!.x + group!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const description = page.getByText(/^Run an extremely strict review/);
+  expect(await description.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+});

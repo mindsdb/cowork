@@ -18,6 +18,12 @@ function Fixture() {
       <ListItem title="Slack" onActivate={record('Slack open')} actions={menu('Slack')} revealActions meta="Updated 2h ago" />
       <ListItem title="Notion" onActivate={record('Notion open')} actions={menu('Notion')} meta="Updated 3h ago" />
     </ListGroup>
+    {/* Pages stack groups in a grid, whose auto column grows to fit unwrapped text. */}
+    <div className="mx-8 grid gap-6">
+      <ListGroup aria-label="Long">
+        <ListItem title="Review" onActivate={record('Review open')} meta="Skill" description={'Run an extremely strict review. '.repeat(20)} />
+      </ListGroup>
+    </div>
     <output aria-label="Events">{log.join('|')}</output>
   </>;
 }
