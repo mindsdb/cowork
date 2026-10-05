@@ -106,7 +106,9 @@ function scheduleSlots({
         />
       </>
     ),
-    revealActions: busy,
+    // Run and the menu stay visible at rest, as they were before the kit:
+    // they're the page's main actions, not hover extras.
+    revealActions: true,
     meta: row ? (
       <>
         {project}

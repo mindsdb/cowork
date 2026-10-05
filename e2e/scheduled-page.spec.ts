@@ -45,4 +45,27 @@ for (const { view, width, rendered } of CASES) {
     await expect(page.getByRole('button', { name: rendered === 'grid' ? 'Run now' : 'Run', exact: true })).toHaveCount(2);
     await checkProjectLinks(page);
   });
+
+  test(`${view} preference at ${width}px: Run and the menu are visible without hovering`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 640 ? 800 : 900 });
+    await page.goto(`/?view=${view}`);
+    await expect(page.getByText('Weekly metrics')).toBeVisible();
+    await page.mouse.move(0, 0);
+    const controls = [
+      ...(await page.getByRole('button', { name: rendered === 'grid' ? 'Run now' : 'Run', exact: true }).all()),
+      ...(await page.getByRole('button', { name: 'More actions' }).all()),
+    ];
+    expect(controls).toHaveLength(4);
+    for (const control of controls) {
+      // Walk up to the root: any ancestor at opacity 0 or visibility hidden hides it.
+      const shown = await control.evaluate((el) => {
+        for (let n: Element | null = el; n; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+        }
+        return true;
+      });
+      expect(shown).toBe(true);
+    }
+  });
 }
