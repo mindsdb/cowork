@@ -10,6 +10,7 @@ export interface ConfirmModalProps {
   note?: string;
   busyLabel?: string;
   error?: string;
+  layer?: 'default' | 'system';
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }
