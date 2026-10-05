@@ -32,6 +32,10 @@ export function OverflowMenu({
       variant="subtle"
       aria-label={label}
       disabled={disabled}
+      // Stay focusable while disabled (aria-disabled): a caller that disables
+      // the trigger while its action runs would otherwise drop the focus the
+      // menu hands back on close.
+      focusableWhenDisabled
       // A caller that stretches the trigger over a slot (`absolute inset-0`,
       // as ContextCard's row kebab does) keeps the icon where it asked for
       // it: auto margins place the fixed-size button inside the inset box.
