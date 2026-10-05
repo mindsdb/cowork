@@ -12,7 +12,8 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { DataVaultForm } from '../components/datavault/DataVaultForm';
 import Ico from '../components/Icons';
-import { PageHeader } from '../components/collection';
+import OverflowMenu from '../components/OverflowMenu';
+import { ITEM_MENU_TRIGGER, ListGroup, ListItem, ListNotice, PageHeader, StatusDot } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
@@ -273,96 +274,90 @@ export function CodeConnectorsView({
         </div>
       )}
 
-      <div className="code-connectors-list" aria-label="Code Connectors">
+      <div className="mx-8 grid gap-4" aria-label="Code Connectors">
         {PROVIDERS.map((provider) => {
           const accounts = providerConnections[provider.id];
           const providerBusy = busyKey.startsWith(`${provider.id}:`);
           const needsAttention = accounts.some((connection) => connection.status === 'needs_reconnect');
           return (
-            <section className="code-connector-provider" key={provider.id} aria-labelledby={`code-connector-${provider.id}`}>
-              <div className="code-connector-provider__summary">
-                <span className="code-connector-logo" aria-hidden="true">
-                  <img src={provider.logo} alt="" />
-                </span>
-                <span className="code-connector-provider__identity">
-                  <h2 id={`code-connector-${provider.id}`}>{provider.label}</h2>
-                  <small>{provider.description}</small>
-                </span>
-                <span className={`code-connector-status${needsAttention ? ' needs-attention' : accounts.length ? ' is-connected' : ''}`}>
-                  <span className="code-status-dot" />
-                  {needsAttention
-                    ? `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'} · reconnect`
-                    : accounts.length ? `${accounts.length} connected` : 'Not connected'}
-                </span>
-                <Button
-                  variant={accounts.length ? 'subtle' : 'primary'}
-                  size="sm"
-                  disabled={providerBusy}
-                  onClick={() => void connect(provider.id)}
-                >
-                  {providerBusy && busyKey.includes(':new:oauth') ? 'Connecting…' : accounts.length ? 'Add account' : 'Connect'}
-                </Button>
-              </div>
+            <ListGroup key={provider.id} density="compact" aria-labelledby={`code-connector-${provider.id}`}>
+              <ListItem
+                leading={<span className="inline-grid size-6 place-items-center overflow-hidden rounded-md border border-solid border-line bg-white" aria-hidden="true">
+                  <img src={provider.logo} alt="" className="block size-3.5" />
+                </span>}
+                title={<span role="heading" aria-level={2} id={`code-connector-${provider.id}`}>{provider.label}</span>}
+                description={provider.description}
+                meta={<>
+                  <StatusDot tone={needsAttention ? 'warning' : accounts.length ? 'success' : 'muted'}>
+                    {needsAttention
+                      ? `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'} · reconnect`
+                      : accounts.length ? `${accounts.length} connected` : 'Not connected'}
+                  </StatusDot>
+                  <Button
+                    variant={accounts.length ? 'subtle' : 'primary'}
+                    size="sm"
+                    disabled={providerBusy}
+                    onClick={() => void connect(provider.id)}
+                  >
+                    {providerBusy && busyKey.includes(':new:oauth') ? 'Connecting…' : accounts.length ? 'Add account' : 'Connect'}
+                  </Button>
+                </>}
+              />
 
               {errorByProvider[provider.id] && (
-                <div className="code-connector-provider__error">
-                  <Alert variant="danger">{errorByProvider[provider.id]}</Alert>
-                </div>
+                <ListNotice><Alert variant="danger">{errorByProvider[provider.id]}</Alert></ListNotice>
               )}
 
               {providerBusy && busyKey.endsWith(':oauth') && (
-                <div className="code-connector-oauth" role="status">
-                  <span><strong>Continue in your browser</strong><small>Return here when {provider.label} finishes authorizing.</small></span>
+                <ListNotice className="flex items-center justify-between gap-3 bg-accent-bg">
+                  <span role="status" className="grid min-w-0 gap-0.5 pl-9">
+                    <strong className="text-xs font-semibold text-ink-2">Continue in your browser</strong>
+                    <small className="text-2xs text-ink-4">Return here when {provider.label} finishes authorizing.</small>
+                  </span>
                   <Button size="sm" variant="subtle" onClick={async () => {
                     cancelledKey.current = busyKey;
                     await host.oauthCancel();
                     setBusyKey('');
                   }}>Cancel</Button>
-                </div>
+                </ListNotice>
               )}
 
-              {accounts.length > 0 && (
-                <div className="code-connector-accounts" aria-label={`${provider.label} accounts`}>
-                  {accounts.map((connection) => {
-                    const needsReconnect = connection.status === 'needs_reconnect';
-                    const usage = projectUsage(projects, provider.id, connection.name);
-                    const reconnectKey = `${provider.id}:${connection.name}:oauth`;
-                    return (
-                      <div className="code-connector-account" key={`${connection.engine}:${connection.name}`}>
-                        <span className="code-connector-account__rail" aria-hidden="true" />
-                        <span className="code-connector-account__identity">
-                          <strong>{connectionLabel(connection)}</strong>
-                          <small>{usageLabel(usage)}</small>
-                        </span>
-                        <span className={`code-connector-account__state${needsReconnect ? ' needs-attention' : ''}`}>
-                          {needsReconnect ? 'Reconnect' : 'Connected'}
-                        </span>
-                        {needsReconnect ? (
-                          <Button
-                            variant="subtle"
-                            size="sm"
-                            disabled={providerBusy}
-                            onClick={() => void connect(provider.id, connection.name)}
-                          >
-                            {busyKey === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
-                          </Button>
-                        ) : <span />}
+              {accounts.map((connection) => {
+                const needsReconnect = connection.status === 'needs_reconnect';
+                const label = connectionLabel(connection);
+                const reconnectKey = `${provider.id}:${connection.name}:oauth`;
+                return (
+                  <ListItem
+                    key={`${connection.engine}:${connection.name}`}
+                    leading={<StatusDot tone={needsReconnect ? 'warning' : 'success'} />}
+                    title={label}
+                    description={usageLabel(projectUsage(projects, provider.id, connection.name))}
+                    // The '…' stays in the meta's flow (not ListItem's hover
+                    // overlay) so it never covers the visible Reconnect button.
+                    meta={<>
+                      {needsReconnect ? <>
+                        <StatusDot tone="warning">Reconnect needed</StatusDot>
                         <Button
-                          icon
                           variant="subtle"
                           size="sm"
-                          aria-label={`Disconnect ${connectionLabel(connection)}`}
                           disabled={providerBusy}
-                          onClick={() => setDisconnecting(connection)}
+                          onClick={() => void connect(provider.id, connection.name)}
                         >
-                          {Ico.trash(13)}
+                          {busyKey === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
                         </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                      </> : <StatusDot tone="success">Connected</StatusDot>}
+                      <OverflowMenu
+                        label={`More actions for ${label}`}
+                        icon={Ico.more(14)}
+                        disabled={providerBusy}
+                        triggerClassName={ITEM_MENU_TRIGGER}
+                        items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(13), danger: true, onClick: () => setDisconnecting(connection) }]}
+                      />
+                    </>}
+                  />
+                );
+              })}
+            </ListGroup>
           );
         })}
       </div>
