@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { host } from '../../platform/host';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -6,11 +6,11 @@ import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Checkbox from '../components/ui/Checkbox';
+import { EmptyState, type EmptyStateProps } from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Select from '../components/ui/Select';
 import {
-  CollectionState,
   FilterRow,
   HoverActions,
   ListGroup,
@@ -48,6 +48,56 @@ function kindLabel(kind: SkillLibraryItem['kind']): string {
 
 function shortRevision(value: string | null | undefined): string {
   return value?.slice(0, 8) || 'Unversioned';
+}
+
+// Body state for the catalog: loading rows, empty, or no-match; otherwise the
+// grouped lists. Kept local so this page does not wait on a shared kit version.
+function SkeletonRow() {
+  return (
+    <div className="flex items-center gap-4 px-2 py-3 border-b border-t-0 border-x-0 border-solid border-line">
+      <div className="h-3.5 w-1/4 rounded bg-surface-2" />
+      <div className="h-[11px] flex-1 rounded bg-surface-2" />
+      <div className="h-[11px] w-16 rounded bg-surface-2" />
+    </div>
+  );
+}
+
+function CatalogState({
+  loading,
+  total,
+  shown,
+  onClear,
+  noMatchTitle,
+  empty,
+  children,
+}: {
+  loading: boolean;
+  total: number;
+  shown: number;
+  onClear: () => void;
+  noMatchTitle: ReactNode;
+  empty: EmptyStateProps;
+  children: ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div aria-busy="true" aria-label="Loading">
+        {Array.from({ length: 4 }, (_, i) => <SkeletonRow key={i} />)}
+      </div>
+    );
+  }
+  if (total === 0) return <EmptyState {...empty} />;
+  if (shown === 0) {
+    return (
+      <EmptyState
+        icon={<span className="inline-flex text-ink-4">{Ico.search(20)}</span>}
+        title={noMatchTitle}
+        action={<Button variant="subtle" onClick={onClear}>Clear search</Button>}
+        style={{ minHeight: 240 }}
+      />
+    );
+  }
+  return <>{children}</>;
 }
 
 function AddSkillSourceModal({
@@ -347,15 +397,12 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
 
       {error && <div className="mx-8 mt-5"><Alert variant="danger">{error}</Alert></div>}
       <div className="mx-8 mt-5 grid gap-6">
-        <CollectionState
+        <CatalogState
           loading={loading}
-          skeleton="rows"
-          skeletonCount={4}
           // The origin pill narrows what exists, so an empty pill reads as
           // "nothing here yet"; only a search with no hits is a no-match.
           total={hasVisibleCatalog || searching ? 1 : 0}
           shown={hasVisibleCatalog ? 1 : 0}
-          query={query}
           onClear={() => setQuery('')}
           noMatchTitle="No skills match your search."
           empty={filter === 'personal' || filter === 'all'
@@ -400,7 +447,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && (
             <ListGroup density="compact" title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
           )}
-        </CollectionState>
+        </CatalogState>
       </div>
 
       <AddSkillSourceModal open={addOpen} busy={busy} onClose={() => setAddOpen(false)} onAdd={async (values) => {
