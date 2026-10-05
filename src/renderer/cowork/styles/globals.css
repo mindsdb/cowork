@@ -1714,9 +1714,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
-/* Grouped row — a faint accent resting tint marks it as a distinct unit. */
-.card-row.grouped        { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.card-row.grouped:hover  { background: var(--surface-2); }
 
 @media (prefers-reduced-motion: reduce) {
   .card.interactive:hover,
