@@ -560,6 +560,35 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
 
   const role = event.thought_role;
 
+  // A tool's message to the user (generate_artifact's brief when the agent
+  // acts first). Rendered as an agent message between the steps, so it is a
+  // step of its own and never body text. Checked before the scratchpad
+  // branches: an id-less fallback there would patch it into a cell.
+  if (role === 'thought.tool_call.message') {
+    const markdown = typeof event.content === 'string' ? event.content : '';
+    if (!markdown.trim()) return state;
+    const toolUseId = event.tool_use_id || null;
+    // The progress row that produced the message is done once it shows.
+    const closed = toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps;
+    return {
+      ...state,
+      steps: [...closed, {
+        id: `step-${closed.length + 1}`,
+        label: '',
+        badge: 'Message',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: { markdown },
+        output: null,
+        result: null,
+        _isScratchpad: false,
+        _isToolCall: false,
+        _toolUseId: toolUseId,
+      }],
+    };
+  }
+
   // New scratchpad cell starts. We push a placeholder step now so the
   // UI sees activity even before the .end event delivers the input.
   // Reasoning starts here — it's the time anton spends deciding *what*
