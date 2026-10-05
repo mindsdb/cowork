@@ -232,9 +232,9 @@ export function ProjectResourcesEditor({
                     </label>
                 </Collapsible>
                 <Tooltip content="Remove">
-                  <button type="button" className="code-project-icon-button code-project-resource__remove" aria-label={`Remove ${resource.name}`} onClick={() => {
+                  <Button icon size="sm" variant="subtle" className="code-project-resource__remove" aria-label={`Remove ${resource.name}`} onClick={() => {
                     onChange(resources.filter((item) => item.id !== resource.id));
-                  }}>{Ico.close(12)}</button>
+                  }}>{Ico.close(12)}</Button>
                 </Tooltip>
               </div>
             );

@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
+import Tooltip from '../components/ui/Tooltip';
 import type { CodingSession, DiffFile, GitState, ProjectActionSummary } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
@@ -144,17 +145,18 @@ export function TaskBar({
       <div className="code-taskbar__actions">
         {can('project_actions') && !!projectActions.length && <div className="code-taskbar__action-group" aria-label="Run and preview">
           {projectActions.length === 1 && (
-            <Button
-              size="sm"
-              variant="subtle"
-              disabled={projectActionBusy}
-              onClick={() => onRunProjectAction(projectActions[0])}
-              title={`Run ${projectActions[0].label}`}
-              aria-label={projectActionBusy ? `Starting ${projectActions[0].label}` : `Run ${projectActions[0].label}`}
-            >
-              {Ico.play(12)}
-              <span>{projectActionBusy ? 'Starting…' : 'Run'}</span>
-            </Button>
+            <Tooltip content={`Run ${projectActions[0].label}`}>
+              <Button
+                size="sm"
+                variant="subtle"
+                disabled={projectActionBusy}
+                onClick={() => onRunProjectAction(projectActions[0])}
+                aria-label={projectActionBusy ? `Starting ${projectActions[0].label}` : `Run ${projectActions[0].label}`}
+              >
+                {Ico.play(12)}
+                <span>{projectActionBusy ? 'Starting…' : 'Run'}</span>
+              </Button>
+            </Tooltip>
           )}
           {projectActions.length > 1 && (
             <Menu
@@ -175,19 +177,24 @@ export function TaskBar({
               }))}
             />
           )}
-          <Button
-            size="sm"
-            variant={previewOpen ? 'tinted' : 'subtle'}
-            disabled={!previewAvailable}
-            onClick={onTogglePreview}
-            title={previewAvailable ? 'Preview running project' : 'Run the project to enable preview'}
-            aria-expanded={previewOpen}
-            aria-controls="code-preview-panel"
-            aria-label="Preview running project"
-          >
-            {Ico.globe(13)}
-            <span>Preview</span>
-          </Button>
+          {/* `.btn:disabled` drops pointer events, so the wrapper takes the hover
+              that explains why Preview is unavailable. */}
+          <Tooltip content={previewAvailable ? 'Preview running project' : 'Run the project to enable preview'}>
+            <span className="inline-flex">
+              <Button
+                size="sm"
+                variant={previewOpen ? 'tinted' : 'subtle'}
+                disabled={!previewAvailable}
+                onClick={onTogglePreview}
+                aria-expanded={previewOpen}
+                aria-controls="code-preview-panel"
+                aria-label="Preview running project"
+              >
+                {Ico.globe(13)}
+                <span>Preview</span>
+              </Button>
+            </span>
+          </Tooltip>
         </div>}
         {can('project_actions') && !!projectActions.length && <span className="code-taskbar__divider" aria-hidden="true" />}
         <div className="code-taskbar__action-group" aria-label="Task surfaces">
