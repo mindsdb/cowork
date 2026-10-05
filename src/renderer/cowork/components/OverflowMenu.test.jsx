@@ -51,4 +51,16 @@ describe('OverflowMenu', () => {
     await user.click(trigger);
     expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
   });
+
+  it('keeps a disabled trigger\'s clicks and keys from activating the row it sits in', async () => {
+    const user = userEvent.setup();
+    const onRow = vi.fn();
+    render(<div onClick={onRow} onKeyDown={onRow}><OverflowMenu items={[{ label: 'Rename' }]} disabled /></div>);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    await user.click(trigger);
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onRow).not.toHaveBeenCalled();
+  });
 });

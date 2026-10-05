@@ -49,6 +49,11 @@ export function OverflowMenu({
         if (stopPropagation) e.stopPropagation();
         onTriggerKeyDown?.(e);
       }}
+      // Base UI's disabled branch returns before the handlers above run, and
+      // an aria-disabled button still dispatches clicks and keys, so they'd
+      // reach a clickable row and activate it. Stop them on the way down.
+      onClickCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
+      onKeyDownCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
     >
       {icon}
     </Button>
