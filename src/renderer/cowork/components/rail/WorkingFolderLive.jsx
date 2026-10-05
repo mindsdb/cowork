@@ -100,12 +100,12 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     () => railArtifactRows(artifacts, conversationId),
     [artifacts, conversationId],
   );
-  // Sticky per project (ENG-2979 fix wave): once any row in a fetched slice
-  // needed the authorship column, keep reserving it for this project even
-  // once a later poll's top-12 slice happens to be owner-only. Recomputing
-  // straight from `rows` on every 3s poll made the column — and every row's
-  // horizontal position — jump as a colleague's artifact entered/left the
-  // slice. Only the project-switch effect below ever turns it back off.
+  // Sticky per project: once any row needed the authorship column, keep
+  // reserving it for this project even once a later poll's rows happen to be
+  // owner-only. Recomputing straight from `rows` on every 3s poll made the
+  // column — and every row's horizontal position — jump as a colleague's
+  // artifact entered/left the visible rows. Only the project-switch effect
+  // below ever turns it back off.
   const [markerColumn, setMarkerColumn] = useState(false);
   // Bumped on every project switch / streaming-tick load. The async
   // load checks the version against the latest before applying its
@@ -183,10 +183,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   useEffect(() => {
     setPreviewArt((cur) => {
       if (!cur) return cur;
-      const fresh = rows.find((r) => r.path === cur.path);
+      const fresh = artifacts.find((r) => r.path === cur.path);
       return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
     });
-  }, [rows]);
+  }, [artifacts]);
   // Per-row kebab menu state (single-open) + portal coords.
   //
   // Why a portal: the rail-card body wraps this component with
@@ -438,7 +438,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                   >
                     {(Ico[iconForRow(a)] || Ico.doc)(13)}
                   </span>
-                  {/* Authorship marker (ENG-2979). No Tooltip: the row's native
+                  {/* Authorship marker. No Tooltip: the row's native
                       `title` already names it, and two hints on one hover is what
                       ui/Tooltip replaced. role="img" so the label is announced. */}
                   {hasAuthorshipMarker && (authorship ? (

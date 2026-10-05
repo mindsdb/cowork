@@ -502,6 +502,12 @@ describe('artifacts rail grouping by conversation', () => {
     expect(screen.queryByRole('separator')).toBeNull();
   });
 
+  it('draws no separator when no row is from this chat', async () => {
+    await renderList([art('Other A', 'conv-2', 1), art('Other B', '', 2)]);
+    expect(titles()).toEqual(['Other A', 'Other B']);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
   it('draws no separator and keeps server order outside a chat', async () => {
     await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)], null);
     expect(titles()).toEqual(['Other A', 'Mine A']);
