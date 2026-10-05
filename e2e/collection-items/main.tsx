@@ -24,6 +24,18 @@ function Fixture() {
         <ListItem title="Review" onActivate={record('Review open')} meta="Skill" description={'Run an extremely strict review. '.repeat(20)} />
       </ListGroup>
     </div>
+    {/* Phone-width rows: a meta control shown at rest, rows that show their
+        actions at rest, and a meta with an unbreakable word. */}
+    <ListGroup aria-label="Phone" className="m-8">
+      <ListItem data-testid="plain-row" title="Plain task" onActivate={record('Plain open')} actions={menu('Plain')}
+        meta={<span><button type="button">Plain project</button></span>} />
+      <ListItem data-testid="revealed-meta-row" title="Linked task" onActivate={record('Linked open')} actions={menu('Linked')}
+        meta={<HoverActions reveal><button type="button" onClick={record('Linked project')}>Linked project</button></HoverActions>} />
+      <ListItem data-testid="reveal-actions-row" title="Pinned task" onActivate={record('Pinned open')} actions={menu('Pinned')}
+        revealActions meta="Updated 1h ago" />
+      <ListItem data-testid="long-meta-row" title="Long meta" onActivate={record('Long meta open')} actions={menu('Long meta')}
+        meta={<span data-testid="long-meta">{'x'.repeat(120)}</span>} />
+    </ListGroup>
     <output aria-label="Events">{log.join('|')}</output>
   </>;
 }
