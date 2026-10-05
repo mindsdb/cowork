@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { artifactCommentsKey, artifactIdentity, fullArtifactId } from './artifactIdentity';
+import { artifactCommentsKey, artifactIdentity, fullArtifactId, originConversationId } from './artifactIdentity';
 
 const FULL = '7db94eb8f0a54c7e9c1d2b3a4f5e6d70';
 const DASHED = '7db94eb8-f0a5-4c7e-9c1d-2b3a4f5e6d70';
@@ -53,5 +53,14 @@ describe('artifact comments key', () => {
     expect(artifactCommentsKey('7db94eb8')).toBe('');
     expect(artifactCommentsKey('')).toBe('');
     expect(artifactCommentsKey(undefined)).toBe('');
+  });
+});
+
+describe('originConversationId', () => {
+  it('reads the origin chat as a string, or empty when unknown', () => {
+    expect(originConversationId({ originConversationId: 'c1' })).toBe('c1');
+    expect(originConversationId({ originConversationId: 42 })).toBe('42');
+    expect(originConversationId({})).toBe('');
+    expect(originConversationId(null)).toBe('');
   });
 });

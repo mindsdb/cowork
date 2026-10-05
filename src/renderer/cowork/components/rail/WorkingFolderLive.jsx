@@ -28,7 +28,7 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
-import { isFromConversation, railArtifactRows } from '../../lib/railArtifacts';
+import { railArtifactRows } from '../../lib/railArtifacts';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
@@ -96,10 +96,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // Full server response; rows are derived so a chat switch inside the same
   // project regroups without a refetch.
   const [artifacts, setArtifacts] = useState([]);
-  const rows = useMemo(
+  const { rows, currentCount } = useMemo(
     () => railArtifactRows(artifacts, conversationId),
     [artifacts, conversationId],
   );
+  const authorships = useMemo(() => rows.map((r) => artifactAuthorship(r.capabilities)), [rows]);
   // Sticky per project: once any row needed the authorship column, keep
   // reserving it for this project even once a later poll's rows happen to be
   // owner-only. Recomputing straight from `rows` on every 3s poll made the
@@ -126,8 +127,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // chat, `rows` still holds the old project's list in this commit, and the
   // reset there has to run last.
   useEffect(() => {
-    if (rows.some((r) => artifactAuthorship(r.capabilities))) setMarkerColumn(true);
-  }, [rows]);
+    if (authorships.some(Boolean)) setMarkerColumn(true);
+  }, [authorships]);
 
   // Project switch — clear immediately, then load. The clear is
   // important: without it, the rail keeps painting the previous
@@ -215,17 +216,18 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     else kebabRefs.current.delete(path);
   };
 
+  // Menu opens just below the kebab, right-anchored so it can't
+  // extend past the right edge of the viewport. `position: fixed`
+  // applies these directly to viewport coordinates.
+  const menuPosFor = (btn) => {
+    const r = btn.getBoundingClientRect();
+    return { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) };
+  };
+
   const openMenuFor = (path) => {
     const btn = kebabRefs.current.get(path);
     if (!btn) return;
-    const r = btn.getBoundingClientRect();
-    // Menu opens just below the kebab, right-anchored so it can't
-    // extend past the right edge of the viewport. `position: fixed`
-    // applies these directly to viewport coordinates.
-    setMenuPos({
-      top: r.bottom + 4,
-      right: Math.max(8, window.innerWidth - r.right),
-    });
+    setMenuPos(menuPosFor(btn));
     setOpenMenuPath(path);
   };
 
@@ -251,9 +253,14 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       document.removeEventListener('scroll', onClose, true);
     };
   }, [openMenuPath]);
-  // A chat switch regroups the rows, so an open menu would stay pinned to
-  // where its row used to be.
-  useEffect(() => { setOpenMenuPath(null); }, [conversationId]);
+  // Rows move under an open menu (a chat switch regroups them, a poll adds
+  // new ones on top): keep the menu on its row, or close it once the row is gone.
+  useLayoutEffect(() => {
+    if (openMenuPath == null) return;
+    const btn = kebabRefs.current.get(openMenuPath);
+    if (btn) setMenuPos(menuPosFor(btn));
+    else setOpenMenuPath(null);
+  }, [rows]);
 
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
@@ -381,15 +388,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // Tailwind cannot see interpolated ones. `markerColumn` is the sticky flag
   // set by the rows effect; the `||` covers a row set within this same render
   // before that state commits.
-  const authorships = rows.map((r) => artifactAuthorship(r.capabilities));
   const hasAuthorshipMarker = markerColumn || authorships.some(Boolean);
   const rowGridCols = hasAuthorshipMarker
     ? 'grid-cols-[14px_12px_minmax(0,1fr)_auto]'
     : 'grid-cols-[14px_minmax(0,1fr)_auto]';
-
-  // Rows come this chat first, so the first row from elsewhere is the group
-  // boundary. -1 (all rows are this chat's) and 0 (none are) draw no line.
-  const othersStart = rows.findIndex((r) => !isFromConversation(r, conversationId));
 
   return (
     <div className="pt-2">
@@ -411,7 +413,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
             const authorship = authorships[i];
             return (
               <Fragment key={a.path}>
-                {i > 0 && i === othersStart && (
+                {i > 0 && i === currentCount && (
                   <div
                     role="separator"
                     aria-label="Other artifacts in this project"

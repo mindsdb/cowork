@@ -533,12 +533,35 @@ describe('artifacts rail grouping by conversation', () => {
     expect(fetchArtifacts.mock.calls.length).toBe(calls);
   });
 
-  it('closes an open row menu when the chat changes', async () => {
-    const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
-    fireEvent.click(screen.getAllByLabelText('More actions')[1]);
+  it('keeps an open row menu on its artifact when the chat regroups the rows', async () => {
+    // happy-dom has no layout: place each element 20px below the previous row.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rowRect() {
+      const row = this.closest('[role="button"][title]');
+      const top = row ? [...row.parentElement.children].indexOf(row) * 20 : 0;
+      return { top, bottom: top + 20, left: 0, right: 100, width: 100, height: 20, x: 0, y: top, toJSON() {} };
+    });
+    try {
+      const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+      fireEvent.click(screen.getAllByLabelText('More actions')[1]);
+      const topBefore = screen.getByRole('menu').style.top;
+
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+      expect(screen.getByRole('menu').style.top).not.toBe(topBefore);
+      fireEvent.click(screen.getByText('Delete'));
+      expect(screen.getByText('Delete "Other A"?')).toBeInTheDocument();
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('closes an open row menu once its row leaves the list', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1)]);
+    fireEvent.click(screen.getByLabelText('More actions'));
     expect(screen.getByText('Delete')).toBeInTheDocument();
 
-    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+    fetchArtifacts.mockResolvedValue([]);
+    rerender(<WorkingFolderLive project={{ id: 'proj-2', name: 'other', path: '/proj2' }} isStreaming={false} conversationId={CHAT} />);
 
     expect(screen.queryByText('Delete')).toBeNull();
   });
