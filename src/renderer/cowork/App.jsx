@@ -65,7 +65,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -88,7 +88,8 @@ import {
   persistTurnState,
   mergeConvTurns,
 } from './lib/conversationHistory';
-import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
+import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
@@ -582,6 +583,41 @@ function AppCore() {
       setArtifactTipOpen(true);
     }
   }, [artifacts.length]);
+  const artifactsRef = useRef(artifacts);
+  useEffect(() => { artifactsRef.current = artifacts; }, [artifacts]);
+  // Every load of `artifacts` goes through this loader. Strict: a failed load
+  // must not read as an empty list.
+  const [artifactsLoader] = useState(() => createLatestLoader(fetchArtifactsStrict, (data) => {
+    // One-time arm/disarm decision for the first-artifact tip, taken on
+    // the session's first successful fetch: empty list = fresh account
+    // (watch for the first artifact); anything else = existing account
+    // (flag it dismissed so no later session shows the tip either).
+    if (artifactTipArmedRef.current === null) {
+      if (data.length === 0 && !isArtifactTipDismissed()) {
+        artifactTipArmedRef.current = true;
+      } else {
+        artifactTipArmedRef.current = false;
+        if (data.length > 0) dismissArtifactTip();
+      }
+    }
+    setArtifacts(data);
+  }));
+  const reloadArtifacts = artifactsLoader.reload;
+  // A delete from any surface (the artifacts page, a chat's viewer or working
+  // folder) must reach the sidebar count.
+  useEffect(() => onArtifactDeleted((card) => {
+    if (artifactsRef.current.some((a) => a.path === card?.path)) {
+      artifactsLoader.change(() => setArtifacts((prev) => withoutArtifact(prev, card.path)));
+    } else {
+      // A chat card can name another file than the server card (a fullstack
+      // entry point sits under static/), so only the server can say which went.
+      reloadArtifacts();
+    }
+  }), [artifactsLoader, reloadArtifacts]);
+  // Publish state changes made on the artifacts page.
+  const handleArtifactChanged = useCallback((updated) => {
+    artifactsLoader.change(() => setArtifacts((prev) => withArtifactChange(prev, updated)));
+  }, [artifactsLoader]);
   const handleArtifactTipDismiss = useCallback(() => {
     setArtifactTipOpen(false);
     dismissArtifactTip();
@@ -1667,22 +1703,7 @@ function AppCore() {
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    fetchArtifacts().then((data) => {
-      if (!Array.isArray(data)) return;
-      // One-time arm/disarm decision for the first-artifact tip, taken on
-      // the session's first successful fetch: empty list = fresh account
-      // (watch for the first artifact); anything else = existing account
-      // (flag it dismissed so no later session shows the tip either).
-      if (artifactTipArmedRef.current === null) {
-        if (data.length === 0 && !isArtifactTipDismissed()) {
-          artifactTipArmedRef.current = true;
-        } else {
-          artifactTipArmedRef.current = false;
-          if (data.length > 0) dismissArtifactTip();
-        }
-      }
-      setArtifacts(data);
-    });
+    reloadArtifacts();
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules();
     fetchDatasources()
@@ -1693,7 +1714,7 @@ function AppCore() {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, [refreshSchedules]);
+  }, [refreshSchedules, reloadArtifacts]);
 
   useEffect(() => {
     refreshData();
@@ -1983,7 +2004,7 @@ function AppCore() {
           // Open the side panel if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // A reconnect tail also holds the shared stream slot, so a message
         // queued against any task while it ran must be drained here too —
         // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
@@ -2721,7 +2742,7 @@ function AppCore() {
     projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
     setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
     if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+      reloadArtifacts();
     } else if (key === 'projects') {
       // Bare `/projects` is the grid — clear the selection so a Back from
       // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
@@ -2730,7 +2751,7 @@ function AppCore() {
     } else if (key === 'scheduled') {
       refreshSchedules();
     }
-  }, [refreshSchedules]);
+  }, [refreshSchedules, reloadArtifacts]);
 
   // Detail routes → state (v1). No single-resource loader: resolve the entity
   // client-side from the fetched list, so refresh / deep-link restore the
@@ -3195,7 +3216,7 @@ function AppCore() {
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(finalId);
@@ -3620,7 +3641,7 @@ function AppCore() {
           persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // Drain the next queued message now that the single stream slot is
         // free. Sweeps every task's queue (preferring this task for FIFO
         // order on its own follow-ups), not just the finishing task's — a
@@ -3925,6 +3946,7 @@ function AppCore() {
         fetchDatasources()
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
+        reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(resolvedId);
@@ -4381,8 +4403,11 @@ function AppCore() {
       setActiveTaskId(null);
       if (routeRef.current === 'task') setRoute('home');
     }
+    // The project's artifacts went with its directory.
+    setArtifacts((prev) => withoutProjectArtifacts(prev, project));
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
+    reloadArtifacts();
     fetchSessions().then((data) => {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }).catch(() => {});
@@ -5115,6 +5140,7 @@ function AppCore() {
         {route === 'artifacts' && (
           <ArtifactsView
             artifacts={artifacts}
+            onArtifactChanged={handleArtifactChanged}
             projects={projects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
@@ -5168,7 +5194,7 @@ function AppCore() {
             projects={projects}
             kind={route}
             project={selectedProject}
-            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
+            onRefreshArtifacts={reloadArtifacts}
             agentLabel={agentLabel}
           />
         )}
