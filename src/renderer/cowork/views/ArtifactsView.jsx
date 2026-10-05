@@ -947,7 +947,7 @@ export default function ArtifactsView({
           slightly taller — Artifacts compensates with a few extra. */}
       <div className="h-5" />
 
-      {total > 0 && (
+      {(loading || total > 0) && (
         <FilterRow
           search={
             <SearchInput
@@ -970,6 +970,7 @@ export default function ArtifactsView({
         onClear={() => setSearch('')}
         skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
         skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        skeletonGridClassName="artifacts-grid"
         empty={{
           icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
           title: 'No artifacts yet',

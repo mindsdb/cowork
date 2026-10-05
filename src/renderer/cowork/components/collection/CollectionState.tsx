@@ -71,6 +71,9 @@ export interface CollectionStateProps {
   skeletonCount?: number;
   /** Layout (padding/margin) of the skeleton wrapper, matching the page body. */
   skeletonClassName?: string;
+  /** Grid for card skeletons. Pass the page's own grid class so the skeleton
+   *  has the same columns as the loaded cards. */
+  skeletonGridClassName?: string;
   empty: EmptyStateProps;
   children?: ReactNode;
 }
@@ -86,6 +89,7 @@ export function CollectionState({
   skeleton = 'cards',
   skeletonCount = 6,
   skeletonClassName,
+  skeletonGridClassName = 'grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]',
   empty,
   children,
 }: CollectionStateProps) {
@@ -95,7 +99,7 @@ export function CollectionState({
       <div
         aria-busy="true"
         aria-label="Loading"
-        className={cn(skeleton === 'cards' && 'grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]', skeletonClassName)}
+        className={cn(skeleton === 'cards' && skeletonGridClassName, skeletonClassName)}
       >
         {items.map((_, i) => (skeleton === 'cards' ? <SkeletonCard key={i} /> : <SkeletonRow key={i} />))}
       </div>

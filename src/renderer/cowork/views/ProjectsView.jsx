@@ -1033,14 +1033,14 @@ export default function ProjectsView({
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
         view={<ViewToggle value={view} onValueChange={setView} />}
-        counts={
+        counts={loading ? null : (
           <ProjectsCounts
             search={search}
             total={projects.length}
             filtered={visibleProjects.length}
             pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
           />
-        }
+        )}
       />
 
       <CollectionState
