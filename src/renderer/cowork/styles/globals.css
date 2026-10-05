@@ -3137,13 +3137,19 @@ body[data-theme="dark"] .mshell__drawer-title {
   z-index: 4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--dur-layout) ease;
+  transition: opacity var(--dur-popover-out) ease;
 }
-.mshell__fab-scrim.is-open { opacity: 1; pointer-events: auto; }
+.mshell__fab-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transition-duration: var(--dur-popover-in);
+}
 
 /* Popover anchored to bottom-right above the FAB. Sized to its
    content; slides up + fades in. Pointer-events suppressed when
-   collapsed so it doesn't block content underneath. */
+   collapsed so it doesn't block content underneath. It is a menu, so it
+   rides the popover tokens: the base rule times the close, .is-open the
+   open. */
 .mshell__fab-menu {
   position: absolute;
   right: 18px;
@@ -3165,13 +3171,16 @@ body[data-theme="dark"] .mshell__drawer-title {
   transform: translateY(8px) scale(0.96);
   transform-origin: 100% 100%;
   transition:
-    opacity var(--dur-layout) var(--ease-out),
-    transform var(--dur-layout) var(--ease-out);
+    opacity var(--dur-popover-out) var(--ease-in),
+    transform var(--dur-popover-out) var(--ease-in);
 }
 .mshell__fab-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
+  transition:
+    opacity var(--dur-popover-in) var(--ease-out),
+    transform var(--dur-popover-in) var(--ease-out);
 }
 .mshell__fab-menu-item {
   display: flex;
