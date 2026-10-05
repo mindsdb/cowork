@@ -9,11 +9,11 @@ single shell owns a page.
 | Part of the page | Use |
 |---|---|
 | Header | `PageHeader` |
-| Toolbar | `FilterRow`. Search is `SearchInput`, filters and sort are `Select variant="pill"` (or `SortPill`), and the view switch is `ViewToggle` (coming with the Cowork follow-up, #1105). |
+| Toolbar | `FilterRow`. Search is `SearchInput`, filters and sort are `Select variant="pill"` (or `SortPill`), and the view switch is `ViewToggle`. |
 | ⌘K focuses search | `useCollectionShortcut(searchRef)` |
-| Grid or list preference | `useCollectionView(storageKey)` (#1105). It persists the choice and forces grid on phones. |
-| Loading, empty, no match | `CollectionState` wraps the body (#1105) |
-| Cards | `CardGrid` › `ItemCard` … `NewTile` (#1105) |
+| Grid or list preference | `useCollectionView(storageKey)`. It persists the choice and forces grid on phones. |
+| Loading, empty, no match | `CollectionState` wraps the body |
+| Cards | `CardGrid` › `ItemCard` … `NewTile` |
 | Rows | `ListGroup` › `ListItem` … `NewRow`, plus `ListNotice` for an inline line |
 | Item controls | `HoverActions` (a kebab menu using `ITEM_MENU_TRIGGER`) |
 | Status in meta | `StatusDot` |

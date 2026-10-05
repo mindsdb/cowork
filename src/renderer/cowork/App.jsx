@@ -566,6 +566,11 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // False until the first artifacts fetch settles, so Live Artifacts shows
+  // skeletons instead of a premature "No artifacts yet".
+  const [artifactsLoaded, setArtifactsLoaded] = useState(false);
+  // Same for Projects: skeletons, not "No projects yet", until the first fetch settles.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
   // fetch of the session comes back empty — an account that already has
   // artifacts is not a first-run and must never see the tip. Once armed,
@@ -1706,8 +1711,8 @@ function AppCore() {
       }
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
-    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    reloadArtifacts();
+    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
+    reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules();
     fetchDatasources()
@@ -5049,7 +5054,7 @@ function AppCore() {
           <ProjectsView
             projects={projects}
             selectedProject={selectedProjectForView}
-            loading={projectDetailResolving}
+            loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5166,6 +5171,7 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
+            loading={!artifactsLoaded}
             projects={projects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}

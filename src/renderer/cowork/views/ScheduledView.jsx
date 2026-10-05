@@ -11,15 +11,14 @@
 // Run-now happens inline (no modal) — optimistic UI at the host via the
 // existing onRunNow handler.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, FilterRow, SearchInput, SortPill,
-  useCollectionShortcut,
+  PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState,
+  useCollectionShortcut, useCollectionView,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Alert, Button, CardRow, EmptyState, Tooltip } from '../components/ui';
+import { Alert, Button, CardRow, Tooltip } from '../components/ui';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
@@ -31,27 +30,8 @@ const SORT_OPTIONS = [
   { id: 'created', label: 'Recently created' },
 ];
 
-const VIEW_OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(13) },
-  { value: 'list', label: 'List', icon: Ico.list(13) }
-];
-
-// Match the storage-key convention used by ArtifactsView /
-// ProjectsView (`anton:<surface>-view`). Same value-shape too —
-// 'grid' | 'list'.
+// Same key convention as ArtifactsView / ProjectsView (`anton:<surface>-view`).
 const VIEW_MODE_KEY = 'anton:scheduled-view';
-
-function loadViewMode() {
-  if (typeof localStorage === 'undefined') return 'grid';
-  const v = localStorage.getItem(VIEW_MODE_KEY);
-  return v === 'list' ? 'list' : 'grid';
-}
-
-function saveViewMode(mode) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { }
-}
-
 
 export default function ScheduledView({
   scheduled,
@@ -74,15 +54,12 @@ export default function ScheduledView({
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useState(loadViewMode);
+  // Phones always get the grid, like the other collection pages.
+  const { view: viewMode, setView: setViewMode, effectiveView } = useCollectionView(VIEW_MODE_KEY);
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
   // form). `deletingTask` holds the task awaiting confirmation.
   const [deletingTask, setDeletingTask] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-
-  // Persist the view-mode choice — same toggle should still feel set
-  // when the user comes back to this surface tomorrow.
-  useEffect(() => { saveViewMode(viewMode); }, [viewMode]);
 
   // Total runs that slipped while the app was closed, summed across
   // all schedules. Surfaced as a small subtitle next to the total
@@ -187,7 +164,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="md" aria-label="View" options={VIEW_OPTIONS} />}
+          view={<ViewToggle value={viewMode} onValueChange={setViewMode} />}
           counts={
             <>
               {(search || '').trim().length > 0
@@ -211,61 +188,67 @@ export default function ScheduledView({
       )}
 
       {/* Body — empty state, grid, or list. */}
-      {!scheduled.length ? (
-        <EmptyState
-          bordered
-          icon={
+      <CollectionState
+        total={scheduled.length}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        empty={{
+          bordered: true,
+          icon: (
             <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
               {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
             </span>
-          }
-          title="No scheduled tasks yet"
-          description={`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
-          action={
+          ),
+          title: 'No scheduled tasks yet',
+          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`,
+          action: (
             <Button variant="primary" onClick={openCreate}>
               {Ico.plus(14)} Schedule your first task
             </Button>
-          }
-          style={{ margin: '40px 28px' }}
-        />
-      ) : viewMode === 'grid' ? (
-        <div className="pt-2 px-7 pb-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
-          {visible.map((task) => (
-            <ScheduleCard
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="pt-2 px-7 pb-7">
-          <ListHeaderRow />
-          {visible.map((task) => (
-            <ScheduleListRow
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      )}
+          ),
+          style: { margin: '40px 28px' },
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <div className="pt-2 px-7 pb-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
+            {visible.map((task) => (
+              <ScheduleCard
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="pt-2 px-7 pb-7">
+            <ListHeaderRow />
+            {visible.map((task) => (
+              <ScheduleListRow
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </div>
+        )}
+      </CollectionState>
 
       <ScheduleTaskModal
         open={modalOpen}

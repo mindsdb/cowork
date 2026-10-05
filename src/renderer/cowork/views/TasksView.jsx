@@ -18,7 +18,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Badge, CardRow, EmptyState, Button, Select, Tooltip } from '../components/ui';
+import { Badge, CardRow, Button, Select, Tooltip } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
@@ -26,6 +26,7 @@ import {
   SearchInput,
   SortPill,
   useCollectionShortcut,
+  CollectionState,
 } from '../components/collection';
 
 const SORT_OPTIONS = [
@@ -498,15 +499,23 @@ export default function TasksView({
         />
       )}
 
-      {tasks.length === 0 ? (
-        <EmptyState
-          bordered
-          icon={<span className="inline-flex text-ink-4">{Ico.chats(28)}</span>}
-          title="No tasks yet"
-          description="Start a conversation from the home screen — every chat shows up here."
-          style={{ margin: '40px 28px' }}
-        />
-      ) : (
+      <CollectionState
+        total={tasks.length}
+        shown={visible.length}
+        query={search}
+        onClear={() => { setSearch(''); setProjectFilter('all'); }}
+        // Search and the project filter both narrow the list, so the copy
+        // and the action cover both.
+        noMatchTitle="No tasks match these filters."
+        clearLabel="Clear filters"
+        empty={{
+          bordered: true,
+          icon: <span className="inline-flex text-ink-4">{Ico.chats(28)}</span>,
+          title: 'No tasks yet',
+          description: 'Start a conversation from the home screen — every chat shows up here.',
+          style: { margin: '40px 28px' },
+        }}
+      >
         <div className="pt-2 px-7 pb-7">
           <ListHeaderRow />
           {visible.map((row) => {
@@ -540,13 +549,8 @@ export default function TasksView({
               />
             );
           })}
-          {visible.length === 0 && (
-            <div className="py-10 px-[14px] font-[family-name:var(--font-body)] text-[13px] text-ink-4 text-center">
-              No tasks match these filters.
-            </div>
-          )}
         </div>
-      )}
+      </CollectionState>
     </div>
   );
 }

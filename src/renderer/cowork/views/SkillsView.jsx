@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
+import { PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState, useCollectionView } from '../components/collection';
 import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -13,7 +12,6 @@ import { fetchProjects, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import {
   canUseSharedResource,
   sharedResourceAttribution,
@@ -27,10 +25,6 @@ import {
 // storage — `submit` maps it back to an empty `projects` array, and it can't
 // collide with a real project name.
 const ALL_PROJECTS = '__all_projects__';
-
-function EmptyState({ children }) {
-  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
-}
 
 
 function SkillGridCard({ skill, onClick, projects = [] }) {
@@ -361,12 +355,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const toastManager = useToastManager();
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
-  const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
-  const { isMobile }                  = useBreakpoint();
-  const effectiveView                 = isMobile ? 'grid' : view;
+  const { view, setView, effectiveView } = useCollectionView('anton:skills-view');
   const searchRef = useRef(null);
-
-  const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
   const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
@@ -564,51 +554,63 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <FilterRow
             search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
             sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
+            view={<ViewToggle value={view} onValueChange={setView} />}
           />
-          {skills === null ? (
-            <EmptyState>Loading…</EmptyState>
-          ) : sorted.length === 0 ? (
-            <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
-          ) : effectiveView === 'list' ? (
-            <div className="pt-4 px-8 pb-[60px]">
-              <div className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
-                {['Name', 'Description', 'Project', 'Author', 'Updated'].map((h) => (
-                  <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
+          <CollectionState
+            loading={skills === null}
+            total={(skills ?? []).length}
+            shown={sorted.length}
+            query={search}
+            onClear={() => setSearch('')}
+            skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
+            skeletonClassName="pt-5 px-8 pb-[60px]"
+            skeletonGridClassName="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
+            empty={{
+              icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
+              title: 'No saved skills yet',
+              style: { flex: 1 },
+            }}
+          >
+            {effectiveView === 'list' ? (
+              <div className="pt-4 px-8 pb-[60px]">
+                <div className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
+                  {['Name', 'Description', 'Project', 'Author', 'Updated'].map((h) => (
+                    <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
+                  ))}
+                </div>
+                {sorted.map((skill) => {
+                  const project = skill.projects?.[0] || skill.project;
+                  const age = relativeAge(skill.updatedAt);
+                  const attribution = sharedResourceAttribution(skill);
+                  const author = attribution?.createdBy;
+                  return (
+                    <div
+                      key={skill.label}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelected(skill)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
+                      className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                    >
+                      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
+                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
+                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 whitespace-nowrap">{project || '—'}</span>
+                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" title={author || undefined}>{author || '—'}</span>
+                      <span className="font-mono text-[11.5px] text-ink-4 whitespace-nowrap">{age || '—'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+                {sorted.map((skill) => (
+                  <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
                 ))}
               </div>
-              {sorted.map((skill) => {
-                const project = skill.projects?.[0] || skill.project;
-                const age = relativeAge(skill.updatedAt);
-                const attribution = sharedResourceAttribution(skill);
-                const author = attribution?.createdBy;
-                return (
-                  <div
-                    key={skill.label}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelected(skill)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                    className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
-                  >
-                    <span className="font-[family-name:var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
-                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
-                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 whitespace-nowrap">{project || '—'}</span>
-                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" title={author || undefined}>{author || '—'}</span>
-                    <span className="font-mono text-[11.5px] text-ink-4 whitespace-nowrap">{age || '—'}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
-              {sorted.map((skill) => (
-                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
-              ))}
-            </div>
-          )}
+            )}
+          </CollectionState>
         </>
       )}
       <UploadSkillModal
