@@ -30,3 +30,23 @@ test('the primary action stays beside the title at 440px and drops under it at 3
   expect((await row('ready-440')).titleWidth).toBeGreaterThan(120);
   expect(await row('ready-380')).toMatchObject({ beside: false });
 });
+
+test('keyboard focus keeps its ring while the pointer hovers a railed card', async ({ page }) => {
+  await page.goto('/');
+  const target = card(page, 'ready-440');
+  const shadow = () => target.evaluate((el) => getComputedStyle(el).boxShadow);
+  const ring = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--ring').trim());
+  const ringColor = ring.match(/rgba?\([^)]*\)/)![0].replace(/\s+/g, '');
+  const hasRing = async () => (await shadow()).replace(/\s+/g, '').includes(ringColor);
+
+  // Shadows transition on the glow curve, so each read polls until settled.
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Tab');
+  await expect(target).toBeFocused();
+  await expect.poll(hasRing).toBe(true);
+
+  await target.hover({ position: { x: 200, y: 20 } });
+  await expect.poll(hasRing).toBe(true);
+  // The hover's deeper shadow is still there under the ring.
+  await expect.poll(async () => (await shadow()).split('px,').length).toBeGreaterThan(2);
+});

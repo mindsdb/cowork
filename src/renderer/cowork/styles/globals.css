@@ -1733,6 +1733,11 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   border-color: var(--line-2);
   box-shadow: var(--sh-2);
 }
+/* The hover rule outranks the shared focus rule, so a focused card would
+   lose its ring the moment the pointer crossed it. Keep the ring over
+   either shadow. */
+.card.railed.interactive:focus-visible { box-shadow: var(--ring), var(--card-shadow-rest); }
+.card.railed.interactive:focus-visible:hover { box-shadow: var(--ring), var(--sh-2); }
 .card__rail {
   background: var(--surface-2);
   border-top: 1px solid var(--line);
