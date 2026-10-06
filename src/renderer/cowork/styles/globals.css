@@ -251,23 +251,22 @@ body, body[data-theme="light"] {
 
 /* ─── Motion tokens ──────────────────────────────────────────────────────
    Every transition and animation duration in the app reads one of these,
-   in Cowork and Code Mode alike. Hovers, presses and popover exits are
-   instant. Popovers and modals fade in briefly so a new surface reads as
-   arriving rather than cutting in, and tooltips wait for a deliberate
-   hover so sweeping across icons stays quiet. Layout motion (height,
-   drawers, panel and content entrances) keeps a short glide. Ambient loops (spinners, pulses,
-   shimmers) keep their own cadence. Keep these on :root, never in the
-   themed body blocks: a body declaration would shadow them for every
-   element. */
+   in Cowork and Code Mode alike. Hovers, presses, tooltips and popover
+   exits are instant. Popovers and modals fade in briefly so a new surface
+   reads as arriving rather than cutting in. Layout motion (height,
+   drawers, panel and content entrances) keeps a short glide. Ambient
+   loops (spinners, pulses, shimmers) keep their own cadence. Keep these
+   on :root, never in the themed body blocks: a body declaration would
+   shadow them for every element. */
 :root {
   --dur-press:       0ms;     /* button :active nudge */
   --dur-hover:       0ms;     /* color, background, border, shadow, small reveals */
-  --dur-popover-in:  80ms;     /* menu, select, combobox and toast open */
+  --dur-popover-in:  80ms;    /* menu, select, combobox and toast open */
   --dur-popover-out: 0ms;     /* popover close, toast exit */
-  --dur-modal:       150ms;     /* modal backdrop and popup fade */
+  --dur-modal:       150ms;   /* modal backdrop and popup fade */
   --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
   --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
-  --tooltip-delay:   500ms;   /* hover wait before a tooltip opens; neighbours then open instantly (ui/Tooltip) */
+  --tooltip-delay:   0ms;     /* hover wait before a tooltip opens (ui/Tooltip) */
   --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in:         cubic-bezier(0.4, 0, 1, 1);
   --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
@@ -275,8 +274,7 @@ body, body[data-theme="light"] {
 
 /* Reduced motion (WCAG 2.3.3): popover, modal and layout motion and
    staggers go instant too, so every token-driven transition and entrance
-   is instant. The tooltip delay stays: it is a wait, not motion. Ambient
-   loops are halted separately below. */
+   is instant. Ambient loops are halted separately below. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-popover-in: 0ms;

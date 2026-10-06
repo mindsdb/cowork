@@ -43,12 +43,6 @@ function tokenDelay(): number {
   return parsed;
 }
 
-// Mount once at the app root. Tooltips under it share a warm-up: after one
-// has opened on the token delay, the next opens instantly if the pointer
-// moves to it within Base UI's 400ms grace, so scanning a row of icons only
-// waits once. A tooltip outside the provider still works, without grouping.
-export const TooltipProvider = BaseTooltip.Provider;
-
 export interface TooltipProps {
   content: ReactNode;
   children: ReactElement;
