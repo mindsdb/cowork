@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import Spinner from '../components/ui/Spinner';
@@ -273,10 +274,10 @@ export function FilesPanel({
         <div className="code-files__body scroll-clean">
           {loading && !file && <div className="code-files__loading"><Spinner /> Loading…</div>}
           {!loading && resources.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.folder(18)}</span><strong>No task files available</strong><p>This task does not have a prepared working copy on this computer.</p></div>
+            <EmptyState size="sm" icon={Ico.folder(18)} title="No task files available" description="This task does not have a prepared working copy on this computer." />
           )}
           {!!query && !loading && results.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.search(18)}</span><strong>No matches</strong><p>Try a filename, symbol, or phrase from the code.</p></div>
+            <EmptyState size="sm" icon={Ico.search(18)} title="No matches" description="Try a filename, symbol, or phrase from the code." />
           )}
           {!!query && results.length > 0 && (
             <div className="code-files__results">
@@ -320,7 +321,7 @@ export function FilesPanel({
           {!query && file && (
             <div className="code-files__viewer">
               <div className="code-files__viewer-bar">
-                <button type="button" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} Files</button>
+                <Button size="xxs" variant="subtle" className="code-files__viewer-back" onClick={() => { setFile(null); setSelection(null); }}>{Ico.chevLeft(12)} Files</Button>
                 <strong title={file.path}>{file.name}</strong>
                 <span>Lines {file.line_start}–{file.line_end} of {file.line_count}</span>
               </div>

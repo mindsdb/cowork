@@ -43,6 +43,7 @@ function makeDeps(overrides: Partial<SignOutDeps> = {}): SignOutDeps {
     isServerStarting: () => false,
     getServerPort: () => 26866,
     httpRequest: vi.fn(async () => ({ status: 200, body: '{}' })),
+    getAuthHeader: vi.fn(() => ({})),
     scrubEnvCredentials: vi.fn(async () => {}),
     getAntonEnvPath: () => '/home/user/.cowork/.env',
     clearStoredProviderState: vi.fn(),
@@ -122,6 +123,28 @@ describe('performSignOutCleanup', () => {
       'http://127.0.0.1:26866/api/v1/settings/logout',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  /*
+   * httpRequest is raw Node http/https, not fetch — it never passes through
+   * the renderer's webRequest injection hook. With COWORK_REQUIRE_AUTH=true
+   * (the local-mode default), a bare POST here 401s and the sidecar's
+   * credential rows survive a "successful" sign-out.
+   */
+  it('sends the auth header on both the logout call and its DELETE fallback', async () => {
+    const httpRequest: SignOutDeps['httpRequest'] = vi.fn(async (url) => (
+      url.endsWith('/settings/logout') ? { status: 404, body: '' } : { status: 200, body: '' }
+    ));
+    const deps = makeDeps({
+      httpRequest,
+      getAuthHeader: vi.fn(() => ({ Authorization: 'Bearer test-token' })),
+    });
+
+    await performSignOutCleanup(deps);
+
+    for (const [, options] of vi.mocked(httpRequest).mock.calls) {
+      expect(options.headers.Authorization).toBe('Bearer test-token');
+    }
   });
 
   /*

@@ -65,3 +65,16 @@ describe('ToggleGroup — divider between options', () => {
     expect(otherClaudeCode).toHaveStyle({ opacity: '0' });
   });
 });
+
+describe('ToggleGroup — disabled', () => {
+  it('blocks selection changes while disabled', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(<ToggleGroup value="anton" onValueChange={onValueChange} options={OPTIONS} disabled aria-label="Choose harness" />);
+
+    await user.click(screen.getByRole('button', { name: 'Other' }));
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Other' })).toBeDisabled();
+  });
+});

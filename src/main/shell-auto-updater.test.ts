@@ -167,6 +167,8 @@ describe('createShellAutoUpdater', () => {
     });
     expect(updater.getSnapshot()).not.toHaveProperty('errorCode');
     expect(failures).toHaveLength(1);
+    expect(failures[0].trigger).toBe('periodic');
+    expect(updater.getSnapshot().trigger).toBe('boot');
     expect(updater.quitAndInstall()).toBe(true);
   });
 
@@ -194,6 +196,7 @@ describe('createShellAutoUpdater', () => {
 
     expect(updater.getSnapshot().phase).toBe('installing');
     expect(failures).toHaveLength(1);
+    expect(failures[0].trigger).toBe('periodic');
   });
 
   it('publishes progress and only installs from ready-to-install', async () => {

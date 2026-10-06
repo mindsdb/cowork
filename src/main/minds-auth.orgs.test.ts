@@ -23,6 +23,10 @@ vi.mock('./server-process', () => ({
   isServerRunning: vi.fn(() => true),
   isServerStarting: vi.fn(() => false),
   getServerPort: vi.fn(() => 8765),
+  sidecarIsOnCurrentStores: vi.fn(() => true),
+  // A switch moves the sidecar onto the target organization's stores; these
+  // tests drive the outcome rather than a real restart.
+  ensureSidecarOnCurrentAccountRoot: vi.fn(async () => true),
 }));
 vi.mock('./installer', () => ({
   checkInstallStatus: vi.fn(async () => ({ antonInstalled: false })),
@@ -44,6 +48,9 @@ vi.mock('./cowork-home', async (importOriginal) => ({
   coworkHome: () => TEST_HOME,
   coworkEnvPath: () => `${TEST_HOME}/.env`,
   coworkStatePath: () => `${TEST_HOME}/state.json`,
+  // Deterministic: the real resolver would depend on claim files this suite
+  // does not write. The account owns the root here.
+  accountDataRoot: () => TEST_HOME,
 }));
 vi.mock('./server-auth', () => ({
   authHeader: () => ({ Authorization: 'Bearer owner-token' }),
@@ -55,6 +62,9 @@ import { ensureActiveOrg, listMindsOrgs, selectEntitledOrg, switchMindsOrg } fro
 
 
 const b64url = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+import { ensureSidecarOnCurrentAccountRoot, sidecarIsOnCurrentStores } from './server-process';
+import { readActiveOrg } from './account-data';
+
 const makeJwt = (payload: Record<string, unknown>) =>
   `${b64url({ alg: 'none' })}.${b64url(payload)}.sig`;
 
@@ -295,6 +305,12 @@ describe('switchMindsOrg', () => {
     (saveTokens as Mock).mockImplementation((token: string) => {
       (getAccessToken as Mock).mockReturnValue(token);
     });
+    // vi.fn() implementations survive restoreAllMocks, so a test that makes the
+    // move fail would otherwise leave every later switch failing too.
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockReset();
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockResolvedValue(true);
+    vi.mocked(sidecarIsOnCurrentStores).mockReset();
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(true);
   });
   afterEach(() => {
     fs.rmSync(TEST_HOME, { recursive: true, force: true });
@@ -364,6 +380,139 @@ describe('switchMindsOrg', () => {
     // The sidecar was never handed a token naming an organization the session
     // did not actually move to.
     expect(calls.filter((c) => c.url.includes('/runtime-credential/minds'))).toHaveLength(0);
+  });
+
+  it('records the organization before it moves the sidecar', async () => {
+    // The record is what decides which stores the sidecar is moved onto, so a
+    // restart that runs first would move it onto the organization being left.
+    const seen: Array<string | null> = [];
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockImplementation(async () => {
+      seen.push(readActiveOrg(TEST_HOME));
+      return true;
+    });
+    installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    await switchMindsOrg(ACME.id);
+
+    expect(seen).toEqual([ACME.id]);
+  });
+
+  it('moves the sidecar before handing the credential over', async () => {
+    // The other order leaves the sidecar on the previous organization's
+    // database holding a token naming this one, so a turn in that window bills
+    // this organization and writes into the previous one.
+    const calls = installRoutedFetch(routesFor({ current: PERSONAL }));
+    let callsWhenMoved = -1;
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockImplementation(async () => {
+      callsWhenMoved = calls.length;
+      return true;
+    });
+
+    await switchMindsOrg(ACME.id);
+
+    // The switch's OWN hand-over, the one whose failure rolls the switch back.
+    // An earlier push can come from the token refresh above, which predates
+    // this change and is not what the ordering here is about.
+    const handOver = calls.map((c) => c.url).lastIndexOf(
+      calls.map((c) => c.url).filter((u) => u.includes('/runtime-credential/minds')).at(-1)!,
+    );
+    expect(handOver).toBeGreaterThanOrEqual(callsWhenMoved);
+  });
+
+  it('hands no credential over at all before the stores move', async () => {
+    // Ordering the switch's OWN hand-over after the move is not enough on its
+    // own. The refresh that re-rolls the token runs before any of it, and its
+    // ordinary hand-over pushes the DESTINATION's credential to a sidecar still
+    // serving the SOURCE's database — the exact window the move is ordered to
+    // close. The exchange is fenced for that reason; only the switch hands over.
+    const credentialPushes = () =>
+      calls.filter((c) => c.url.includes('/runtime-credential/minds')).length;
+    const calls = installRoutedFetch(routesFor({ current: PERSONAL }));
+    let pushesBeforeMove = -1;
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockImplementation(async () => {
+      pushesBeforeMove = credentialPushes();
+      return true;
+    });
+
+    await switchMindsOrg(ACME.id);
+
+    expect(pushesBeforeMove).toBe(0);
+    // And the fence lifts: the switch still hands the re-rolled token over.
+    expect(credentialPushes()).toBeGreaterThan(0);
+  });
+
+  it('fails the switch closed when the record cannot be written', async () => {
+    // Swallowing this would leave the record naming the organization being
+    // left, the restart comparing two stale values and agreeing, and the switch
+    // reporting success having moved nothing.
+    fs.chmodSync(TEST_HOME, 0o500);
+    try {
+      installRoutedFetch(routesFor({ current: PERSONAL }));
+      const result = await switchMindsOrg(ACME.id);
+      expect(result.ok).toBe(false);
+      expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).not.toHaveBeenCalled();
+    } finally {
+      fs.chmodSync(TEST_HOME, 0o700);
+    }
+  });
+
+  it('puts the session back when the sidecar cannot be moved', async () => {
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockResolvedValue(false);
+    const calls = installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    const result = await switchMindsOrg(ACME.id);
+
+    expect(result.ok).toBe(false);
+    expect(result.activeOrgId).toBe(PERSONAL.id);
+    expect(readActiveOrg(TEST_HOME)).toBe(PERSONAL.id);
+    const switches = calls.filter((c) => c.url.includes('switch-organization')).map((c) => JSON.parse(c.body!).id);
+    expect(switches).toEqual([ACME.id, PERSONAL.id]);
+  });
+
+  it('writes the preference only after the sidecar has moved', async () => {
+    // The preference is what survives a relaunch: written earlier, a later
+    // failure would move the next launch to an organization this call reported
+    // as unchanged.
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockResolvedValue(false);
+    installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    await switchMindsOrg(ACME.id);
+
+    expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
+  });
+
+  it('moves the sidecar when re-picking the organization already active', async () => {
+    // The repair action a person takes when they notice the wrong data: the
+    // sidecar is on the wrong stores, so re-picking must move it AND reload,
+    // because the renderer's state came from the database being replaced.
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(false);
+    installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    const result = await switchMindsOrg(PERSONAL.id);
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).toHaveBeenCalled();
+    expect(result.reloadRequired).toBe(true);
+  });
+
+  it('still replaces the document when re-picking and the sidecar is right', async () => {
+    // The same repair action, in the case where the stores need nothing. The
+    // document is the one thing the record and the sidecar cannot speak for: a
+    // renderer that missed an earlier transition holds its state until it is
+    // replaced, so answering "nothing to do" left the screen showing the data
+    // the person re-picked the organization to get away from.
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(true);
+    installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    const result = await switchMindsOrg(PERSONAL.id);
+
+    expect(result.ok).toBe(true);
+    expect(result.reloadRequired).toBe(true);
+    // Nothing is thrown away with it. The organization did not change, so the
+    // organization-scoped caches are still this organization's and unsent text
+    // survives the reload — the distinction a real switch does not get.
+    expect(result.clearTenantState).toBe(false);
+    expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).not.toHaveBeenCalled();
   });
 
   it('puts the organization back when the sidecar will not take the credential', async () => {

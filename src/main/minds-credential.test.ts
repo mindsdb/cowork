@@ -30,10 +30,21 @@ vi.mock('./keychain-service', () => ({
   setMindsApiKey: vi.fn(async () => {}),
   deleteMindsApiKey: vi.fn(async () => {}),
 }));
+// Same value `resolveAccountRoot` returns for the account this session is
+// signed in as: null (the account owning the shared default root) unless a
+// test overrides it to exercise a different, partitioned account.
+vi.mock('./account-data', () => ({
+  readActiveAccount: vi.fn(() => ({ kind: 'unknown' })),
+  resolveAccountRoot: vi.fn(() => null),
+}));
+vi.mock('./cowork-home', () => ({
+  coworkHome: vi.fn(() => '/test-cowork-home'),
+}));
 
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
+import { resolveAccountRoot } from './account-data';
 import {
   beginMindsResumeCredentialGate,
   isMindsResumeCredentialGateActive,
@@ -76,6 +87,7 @@ beforeEach(async () => {
   getAllWindows.mockReturnValue([]);
   (getAccessToken as Mock).mockReturnValue('session-token');
   (getMindsApiKey as Mock).mockResolvedValue(null);
+  (resolveAccountRoot as Mock).mockReturnValue(null);
   (isServerRunning as Mock).mockReturnValue(true);
   (isServerStarting as Mock).mockReturnValue(false);
   (getServerPort as Mock).mockReturnValue(8765);
@@ -387,7 +399,7 @@ describe('a user-supplied key', () => {
     beginMindsResumeCredentialGate();
     const calls = installFetch();
     expect(await setUserSuppliedMindsKey('mdb_pasted')).toBe(true);
-    expect(setMindsApiKey).toHaveBeenCalledWith('mdb_pasted');
+    expect(setMindsApiKey).toHaveBeenCalledWith(null, 'mdb_pasted');
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'mdb_pasted' });
     expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
@@ -398,6 +410,27 @@ describe('a user-supplied key', () => {
 
     await expect(setUserSuppliedMindsKey('mdb_pasted')).resolves.toBe(false);
     expect(isMindsResumeCredentialGateActive()).toBe(true);
+  });
+
+  // The regression this scoping exists to stop: account A's key must not be
+  // readable by, or overwritable as, a different account B switched into on
+  // the same machine. `resolveAccountRoot` is null for the account that owns
+  // the shared default root and an accountId for anyone else, so a real
+  // account switch (not just the default-root owner refreshing their own key)
+  // must read and write a namespace scoped to that other account, not the
+  // shared one.
+  it('scopes the stored key to the account this session resolves to', async () => {
+    (resolveAccountRoot as Mock).mockReturnValue('account-b');
+    installFetch();
+
+    await setUserSuppliedMindsKey('mdb_b_own');
+    expect(setMindsApiKey).toHaveBeenCalledWith('account-b', 'mdb_b_own');
+
+    await clearUserSuppliedMindsKey();
+    expect(deleteMindsApiKey).toHaveBeenCalledWith('account-b');
+
+    await resolveMindsCredential();
+    expect(getMindsApiKey).toHaveBeenCalledWith('account-b');
   });
 
   it('falls back to the session credential when removed', async () => {

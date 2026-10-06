@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ArtifactStatus } from './ArtifactStatus.jsx';
+import userEvent from '@testing-library/user-event';
+import { ArtifactStatus, artifactStatusHint } from './ArtifactStatus.jsx';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 
 // The Badge success variant (green "available to all" look) is the one that
 // must NEVER appear on a protected artifact — badgeVariants tags it with
@@ -101,5 +103,137 @@ describe('ArtifactStatus access-label visibility (ENG-1475)', () => {
       'utf8',
     );
     expect(css).not.toMatch(/@container\s+(?:artcard|statuscell)\b/);
+  });
+});
+
+// ENG-2177: "Draft" and "Restricted" were shown with no explanation, and
+// nothing said which state can be shared. Each idle label now carries a
+// one-line hint saying what it means for who can open the artifact.
+describe('ArtifactStatus hints (ENG-2177)', () => {
+  const published = { publishedUrl: 'https://x.test/a' };
+
+  it('explains Draft as a file type that cannot become a web link', () => {
+    expect(artifactStatusHint({}, false))
+      .toBe('Not shared. Only web pages and Markdown documents can be shared as a link.');
+  });
+
+  it('tells the user how to share a Not shared artifact', () => {
+    expect(artifactStatusHint({}, true))
+      .toBe('Not shared yet. Open it and choose Share to get a web link.');
+  });
+
+  it('explains Restricted for specific people', () => {
+    expect(artifactStatusHint({ ...published, accessMode: 'restricted', accessEmails: ['a@b.com'] }, true))
+      .toBe('Shared. Only the people you chose can open the link.');
+  });
+
+  it('explains Restricted for an owner-only link', () => {
+    expect(artifactStatusHint({ ...published, accessMode: 'restricted', ownerOnly: true }, true))
+      .toBe('Shared, but only you can open the link.');
+  });
+
+  it('does not claim a known audience when the access mode is unknown', () => {
+    expect(artifactStatusHint({ ...published }, true))
+      .toBe('Shared. Who can open the link could not be confirmed, so it is treated as restricted.');
+    expect(artifactStatusHint({ ...published, accessMode: 'org' }, true))
+      .toBe('Shared. Who can open the link could not be confirmed, so it is treated as restricted.');
+  });
+
+  it('shows the Draft hint on hover', async () => {
+    render(<ArtifactStatus artifact={{}} publishable={false} />);
+    await userEvent.hover(screen.getByText('Draft'));
+    expect(await screen.findByText(/Only web pages and Markdown documents/)).toBeInTheDocument();
+  });
+
+  it('shows the Restricted hint on hover', async () => {
+    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', accessEmails: ['a@b.com'] }} />);
+    await userEvent.hover(screen.getByText('Restricted'));
+    expect(await screen.findByText('Shared. Only the people you chose can open the link.')).toBeInTheDocument();
+  });
+});
+
+// ENG-2979: the "Another member" tag rides in the status row. As a sibling of
+// ArtifactStatus it wrapped to a second line on every published card, because
+// the published row is `w-full`. `authorship` replaced the generic `extra`
+// prop (fix wave, code review) so the component owns rendering the tag
+// itself, rather than taking an arbitrary node with a null-means-nothing
+// contract the caller had to remember.
+describe('ArtifactStatus authorship tag (ENG-2979)', () => {
+  const published = { publishedUrl: 'https://x.test/a', accessMode: 'restricted', accessEmails: ['a@b.com'] };
+  const authorship = artifactAuthorship({ role: 'reviewer' });
+  const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('puts the tag in the published row, after the access badge and before Unshared changes', () => {
+    render(<ArtifactStatus artifact={{ ...published, modified: true }} authorship={authorship} />);
+    const tag = screen.getByText('Another member');
+    const row = screen.getByText('Unshared changes').closest('.flex-wrap');
+    expect(row).toContainElement(tag);
+    expect(row).toContainElement(screen.getByText('Restricted'));
+    expect(follows(screen.getByText('Restricted'), tag)).toBe(true);
+    expect(follows(tag, screen.getByText('Unshared changes'))).toBe(true);
+  });
+
+  it('keeps the inline list layout the same way', () => {
+    render(<ArtifactStatus artifact={{ ...published, modified: true }} authorship={authorship} inlineChanges />);
+    const tag = screen.getByText('Another member');
+    expect(follows(screen.getByText('Restricted'), tag)).toBe(true);
+    expect(follows(tag, screen.getByText('Unshared changes'))).toBe(true);
+  });
+
+  it('puts the tag right after the Not shared badge', () => {
+    render(<ArtifactStatus artifact={{}} publishable authorship={authorship} />);
+    const tag = screen.getByText('Another member');
+    expect(tag.parentElement).toContainElement(screen.getByText('Not shared'));
+    expect(follows(screen.getByText('Not shared'), tag)).toBe(true);
+  });
+
+  it('puts the tag right after a transient phase badge', () => {
+    render(<ArtifactStatus artifact={{}} phase="publishing" authorship={authorship} />);
+    const tag = screen.getByText('Another member');
+    expect(tag.parentElement).toContainElement(screen.getByText('Sharing…'));
+  });
+
+  it('puts the tag after the failure message', () => {
+    render(<ArtifactStatus artifact={{}} phase="failed" authorship={authorship} />);
+    const tag = screen.getByText('Another member');
+    expect(follows(screen.getByText('Sharing failed'), tag)).toBe(true);
+  });
+
+  // Base UI Tooltip ids come from React useId, a global counter, so two
+  // renders can differ in id/aria-* even with identical structure. Strip them.
+  const structure = (html) => html.replace(/\s(?:id|aria-describedby|aria-controls|aria-labelledby)="[^"]*"/g, '');
+
+  it('renders exactly today\'s DOM for the owner\'s own artifact (authorship omitted vs null)', () => {
+    const cases = [
+      { artifact: {}, publishable: true },
+      { artifact: {}, phase: 'deleting' },
+      { artifact: { ...published, modified: true } },
+    ];
+    for (const props of cases) {
+      const omitted = render(<ArtifactStatus {...props} />);
+      const html = structure(omitted.container.innerHTML);
+      omitted.unmount();
+      const withNull = render(<ArtifactStatus {...props} authorship={null} />);
+      expect(structure(withNull.container.innerHTML)).toBe(html);
+      withNull.unmount();
+    }
+  });
+
+  // Without a tag, `withExtra` must hand back the primary badge untouched —
+  // never the wrapper span this fix introduced for the case where a tag rides
+  // alongside it. A prior version of this test only compared two renders that
+  // both lacked a tag against each other, which stayed green even if both had
+  // silently grown the wrapper; asserting the actual root element pins the
+  // "no DOM change without a tag" guarantee for real.
+  it('does not wrap the non-published cases in the tag span when there is no tag', () => {
+    const cases = [
+      { artifact: {}, publishable: true },
+      { artifact: {}, phase: 'deleting' },
+    ];
+    for (const props of cases) {
+      const { container, unmount } = render(<ArtifactStatus {...props} authorship={null} />);
+      expect(container.firstElementChild.className).not.toContain('flex-wrap');
+      unmount();
+    }
   });
 });

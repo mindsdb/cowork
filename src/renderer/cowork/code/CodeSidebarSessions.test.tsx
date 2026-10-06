@@ -65,11 +65,30 @@ describe('CodeSidebarSessions', () => {
       />,
     );
 
-    expect(screen.getByText('Archived')).toBeInTheDocument();
+    const archivedToggle = screen.getByRole('button', { name: /Archived/ });
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /Task old, Completed/ })).toBeNull();
+
+    fireEvent.click(archivedToggle);
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
   });
 
-  it('groups actionable and running work and spells out remote status', () => {
+  it('opens the archived group when the selected task is archived', () => {
+    const sessions = [
+      session('active', 'completed', '2026-08-21T09:00:00Z'),
+      { ...session('old', 'completed', '2026-08-20T09:00:00Z'), archived: true },
+    ];
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined) };
+    const view = render(<CodeSidebarSessions {...props} selectedId={null} />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'false');
+
+    view.rerender(<CodeSidebarSessions {...props} selectedId="old" />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
+  });
+
+  it('orders actionable work first in one list and spells out remote status', () => {
     render(
       <CodeSidebarSessions
         sessions={[
@@ -83,9 +102,12 @@ describe('CodeSidebarSessions', () => {
       />,
     );
 
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Running' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Task offline, Computer offline/ })).toBeInTheDocument();
+    const offline = screen.getByRole('button', { name: /Task offline, Computer offline/ });
+    const running = screen.getByRole('button', { name: /Task running, Working/ });
+    const done = screen.getByRole('button', { name: /Task done, Completed/ });
+    expect(offline.compareDocumentPosition(running) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(running.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
   });
 
@@ -105,7 +127,7 @@ describe('CodeSidebarSessions', () => {
     expect(screen.queryByRole('button', { name: /Task task-2, Completed/ })).not.toBeInTheDocument();
   });
 
-  it('pins a task immediately and keeps it out of the lower navigation groups', async () => {
+  it('pins a task immediately and moves it out of the main list', async () => {
     const onSetPinned = vi.fn().mockResolvedValue(undefined);
     render(
       <CodeSidebarSessions
@@ -122,8 +144,9 @@ describe('CodeSidebarSessions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pin Task done' }));
 
     await waitFor(() => expect(onSetPinned).toHaveBeenCalledWith('done', true));
-    expect(screen.getByRole('region', { name: 'Pinned' })).toHaveTextContent('Task done');
-    expect(screen.queryByRole('region', { name: 'Recent' })).not.toBeInTheDocument();
+    const pinnedGroup = screen.getByRole('region', { name: 'Pinned' });
+    expect(pinnedGroup).toHaveTextContent('Task done');
+    expect(pinnedGroup).not.toHaveTextContent('Task running');
     expect(screen.getByRole('button', { name: 'Unpin Task done' })).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -142,7 +165,7 @@ describe('CodeSidebarSessions', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent("Couldn't pin this task.");
     expect(screen.queryByRole('region', { name: 'Pinned' })).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Recent' })).toHaveTextContent('Task done');
+    expect(screen.getByRole('button', { name: 'Pin Task done' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('can organize tasks by project and remembers that display choice', () => {
@@ -166,7 +189,91 @@ describe('CodeSidebarSessions', () => {
     expect(JSON.parse(window.localStorage.getItem('cowork:code-task-navigation:v1') || '{}')).toMatchObject({ organization: 'project' });
   });
 
-  it('offers a flat last-updated view without status sections', () => {
+  it('marks work in motion, what needs the user and unread results, and leaves seen tasks quiet', () => {
+    window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({
+      baseline: '2026-08-21T10:00:00Z',
+      seen: { seen: '2026-08-21T12:00:00Z' },
+    }));
+    const { container } = render(
+      <CodeSidebarSessions
+        sessions={[
+          session('running', 'running', '2026-08-21T12:00:00Z'),
+          session('approval', 'awaiting_approval', '2026-08-21T12:00:00Z'),
+          session('unread', 'completed', '2026-08-21T11:00:00Z'),
+          session('seen', 'completed', '2026-08-21T12:00:00Z'),
+          session('old', 'completed', '2026-08-21T09:00:00Z'),
+        ]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
+    expect(row('running').querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Task running, Working/ })).toBeInTheDocument();
+    expect(row('running')).not.toHaveTextContent('Working');
+    expect(row('approval')).toHaveTextContent('Needs approval');
+    expect(row('unread').querySelector('.code-status-dot.is-unread')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Task unread, Completed, unread/ })).toBeInTheDocument();
+    for (const id of ['seen', 'old']) {
+      expect(row(id)).toHaveClass('is-resting');
+      expect(row(id)).not.toHaveTextContent('Completed');
+      expect(row(id).querySelector('.code-status-dot')).toBeNull();
+    }
+    expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
+  });
+
+  it('keeps each row to one line without repeating the shared project name', () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[
+          { ...session('a', 'completed', '2026-08-21T12:00:00Z'), project_name: 'atlas-web' },
+          { ...session('b', 'completed', '2026-08-21T11:00:00Z'), project_name: 'atlas-web' },
+        ]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /^Task a,/ });
+    // The project stays reachable (accessible name, hover title) but is not printed on the row.
+    expect(button).toHaveAccessibleName(/atlas-web/);
+    expect(button).toHaveAttribute('title', 'Task a · atlas-web');
+    expect(button).not.toHaveTextContent('atlas-web');
+  });
+
+  it('keeps a queued remote run visibly in motion', () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[{ ...session('queued', 'ready', '2026-08-21T12:00:00Z'), run_status: 'queued' }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /^Task queued,/ }).closest('.code-sidebar-session-row')!;
+    expect(row).not.toHaveClass('is-resting');
+    // The spinner carries the motion; the status word stays in the accessible name only.
+    expect(screen.getByRole('button', { name: /^Task queued, Preparing/ })).toBeInTheDocument();
+    expect(row).not.toHaveTextContent('Preparing');
+    expect(row.querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+  });
+
+  it('clears the unread mark once the task has been opened', () => {
+    window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({ baseline: '2026-08-21T10:00:00Z', seen: {} }));
+    const sessions = [session('done', 'completed', '2026-08-21T11:00:00Z'), session('other', 'completed', '2026-08-21T09:00:00Z')];
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined) };
+    const { rerender } = render(<CodeSidebarSessions {...props} selectedId={null} />);
+    expect(screen.getByRole('button', { name: /^Task done, Completed, unread/ })).toBeInTheDocument();
+
+    rerender(<CodeSidebarSessions {...props} selectedId="done" />);
+    rerender(<CodeSidebarSessions {...props} selectedId="other" />);
+    expect(screen.queryByRole('button', { name: /unread/ })).toBeNull();
+  });
+
+  it('offers a last-updated order that ignores status', () => {
     render(
       <CodeSidebarSessions
         sessions={[
@@ -185,7 +292,6 @@ describe('CodeSidebarSessions', () => {
     const newer = screen.getByRole('button', { name: /Task newer-complete, Completed/ });
     const older = screen.getByRole('button', { name: /Task older-running, Working/ });
     expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Running' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Recent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
 });

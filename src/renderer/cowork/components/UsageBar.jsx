@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
-import { useUsageBarDismiss } from '../lib/usageBarDismiss';
+import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -16,40 +16,46 @@ import { useUsageBarDismiss } from '../lib/usageBarDismiss';
 // `bg-warning/10` cannot work against a var() color).
 const TONE = {
   // `resting` is the standing allowance figure rather than a warning, so it
-  // borrows the app's own surface instead of a status colour: it is in view for
-  // as long as the tokens last and must not read as something being wrong.
+  // borrows the app's own surface instead of a status colour: it stays in view
+  // until closed and must not read as something being wrong.
   resting: 'bg-surface-2 border-line text-ink-3',
   info: 'bg-info-bg border-info-border text-info-text',
   warning: 'bg-warning-bg border-warning-border text-warning-text',
   danger: 'bg-danger-bg border-danger-border text-danger-text',
 };
 
-// `usageKnown`: the poll has answered and usage is reachable. Only then does a
-// null warning mean "healthy", which is when closed bars are forgotten.
+// `dismissKey` narrows a dismissal to one step of a band the resource sits in
+// as it drains; everything else is dismissed by kind.
+const keyOf = (d) => d.dismissKey ?? d.kind;
+
+// `usageKnown`: the poll has answered and nothing, for any pick, is worth
+// warning about. Only then does an at-rest bar mean "healthy", which is when
+// closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
-  // `dismissKey` narrows a dismissal to one step of a band the resource sits in
-  // as it drains; warnings without one are dismissed by kind, as before. A
-  // resting figure passes no key at all, and passing null does a second job:
-  // it arms the hook's "healthy again" reset (see useUsageBarDismiss). That is
-  // deliberate — a standing figure IS the healthy state, so an earlier
-  // dismissal is forgotten here exactly as it would be with nothing to show.
-  const dismissable = !!warning && !warning.resting;
-  const [dismissed, dismiss] = useUsageBarDismiss(
-    dismissable ? warning.dismissKey ?? warning.kind : null,
-    { resetWhenClear: usageKnown },
-  );
-  // Closing a warning steps down to the standing figure rather than to
-  // nothing: hiding the only place the allowance is visible is what this bar
-  // exists to stop, and 20% left is where the number matters most.
-  const shown = (dismissed ? warning?.whenDismissed : warning) || null;
+  const [dismissed, dismiss] = useUsageBarDismiss({
+    // Closed warnings are forgotten once the bar is back at rest: the standing
+    // figure or nothing at all. Not while a warning is up, even one the person
+    // has closed, or "healthy" would just mean "closed".
+    resetWhenClear: usageKnown && (!warning || !!warning.resting),
+  });
+  // The standing figure closes too (ENG-2749), on its own flag: the reset
+  // above must never bring it back, and neither may the bar emptying for some
+  // other reason (a BYOK provider, an uncapped grant, a top-up).
+  const [figureHidden, hideFigure] = useStandingFigureHidden();
+  // What the bar can show, outermost first: the warning, then what it steps
+  // down to when closed (a free warning steps down to the standing figure for
+  // someone with no balance to fall through to; see usageWarnings.js). The
+  // first one still open is what shows.
+  const closed = (d) => (d.resting ? figureHidden : dismissed.includes(keyOf(d)));
+  const shown = [warning, warning?.whenDismissed].filter(Boolean).find((d) => !closed(d)) || null;
 
   // Announcing happens in a permanently mounted region, not through a role on
-  // the bar. The bar is now on screen all month for a free user, so a warning
-  // replacing the standing figure would only be promoting an existing node
-  // into a live region, and aria-live announces content CHANGES — the region
-  // has to be in the DOM and empty first (same rule as AskUserCard). Polite,
-  // not assertive: the allowance is worth saying at the next pause, never
-  // worth cutting into a sentence. A resting figure announces nothing at all.
+  // the bar. The standing figure can sit on screen for a whole window, so a
+  // warning replacing it would only be promoting an existing node into a live
+  // region, and aria-live announces content CHANGES — the region has to be in
+  // the DOM and empty first (same rule as AskUserCard). Polite, not assertive:
+  // the allowance is worth saying at the next pause, never worth cutting into
+  // a sentence. A resting figure announces nothing at all.
   const announce = shown && !shown.resting ? `${shown.title}. ${shown.body}` : '';
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => { setAnnouncement(announce); }, [announce]);
@@ -57,7 +63,6 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
 
   if (!shown) return live;
   const tone = TONE[shown.tone] || TONE.warning;
-  const closable = !shown.resting;
   // Separated from `usage_notice` so the standing figure can be graded as a
   // conversion surface on its own rather than inside the warning's number.
   const clickTrigger = shown.resting ? 'usage_at_rest' : trigger;
@@ -68,7 +73,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
         data-usage-notice={shown.kind}
         // Tall enough to show the copy, then tucked under the composer: the
         // bottom padding is what the composer's rounded top covers.
-        className={`usage-bar relative w-full rounded-t-[var(--r-xl)] border border-b-0 border-solid pl-4 ${closable ? 'pr-9' : 'pr-4'} pt-2 pb-[22px] -mb-[14px] font-body text-[13px] leading-[1.45] ${tone}`}
+        className={`usage-bar relative w-full rounded-t-[var(--r-xl)] border border-b-0 border-solid pl-4 pr-9 pt-2 pb-[22px] -mb-[14px] font-body text-[13px] leading-[1.45] ${tone}`}
       >
         <span className="font-semibold">{shown.title}.</span>{' '}
         <span>{shown.body}</span>
@@ -87,17 +92,17 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
             ))}
           </span>
         )}
-        {closable && (
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Dismiss"
-            title="Dismiss"
-            className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
-          >
-            <X size={14} strokeWidth={1.5} aria-hidden="true" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => (shown.resting ? hideFigure() : dismiss(keyOf(shown)))}
+          // The label names what goes, since for a free user the figure's
+          // button is a permanent fixture rather than a passing warning's.
+          aria-label={shown.resting ? 'Hide allowance' : 'Dismiss'}
+          title={shown.resting ? 'Hide' : 'Dismiss'}
+          className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
+        >
+          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+        </button>
       </div>
     </>
   );

@@ -62,40 +62,68 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-async function req(path, options = {}) {
-  const res = await authFetch(BASE + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const data = await res.json();
-      const raw = data?.detail;
-      detail = Array.isArray(raw)
-        ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-        : (raw || data?.message || '');
-    } catch {
-      detail = await res.text().catch(() => '');
-    }
-    const err = new Error(detail || `API ${path} returned ${res.status}`);
-    err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
-    throw err;
-  }
-  if (res.status === 204) return { ok: true };
-  return res.json();
+// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+// the socket open with nothing behind it) can't hang a caller forever. Only
+// callers on the "server may be dead" path opt in (Stop's cancelResponse,
+// the history reload after Stop/error) — everything else stays unbounded,
+// since some endpoints have their own longer server-side budget (e.g.
+// connector validation allows 15s). Streaming calls use authFetch directly
+// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
+
+function _timeoutSignal(existingSignal, timeoutMs) {
+  if (existingSignal || !timeoutMs) return { signal: existingSignal, cancel: () => {} };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return { signal: ctrl.signal, cancel: () => clearTimeout(timer) };
 }
 
-async function rootReq(path, options = {}) {
-  const res = await authFetch(ROOT_BASE + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (!res.ok) {
-    throw new Error(`API ${path} returned ${res.status}`);
+async function req(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const data = await res.json();
+        const raw = data?.detail;
+        detail = Array.isArray(raw)
+          ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
+          : (raw || data?.message || '');
+      } catch {
+        detail = await res.text().catch(() => '');
+      }
+      const err = new Error(detail || `API ${path} returned ${res.status}`);
+      err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
+      throw err;
+    }
+    if (res.status === 204) return { ok: true };
+    return await res.json();
+  } finally {
+    cancel();
   }
-  if (res.status === 204) return { ok: true };
-  return res.json();
+}
+
+async function rootReq(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(ROOT_BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    if (!res.ok) {
+      throw new Error(`API ${path} returned ${res.status}`);
+    }
+    if (res.status === 204) return { ok: true };
+    return await res.json();
+  } finally {
+    cancel();
+  }
 }
 
 // In-flight single-flight cache. When several call sites ask for
@@ -190,20 +218,23 @@ function _failedEventMeta(events) {
   return {
     code: ev.code || null,
     message: ev.error || ev.message || '',
-    // Carry the card context so a RELOADED failure renders the same affordance
-    // as the live one. Without these, reconnectable is undefined on reload and
-    // the provider_overloaded / provider_auth cards mis-nudge a managed user
-    // toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
-    // App.jsx's failedEventMeta (the two hydrate paths must agree on this).
+    /* Carry the card context so a RELOADED failure renders the same affordance
+       as the live one. Without these, reconnectable is undefined on reload and
+       the provider_overloaded / provider_auth cards mis-nudge a managed user
+       toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
+       failedEventMeta in lib/conversationHistory.js (the two hydrate paths
+       must agree on this). */
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
-    // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
+    // ENG-1537 — see lib/conversationHistory.js's failedEventMeta; the two paths must agree.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
+    /* included_allowance_exhausted and free_serving_paused: when the free
+       allowance refills or the fuse lifts, as the gate's opaque ISO string,
+       on a desktop or a hosted turn. A cowork-server that predates it on
+       hosted failures sends none, and the card falls back. Formatted at
+       render time: the server deliberately doesn't parse it, since only the
+       client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
@@ -461,13 +492,15 @@ export async function fetchSessions({ onItems } = {}) {
     .filter(Boolean);
 }
 
-export async function fetchSession(id) {
+export async function fetchSession(id, { timeoutMs } = {}) {
   try {
     const [meta, raw] = await Promise.all([
-      req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
+      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }).catch(() => null),
     ]);
-    if (!meta) return null;
+    // A failed transcript read is unavailable, not an empty conversation.
+    // Recovery must keep the visible transcript and its interruption notice.
+    if (!meta || !(Array.isArray(raw) || Array.isArray(raw?.items))) return null;
     const page = _pageFromItemsResponse(raw);
     return {
       ..._conversationToTask(meta, page.items),
@@ -560,14 +593,34 @@ export function allocateConversationId() {
   return `${Date.now().toString(36)}-${(typeof performance !== 'undefined' ? Math.floor(performance.now() * 1e6) : 0).toString(36)}`;
 }
 
+// No real producer frame for this long (a wedged sidecar, or a proxy holding
+// a dead connection open) aborts rather than hangs forever. Shared with
+// tailInFlight; timed against producer frames, not raw keepalive bytes.
+const STREAM_IDLE_TIMEOUT_MS = 300_000;
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
+  let userMessageId = null;
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
+  let cid = conversationId || null;
+  // Same idle timer as tailInFlight — a fresh turn stuck behind a dead
+  // proxy connection had none before this.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const res = await authFetch(`${BASE}/responses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -611,7 +664,6 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buffer = '';
-      let cid = conversationId || null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -628,6 +680,10 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
 
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
+          bumpIdle();
+
           // Raw passthrough — used by the streamAdapter to build a
           // structured ThinkingStep[] for the UI. Fires before the
           // type-specific routing so existing callbacks still work.
@@ -635,6 +691,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           switch (msg.type) {
             case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
               cid = msg.conversation_id || msg.response?.id || cid;
               break;
             case 'response.output_text.delta':
@@ -664,18 +721,36 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
               return;
             default:
               break;
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed — onDone here used to render
+      // partial text as a finished answer. Distinct from stream_error below:
+      // that's a drop mid-read, this is a clean close with no terminal.
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
-      // Distinct code from tailInFlight's reconnect_error: this is a dropped
-      // connection on the initial send, not a reconnect attempt.
-      if (err.name !== 'AbortError') onError?.(err.message, { code: 'stream_error' });
+      // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
+      // as an AbortError too, so check idledOut first to tell it apart from
+      // a caller-initiated cancel (Stop button, new send, navigation).
+      if (idledOut) {
+        cancelResponse(cid);
+        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+      } else if (err.name !== 'AbortError') {
+        // Distinct code from tailInFlight's reconnect_error: this is a dropped
+        // connection on the initial send, not a reconnect attempt.
+        reportError(err.message, { code: 'stream_error' });
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;
@@ -720,24 +795,18 @@ export async function fetchInFlightList() {
   }
 }
 
-// A live tail whose producer emits no real frame for this long is treated as
-// dead — the producer is wedged or the sidecar stopped answering, no terminal is
-// coming — so we abort and release the shared stream slot rather than hold it
-// forever. Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s).
-//
-// Timed against producer frames, NOT raw bytes: the server emits a `: keepalive`
-// comment every 20s while a producer is silent, so a byte-level timer would
-// never fire for the hung-producer case this exists to catch. Keepalive blocks
-// carry no `data:` line, so they never parse to an event and never bump the timer.
-const TAIL_IDLE_TIMEOUT_MS = 300_000;
-
 export function tailInFlight(conversationId, {
   fromSeq = 0,
   model = 'anton',
-  idleTimeoutMs = TAIL_IDLE_TIMEOUT_MS,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  let userMessageId = null;
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
   // Bumped per real producer frame; cleared in the finally so a cleanly
   // finished tail leaves no dangling timer.
   let idleTimer = null;
@@ -787,6 +856,7 @@ export function tailInFlight(conversationId, {
           onEvent?.(msg);
           switch (msg.type) {
             case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
               cid = msg.conversation_id || cid;
               break;
             case 'response.output_text.delta':
@@ -816,14 +886,21 @@ export function tailInFlight(conversationId, {
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
               return;
             default:
               break;
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed — same as _streamResponse's
+      // main stream: the tail must not report a partial answer as finished.
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
       // An idle-timeout abort surfaces as an AbortError too, but unlike a
       // caller-initiated abort (a new send or navigation) it must release the
@@ -835,9 +912,9 @@ export function tailInFlight(conversationId, {
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
         cancelResponse(conversationId);
-        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        onError?.(err.message, { code: 'reconnect_error' });
+        reportError(err.message, { code: 'reconnect_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -955,6 +1032,7 @@ export async function cancelResponse(conversationId) {
     const res = await req('/responses/cancel', {
       method: 'POST',
       body: JSON.stringify({ conversation_id: conversationId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };
   } catch (err) {
@@ -1477,10 +1555,10 @@ export async function setActiveHubWorkspace(workspaceId) {
 }
 
 /**
- * The signed-in account's free monthly tokens, paid balance, and auto top up
- * state (ENG-1782). Never throws: signed out, an unreachable sidecar, and an
- * old sidecar with no such route all answer the same dark shape, and the
- * composer notice and Settings tab render nothing for it.
+ * The signed-in account's free MindsHub Air allowance, paid balance, and auto
+ * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * and an old sidecar with no such route all answer the same dark shape, and
+ * the composer notice and Settings tab render nothing for it.
  */
 export async function fetchHubUsage() {
   try {
@@ -1503,9 +1581,10 @@ export async function fetchSettings() {
       } catch { /* leave defaults */ }
       /* Overlay the live model list + effort capability. modelEfforts is the
          single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. modelEnabled marks the models MindsHub's
-         wallet can't currently pay for so the picker greys them with an "add
-         credits" prompt (absent id ⇒ available), and modelLabels carries the
+         iff it has an entry here. modelEnabled marks the models MindsHub says
+         can't run right now so the picker greys them (absent id ⇒ available),
+         modelDisabledReasons says why (an admin's model rule reads
+         "Restricted", anything else an "add credits" prompt), and modelLabels carries the
          policy's display name per id (absent ⇒ id-derived at the render site).
          mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
          we-have rule; SettingsView's on-open refresh goes through the same
@@ -1638,12 +1717,27 @@ export async function validateSettings() {
   return req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
 }
 
+/**
+ * @typedef {{
+ *   providerStatus: Record<string, string>,
+ *   providerStatusDetails: Record<string, string>,
+ *   providerStatusReasons?: Record<string, import('./lib/providerStatus.js').ProbeDenialReason>,
+ *   error?: string,
+ * }} ProviderTestResult
+ *   `providerStatusReasons` is absent from a sidecar too old to classify the
+ *   probe, which keeps the Settings notice on its legacy detail check. A
+ *   sidecar that sends it classified every type in `providerStatus`, so a
+ *   reported type with no entry was not refused by MindsHub, and the Settings
+ *   notice shows no billing copy for it.
+ */
+
+/** @returns {Promise<ProviderTestResult>} */
 export async function testProviders(providers) {
   const body = Array.isArray(providers) ? { providers } : {};
   try {
     return await req('/settings/test-providers', { method: 'POST', body: JSON.stringify(body) });
   } catch (err) {
-    return { providerStatus: {}, providerStatusDetails: {}, error: err?.message || 'Test failed' };
+    return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
 }
 
@@ -1770,6 +1864,18 @@ export async function deletePickedFile(engine, name, fileId, project) {
 // `resolve_modify_merge`). Empty string means "explicitly clear".
 export async function fetchSavedConnection(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
+}
+
+// Changes an MCP-based connection's read/write/none tool-access mode after
+// it's already connected (ENG-487 — HubSpot's connector is the first with
+// an editable-after-connect setting). No PKCE, no reconnect — a purely
+// local write on cowork-server's side (or a proxy to auth in org mode),
+// works identically from Electron and the web SPA.
+export async function patchConnectionAccessMode(engine, name, accessMode) {
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
+    method: 'PATCH',
+    body: JSON.stringify({ access_mode: accessMode }),
+  });
 }
 
 // Sentinel string used in the modify-flow round-trip. Mirrors the

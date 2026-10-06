@@ -77,3 +77,52 @@ describe('DataVaultFormPanel — PostHog browser_oauth_builtin', () => {
     expect(discoverPostHogProjects).not.toHaveBeenCalled();
   });
 });
+
+// Regression coverage for a browser_oauth_builtin method that ALSO declares
+// its own non-OAuth required field (Google Ads' developer_token) — the
+// filled field value must reach host.oauthConnect as extraFields so the
+// main process can persist it, not get dropped on the floor.
+const ADS_CID = 'conv-datavault-ads-oauth';
+
+const GOOGLE_ADS_OAUTH_SPEC = {
+  form_id: 'google-ads-oauth-f1',
+  _connector_id: 'google_ads',
+  engine: 'google_ads',
+  title: 'Connect Google Ads',
+  methods: [
+    {
+      id: 'browser_oauth_builtin',
+      label: 'In-Browser Connect',
+      oauth: { service_id: 'google-ads' },
+      fields: [
+        { name: 'developer_token', label: 'Developer Token', type: 'password', required: true, secret: true },
+        { name: 'login_customer_id', label: 'Login Customer ID (MCC)', type: 'text', required: false },
+      ],
+    },
+  ],
+};
+
+describe('DataVaultFormPanel — Google Ads browser_oauth_builtin (extra fields)', () => {
+  beforeEach(() => {
+    clearForm(ADS_CID);
+    oauthConnectMock.mockReset();
+    oauthConnectMock.mockResolvedValue({ ok: true, name: 'ads-conn' });
+  });
+
+  it('forwards the filled developer_token field to host.oauthConnect as extraFields', async () => {
+    setForm(ADS_CID, GOOGLE_ADS_OAUTH_SPEC);
+    render(<DataVaultFormPanel conversationId={ADS_CID} />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Developer Token'), 'ABCDE-FGHIJ-KLMNO');
+    await user.click(screen.getByRole('button', { name: /submit|connect/i }));
+
+    expect(oauthConnectMock).toHaveBeenCalledTimes(1);
+    expect(oauthConnectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engine: 'google_ads',
+        extraFields: expect.objectContaining({ developer_token: 'ABCDE-FGHIJ-KLMNO' }),
+      }),
+    );
+  });
+});

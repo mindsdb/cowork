@@ -122,7 +122,7 @@ export function TaskCard({
             shifts when the kebab fades in over the timestamp/turns. */}
         <div className="relative min-w-[80px] h-8 flex items-start justify-end shrink-0">
           <div
-            className="flex flex-col items-end gap-1 [transition:opacity_120ms_ease]"
+            className="flex flex-col items-end gap-1 [transition:opacity_var(--dur-hover)_ease]"
             style={{
               opacity: showKebab ? 0 : 1,
               pointerEvents: showKebab ? 'none' : 'auto',
@@ -143,7 +143,7 @@ export function TaskCard({
               role="button"
               aria-label="Task menu"
               onClick={openMenu}
-              className="absolute top-0 right-0 w-[26px] h-[26px] rounded-[6px] inline-flex items-center justify-center text-ink-3 hover:text-ink bg-transparent hover:bg-surface-2 cursor-pointer [transition:opacity_120ms_ease,background_120ms_ease,color_120ms_ease]"
+              className="absolute top-0 right-0 w-[26px] h-[26px] rounded-[6px] inline-flex items-center justify-center text-ink-3 hover:text-ink bg-transparent hover:bg-surface-2 cursor-pointer [transition:opacity_var(--dur-hover)_ease,background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
               style={{
                 opacity: showKebab ? 1 : 0,
                 pointerEvents: showKebab ? 'auto' : 'none',

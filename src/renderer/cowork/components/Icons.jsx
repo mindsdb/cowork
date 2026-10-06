@@ -84,7 +84,9 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  TriangleAlert,
   Upload,
+  UserRound,
   Users,
   Wifi,
   X,
@@ -167,6 +169,9 @@ const Ico = {
   key:      ico(KeyRound),
   lock:     ico(Lock),
   people:   ico(Users),
+  // A single person — "created by another member" marker (ENG-2979).
+  // Not `people`: that one already means "Restricted" access.
+  user:     ico(UserRound),
   robot:    ico(Bot),
   link:     ico(Link),
   // Isometric cube — a discrete composable unit; Skills library nav.
@@ -183,6 +188,8 @@ const Ico = {
   openFolder:   ico(FolderOpen),
   // Manual reload of the preview.
   reload:       ico(RefreshCw),
+  // Errors the previewed page reported about itself (ENG-3002).
+  warning:      ico(TriangleAlert),
   // "Open in the default browser".
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).

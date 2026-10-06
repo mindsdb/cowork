@@ -6,7 +6,7 @@ function Checkbox({ done }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 mt-[1px] w-4 h-4 rounded-[5px] grid place-items-center text-white border border-solid [transition:background_140ms_ease,border-color_140ms_ease]"
+      className="shrink-0 mt-[1px] w-4 h-4 rounded-[5px] grid place-items-center text-white border border-solid [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]"
       style={{
         borderColor: done ? 'var(--accent)' : 'var(--border-02, var(--line-2))',
         background: done ? 'var(--accent)' : 'transparent',

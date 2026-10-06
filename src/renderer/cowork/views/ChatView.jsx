@@ -8,15 +8,16 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
+import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -28,10 +29,11 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -51,10 +53,12 @@ import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
+import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -74,9 +78,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO    = "var(--font-mono)";
-const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
@@ -194,7 +196,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
           onMouseEnter={() => onHoverChange?.(true)}
           onMouseLeave={() => onHoverChange?.(false)}
-          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
@@ -256,10 +258,10 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-hover ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
-          : 'bg-transparent border-transparent text-ink-3 hover:bg-surface-2 hover:border-line hover:text-ink'
+          : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
       }`}
     >
       <span className="inline-flex items-center">
@@ -325,7 +327,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   }, [content]);
   return (
     <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       <div className="user-turn-inner">
@@ -432,7 +434,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       {children}
@@ -512,44 +514,127 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   );
 }
 
-// Renders any badge='AskUser' steps as inline question cards, the same way
-// StepArtifacts renders artifacts — both receive the shared `steps` array.
+// One turn's steps and ask_user cards, rendered in event order: work done
+// after an answer appears below that answer's card, not above it (ENG-2981).
+// Segments and the per-question expiry rules come from `splitTurnSegments`.
 //
-// `expired` is derived PER QUESTION, not per conversation. Conversation-level
-// liveness ("this chat has something in flight") is the wrong granularity: it
-// renders an unanswered card from an EARLIER turn with live buttons for as long
-// as any new stream runs on the same conversation, and clicking it 404s — which
-// then retires whatever question the new turn is actually blocked on.
-//
-// Two rules:
-//   - an answered question is never expired; the card renders its outcome, and
-//     the generic "no longer active" line would be noise on top of it
-//   - only the LAST unanswered question of a LIVE turn can still be answered
-//
-// That last rule leans on an invariant owned by anton, not by this repo: the
-// `ask_user` tool blocks the turn, so anton never publishes a second question
-// while one is outstanding, and it always retires the outstanding one (answer,
-// cancel, or the server's 300 s timeout) before the turn ends. This repo can
-// neither see nor enforce that cross-repo contract, so an earlier unanswered
-// card is treated as expired rather than trusted to still be answerable.
-function StepQuestions({ steps, conversationId, conversationLive, onAnswered }) {
-  const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
-  if (questions.length === 0) return null;
-  let lastUnanswered = -1;
-  questions.forEach((s, i) => { if (!s.data?.answer) lastUnanswered = i; });
+// `live` is set only for the streaming turn. It marks the ONE segment that
+// carries the in-flight header (orb slot, live thought, working label) —
+// `liveSegmentIndex` puts it above a pending card and below an answered one.
+// Every other segment is a finished, collapsed block.
+// Step ids repeat across turns (`step-1` in every turn); prefixed with the
+// turn's key they are unique across the conversation.
+const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+
+// A tool's message to the user, rendered like an agent message. Memoised: the
+// live turn re-renders on every progress line, the message never changes.
+const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-      {questions.map((s, i) => (
-        <AskUserCard
-          key={s.id}
-          step={s}
-          conversationId={conversationId}
-          expired={!s.data?.answer && !(conversationLive && i === lastUnanswered)}
-          onAnswered={onAnswered}
-        />
-      ))}
-    </div>
+    <MarkdownContent
+      text={markdown}
+      id={id}
+      complete
+      conversationId={conversationId}
+      isAssistant
+      enableForms={false}
+    />
   );
+});
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
+  const segments = useMemo(
+    () => splitTurnSegments(steps, { startedAt, conversationLive }),
+    [steps, startedAt, conversationLive],
+  );
+  const liveIdx = live ? liveSegmentIndex(segments) : -1;
+  // The live segment sits right before a pending question, if there is one.
+  const next = live ? segments[liveIdx + 1] : null;
+  const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
+  // Any boundary — a question card or a tool's message — keeps the live
+  // header up for the rest of the turn: without it the working indicator
+  // vanishes while the segment below the boundary is still empty.
+  const hasBoundary = segments.length > 1;
+
+  const out = [];
+  let prevWasCard = false;
+  segments.forEach((seg, idx) => {
+    if (seg.kind === 'message') {
+      out.push(
+        // Same spacing as a question card: the message is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <ToolMessage
+            markdown={seg.step.data?.markdown || ''}
+            id={prefixId(idPrefix, seg.step.id)}
+            conversationId={conversationId}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
+    if (seg.kind === 'question') {
+      out.push(
+        // Spacing: 4px under a block, 12px between consecutive cards.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <AskUserCard
+            step={seg.step}
+            conversationId={conversationId}
+            expired={seg.expired}
+            onAnswered={onAnswered}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
+    if (idx === liveIdx) {
+      // Same condition the single streaming ThinkingBlock used: also the
+      // pre-step "Thinking…" placeholder, so right after an answer the empty
+      // segment below the card shows that work has resumed. In a turn that
+      // asked a question it is also shown for as long as the turn runs, even
+      // with no steps of its own: before the split the AskUser step counted
+      // as a step and kept this header — and the orb slot it carries — up to
+      // the end of the turn. Without that the working indicator would vanish
+      // while a question waits after streamed text, or once the closing text
+      // starts streaming below the answered card.
+      const show = seg.steps.length > 0
+        || live.currentThought?.text
+        || (live.isActive && !live.hasBodyText)
+        || pendingQuestion
+        || (live.isActive && hasBoundary);
+      if (!show) return;
+      // The header stays the WORKING message — never the live thought text.
+      // While a question waits, it is the question's label, as before this
+      // split (the AskUser step was the last in-progress step).
+      const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
+      out.push(
+        <ThinkingBlock
+          key={seg.key}
+          steps={seg.steps}
+          startedAt={seg.startedAt}
+          isActive={live.isActive}
+          slotId={live.slotId}
+          currentThought={live.currentThought}
+          currentLabel={pendingQuestion ? pendingQuestion.label : (active?.label || live.placeholderLabel || null)}
+          onActivateStep={onActivateStep}
+        />,
+      );
+      prevWasCard = false;
+      return;
+    }
+    if (seg.steps.length === 0) return;
+    out.push(
+      <ThinkingBlock
+        key={seg.key}
+        steps={seg.steps}
+        startedAt={seg.startedAt}
+        isActive={false}
+        onActivateStep={onActivateStep}
+      />,
+    );
+    prevWasCard = false;
+  });
+  return out;
 }
 
 // Renders any badge='Skill' steps as inline SkillCards — a skill the agent
@@ -583,20 +668,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
-  // Close the export menu on any outside click. Clicks on the menu/toggle
-  // stopPropagation, so this only fires for clicks elsewhere.
-  useEffect(() => {
-    if (!exportOpen) return undefined;
-    const close = () => setExportOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -667,36 +742,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const noDestinationReason = orgMode && !openTarget
     ? 'This artifact cannot be previewed and has no shared link yet.'
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
-  const canExport = false;
-  const handleExport = async (fmt) => {
-    setExportOpen(false);
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    setExporting(true);
-    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
-    try {
-      const res = await exportArtifact(path, fmt);
-      showStatus('ok', `Exported ${res.filename}`);
-      // Desktop: open the result in the OS. Web: it's saved in the artifact
-      // folder and shows in the Artifacts panel.
-      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-export] failed', e);
-      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
-      revalidateAfterFailure();
-    }
-    finally {
-      setExporting(false);
-    }
-  };
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
@@ -840,6 +885,22 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * the shared page and a second button would point at the same place.
    */
   const showSharedLink = orgMode && published && openTarget === 'preview';
+  /*
+   * Org mode: every artifact with a primary file can be saved through its
+   * draft URL, previewable ones included, unless Download already IS the
+   * primary action (ENG-2044). The shared link, when there is one, is the
+   * visible secondary and Download moves behind "…"; otherwise Download is
+   * the secondary.
+   */
+  const sharedLinkAction = !deleted && showSharedLink
+    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    : null;
+  const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
+    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    : null;
+  // A disabled button takes no hover, so its reason is said beside it.
+  const primaryDisabled = !orgMode && !canAct;
+  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -859,7 +920,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     <Card
       as="div"
       interactive={canActivate}
-      padding="cozy"
+      flat
+      padding="snug"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
@@ -867,131 +929,66 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       className="chat-artifact-card"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
-        style={{ opacity: deleted ? 0.7 : 1 }}
+        className={cn(
+          'grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-ink-3',
+          deleted && 'opacity-70',
+        )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
         ) : (
-          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+          isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {/* The title is a keyboard stop of its own: it opens what the card
+            opens, and carries the reason in `title` when there is nowhere to
+            go. Preflight is off, so the native button chrome is reset here. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
-           */
-          style={{
-            all: 'unset',
-            cursor: canActivate ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
-            opacity: canActivate ? 1 : 0.7,
-          }}
-          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
-          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
-          {artifact.kind || 'live artifact'}
+        {/* One meta line, kind · path, so the row stays two lines tall. */}
+        <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
+          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
+          {previewText && (
+            <>
+              <span aria-hidden="true" className="text-ink-4">·</span>
+              <span title={previewText} className="min-w-0 truncate text-ink-4">{previewText}</span>
+            </>
+          )}
         </span>
-        {previewText && (
-          <span
-            title={previewText}
-            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            {previewText}
-          </span>
-        )}
       </div>
-      <div className="chat-artifact-card__actions">
-        {canExport && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content="Export to another format">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <SmallBtn
-                disabled={!canAct || exporting}
-                onClick={() => setExportOpen((v) => !v)}
-                title={(!canAct || exporting) ? 'Export to another format' : undefined}
-              >
-                Export ▾
-              </SmallBtn>
-            </Tooltip>
-            {exportOpen && (
-              <div
-                role="menu"
-                // No border — floats on --sh-popup alone (ENG-790).
-                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
-              >
-                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    role="menuitem"
-                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
-                    style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
-                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >{label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {!deleted && showSharedLink && (
-          <Tooltip content="Open the shared artifact in a new tab">
-            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
-        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
-          <Tooltip content="Save this artifact's file">
-            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && primaryAction && (
-          <Tooltip content={primaryAction.tooltip}>
-            <SmallBtn
-              primary
-              disabled={!orgMode && !canAct}
-              onClick={primaryAction.onClick}
-              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
-            >
-              {primaryAction.label}
-            </SmallBtn>
-          </Tooltip>
-        )}
+      {/* The card is role="button" with a whole-surface click and Enter/Space
+          handler. Actions, and the overflow menu whose events React bubbles
+          through its portal, must not also open the preview. Only Enter and
+          Space stop here: other keys (Cmd+K, Cmd+N, Escape) must still reach
+          the window-level shortcut listeners. */}
+      <div
+        className="chat-artifact-card__actions"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+      >
+        <ActionBar
+          size="sm"
+          className="flex-wrap"
+          leading={!deleted && primaryAction && primaryReason
+            ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
+            : null}
+          secondary={sharedLinkAction || downloadAction}
+          primary={!deleted && primaryAction
+            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+            : null}
+          overflow={[sharedLinkAction && downloadAction]}
+        />
       </div>
       {status && (
         <span
-          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          className={cn('chat-artifact-card__status font-body text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
@@ -1000,24 +997,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     </>
   );
 }
-
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
-const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
-      title={title}
-      disabled={disabled}
-      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
-      {...rest}
-    >{children}</button>
-  );
-});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1058,54 +1037,37 @@ async function waitForServerReady(timeoutMs = 8000) {
 //
 // ── ActionCard: the shared shell for inline "actionable error" cards ───────
 // One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
+// cards (ENG-650), drawn by ChatCardShell. Callers own copy, button wiring and
+// the `kind` named in the card's top row (Billing, Model, …); the shell owns
+// layout and the action hierarchy (`cardActions`: the button marked `primary`
+// is the filled action, the next is the quiet secondary, any further ones go
+// behind "…").
+// buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
+// the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
-        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
-        <div className="s-h3">
-          {title}
-        </div>
-        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
-          {body}
-        </div>
-        {buttons.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {buttons.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={b.onClick}
-                disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
-                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
-                style={b.style}
-              >{b.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+        {body}
+      </ChatCardShell>
     </AnswerTurn>
   );
 }
 
-// ── AllowanceExhaustedCard: the free monthly grant, not a drained wallet ───
+// ── AllowanceExhaustedCard: the free allowance, not a drained wallet ───────
 // ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
 // free-bucket model on an org that has NEVER topped up, so this user has not
-// spent money — they used the monthly grant, and it resets. Two things follow,
+// spent money — they used the free allowance, and it refills. Two things follow,
 // and the old shared out-of-credits card got both wrong: the reset date is a
 // genuinely free way forward (hiding it while asking for money is the defect),
 // and "unlock" is literally true, because non-free models need a wallet this
 // org doesn't have.
+//
+// One branch names no refill at all: an org with no free grant (the hub usage
+// read's limit is 0, from auth's `free_grant_eligible: false`) has nothing to
+// wait for, so the card says so in the console's words and asks for funds.
+// `allowanceStopCopy` in lib/usageWarnings writes both branches, shared with
+// the Settings probe notice.
 //
 // The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
@@ -1117,6 +1079,194 @@ function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = fa
 function refillClause(resetAt, lead) {
   const time = formatResetTime(resetAt);
   return time ? `${lead} at ${time}` : lead;
+}
+
+export function AllowanceExhaustedCard({
+  time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
+}) {
+  /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
+     cowork-server that predates it arrives with none, and the hub usage read
+     carries the same allowance's refill, so the free way forward still has a
+     time. The read also says when the org has no grant to refill at all. */
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      // The gate only issues this code when the org has no
+      // balance to fall onto, so the turn ended.
+      kind="Billing"
+      title="Task stopped"
+      body={allowanceStopCopy({ resetAt, usage })}
+      buttons={[
+        {
+          label: 'Add funds',
+          // The click, not an impression — same rule as
+          // the drained-wallet card. token_cap_hit already
+          // counts this impression once per receipt in the stream
+          // adapter, so every route to billing is counted exactly
+          // once and this one is not the exception.
+          onClick: () => {
+            trackBillingOpened('included_allowance_exhausted');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          },
+          primary: true,
+        },
+        // Only offer auto top up when it isn't already on.
+        ...(usage?.autoTopUp?.enabled ? [] : [{
+          label: USAGE_ACTIONS.setUpAutoTopUp.label,
+          onClick: () => {
+            trackBillingOpened('included_allowance_exhausted');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
+          },
+        }]),
+      ]}
+    />
+  );
+}
+
+/* "Switch to MindsHub Air": resend the failed message on Air. One action for
+   every card that offers it, and nothing when the caller has no switch to give
+   (Air locked, no message to resend, or the task is already on Air). */
+function switchToAirButtons(onSwitchToAir) {
+  return onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : [];
+}
+
+/*
+ * Drained wallet (`token_limit`): the gate's 402 `wallet_empty`, and any
+ * billing stop a hosted turn can only report by exception type. The hub usage
+ * read says which limit fired, and the fixed copy is the fallback whenever that
+ * read has nothing to speak from.
+ *
+ * The card stays in the task long after the stop, and `usage` is the read as
+ * it is now. Once that read shows a wallet that can pay (a balance that
+ * `isBalanceEmpty` does not flag), as after a top up, today's allowance says
+ * nothing about why this task stopped, so neither branch below speaks from it.
+ * A read with no balance says nothing about the wallet either way:
+ * cowork-server's `HubUsageView` leaves it null when the wallet read fails or
+ * the caller may not see the wallet, as in a starter-tier org. The stop stands
+ * then, and both branches stay open.
+ *
+ * - The free allowance has room. auth's `access.py` always lets a free-bucket
+ *   model run while its allowance lasts, whatever the wallet holds, so the stop
+ *   was a priced model. Offer the switch, when the caller has one.
+ * - The free allowance is spent and its refill time is usable. Name both
+ *   resources and the free way forward, in `allowanceStopCopy`'s words, which
+ *   the spent-allowance card uses for the same state.
+ * - Anything else (usage dark, no grant, uncapped, no usable time, no switch
+ *   to offer, a wallet that can pay now): the fixed copy, exactly as before.
+ *
+ * `usage` is the `/hub/usage/` view (null outside the provider).
+ */
+export function BalanceEmptyCard({
+  time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
+}) {
+  const free = freeAllowanceState(usage);
+  const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
+  const refill = formatResetTime(free.resetsAt);
+  const addFunds = {
+    label: 'Add funds',
+    // The click, not an impression. token_cap_hit
+    // already counts the impression once per receipt in the
+    // stream adapter; an impression here would re-fire on
+    // every paint.
+    onClick: () => {
+      trackBillingOpened('token_limit');
+      host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+    },
+    primary: true,
+  };
+  // Fixed copy, not the server string: the
+  // gateway's wording predates pay as you go.
+  let body = 'Your balance ran out before this task finished. Add funds before starting another task.';
+  let buttons = [addFunds];
+  if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
+    body = "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.";
+    buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
+  } else if (!walletPaysNow && free.status === 'spent' && refill) {
+    body = allowanceStopCopy({ usage });
+  }
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      // A billing failure ends the turn; there is no resume,
+      // so this is "stopped", never "paused".
+      kind="Billing"
+      title="Task stopped"
+      body={body}
+      buttons={buttons}
+    />
+  );
+}
+
+/*
+ * Free MindsHub Air paused for everyone (`free_serving_paused`): auth's daily
+ * free-Air spend fuse tripped (`free_air_daily_spend_fuse_exceeded`, issued by
+ * auth's `entitlements/views/inference_authorize.py`). It stops only orgs whose
+ * wallet cannot pay, it is not this user's allowance, and it lifts at the next
+ * UTC midnight, which the gate sends as reset_at on a desktop or a hosted turn.
+ * So the card says it is not their allowance, names when it lifts, and offers
+ * the one thing that gets them working before then. A hosted turn from a
+ * cowork-server that predates reset_at there carries none, and the card then
+ * says it lifts when the daily budget resets.
+ */
+export function FreeServingPausedCard({
+  time, agentLabel, resetAt, isBillingOwner, deleting = false,
+}) {
+  /* The sentence lives in lib/usageWarnings because the Settings probe notice
+     says the same thing about the same fuse. */
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind="Usage"
+      title="Free MindsHub Air is paused"
+      body={freeServingPausedCopy(resetAt)}
+      buttons={[
+        {
+          label: 'Add funds',
+          /* The click only, like the other stopped-task cards. Its own
+             trigger: a fleet-wide pause is not this user running out. */
+          onClick: () => {
+            trackBillingOpened('free_serving_paused');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          },
+          primary: true,
+        },
+      ]}
+    />
+  );
+}
+
+/* No provider connected (`provider_required`). HomeView renders the same card
+   on the home screen and its first sentence must read the same. */
+export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) {
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      kind="Connection"
+      title="Connect a provider to start chatting"
+      body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
+      buttons={[
+        {
+          label: 'Start for free',
+          // The click only. Whether this card deserves an
+          // impression event of its own is an open
+          // question, and is not settled here.
+          onClick: () => {
+            trackBillingOpened('connect_provider');
+            host.openExternal(MINDS_BILLING_URL);
+          },
+          primary: true,
+        },
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+      ]}
+    />
+  );
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
@@ -1141,6 +1291,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Usage"
         title="Free Air allowance running low"
         body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1152,6 +1303,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Billing"
         title="Auto top up failed"
         body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
         buttons={[
@@ -1165,6 +1317,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <ActionCard
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free Air allowance used up"
       body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1232,6 +1385,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Rate limit"
       title="Too many requests too quickly"
       body={body}
       buttons={buttons}
@@ -1311,6 +1465,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Connection"
       title={title}
       body={body}
       buttons={done ? [] : [
@@ -1318,8 +1473,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
           primary: true,
-          disabled: busy,
-          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+          busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
@@ -1348,6 +1502,13 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * these as access problems, which under pay as you go misdescribes an empty
  * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
  * window.opens on web); Open Settings routes there on both shells.
+ *
+ * A third flavor is current, not legacy: `model_restricted`, an org admin's
+ * model rule. The gateway names it on its 403 (`X-MindsHub-Deny-Detail` /
+ * `error.deny_detail`) and cowork-server relays it as this code. Money cannot
+ * unlock it, so the card offers Open Settings only: no Top up, no Air switch.
+ * A hosted turn cannot name the model, so the title falls back to
+ * "This model is restricted".
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
@@ -1364,6 +1525,21 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+  if (code === 'model_restricted') {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind="Model"
+        title={`${label} is restricted`}
+        body="An admin in your organization restricted this model. Choose another model in Settings."
+        buttons={[
+          { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+        ]}
+      />
+    );
+  }
   const denied = code === 'model_access_denied';
   // One handler for both button rows, so the recorded trigger always matches the
   // card that was actually rendered (ENG-1533). Both rows offer Top up balance,
@@ -1387,6 +1563,7 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Model"
       title={title}
       body={denied
         ? "You don't have enough credits for this model. Top up your balance to use it."
@@ -1394,10 +1571,10 @@ export function ModelUnavailableCard({
       buttons={denied
         ? [
             { label: 'Top up balance', onClick: openBilling, primary: true },
-            // Only while Air can still run (free monthly grant or a payable
+            // Only while Air can still run (free allowance or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
-            ...(onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : []),
+            ...switchToAirButtons(onSwitchToAir),
           ]
         : [
             { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
@@ -1439,6 +1616,7 @@ function ProviderOverloadedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Provider"
       title={`${who} is having a temporary issue`}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
@@ -1676,6 +1854,8 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
+  // The model the next send in this task uses, which the Air switch would change.
+  const taskModelId = typeof model === 'string' ? model : model?.id ?? null;
   // Usage alerts sit at the turn they happened in (lib/usageNoticePlacement).
   // Computed out here because the last bucket renders below the streaming turn,
   // a sibling of these rows. Keyed by identity: a positional key would collide.
@@ -1735,7 +1915,6 @@ export default function ChatView({
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
-  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
   const railMsgKey = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -1836,7 +2015,9 @@ export default function ChatView({
   // active-with-steps state, on one `header:streaming` slot — for as long
   // as there's real work going on. Steps and thoughts keep streaming above
   // the growing answer text throughout, so the orb stays put for the whole turn
-  // rather than handing off once body text starts. Shares
+  // rather than handing off once body text starts. In a turn with ask_user
+  // questions that header belongs to the live segment (TurnSegments): above a
+  // pending card, below the last answered one, kept until the turn ends. Shares
   // isThinkingActive with ThinkingBlock's own header so the two can't
   // drift out of sync again the way they did before (ENG-1107/1109):
   // whatever keeps the steps panel expanded is exactly what should keep
@@ -1864,7 +2045,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -1900,8 +2081,8 @@ export default function ChatView({
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
               pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
               transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
@@ -1920,7 +2101,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2054,7 +2235,7 @@ export default function ChatView({
                       opacity: titleControlsShown ? 1 : 0,
                       pointerEvents: titleControlsShown ? 'auto' : 'none',
                     }}
-                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
                     {Ico.moreVert(13)}
                   </button>
@@ -2271,32 +2452,37 @@ export default function ChatView({
                 // Single CTA on purpose (ENG-1169): the out-of-credits
                 // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
+                  const balancePrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
-                    <ActionCard
+                    <BalanceEmptyCard
                       key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      // A billing failure ends the turn; there is no resume,
-                      // so this is "stopped", never "paused" (ENG-1782).
-                      title="Task stopped"
-                      // Fixed copy, not the server string (ENG-1304) — the
-                      // gateway's wording predates pay as you go.
-                      body="Your balance ran out before this task finished. Add funds before starting another task."
-                      buttons={[
-                        {
-                          label: 'Add funds',
-                          // ENG-1533: the click, not an impression. token_cap_hit
-                          // already counts the impression once per receipt in the
-                          // stream adapter; an impression here would re-fire on
-                          // every paint.
-                          onClick: () => {
-                            trackBillingOpened('token_limit');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
-                          },
-                          primary: true,
-                        },
-                      ]}
+                      usage={hubUsage?.usage}
+                      isBillingOwner={isBillingOwner}
+                      /* The switch resends the failed message on Air, so it
+                         needs one to resend, and a task already on Air has
+                         nothing to switch to. */
+                      onSwitchToAir={
+                        onSwitchToAirAndResend && balancePrevUserText && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(balancePrevUserText)
+                          : undefined
+                      }
+                    />
+                  );
+                }
+                /* Free MindsHub Air paused fleet-wide by auth's daily spend
+                   fuse: not this user's allowance, and funds get them going. */
+                if (m.code === 'free_serving_paused') {
+                  return (
+                    <FreeServingPausedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      resetAt={m.resetAt}
+                      isBillingOwner={isBillingOwner}
                     />
                   );
                 }
@@ -2319,8 +2505,11 @@ export default function ChatView({
                  * gateways report wallet denials as `token_limit`, rendered
                  * by the out-of-credits card above. Offer Top up balance and,
                  * while Air is payable, a one-click switch that resends the
-                 * failed message on it — never "try again". */
-                if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                 * failed message on it — never "try again".
+                 *
+                 * `model_restricted` shares the card: an org admin's model
+                 * rule, which the card answers with Open Settings only. */
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
                   const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
@@ -2386,20 +2575,18 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
                         : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      // Open Settings only. A "Switch to MindsHub Air" button was
-                      // tried here and removed: it routes through
-                      // handleSendInTask's `modelOverride`, which the in-process
-                      // harness ignores entirely (stream_response takes no
-                      // `model` — harness.py), so the turn would rerun on the
-                      // same dead id while the composer chip claimed otherwise.
-                      // The neighbouring model-denial card has the same latent
-                      // problem; making that switch real is a product decision
-                      // (it means writing the global planning_model setting),
-                      // tracked separately rather than faked here.
+                      /* Open Settings only. cowork-server does apply a turn's
+                         own model (the request's `model`, handed to
+                         providers.build_llm_client as `model_override`), so a
+                         "Switch to MindsHub Air" here would move this one task.
+                         The dead id lives in the planning_model setting, though,
+                         and every new task would fail on it again, so the card
+                         sends the user to where the id is set. */
                       buttons={[
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
                       ]}
@@ -2416,6 +2603,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image couldn't be read"
                       body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
                     />
@@ -2437,11 +2625,41 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}
+                    />
+                  );
+                }
+                // An image the provider refused as too LARGE
+                // (`content_too_large`, ENG-2689). Deliberately NOT the
+                // `content_recovery` card above: that one says "fixed, keep
+                // going", which is true for a serialization mismatch we
+                // caused and false here. The server has stripped the image
+                // either way, so the conversation is unstuck — but what the
+                // user asked for still hasn't happened, and only they can fix
+                // it by attaching something smaller.
+                //
+                // No Retry button, on purpose. Resending the same text now
+                // that the image is gone would run a turn that answers a
+                // question about an image the model can no longer see — a
+                // confidently wrong answer is worse than no answer. The body
+                // is the server's message rather than fixed copy because it
+                // carries the provider's own limit and remedy, which is more
+                // specific than anything hardcoded here.
+                if (m.code === 'content_too_large') {
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Attachment"
+                      title="That image is too large"
+                      body={m.content}
                     />
                   );
                 }
@@ -2456,6 +2674,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Billing"
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                       buttons={retryText
@@ -2480,6 +2699,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={retryText
@@ -2488,44 +2708,20 @@ export default function ChatView({
                     />
                   );
                 }
-                // Spent FREE monthly allowance (gateway 429
+                // Spent FREE allowance (gateway 429
                 // `included_allowance_exhausted`): not a drained wallet, so it
-                // names the reset date as a free alternative and says what
+                // names the refill time as a free alternative and says what
                 // credits actually unlock (ENG-1537).
                 if (m.code === 'included_allowance_exhausted') {
                   return (
-                    <ActionCard
+                    <AllowanceExhaustedCard
                       key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      // The gate only issues this code when the org has no
-                      // balance to fall onto, so the turn ended (ENG-1782).
-                      title="Task stopped"
-                      body={`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${refillClause(m.resetAt, '')}.`}
-                      buttons={[
-                        {
-                          label: 'Add funds',
-                          // ENG-1533: the click, not an impression — same rule as
-                          // the drained-wallet card above. token_cap_hit already
-                          // counts this impression once per receipt in the stream
-                          // adapter, so every route to billing is counted exactly
-                          // once and this one is not the exception.
-                          onClick: () => {
-                            trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
-                          },
-                          primary: true,
-                        },
-                        // Only offer auto top up when it isn't already on.
-                        ...(hubUsage?.usage?.autoTopUp?.enabled ? [] : [{
-                          label: USAGE_ACTIONS.setUpAutoTopUp.label,
-                          onClick: () => {
-                            trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
-                          },
-                        }]),
-                      ]}
+                      resetAt={m.resetAt}
+                      usage={hubUsage?.usage}
+                      isBillingOwner={isBillingOwner}
                     />
                   );
                 }
@@ -2575,26 +2771,11 @@ export default function ChatView({
               }
               if (m.role === 'provider_required') {
                 return (
-                  <ActionCard
+                  <ConnectProviderCard
                     key={messageKey(m, i)}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
-                    title="Connect a provider to start chatting"
-                    body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
-                    buttons={[
-                      {
-                        label: 'Start for free',
-                        // ENG-1533: the click only. Whether this card deserves an
-                        // impression event of its own is an open ENG-1305
-                        // question, and is not settled here.
-                        onClick: () => {
-                          trackBillingOpened('connect_provider');
-                          host.openExternal(MINDS_BILLING_URL);
-                        },
-                        primary: true,
-                      },
-                      { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
-                    ]}
+                    onOpenSettings={onOpenSettings}
                   />
                 );
               }
@@ -2623,19 +2804,12 @@ export default function ChatView({
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
                 >
-                  {m.steps?.length > 0 && (
-                    <ThinkingBlock
-                      steps={m.steps}
-                      startedAt={m.startedAt}
-                      isActive={false}
-                      onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
-                    />
-                  )}
                   {/* Above the text: a question is asked, then answered, then
-                      (at most) the turn's closing text streams — so the card
-                      always precedes any text that came after the answer. */}
-                  <StepQuestions
+                      (at most) the turn's closing text streams — so every
+                      card and block precedes the text that came after. */}
+                  <TurnSegments
                     steps={m.steps}
+                    startedAt={m.startedAt}
                     conversationId={task.id}
                     // A completed turn by construction — `visibleMessages`
                     // excludes the `_streaming` row — so no question rendered
@@ -2643,6 +2817,8 @@ export default function ChatView({
                     // on this conversation.
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
+                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    idPrefix={messageKey(m, i)}
                   />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
@@ -2682,37 +2858,23 @@ export default function ChatView({
                     so a plain text answer isn't topped by a "Thinking…"
                     header. `_placeholderLabel` is set by the pre-first-event
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
-                    task…" for new tasks, "Thinking…" for replies). */}
-                {(streamingMsg.steps?.length > 0
-                  || streamingMsg.currentThought?.text
-                  || (isThinkingActive(streamingMsg.streamStatus) && !streamingMsg.content)) && (
-                  <ThinkingBlock
-                    steps={streamingMsg.steps}
-                    startedAt={streamingMsg.startedAt}
-                    isActive={isThinkingActive(streamingMsg.streamStatus)}
-                    slotId="header:streaming"
-                    currentThought={streamingMsg.currentThought}
-                    currentLabel={(() => {
-                      // The header stays the WORKING message (active step
-                      // label, else the placeholder label, else "Thinking…")
-                      // — never the live thought text. The thought has its
-                      // own distinct line at the bottom of the steps; letting
-                      // it also drive the header made the working message
-                      // flicker/overwrite as each reasoning delta streamed in.
-                      const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      return active?.label || streamingMsg._placeholderLabel || null;
-                    })()}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
-                  />
-                )}
-                {/* Above the text: a question is asked, then answered, then
-                    (at most) the turn's closing text streams — so the card
-                    always precedes any text that came after the answer. */}
-                <StepQuestions
+                    task…" for new tasks, "Thinking…" for replies).
+                    With questions, the header is in the live segment (TurnSegments). */}
+                <TurnSegments
                   steps={streamingMsg.steps}
+                  startedAt={streamingMsg.startedAt}
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
+                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  idPrefix={streamingKey}
+                  live={{
+                    isActive: isThinkingActive(streamingMsg.streamStatus),
+                    currentThought: streamingMsg.currentThought,
+                    placeholderLabel: streamingMsg._placeholderLabel || null,
+                    hasBodyText: !!streamingMsg.content,
+                    slotId: 'header:streaming',
+                  }}
                 />
                 {streamingMsg.content && (
                   <div className="relative">
@@ -2759,7 +2921,7 @@ export default function ChatView({
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
               <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
@@ -2769,7 +2931,7 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <Tooltip content="Remove from queue">
@@ -2826,7 +2988,7 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
@@ -2838,8 +3000,8 @@ export default function ChatView({
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

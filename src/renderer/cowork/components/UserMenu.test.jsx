@@ -284,6 +284,44 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
+  it('acknowledges the click on the row that was clicked, before the switch lands', async () => {
+    // A desktop switch takes a second or more — a Keycloak round trip, a token
+    // exchange and a sidecar restart — and the menu used to close on the click,
+    // so that second looked like nothing had happened and people clicked again.
+    let settle;
+    orgsMock.switchOrg.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+    // The menu is still on screen to carry it, and the row says it is working.
+    expect(await screen.findByRole('status', { name: 'Changing organization' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Personal/ })).toBeInTheDocument();
+
+    settle({ ok: true, reloadRequired: true });
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Changing organization' })).toBeNull());
+  });
+
+  it('acknowledges progress without moving the check onto a row that can still be refused', async () => {
+    // Nothing is applied optimistically: the host decides whether the switch
+    // happened. Painting the answer here is how the app ends up disagreeing
+    // with the organization its requests are scoped to.
+    let settle;
+    orgsMock.switchOrg.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+    await screen.findByRole('status', { name: 'Changing organization' });
+
+    // The one the app is actually working in is still the one named.
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+    settle({ ok: false, error: 'Nothing changed.' });
+    expect(await screen.findByText('Nothing changed.')).toBeInTheDocument();
+  });
+
   it('still names the only organization, and leaves nothing to switch to', () => {
     /*
      * The console shows the section for one organization too. A checked row

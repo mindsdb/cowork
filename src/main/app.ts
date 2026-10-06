@@ -1,5 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
-// any module that reads app.getPath('userData') at load time (e.g. token-store).
+// any module that reads app.getPath('userData') at load time (e.g. token-store),
+// then starts the crash reporter so a native crash while the rest loads leaves
+// a minidump.
 import './app-identity';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
@@ -9,12 +11,13 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { filterExtraFields } from './oauth-extra-fields';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -22,13 +25,14 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
+import { accountIdFromToken, accountLabelFromToken } from './jwt';
 import { scrubEnvCredentials } from './logout-env';
 import {
   beginSignOutRouting,
@@ -48,7 +52,19 @@ import {
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import {
+  accountDataHome,
+  adoptDefaultRootAsIncumbent,
+  claimForRecordedIncumbent,
+  needsOwnershipDecision,
+  observePreExistingData,
+  readActiveAccount,
+  readActiveOrg,
+  rendererAccountSession,
+  settleOwnership,
+  sweepStaleQuarantineRoots,
+} from './account-data';
+import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -57,7 +73,8 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
-import { normalizeExternalBrowserUrl } from './external-url';
+import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
+import { registerRendererPermissions } from './renderer-permissions';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -166,6 +183,11 @@ async function serverConfigured(): Promise<{
 } | null> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
+  // Never read readiness off a sidecar serving another account's database. The
+  // account is recorded at the auth choke point, long before a sign-in reaches
+  // commitMindsSignIn — and some never reach it — so without this a reload in
+  // that window routes straight into the previous account's data.
+  if (!(await ensureSidecarOnCurrentAccountRoot())) return null;
   try {
     const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
       signal: AbortSignal.timeout(3000),
@@ -244,12 +266,11 @@ function serverPhaseToUiStatus(
 
 function httpRequest(
   url: string,
-  options: { method: string; headers: Record<string, string>; body?: string; rejectUnauthorized?: boolean }
+  options: { method: string; headers: Record<string, string>; body?: string }
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const mod = parsed.protocol === 'https:' ? https : http;
-    const rejectUnauth = options.rejectUnauthorized !== false;
     const reqOptions: any = {
       hostname: parsed.hostname,
       port: parsed.port || undefined,
@@ -257,10 +278,6 @@ function httpRequest(
       method: options.method,
       headers: options.headers,
     };
-    if (!rejectUnauth && parsed.protocol === 'https:') {
-      // codeql[js/disabling-certificate-validation]
-      reqOptions.agent = new https.Agent({ rejectUnauthorized: false });
-    }
     const req = mod.request(
       reqOptions,
       (res) => {
@@ -372,6 +389,10 @@ function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   const devMode = getDevMode();
+  // Set only when the renderer is actually served from Vite (dev/live modes) —
+  // used below so the loopback-token webRequest hook can also cover API calls
+  // proxied through Vite's own port, not just direct calls to the sidecar port.
+  const viteDevPort = devMode === 'live' || isDev ? process.env.VITE_RENDERER_PORT || '5173' : null;
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -426,7 +447,16 @@ function createWindow() {
         const token = getServerAuthToken();
         if (token) {
           try {
-            if (new URL(details.url).port === String(getServerPort())) {
+            const url = new URL(details.url);
+            const isDirectServerCall = url.port === String(getServerPort());
+            // Dev mode (DEV_MODE=live / VITE_DEV=1) loads the renderer from Vite,
+            // so API calls resolve same-origin to Vite's own port and get proxied
+            // to the real sidecar server-side — this hook never sees the final
+            // 127.0.0.1:<serverPort> request to attach the header to. Scoped to
+            // /api/ so static asset/module requests through Vite aren't touched.
+            const isViteProxiedApiCall =
+              viteDevPort !== null && url.port === viteDevPort && url.pathname.startsWith('/api/');
+            if (isDirectServerCall || isViteProxiedApiCall) {
               details.requestHeaders['Authorization'] = `Bearer ${token}`;
             }
           } catch {
@@ -509,21 +539,7 @@ function createWindow() {
     Menu.buildFromTemplate(template).popup({ window: mainWindow! });
   });
 
-  // Grant the renderer access to the microphone so the Web Speech API
-  // (composer voice input) can capture audio. Other permissions stay
-  // denied. Pair with NSMicrophoneUsageDescription in Info.plist and
-  // the audio-input entitlement so the OS prompt actually fires.
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    // 'audioCapture' isn't in Electron's Permission union but some
-    // Chromium builds emit it for the Web Speech API. Cast through
-    // string for the comparison so TS doesn't narrow it away.
-    const perm = permission as string;
-    if (perm === 'media' || perm === 'audioCapture') {
-      callback(true);
-      return;
-    }
-    callback(false);
-  });
+  registerRendererPermissions(mainWindow.webContents);
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -535,6 +551,11 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     // Allow dev server reloads
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
+    // And a packaged document reloading ITSELF, which arrives here too: the
+    // account switch, the organization switch and the sign-out all replace the
+    // document rather than trying to scrub it, and blocking that is silent —
+    // the URL is our own, so nothing opens in a browser and nothing is logged.
+    if (isSelfReload(url, mainWindow?.webContents.getURL())) return;
     // Block navigation and open in OS browser
     event.preventDefault();
     const browserUrl = normalizeExternalBrowserUrl(url);
@@ -630,6 +651,7 @@ function mindsSignOutDeps(): SignOutDeps {
     isServerStarting,
     getServerPort,
     httpRequest,
+    getAuthHeader: authHeader,
     scrubEnvCredentials,
     getAntonEnvPath,
     clearStoredProviderState,
@@ -781,6 +803,8 @@ function setupIPC() {
       }
 
       let oauthBlock: Record<string, any>;
+      let oauthMethodId: string;
+      let declaredFieldNames: string[] = [];
       try {
         const specRes = await fetch(
           `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
@@ -788,14 +812,37 @@ function setupIPC() {
         );
         if (!specRes.ok) throw new Error(`HTTP ${specRes.status}`);
         const spec = await specRes.json() as Record<string, any>;
-        const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+        // 'mcp' (HubSpot, ENG-487) drives this identical PKCE flow under a
+        // different method id — it authenticates against a provider's MCP
+        // server rather than its REST API, same OAuth 2.1 + PKCE shape as
+        // browser_oauth_builtin otherwise. Live-tested miss: this was the
+        // actual entry point that never got widened alongside the renderer's
+        // hardcoded 'browser_oauth_builtin' checks (methodHero.js,
+        // DataVaultFormPanel.jsx) during code review — this is main-process
+        // code, not renderer, so that pass never looked here.
+        const builtinMethod = spec?.form?.methods?.find(
+          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+        );
         oauthBlock = builtinMethod?.oauth;
+        oauthMethodId = builtinMethod?.id;
         if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
           return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
         }
+        declaredFieldNames = (builtinMethod?.fields || [])
+          .map((f: any) => f?.name)
+          .filter((name: unknown): name is string => typeof name === 'string');
       } catch {
         return { ok: false, reason: `Could not load connector spec for "${engine}".` };
       }
+      // A connector's own non-OAuth required fields declared alongside
+      // browser_oauth_builtin (e.g. Google Ads' developer_token) — the
+      // renderer collects them via the form and forwards them here, same
+      // shape the web redirect flow already sends as extraFields to
+      // startConnectorOAuth. Restricted to this connector's own declared
+      // field names (see filterExtraFields) and merged into the saved
+      // values below, after the OAuth-derived fields, so neither an
+      // unrelated key nor a same-named spec field can shadow one.
+      const extraFields = filterExtraFields(o.extraFields, declaredFieldNames);
 
       // supports_refresh defaults true (matches the server-side schema
       // default) when a spec doesn't declare it explicitly.
@@ -846,10 +893,17 @@ function setupIPC() {
           headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({
             connector_id: engine,
-            method: 'browser_oauth_builtin',
+            // Save whichever method actually authenticated (e.g. 'mcp' for
+            // HubSpot) — hardcoding 'browser_oauth_builtin' here would save
+            // the wrong _method tag, breaking every downstream check keyed
+            // off it (MCP tool discovery, the access-mode default, the
+            // "Tool access" UI's gate) even though the PKCE flow itself
+            // completed fine.
+            method: oauthMethodId,
             name: labelName,
             replace_existing: Boolean(labelName),
             values: {
+              ...extraFields,
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
@@ -962,7 +1016,9 @@ function setupIPC() {
         );
         if (specRes.ok) {
           const spec = await specRes.json() as Record<string, any>;
-          const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+          const builtinMethod = spec?.form?.methods?.find(
+            (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+          );
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
             // Some providers' revoke endpoints require the app's own
@@ -1087,6 +1143,20 @@ function setupIPC() {
     // suppress a fallback, so anything but a real `true` off the wire must not
     // arm it. Today's renderer sends a boolean or nothing, so this is the
     // contract written down rather than a hole being closed.
+    // Before anything this session can read. The account is recorded and its
+    // root claimed at the token choke point, well before this handler, but the
+    // SIDECAR is only moved by commitMindsSignIn below — and the branches under
+    // it return early, so a failed organization selection leaves a signed-in
+    // session served by the previous account's database. The Settings sign-in
+    // treats this handler as non-gating and refreshes regardless, and the
+    // readiness check reconciles a reload rather than a live document.
+    if (isServerRunning() || isServerStarting()) {
+      if (!(await ensureSidecarOnCurrentAccountRoot())) {
+        console.error('[mindshub:finalize] could not move the sidecar onto this account root');
+        return { ok: false, reason: 'Could not open this account\'s data. Restart Cowork and try again.' };
+      }
+    }
+
     const selected = await selectEntitledOrg(token, {
       preferOrgId: organizationId,
       chosenByUser: chosenByUser === true,
@@ -1113,7 +1183,18 @@ function setupIPC() {
       console.warn('[mindshub:finalize] sign-out sidecar restart still running; continuing');
     }
     try {
-      await commitMindsSignIn();
+      const { dataRootChanged } = await commitMindsSignIn();
+      if (dataRootChanged) {
+        // Reload from main, the same way sign-out does. A sign-in otherwise
+        // ends by switching page in the SAME document, so React seeds the
+        // composer draft and the settings cache from the previous account
+        // during render — and the draft store's module cache then re-persists
+        // them under this account, where nothing purges them again. The purge
+        // only runs before mount, so the document has to be new.
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.reload();
+        }
+      }
     } catch (err: any) {
       console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
       return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
@@ -1175,6 +1256,107 @@ function setupIPC() {
 
   ipcMain.handle(IPC.AUTH_LOGOUT, performMindsSignOut);
 
+  // Is there data on this machine that nobody has claimed and that the signed-in
+  // account cannot be shown to own? Only the person at the keyboard knows, so
+  // the shell asks them once. Until they answer, the account is already on its
+  // own empty root, so nothing is exposed while the question is open.
+  // Synchronous on purpose, and the only sendSync in the app. The renderer has
+  // to purge the previous account's localStorage BEFORE React mounts, because
+  // useDraft seeds its state during render from a key ('new') that every account
+  // shares — an async answer arrives a frame too late and the previous account's
+  // unsent text is already on screen and in state.
+  ipcMain.on(IPC.ACCOUNT_SIGNED_IN_SYNC, (event) => {
+    // The renderer blocks on this reply, and coworkHome() throws by design on a
+    // mispackaged build-config, so it must answer even then.
+    try {
+      // Both fields are decided in account-data because the claim is there: the
+      // renderer cannot see whether this session resolved onto the default root
+      // or its own, nor that it has no name to resolve with.
+      //
+      // The organization rides the same round trip rather than a second
+      // channel: the renderer needs both before React mounts, and a channel is
+      // snapshot-locked protocol while a field is not.
+      event.returnValue = {
+        ...rendererAccountSession(coworkHome()),
+        organizationId: readActiveOrg(accountDataRoot()),
+      };
+    } catch (err) {
+      console.warn('[account] could not resolve the signed-in account', err);
+      // No account means the purge is a no-op, so the verdict cannot matter.
+      event.returnValue = { accountId: null, legacyState: 'keep' };
+    }
+  });
+
+  ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_PENDING, () => {
+    const home = coworkHome();
+    const active = readActiveAccount(home);
+    if (!needsOwnershipDecision(home, active) || active.kind !== 'signed-in') {
+      return { pending: false };
+    }
+    // The id goes to the renderer so its answer can name the account it was
+    // asked about, and the label so a person can see who they are answering for.
+    return {
+      pending: true,
+      accountId: active.accountId,
+      accountLabel: accountLabelFromToken(getAccessToken()),
+    };
+  });
+
+  ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_DECIDE, async (_event, payload: unknown) => {
+    const body = (payload ?? {}) as { keepExisting?: unknown; accountId?: unknown };
+    const keepExisting = Boolean(body.keepExisting);
+    const answeredFor = typeof body.accountId === 'string' ? body.accountId : null;
+    const home = coworkHome();
+    const active = readActiveAccount(home);
+
+    // Re-check against disk rather than trusting the renderer, AND require the
+    // answer to name the account it was asked about: the account can change
+    // between the question and the answer, and applying one account's answer to
+    // another would hand over the very root this exists to protect.
+    if (active.kind !== 'signed-in' || !needsOwnershipDecision(home, active)) {
+      return { ok: false, reason: 'not-pending' };
+    }
+    if (answeredFor !== active.accountId) {
+      return { ok: false, reason: 'account-changed' };
+    }
+
+    if (!keepExisting) {
+      // The account is already resolved to its own root and the existing data
+      // stays for whoever owns it — but a sidecar started before the record
+      // named this account may still be serving the default root, so it has to
+      // be moved off the data the person just disclaimed.
+      //
+      // The terms answer comes with them. A fresh root is fresh in every other
+      // respect, which is what was asked for, but the dotenv is per-account and
+      // consent lives in it, so without this the reload below lands on the
+      // terms screen — the same account being asked again, minutes after
+      // answering, in a way that reads as having been signed out rather than as
+      // having started fresh.
+      carryTermsConsentToFreshRoot(home);
+      settleOwnership(home);
+      await ensureSidecarOnCurrentAccountRoot();
+      return { ok: true, keptExisting: false };
+    }
+
+    // A claim can fail or lose a race, and reporting success then would reload
+    // the renderer onto a root this account does not own — the person pressed
+    // "this history is mine" and would see nothing, with no error.
+    const claim = adoptDefaultRootAsIncumbent(home, active.accountId);
+    if (claim.kind !== 'claimed' || claim.accountId !== active.accountId) {
+      console.warn('[account] could not take the default root:', claim.kind);
+      return { ok: false, reason: 'claim-failed' };
+    }
+    settleOwnership(home);
+
+    // The stores are process environment, so the sidecar must restart to read
+    // the root it now owns. Through the same helper as the decline branch:
+    // adopting moves this account's dotenv from its own subtree to the shared
+    // home, and the cached bearer token has to be dropped with it or every
+    // request from the reloaded renderer carries one the new sidecar refuses.
+    await ensureSidecarOnCurrentAccountRoot();
+    return { ok: true, keptExisting: true };
+  });
+
   ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
     if (!activeInstall) return false;
     activeInstall.cancelled = true;
@@ -1182,6 +1364,9 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_READ, async () => {
+    // No account gate: readEnvFile now resolves to the signed-in account's own
+    // dotenv, so there is nothing here belonging to anyone else. Redacting would
+    // strip this account's own keys from its own file.
     return readEnvFile();
   });
 
@@ -1202,9 +1387,7 @@ function setupIPC() {
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
     const homeDir = coworkHome();
-    if (!fs.existsSync(homeDir)) {
-      fs.mkdirSync(homeDir, { recursive: true });
-    }
+    ensureAccountDataRoot();
     const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
@@ -1246,7 +1429,7 @@ function setupIPC() {
     try {
       const homeDir = coworkHome();
       if (!fs.existsSync(homeDir)) {
-        fs.mkdirSync(homeDir, { recursive: true });
+        ensureAccountDataRoot();
       }
       const envPath = coworkEnvPath();
       const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
@@ -1416,10 +1599,32 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
   }
 }
 
+// One line per startup step up to [channels], so the stdout of a startup that
+// dies natively names the last step it reached.
+console.log('[boot] modules loaded');
+
 app.whenReady().then(async () => {
+  console.log('[boot] app ready');
+
+  console.log('[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
+
+  console.log('[boot] account data root');
+  // Answer, once and before anything can create a database, whether this
+  // install already held data. It decides whether an account may take the
+  // default root or has to be asked, and it can only be observed BEFORE the
+  // first server start of a build that has per-account roots — after that,
+  // every install looks like it has data. Both calls are idempotent.
+  // The account the surviving session names is the one that was signed in on
+  // the build that created this install's data, because this runs before the
+  // boot refresh and before any interactive sign-in. That makes it evidence of
+  // incumbency rather than of a current session, which is what lets the root be
+  // handed over without asking anybody.
+  observePreExistingData(coworkHome(), accountIdFromToken(getRefreshToken()));
+  claimForRecordedIncumbent(coworkHome());
+  sweepStaleQuarantineRoots(coworkHome());
 
   // A machine that slept past the refresh timer wakes with an expired
   // in-memory token and a timer that fired into the void. Refresh on
@@ -1430,11 +1635,13 @@ app.whenReady().then(async () => {
     void refreshMindsCredentialAfterResume();
   });
 
+  console.log('[boot] uv isolation');
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
   // build kinds on one machine don't share one binary. Must run before the
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
 
+  console.log('[boot] channel consistency');
   // Guard the two environment axes against silent disagreement: the build kind
   // (data home / branch) must target the API host the canonical channel model
   // says it should. A mismatch means a build was wired to talk to the wrong
@@ -1825,7 +2032,13 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const fields = detail.fields || {};
         // Use _method (underscore-prefixed, never masked by the API) rather than
         // auth_type or token_url which are in secure_keys and come back as sentinels.
-        if (detail.method !== 'browser_oauth_builtin') continue;
+        // 'mcp' (HubSpot, ENG-487) needs this loop just as much as
+        // browser_oauth_builtin connectors — its refresh tokens rotate
+        // (single-use), so skipping it here would silently stop refreshing
+        // until the access token expires and the connection needs a full
+        // reconnect. Live-tested miss, same class as the OAUTH_CONNECT
+        // handler's method-id check above.
+        if (detail.method !== 'browser_oauth_builtin' && detail.method !== 'mcp') continue;
         if (fields.status === 'needs_reconnect') continue;
         const accountEmail = fields.account_email;
         const expiresAt = fields.expires_at;
@@ -1834,7 +2047,9 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
         if (!specRes.ok) continue;
         const spec = await specRes.json() as Record<string, any>;
-        const oauthBlock = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth;
+        const oauthBlock = spec?.form?.methods?.find(
+          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
+        )?.oauth;
         if (oauthBlock?.supports_refresh === false) continue;
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;

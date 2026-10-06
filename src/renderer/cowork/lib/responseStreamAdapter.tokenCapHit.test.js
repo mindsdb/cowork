@@ -55,6 +55,21 @@ describe('token_cap_hit impression on a credit block', () => {
     expect(trackTokenCapHit).not.toHaveBeenCalled();
   });
 
+  it('does NOT fire for free_serving_paused, a fleet-wide pause of free Air rather than this user\'s cap', () => {
+    // The daily spend fuse stops every unfunded org at once. Counting it would
+    // book a spike of cap hits that no user's own usage caused.
+    const state = fire('free_serving_paused');
+    expect(trackTokenCapHit).not.toHaveBeenCalled();
+    // Still a failed turn, so the card renders.
+    expect(state.errorCode).toBe('free_serving_paused');
+  });
+
+  it('does NOT fire for model_restricted, an org admin\'s model rule that credits do not unlock', () => {
+    const state = fire('model_restricted');
+    expect(trackTokenCapHit).not.toHaveBeenCalled();
+    expect(state.errorCode).toBe('model_restricted');
+  });
+
   it('does NOT fire for an unrelated failure code', () => {
     fire('provider_overloaded');
     expect(trackTokenCapHit).not.toHaveBeenCalled();

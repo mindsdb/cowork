@@ -8,7 +8,8 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
-import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
+import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem, TaskMode } from './api';
+import './task-control.css';
 import { effortOptions } from './reasoning';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
@@ -17,8 +18,10 @@ import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { TaskSourceLinks } from './TaskSourceLinks';
-import { TaskExecutionControls } from './TaskExecutionControls';
+import { TaskRepositoriesControl } from './TaskRepositoriesControl';
 import { useNewTaskDraft } from './useNewTaskDraft';
+import { ComposerAddMenu } from './ComposerAddMenu';
+import { planModeCommand } from './planModeCommand';
 import type { CodingCatalog } from './useCodingCatalog';
 
 export function NewTaskPanel({
@@ -59,9 +62,11 @@ export function NewTaskPanel({
   catalog?: CodingCatalog;
 }) {
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [taskMode, setTaskMode] = useState<TaskMode>('build');
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
-    projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate, catalog,
+    projects, selectedProjectId, onProjectChange, onOpenProjectSettings,
+    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), catalog,
   });
   const {
     prompt, setPrompt, catalogError,
@@ -74,24 +79,42 @@ export function NewTaskPanel({
     projectResources, resourceIds, setResourceIds, resourceStates,
     computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
   } = draft;
+  const localTarget = !computerId || allComputers.find(computer => computer.id === computerId)?.is_local === true;
+  const canPlan = localTarget && draft.supportsPlanning;
+  const planUnavailable = taskMode === 'plan' && !canPlan;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const paletteItems = useCodePaletteItems({
-    commands: engineCommands.filter((command) => command.action !== 'client'),
+    commands: [...(canPlan ? [planModeCommand(taskMode === 'plan')] : []), ...engineCommands.filter((command) => command.action !== 'client' && command.name !== 'plan')],
     query: commandQuery,
     projectId: selectedProjectId,
   });
   useEffect(() => setPaletteIndex(0), [commandQuery]);
-  const readinessText = sourceLoading ? 'Loading issue or PR…' : readinessMessage;
+  const readinessText = sourceLoading ? 'Loading issue or PR…' : planUnavailable && !engineLoading && !catalogError
+    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.' : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
       ? Ico.folder(12)
       : Ico.lock(12);
   const choosePaletteItem = (item: CodePaletteItem) => {
-    setPrompt(item.kind === 'skill' ? `${item.invocation} ` : `${item.invocation}${item.argumentHint ? ' ' : ''}`);
+    if (item.kind === 'command' && item.command.name === 'plan') {
+      setTaskMode(mode => mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+    } else {
+      setPrompt(item.kind === 'skill' ? `${item.invocation} ` : `${item.invocation}${item.argumentHint ? ' ' : ''}`);
+    }
     requestAnimationFrame(() => promptRef.current?.focus());
+  };
+  const start = () => {
+    if (planUnavailable) return;
+    if (prompt.trim() === '/plan' && canPlan) {
+      setTaskMode(mode => mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+      return;
+    }
+    void handleStart();
   };
 
   return (
@@ -162,18 +185,32 @@ export function NewTaskPanel({
               </Button>
             )}
             {selectedProject && (
-              <TaskExecutionControls
-                resources={projectResources}
-                selectedResourceIds={resourceIds}
-                resourceStates={resourceStates}
-                computers={computers}
-                allComputers={allComputers}
-                computerId={computerId}
-                disabled={busy || executionLoading}
-                onResourceIdsChange={setResourceIds}
-                onComputerChange={setComputerId}
-                onComputerMenuOpen={refreshComputers}
-              />
+              <div className="code-task-execution-controls">
+                <TaskRepositoriesControl
+                  key={`${selectedProject.id}:${computerId}`}
+                  projectId={selectedProject.id}
+                  resources={projectResources}
+                  resourceStates={resourceStates}
+                  computers={allComputers}
+                  selectedIds={resourceIds}
+                  setup={draft.repositorySetup}
+                  local={localTarget}
+                  disabled={busy || executionLoading}
+                  onApply={(ids, setup) => {
+                    setResourceIds(ids);
+                    draft.setRepositorySetup(setup);
+                  }}
+                />
+                <ExecutionTargetSelect
+                  computers={allComputers}
+                  computerId={computerId}
+                  onComputerChange={setComputerId}
+                  disabled={busy || executionLoading}
+                  availableComputerIds={computers.map(computer => computer.id)}
+                  unavailableReason="Local resources"
+                  onOpen={refreshComputers}
+                />
+              </div>
             )}
             {!selectedProject && (
               <div className="code-task-execution-controls">
@@ -213,7 +250,7 @@ export function NewTaskPanel({
             aria-label="Coding task"
             disabled={busy}
             autoFocus
-            aria-keyshortcuts="Meta+Enter Control+Enter"
+            aria-keyshortcuts="Enter"
             onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
               if (event.clipboardData.files.length) {
                 event.preventDefault();
@@ -222,6 +259,7 @@ export function NewTaskPanel({
               }
             }}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+              if (event.nativeEvent.isComposing) return;
               if (commandQuery != null && paletteItems.length > 0) {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault();
@@ -244,9 +282,10 @@ export function NewTaskPanel({
                   return;
                 }
               }
-              if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) return;
+              // Enter starts, as it sends in the task composer; Shift+Enter is a new line.
+              if (event.key !== 'Enter' || event.shiftKey) return;
               event.preventDefault();
-              void handleStart();
+              start();
             }}
           />
 
@@ -279,16 +318,8 @@ export function NewTaskPanel({
                 event.target.value = '';
               }}
             />
-            <Button
-              icon
-              variant="subtle"
-              size="sm"
-              disabled={busy}
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files or images"
-            >
-              {Ico.attach(14)}
-            </Button>
+            <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
+              planMode={taskMode === 'plan'} onPlanChange={canPlan || taskMode === 'plan' ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
             <PermissionSelect
               value={permissionMode}
               onValueChange={setPermissionMode}
@@ -338,20 +369,27 @@ export function NewTaskPanel({
               variant="primary"
               size="sm"
               className="code-start-task-button"
-              disabled={startUnavailable}
-              onClick={() => void handleStart()}
+              disabled={startUnavailable || planUnavailable}
+              onClick={start}
               aria-describedby={readinessText ? 'code-start-readiness' : undefined}
             >
               {busy ? <Spinner className="text-sm" /> : Ico.send(14)}
-              {busy ? 'Starting…' : 'Start task'}
+              {busy ? 'Starting…' : taskMode === 'plan' ? 'Start planning' : 'Start task'}
             </Button>
           </div>
         </section>
+        {selectedProject && draft.repositorySetup && (
+          <div className="code-repository-summary">
+            <span>{Ico.code(12)}</span>
+            <span>{draft.repositorySetup.branch || 'Automatic task branches'}</span>
+            <span>{draft.repositorySetup.include_local_changes ? 'Local changes included' : 'Local changes excluded'}</span>
+          </div>
+        )}
         <div className="code-start-status-slot">
           {readinessText && (
             <div
               id="code-start-readiness"
-              className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
+              className={`code-start-readiness${planUnavailable ? ' is-attention' : taskReady ? ' is-ready' : ''}`}
               role="status"
               aria-live="polite"
             >

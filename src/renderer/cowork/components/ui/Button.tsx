@@ -6,7 +6,8 @@
 //   • `variant` selects the COMPLETE visual treatment (tone + emphasis) and is
 //     the ONLY prop that picks a style. Every treatment is a named variant, so
 //     call sites never encode one via `className`.
-//   • `size` / `icon` / `block` are structural modifiers.
+//   • `size` / `icon` / `block` are structural modifiers. `xxs` is the dense
+//     tier for compact tool chrome (Code mode toolbars, row-hover actions).
 //   • `className` is a LAYOUT-ONLY escape hatch (margin, alignSelf, flex, width).
 //     Never use it to select a style treatment, and keep in mind it must not be
 //     a Tailwind class a merge could touch (`block` collides) — hence the plain
@@ -34,7 +35,7 @@ import { Button as BaseButton } from '@base-ui/react/button';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 
 export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'danger' | 'danger-solid';
-export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+export type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 // Extend Base UI's Button props (which include `render`, native button attrs,
 // and `focusableWhenDisabled`) but take `className` as a plain string — we build
@@ -50,7 +51,7 @@ export interface ButtonProps
 }
 
 const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'danger', 'danger-solid']);
-const SIZES = new Set<ButtonSize>(['xs', 'sm', 'md', 'lg', 'xl']);
+const SIZES = new Set<ButtonSize>(['xxs', 'xs', 'sm', 'md', 'lg', 'xl']);
 
 const Button = forwardRef<ComponentRef<typeof BaseButton>, ButtonProps>(function Button({
   variant = 'default',

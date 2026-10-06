@@ -7,6 +7,7 @@ import {
   withArtifactVersion,
   injectDraftBaseHref,
   canFetchDraftWithCredentials,
+  draftNavigationIsAuthorized,
   countCsvRows,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
@@ -86,6 +87,36 @@ describe('canFetchDraftWithCredentials', () => {
 
   it('rejects rather than throwing when the API origin itself is unparseable', () => {
     expect(canFetchDraftWithCredentials('https://cowork.example/index.html', '')).toBe(false);
+  });
+});
+
+/*
+ * The rule that decides whether the viewer may navigate the preview iframe
+ * rather than fetching and injecting the draft through srcdoc (ENG-2818).
+ * Navigation is what lets an artifact's CDN scripts, web fonts and remote
+ * images load at all, so this predicate should be true wherever it can be —
+ * but only where the navigation actually arrives authenticated.
+ */
+describe('draftNavigationIsAuthorized', () => {
+  it('is true on Desktop against the local loopback, where main injects the bearer', () => {
+    expect(draftNavigationIsAuthorized(true, true)).toBe(true);
+  });
+
+  it('is false in the web build, where nothing signs an iframe navigation', () => {
+    expect(draftNavigationIsAuthorized(false, false)).toBe(false);
+  });
+
+  /*
+   * A desktop shell pointed at a remote server: the loopback bearer injection
+   * is scoped to 127.0.0.1/localhost, so a navigation to the remote API
+   * carries nothing and the forward-auth ingress answers 401.
+   */
+  it('is false for a desktop shell pointed at a remote API origin', () => {
+    expect(draftNavigationIsAuthorized(true, false)).toBe(false);
+  });
+
+  it('returns a boolean rather than a passed-through falsy value', () => {
+    expect(draftNavigationIsAuthorized(undefined, undefined)).toBe(false);
   });
 });
 
@@ -278,6 +309,16 @@ describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('injects the fragment guard without adding a line', () => {
+    // Every inline script below the injection shifts by the lines it adds, and
+    // the shim's line-offset correction is computed server-side where this
+    // client-side injection is invisible. Zero added lines keeps the two in
+    // step and the reported positions true.
+    expect(DRAFT_FRAGMENT_GUARD_SCRIPT).not.toContain('\n');
+    const out = injectDraftBaseHref('<html><head></head><body></body></html>', 'https://x/y/a.html');
+    expect(out.split('\n')).toHaveLength(1);
   });
 });
 

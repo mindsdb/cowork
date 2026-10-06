@@ -229,8 +229,22 @@ export function DataVaultForm({
   // on that method's fields. We pretend the spec had `selected_method`
   // set; the breadcrumb header sees a single-method form and hides
   // itself (nothing to "go back" to).
-  const onlyMethodId = (isMultiMethod && visibleMethods.length === 1)
-    ? visibleMethods[0].id
+  //
+  // Exception: a sole method that would render as a ONE-CLICK hero has
+  // no fields to open onto, so auto-selecting it shows an empty form
+  // whose only control is "Submit" — two clicks and a dead-end-looking
+  // dialog in place of "Authorize with <Provider>". HubSpot hit this the
+  // moment its `private-app` method was hidden for the App Marketplace
+  // listing, leaving `mcp` alone. Keep the picker so the hero renders;
+  // with one visible method its "See other options" list is empty
+  // anyway, so the user sees exactly the hero and nothing else.
+  const soleMethod = (isMultiMethod && visibleMethods.length === 1)
+    ? visibleMethods[0]
+    : null;
+  const soleMethodIsOneClickHero = !!soleMethod
+    && computeHeroView([soleMethod], spec).heroOneClick;
+  const onlyMethodId = (soleMethod && !soleMethodIsOneClickHero)
+    ? soleMethod.id
     : null;
   const activeMethodId = localSelectedMethod || spec?.selected_method || onlyMethodId || null;
   const activeMethod = isMultiMethod
@@ -815,7 +829,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
             cursor: busy ? 'not-allowed' : 'pointer',
-            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+            transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
           }}
           onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
           onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -910,7 +924,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
                 : '1px solid var(--line)',
               cursor: busy ? 'not-allowed' : 'pointer',
-              transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+              transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -993,7 +1007,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
                   See other options to connect {providerName}
                   <span
-                    className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
+                    className="inline-flex transition-transform duration-layout group-data-[panel-open]:rotate-180"
                     aria-hidden
                   >
                     {Ico.chevDown(13)}
@@ -1054,7 +1068,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         color: 'inherit',
         textAlign: 'left',
         alignSelf: 'flex-start',
-        transition: 'background 120ms ease',
+        transition: 'background var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}

@@ -1,6 +1,6 @@
-import clsx from 'clsx';
 import Ico from './Icons';
-import { Menu } from './ui';
+import { cn } from '../lib/cn';
+import { Button, Menu } from './ui';
 
 export function OverflowMenu({
   items = [],
@@ -14,6 +14,7 @@ export function OverflowMenu({
   open,
   onOpenChange,
   disabled = false,
+  size = 'xxs',
   triggerClassName,
   triggerStyle,
   stopPropagation = true,
@@ -21,28 +22,24 @@ export function OverflowMenu({
   onTriggerKeyDown,
   ...menuProps
 }) {
+  // A ghost icon Button, sized by `size` (callers' `triggerClassName` keeps
+  // layout such as position and reveal-on-hover). `title` becomes a Tooltip
+  // that Menu composes onto its own trigger.
   const trigger = (
-    <button
-      type="button"
+    <Button
+      icon
+      size={size}
+      variant="subtle"
       aria-label={label}
-      // Kept as native `title` (not ui/Tooltip, ENG-1152): this button is
-      // also the Menu's trigger, so wrapping it in a Tooltip would nest two
-      // Base UI triggers competing for the same ref/handlers. Deferred until
-      // the trigger forwards a ref cleanly.
-      title={title}
       disabled={disabled}
-      className={clsx(
-        // No `justify-*` in the base so callers can right/left-align the
-        // icon via `triggerClassName` (Tailwind can't resolve a base
-        // `justify-center` vs a passed `justify-end` — both land in the
-        // class list). The single icon child stays centered by default
-        // because the trigger box is icon-sized unless a caller stretches
-        // it (e.g. ContextCard's `absolute inset-0 justify-end`).
-        'inline-flex items-center rounded border-0 bg-transparent p-0',
-        'text-ink-4 hover:text-ink focus-visible:text-ink',
-        'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        triggerClassName,
-      )}
+      // Stay focusable while disabled (aria-disabled): a caller that disables
+      // the trigger while its action runs would otherwise drop the focus the
+      // menu hands back on close.
+      focusableWhenDisabled
+      // A caller that stretches the trigger over a slot (`absolute inset-0`,
+      // as ContextCard's row kebab does) keeps the icon where it asked for
+      // it: auto margins place the fixed-size button inside the inset box.
+      className={cn('[&.inset-0]:my-auto [&.inset-0.justify-end]:ml-auto', triggerClassName)}
       style={triggerStyle}
       onClick={(e) => {
         if (stopPropagation) e.stopPropagation();
@@ -52,9 +49,14 @@ export function OverflowMenu({
         if (stopPropagation) e.stopPropagation();
         onTriggerKeyDown?.(e);
       }}
+      // Base UI's disabled branch returns before the handlers above run, and
+      // an aria-disabled button still dispatches clicks and keys, so they'd
+      // reach a clickable row and activate it. Stop them on the way down.
+      onClickCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
+      onKeyDownCapture={disabled && stopPropagation ? (e) => e.stopPropagation() : undefined}
     >
       {icon}
-    </button>
+    </Button>
   );
 
   return (
@@ -63,6 +65,7 @@ export function OverflowMenu({
       trigger={trigger}
       items={items}
       ariaLabel={menuProps.ariaLabel || label}
+      tooltip={title}
       width={width}
       align={align}
       side={side}

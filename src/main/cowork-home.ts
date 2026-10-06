@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
+import { accountDataHome, readActiveAccount } from './account-data';
 import { BUILD_KINDS, CHANNELS, normalizeBuildKind, type BuildKind } from './channels';
 
 const LEGACY_HOME = path.join(os.homedir(), '.anton');
@@ -139,17 +140,81 @@ export function coworkHome(): string {
   return path.join(os.homedir(), CHANNELS[buildKind()].homeDirName);
 }
 
+/**
+ * The data root for the account currently signed in: `coworkHome()` itself for
+ * the account that owns it, a subtree otherwise.
+ *
+ * `coworkHome()` stays the SHARED root and keeps everything that answers "who is
+ * signed in" — the refresh token, the account record, the ownership claim, the
+ * server owner token — because those cannot be per-account without a bootstrap
+ * cycle. Everything an account OWNS hangs off this instead.
+ */
+export function accountDataRoot(): string {
+  const shared = coworkHome();
+  return accountDataHome(shared, readActiveAccount(shared));
+}
+
+/**
+ * The account's data root, created if it is not there yet.
+ *
+ * Every writer of `coworkEnvPath()` or `coworkStatePath()` must go through this
+ * rather than creating `coworkHome()`: a second account's root does not exist
+ * until something makes it, and an atomic write puts its temp file in the target
+ * directory, so writing first would fail with ENOENT and lose the value.
+ */
+export function ensureAccountDataRoot(): string {
+  const root = accountDataRoot();
+  fs.mkdirSync(root, { recursive: true });
+  // Owner-only, and pinned past the umask with chmod the way installation-id
+  // pins its own file. A per-account root holds that account's database, files,
+  // connector vault and dotenv, so another OS user on the machine should not be
+  // able to read it. Leaf-level is enough: the ancestors only need to be
+  // traversable, and it is entering THIS directory that reading its contents
+  // requires.
+  //
+  // Only a root this feature created. The account that owns the default root
+  // uses coworkHome() itself, which predates all of this and carries whatever
+  // permissions the install already had; tightening it here would change
+  // existing state for a reason this ticket did not ask for.
+  if (root !== coworkHome()) {
+    try {
+      fs.chmodSync(root, 0o700);
+    } catch (err) {
+      // Best-effort: a root that cannot be tightened is still the right root,
+      // and failing the session over file modes would be worse than the
+      // exposure it guards against.
+      console.warn('[cowork-home] could not restrict the account data root', err);
+    }
+  }
+  return root;
+}
+
+/**
+ * The account's own dotenv, and below it its provider state.
+ *
+ * Per-account rather than shared, because these are written by whichever
+ * account is signed in: a second account entering its own provider key would
+ * otherwise write it into the owning account's file, and the owner would import
+ * it on their next sign-in. It also puts the dotenv where the sidecar reads it,
+ * since cowork-server derives its chain from COWORK_HOME.
+ *
+ * Accepted cost: terms consent, DEV_MODE and the keychain preference travel
+ * with the account, so a second account on one machine accepts terms again.
+ */
 export function coworkEnvPath(): string {
-  return path.join(coworkHome(), '.env');
+  return path.join(accountDataRoot(), '.env');
 }
 
 export function coworkStatePath(): string {
-  return path.join(coworkHome(), 'state.json');
+  return path.join(accountDataRoot(), 'state.json');
 }
 
 export function readEnvFile(): Record<string, string> {
+  return readEnvFileAt(coworkEnvPath());
+}
+
+export function readEnvFileAt(envPath: string): Record<string, string> {
   const vars: Record<string, string> = {};
-  const envPath = coworkEnvPath();
   if (!fs.existsSync(envPath)) return vars;
   const content = fs.readFileSync(envPath, 'utf-8');
   for (const line of content.split('\n')) {
@@ -159,6 +224,53 @@ export function readEnvFile(): Record<string, string> {
     if (eqIdx > 0) vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
   }
   return vars;
+}
+
+/**
+ * What a root the SAME account is starting fresh on inherits from the root it
+ * just disclaimed.
+ *
+ * Only the terms answer, and only when the destination has none. Everything
+ * else about a fresh root should be fresh — that is what the person asked for —
+ * but consent is about the human, not the storage location, and this is the one
+ * account that gave it, minutes earlier, in this session. Re-asking here is
+ * indistinguishable from having been signed out, which is not what the dialog
+ * offered.
+ *
+ * Deliberately NOT the general rule for a new account root: a SECOND account is
+ * a second person and accepts terms itself. See `coworkEnvPath`.
+ */
+export function termsConsentToCarry(
+  disclaimed: Record<string, string>,
+  destination: Record<string, string>,
+): Record<string, string> {
+  if (destination.ANTON_TERMS_CONSENT) return {};
+  return disclaimed.ANTON_TERMS_CONSENT === 'true' ? { ANTON_TERMS_CONSENT: 'true' } : {};
+}
+
+/**
+ * Carry that answer onto the account's own root. Best-effort: a consent that
+ * cannot be copied costs one extra screen, where failing the decision would
+ * cost the person the answer they just gave.
+ */
+export function carryTermsConsentToFreshRoot(disclaimedHome: string): void {
+  try {
+    const envPath = path.join(ensureAccountDataRoot(), '.env');
+    const carry = termsConsentToCarry(
+      readEnvFileAt(path.join(disclaimedHome, '.env')),
+      readEnvFileAt(envPath),
+    );
+    const entries = Object.entries(carry);
+    if (!entries.length) return;
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+    fs.appendFileSync(envPath, prefix + entries.map(([k, v]) => `${k}=${v}`).join('\n') + '\n', {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+  } catch (err) {
+    console.warn('[cowork-home] could not carry the terms answer onto the fresh root', err);
+  }
 }
 
 // Copy the legacy `~/.anton/.env` and `~/.anton/cowork/state.json` to the

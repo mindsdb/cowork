@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import Tooltip from '../components/ui/Tooltip';
 import { codingApi, type TerminalPage, type TerminalTabState } from './api';
 import { TerminalScreen } from './TerminalScreen';
 import { getTerminalShellPreference } from './terminalPreferences';
@@ -212,7 +214,11 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
     expectedDisconnectsRef.current.add(selected.id);
     try {
       const nextState = await codingApi.stopTerminal(sessionId, selected.id);
-      updateState(selected.id, nextState);
+      // The server answers as soon as it requests termination, usually before the
+      // process has exited, so this reply can still say running. The terminal
+      // stream reports the real exit, and may already have, so a running reply
+      // must not overwrite it.
+      if (nextState.status !== 'running') updateState(selected.id, nextState);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not stop the terminal.');
     } finally {
@@ -297,59 +303,71 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
                   }}
                 />
               ) : (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab.id === selectedId}
-                  aria-label={`${tab.label}, ${statusLabel(tab)}`}
-                  title="Double-click to rename"
-                  onClick={() => setSelectedId(tab.id)}
-                  onDoubleClick={() => beginRename(tab)}
-                  onContextMenu={(event) => { event.preventDefault(); beginRename(tab); }}
-                  onKeyDown={(event) => { if (event.key === 'F2') beginRename(tab); }}
-                >
-                  <span className={`code-status-dot is-${tab.status === 'running' ? 'success' : tab.status === 'failed' ? 'danger' : 'neutral'}`} aria-hidden="true" />
-                  <span>{tab.label}</span>
-                </button>
+                <Tooltip content="Double-click to rename">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab.id === selectedId}
+                    aria-label={`${tab.label}, ${statusLabel(tab)}`}
+                    onClick={() => setSelectedId(tab.id)}
+                    onDoubleClick={() => beginRename(tab)}
+                    onContextMenu={(event) => { event.preventDefault(); beginRename(tab); }}
+                    onKeyDown={(event) => { if (event.key === 'F2') beginRename(tab); }}
+                  >
+                    <span className={`code-status-dot is-${tab.status === 'running' ? 'success' : tab.status === 'failed' ? 'danger' : 'neutral'}`} aria-hidden="true" />
+                    <span>{tab.label}</span>
+                  </button>
+                </Tooltip>
               )}
-              <button
-                type="button"
+              <Button
+                icon
+                size="xxs"
+                variant="subtle"
                 className="code-terminal__tab-close"
                 aria-label={`Close ${tab.label}`}
                 disabled={busy}
                 onClick={() => void deleteTerminal(tab.id)}
               >
                 {Ico.close(10)}
-              </button>
+              </Button>
             </div>
           ))}
-          <button
-            type="button"
-            className="code-terminal__new"
-            aria-label="New terminal"
-            title={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}
-            disabled={busy || tabs.length >= MAX_TERMINALS}
-            onClick={() => void addTerminal()}
-          >
-            {Ico.plus(12)}
-          </button>
+          {/* The hint lives on a wrapper: disabled .btn drops pointer events. */}
+          <Tooltip content={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}>
+            <span className="code-terminal__new">
+              <Button
+                icon
+                size="sm"
+                variant="subtle"
+                aria-label="New terminal"
+                disabled={busy || tabs.length >= MAX_TERMINALS}
+                onClick={() => void addTerminal()}
+              >
+                {Ico.plus(12)}
+              </Button>
+            </span>
+          </Tooltip>
         </div>
         <div className="code-terminal__actions">
           {selected?.status === 'running' ? (
-            <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()} title="Stop this terminal without closing its tab">
-              {Ico.stop(11)} Stop terminal
-            </Button>
+            <Tooltip content="Stop this terminal without closing its tab">
+              <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()}>
+                {Ico.stop(11)} Stop terminal
+              </Button>
+            </Tooltip>
           ) : selected && selected.status !== 'stopped' && (
             <Button size="sm" variant="subtle" disabled={busy} onClick={() => void restart()}>
               {Ico.refresh(12)} Restart
             </Button>
           )}
-          <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Hide terminal panel" title="Hide terminal panel">
-            {Ico.close(13)}
-          </Button>
+          <Tooltip content="Hide terminal panel">
+            <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Hide terminal panel">
+              {Ico.close(13)}
+            </Button>
+          </Tooltip>
         </div>
       </header>
-      {error && <div className="code-terminal__error" role="alert">{error}</div>}
+      {error && <div className="code-terminal__error"><Alert variant="danger">{error}</Alert></div>}
       {selectedId && sessionLoaded ? (
         <TerminalScreen
           key={`${sessionId}:${selectedId}:${screenGeneration}`}

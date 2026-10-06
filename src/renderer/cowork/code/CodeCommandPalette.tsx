@@ -1,6 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import type { EngineCommand, SkillLibraryItem } from './api';
 import { skillSupersedesHint } from './presentation';
 import { useSkillLibrary } from './useSkillLibrary';
@@ -179,14 +181,15 @@ export function CodeCommandPalette({
           <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
         </button>
         {item.kind === 'skill' && (
-          <button
-            type="button"
+          <Button
+            size="xxs"
+            variant="subtle"
             className="code-command-palette__view"
             aria-label={`View ${item.label}`}
             onClick={() => onViewSkill(item.skill)}
           >
             View
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -201,22 +204,21 @@ export function CodeCommandPalette({
       style={availableHeight ? { maxHeight: availableHeight } : undefined}
       onKeyDown={handleKeyDown}
     >
-      <label className="code-command-palette__search">
-        <span aria-hidden="true">{Ico.search(13)}</span>
-        <input
+      <div className="code-command-palette__search">
+        <Input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={onQueryChange}
+          size="sm"
+          leading={Ico.search(13)}
           placeholder="Search skills and commands"
           aria-label="Search skills and commands"
         />
-        <kbd>esc</kbd>
-      </label>
+      </div>
       <div className="code-command-palette__list">
         {skills.length > 0 && (
           <section aria-label="MindsHub skills">
             <div className="code-command-palette__section">
               <span>MindsHub skills</span>
-              <small>Available in Code Mode</small>
             </div>
             {skills.map(renderItem)}
           </section>
@@ -225,7 +227,6 @@ export function CodeCommandPalette({
           <section aria-label={`${agentLabel} commands`}>
             <div className="code-command-palette__section">
               <span>{agentLabel} commands</span>
-              <small>Provided by the coding agent</small>
             </div>
             {commands.map(renderItem)}
           </section>

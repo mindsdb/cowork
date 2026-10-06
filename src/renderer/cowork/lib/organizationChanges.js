@@ -8,6 +8,21 @@ export function subscribeOrganizationChanges(listener) {
   return () => listeners.delete(listener);
 }
 
+/**
+ * Errors are contained per listener, not allowed to escape the loop.
+ *
+ * A reader that throws used to take the whole notification with it, and on
+ * desktop this is called next to the reload that moves the document onto the
+ * new organization's stores — so one bad listener could strand the document on
+ * the previous organization's data with nothing in the console to say why.
+ * Containing it also keeps the listeners after the thrower subscribed.
+ */
 export function notifyOrganizationChanged(subject) {
-  for (const listener of listeners) listener(subject);
+  for (const listener of listeners) {
+    try {
+      listener(subject);
+    } catch (err) {
+      console.error('[organization] a change listener threw', err);
+    }
+  }
 }

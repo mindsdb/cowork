@@ -79,10 +79,20 @@ describe('ArtifactsView Title (A–Z) sort — end-to-end switch wiring (ENG-112
     ];
     render(<ArtifactsView artifacts={artifacts} />);
 
-    await user.click(screen.getByRole('button', { name: /^Sort:/ }));
-    await user.click(screen.getByRole('button', { name: 'Title (A–Z)' }));
+    await user.click(screen.getByRole('combobox', { name: 'Sort' }));
+    await user.click(await screen.findByRole('option', { name: 'Title (A–Z)' }));
 
     const titles = screen.getAllByText(/Report$/).map((el) => el.textContent);
     expect(titles).toEqual(['Alpha Report', 'Mike Report', 'Zulu Report']);
+  });
+});
+
+// ENG-2177: the subtitle promised a live URL without saying what sharing is or
+// where it lives. It now names the control and which artifacts it applies to.
+describe('ArtifactsView subtitle (ENG-2177)', () => {
+  it('tells the user where Share is and what it can share', () => {
+    render(<ArtifactsView artifacts={[webAppArtifact]} />);
+    expect(screen.getByText(/To get a web link for a page or document, open it and choose Share\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Share to get a live URL/)).toBeNull();
   });
 });

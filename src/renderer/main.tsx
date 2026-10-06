@@ -23,6 +23,34 @@ import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
+import { purgeOrganizationScopedState, purgeStaleAccountState } from './cowork/lib/accountLocalState';
+import { accountSessionSync } from './platform/host';
+import { reset as resetOnboardingProgress } from './cowork/components/onboarding/onboardingStore';
+
+// Drop the previous account's browser caches BEFORE React mounts.
+//
+// It cannot wait for an effect. `useDraft` seeds its state during render, from a
+// key the home composer spells as the literal 'new' — the same key for every
+// account — so an effect-time purge runs a frame after the previous account's
+// unsent message is already on screen and in component state. The account id is
+// resolved in preload, which re-runs on every reload, so a sign-out reload sees
+// the new value rather than the one the window was created with.
+const shellSession = accountSessionSync();
+const purgedStaleAccount = purgeStaleAccountState(
+  shellSession?.accountId ?? null,
+  shellSession?.legacyState ?? 'keep',
+);
+// onboardingStore reads its own localStorage keys into a module-level
+// variable at import time — which happens above, via `import App`'s
+// dependency graph, before this purge ever runs. Removing the keys alone
+// would leave that in-memory snapshot stale for the rest of the session, so
+// the store's own reset (clears both the keys and the snapshot, and notifies
+// subscribers) has to run too whenever the purge actually found something.
+if (purgedStaleAccount) resetOnboardingProgress();
+// And the previous ORGANIZATION's, for the same reason and at the same moment:
+// one account works in several, and a switch changes the working context as
+// completely as a sign-in does.
+purgeOrganizationScopedState(shellSession?.organizationId ?? null);
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real

@@ -24,6 +24,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
@@ -39,12 +40,14 @@ import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
+import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
   countCsvRows,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
+  draftNavigationIsAuthorized,
   draftPreviewErrorMessage,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
@@ -60,6 +63,14 @@ import {
 // markdown renderer; `.csv` gets a parsed table; `.txt` and friends
 // fall back to a monospace block.
 
+
+// Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
+// carry over from the artifact the report started from.
+function isSameArtifact(a, b) {
+  if (!a || !b) return false;
+  if (a.id || b.id) return a.id === b.id;
+  return (a.path || '') === (b.path || '');
+}
 
 export function ArtifactViewer({
   open,
@@ -144,8 +155,23 @@ export function ArtifactViewer({
 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
-  const pub = usePublish(artifact, { onChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  // The hooks below report back from async work (status refreshes, saves) that
+  // can settle after the viewer closed or moved to another artifact. Hosts
+  // handle onChange by setting their preview state to the updated artifact, so
+  // a late report would reopen a closed viewer or swap the one on screen
+  // (ENG-3070). Refs are written during render so a close is seen immediately.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const artifactRef = useRef(artifact);
+  artifactRef.current = artifact;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const reportChange = useCallback((updated) => {
+    if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
+    onChangeRef.current?.(updated);
+  }, []);
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
+  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -184,6 +210,14 @@ export function ArtifactViewer({
   // it does not need to wait for the comments transport to finish provisioning.
   // Waiting used to remount the whole HTML artifact as commentsReady flipped.
   const commentLayerRequested = !!artifactKey;
+  // Read by the load effect below rather than listed as its dependency. The key
+  // can arrive from the status refresh after the preview painted — late on a
+  // slow connection — and swapping `src` then reloads the page the user is
+  // looking at just to add an inert bridge (ENG-3070).
+  const commentLayerRequestedRef = useRef(commentLayerRequested);
+  commentLayerRequestedRef.current = commentLayerRequested;
+  // Whether the mounted preview was loaded with the bridge.
+  const commentLayerMountedRef = useRef(false);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -193,6 +227,20 @@ export function ArtifactViewer({
   // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
   // postMessage. Both stay dormant when comments are disabled.
   const iframeRef = useRef(null);
+  // Reset key, not a URL: the srcdoc branch swaps `previewDoc` and leaves
+  // `previewUrl` empty, so keying on the URL alone would carry the previous
+  // document's errors onto a new one in org mode.
+  //
+  // Gated on a preview actually being mounted, not just on `open`: text and
+  // image artifacts never mount an iframe, so `iframeRef.current` stays null
+  // and the sender check below degrades to "accept anyone" — and the HTML
+  // comparison view mounts its own `sandbox="allow-scripts"` frames of
+  // agent-written HTML that could otherwise post into this channel. Same
+  // rationale as the comments bridge's `commentsOpen` gate below.
+  const diagnostics = usePreviewDiagnostics(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
+  });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
     onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
@@ -311,6 +359,9 @@ export function ArtifactViewer({
       const requested = await workspace.addressWithAgent({
         thread,
         conversationId: targetConversationId,
+        // Normalized, folded and capped by the hook; the server reads
+        // message, file and line, caps again and owns the prompt's size.
+        previewErrors: diagnostics.errors,
       });
       if (requested) {
         let started;
@@ -365,6 +416,13 @@ export function ArtifactViewer({
     : artifact?.capabilities
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
+  // Unlike canManage, a client-side guess must never override the card's
+  // server-sent role: a guessed reviewer would hide "Another member" on the
+  // user's own artifact, and a guessed owner would hide it on a colleague's.
+  // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
+  const authorship = artifactAuthorship(
+    (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
+  );
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -411,6 +469,8 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     let cancelled = false;
+    const withCommentLayer = commentLayerRequestedRef.current;
+    commentLayerMountedRef.current = withCommentLayer;
     if (isText) {
       const previewRequest = draftPreviewUrl
         ? loadArtifactDraftText(draftPreviewUrl, {
@@ -456,28 +516,44 @@ export function ArtifactViewer({
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      const fetchUrl = commentLayerRequested
+      const fetchUrl = withCommentLayer
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
-      if (!canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())) {
-        // Embedded (data:/blob:) content makes no network request at all —
-        // there's nothing for a credential to protect. A genuinely
-        // cross-origin absolute URL must never receive the web Keycloak
-        // bearer `authFetch` would attach (the old `src=` navigation never
-        // sent it either). Both keep the pre-fix direct navigation; only a
-        // same-origin API URL is safe to route through the fetch+srcdoc path
-        // below.
+      // Navigate the iframe unless fetch+srcdoc is the only way to carry a
+      // credential. Navigation is the preferred path, not merely an
+      // equivalent one: a `srcdoc` document inherits the shell's CSP, which
+      // blocks the artifact's CDN scripts, web fonts and remote images — the
+      // same file renders completely in a browser (ENG-2818).
+      //
+      // Three cases navigate, and only the third is about authorization —
+      // hence `shouldNavigate` rather than a name claiming all three are
+      // authorized, which the first two are not:
+      //
+      //  - Embedded (data:/blob:) content makes no network request at all, so
+      //    there is nothing for a credential to protect.
+      //  - A genuinely cross-origin absolute URL must never receive the web
+      //    Keycloak bearer `authFetch` would attach (the old `src=`
+      //    navigation never sent it either), so navigating is the only safe
+      //    option rather than an authorized one.
+      //  - Desktop against the local loopback, where the main process already
+      //    injects the bearer into iframe navigations at the network layer,
+      //    so the 401 below cannot occur. See draftNavigationIsAuthorized.
+      const shouldNavigate =
+        !canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())
+        || draftNavigationIsAuthorized(host.isElectron, host.isLocalApiOrigin());
+      if (shouldNavigate) {
         setPreviewUrl(fetchUrl);
         setLoading(false);
         return () => { cancelled = true; };
       }
-      // A plain iframe `src=` navigation cannot carry the Authorization
-      // header the forward-auth ingress in front of the drafts endpoint
-      // requires on staging (see
-      // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md),
-      // so fetch through authFetch (like Edit's source load) and hand the
-      // result to the iframe via srcdoc instead of navigating it directly.
+      // Org deployment: a plain iframe `src=` navigation cannot carry the
+      // Authorization header the forward-auth ingress in front of the drafts
+      // endpoint requires (the ingress `auth-url` reads only
+      // `Authorization: Bearer`), so fetch through authFetch (like Edit's
+      // source load) and hand the result to the iframe via srcdoc instead of
+      // navigating it directly. This path pays the inherited-CSP cost above;
+      // lifting it for Cloud needs an ingress change (ENG-2818).
       // previewUrl/previewDoc were both already reset to '' at the top of
       // this effect, so setting only one of them here is enough to keep them
       // mutually exclusive.
@@ -526,7 +602,7 @@ export function ArtifactViewer({
           // layer into the root HTML on the same activation flag (see
           // preview_proxy.py). Bake it in at mount time — same rationale as the
           // static branch below (stable src, no reactive reload).
-          setPreviewUrl(commentLayerRequested
+          setPreviewUrl(withCommentLayer
             ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
             : withArtifactVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
@@ -538,7 +614,7 @@ export function ArtifactViewer({
         // Bake the inert comment bridge into the first URL whenever the card
         // has a stable identity. Transport readiness can then change without
         // swapping this cross-origin iframe's `src` or flashing the preview.
-        setPreviewUrl(commentLayerRequested
+        setPreviewUrl(withCommentLayer
           ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
           : withArtifactVersion(url, cacheVersion));
         // NOTE (ENG-931): we deliberately do NOT adopt the server's published
@@ -554,7 +630,15 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, commentLayerRequested]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+
+  // Opening comments on a preview mounted before the key arrived is the one
+  // time a reload is worth it: the user asked for the markers.
+  useEffect(() => {
+    if (!open || !commentsOpen || !commentLayerRequested) return;
+    if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
+    setReloadNonce((n) => n + 1);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -661,18 +745,46 @@ export function ArtifactViewer({
   const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
 
   // "Open this artifact in a browser tab", for the control beside the mode
-  // tabs. Distinct from `onOpenInBrowser` above, which falls back to handing
-  // the path to the OS — that opens the file, not a browser, and on an org
-  // deployment there is no local file to hand over at all.
+  // tabs. It exists separately from the ⋯ menu's "Open in browser" because
+  // that menu is hidden in org mode, where this affordance still belongs.
   //
   // Preference order: the published URL is what the artifact *is* and what a
   // person would share; the served URL is desktop's local HTTP view; the
   // authenticated draft URL is org mode's route to an artifact nobody has
   // published yet.
-  const browserTabUrl = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
-  // host.openExternal is already right on both deployments: Electron hands the
-  // URL to the OS (a real browser, outside the app), web opens a new tab.
+  const browserTabTarget = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // ...but only `publishedUrl` carries its own origin; the server returns
+  // `serveUrl` and `draftUrl` origin-relative. Web tolerates that because
+  // `window.open` resolves against the page, and desktop no longer reaches
+  // here with a relative value at all (see `onOpenInBrowserTab` below).
+  // Absolutized anyway, through the same helper the draft-preview path above
+  // uses, so the value means one thing on both shells: a relative URL handed
+  // to `shell.openExternal` opens nothing and reports success (ENG-2847).
+  const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
+    ? browserTabTarget
+    : `${host.getApiOrigin()}${browserTabTarget}`;
+  // On desktop an unpublished artifact CANNOT be opened over the served URL,
+  // however well-formed it is: the loopback server requires a bearer token
+  // (`require_auth` defaults on in local tenancy), and main injects that token
+  // into this window's own session only (`app.ts` webRequest). shell.openExternal
+  // launches a separate browser process, which carries no such header and gets
+  // 401. The local file needs no credential, so hand it to the OS instead —
+  // the same route the ⋯ menu's "Open in browser" takes, which is exactly why
+  // that control kept working while this one did not. `onOpenOS` already owns
+  // the fullstack-backend and missing-path cases, so delegate rather than
+  // restate them.
+  //
+  // Published stays on openExternal: that URL is public, absolute, and the
+  // thing a person actually wants a tab of. Org/web has no local file, so it
+  // stays on the URL too.
+  //
+  // NOT `draftNavigationIsAuthorized` (ENG-2818), despite the matching shape:
+  // that answers whether a navigation *inside this window* is authorized, and
+  // it is true here — main's header injection covers the app's own requests.
+  // This control leaves the window entirely, which is the one case that
+  // injection does not reach.
   const onOpenInBrowserTab = () => {
+    if (!isPublished && canOpenLocalFile) return onOpenOS();
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
       setErr('Could not open this artifact in a browser.');
@@ -808,10 +920,12 @@ export function ArtifactViewer({
     >
       <ArtifactViewerHeader
         title={title}
+        authorship={authorship}
         workspace={workspace}
         review={headerReview}
         publication={publication}
         actions={artifactActions}
+        diagnostics={diagnostics}
         onClose={onClose}
       />
 

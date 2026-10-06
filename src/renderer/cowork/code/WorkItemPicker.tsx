@@ -1,6 +1,9 @@
 import Ico from '../components/Icons';
+import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import type { ProjectConnection, WorkItemSummary } from './api';
 import { developerProviderLabel, type DeveloperProvider } from './developerTools';
 
@@ -72,20 +75,14 @@ export function WorkItemPicker({
       {hasConnections ? (
         <>
           <div className="code-work-picker__filters">
-            <div className="code-work-picker__providers" role="tablist" aria-label="Developer tool">
-              {providers.map((item) => (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={item === provider}
-                  key={item}
-                  disabled={busy}
-                  onClick={() => onProviderChange(item)}
-                >
-                  {developerProviderLabel(item)}
-                </button>
-              ))}
-            </div>
+            <ToggleGroup
+              size="sm"
+              aria-label="Developer tool"
+              disabled={busy}
+              value={provider}
+              onValueChange={(value) => onProviderChange(value as DeveloperProvider)}
+              options={providers.map((item) => ({ value: item, label: developerProviderLabel(item) }))}
+            />
             {providerConnections.length > 1 && (
               <Select
                 value={connectionName}
@@ -99,17 +96,17 @@ export function WorkItemPicker({
               />
             )}
           </div>
-          <label className="code-work-picker__search">
-            <span aria-hidden="true">{Ico.search(14)}</span>
-            <input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={`Search ${developerProviderLabel(provider)}`}
-              aria-label={`Search ${developerProviderLabel(provider)} work`}
-              disabled={busy}
-              autoFocus
-            />
-          </label>
+          <Input
+            value={query}
+            onChange={onQueryChange}
+            size="sm"
+            leading={Ico.search(14)}
+            wrapperClassName="code-work-picker__search"
+            placeholder={`Search ${developerProviderLabel(provider)}`}
+            aria-label={`Search ${developerProviderLabel(provider)} work`}
+            disabled={busy}
+            autoFocus
+          />
 
           <div className="code-work-picker__results" role="listbox" aria-label={`${developerProviderLabel(provider)} work`}>
             {loading && <div className="code-work-picker__message" role="status">Finding work…</div>}
@@ -126,7 +123,7 @@ export function WorkItemPicker({
                 onClick={() => onChoose(item)}
                 disabled={busy}
               >
-                <span className="code-work-picker__kind">{item.kind === 'pull_request' ? 'PR' : item.provider === 'linear' ? 'LIN' : 'ISS'}</span>
+                <Badge size="xs" className="code-work-picker__kind">{item.kind === 'pull_request' ? 'PR' : item.provider === 'linear' ? 'LIN' : 'ISS'}</Badge>
                 <span className="code-work-picker__identity">
                   <strong>{item.title}</strong>
                   <small>{[item.external_id, item.state, item.assignee].filter(Boolean).join(' · ')}</small>
@@ -137,9 +134,10 @@ export function WorkItemPicker({
           </div>
 
           <div className="code-work-picker__link">
-            <input
+            <Input
               value={link}
-              onChange={(event) => onLinkChange(event.target.value)}
+              onChange={onLinkChange}
+              size="sm"
               placeholder="Or paste an issue or pull-request link"
               aria-label="Issue or pull-request link"
               disabled={busy}

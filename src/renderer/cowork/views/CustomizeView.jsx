@@ -9,8 +9,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Alert, Button, EmptyState } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { Alert, Button, Select } from '../components/ui';
+import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -18,6 +18,8 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
+  CollectionState,
+  NewTile,
   useCollectionShortcut,
 } from '../components/collection';
 import { cn } from '../lib/cn';
@@ -48,35 +50,10 @@ const SORT_OPTIONS = [
 function ConnectionsCounts({ search, total, filtered }) {
   const filterActive = (search || '').trim().length > 0;
   const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
+    ? `${filtered} of ${total} connections`
     : `${total} ${total === 1 ? 'connection' : 'connections'}`;
   return <>{countText}</>;
 }
-
-// ─── Connection card ─────────────────────────────────────────────────────
-
-// Trailing dashed card that lives at the end of the connections
-// grid, mirroring the "+ New project" tile in ProjectsView. Click
-// dispatches to the parent's handleConnectNew (same path the page
-// header's "+ Connect" button takes — opens the connector picker).
-// Only rendered when there's at least one existing connection — the
-// EmptyState already covers the zero-connection case.
-function NewConnectionCard({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_.15s_ease,color_.15s_ease] hover:border-accent hover:text-accent"
-    >
-      <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium">
-        New connection
-      </span>
-    </button>
-  );
-}
-
-// ─── Empty state ─────────────────────────────────────────────────────────
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
@@ -103,6 +80,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerState, setPickerState] = useState({ status: 'idle' });
+  // "Edit access" (ENG-487) — no existing connector has an editable-
+  // after-connect setting, so this is its own small piece of state rather
+  // than reusing pickerState's shape.
+  const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
   // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
   // a pick attempt's own continuation can tell whether it's still the
   // active one — a single shared boolean "was cancel ever clicked" flag
@@ -112,6 +93,11 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   // be declared before the `if (!connection) return null;` below — every
   // render must call the same hooks (Rules of Hooks).
   const pickerAttemptRef = useRef(0);
+  // Same reasoning as pickerAttemptRef, found in code review: without it, an
+  // in-flight access-mode PATCH that resolves after the user has switched to
+  // a DIFFERENT connection would patch the wrong (now-displayed) connection's
+  // local state via the stale closure over `setSaved`.
+  const accessModeAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!connection) return;
@@ -119,6 +105,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
     setSpec(null);
     setSaved(null);
     setPickerState({ status: 'idle' });
+    setAccessModeState({ status: 'idle' });
+    accessModeAttemptRef.current++; // invalidate any in-flight PATCH from the connection we're leaving
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -186,6 +174,22 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
     pickerAttemptRef.current++; // invalidates the in-flight attempt's eventual resolution
     host.cancelDrivePicker();
     setPickerState({ status: 'idle' });
+  };
+
+  const handleChangeAccessMode = async (nextMode) => {
+    const attemptId = ++accessModeAttemptRef.current;
+    const engine = connection.engine;
+    const name = connection.name;
+    setAccessModeState({ status: 'saving' });
+    try {
+      await patchConnectionAccessMode(engine, name, nextMode);
+      if (accessModeAttemptRef.current !== attemptId) return; // superseded — a different connection is now open
+      setSaved((prev) => (prev ? { ...prev, fields: { ...prev.fields, _access_mode: nextMode } } : prev));
+      setAccessModeState({ status: 'idle' });
+    } catch (err) {
+      if (accessModeAttemptRef.current !== attemptId) return;
+      setAccessModeState({ status: 'error', reason: err?.message || String(err) });
+    }
   };
 
   // Display list: spec fields in order (vault value where available),
@@ -364,6 +368,42 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   </div>
                 </>
               )}
+
+              {/* Tool access — only MCP-based connections have this
+                  (ENG-487, HubSpot first): every other connector's access
+                  is fixed by whatever OAuth scopes it requested at connect
+                  time, with no after-the-fact control. `saved.method`, not
+                  `vaultFields._method`: the local-mode detail endpoint pops
+                  `_method` out of `fields` and promotes it to this top-level
+                  field (connections.py's ConnectionDetailResponse) — the
+                  same field `handleDelete` above already reads it from. A
+                  test double that leaves `_method` nested under `fields`
+                  instead would pass without ever exercising the real shape. */}
+              {saved?.method === 'mcp' && (
+                <>
+                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                    Tool access
+                  </div>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
+                      What Anton can do with this connection's tools. Changing this doesn't require reconnecting.
+                    </div>
+                    <Select
+                      value={vaultFields._access_mode || 'read'}
+                      onValueChange={handleChangeAccessMode}
+                      disabled={accessModeState.status === 'saving'}
+                      options={[
+                        { value: 'read', label: 'Read only' },
+                        { value: 'write', label: 'Read and write' },
+                        { value: 'none', label: 'No tool access' },
+                      ]}
+                    />
+                    {accessModeState.status === 'error' && (
+                      <div className="text-[12px] text-danger">{accessModeState.reason}</div>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -496,7 +536,13 @@ export default function CustomizeView({
       if (host.isElectron) {
         const detail = savedDetail || await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
         const accountEmail = detail?.fields?.account_email;
-        if (detail?.method === 'browser_oauth_builtin' && accountEmail) {
+        // 'mcp' (HubSpot, ENG-487) needs the same Electron-side cleanup as
+        // browser_oauth_builtin — it's the only place holding the real
+        // refresh_token, so skipping this for 'mcp' would leave a stale
+        // keychain entry and an orphaned refresh-loop interval behind after
+        // "disconnect". Live-tested miss, same class as the other hardcoded
+        // 'browser_oauth_builtin' checks found and fixed in app.ts.
+        if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
           const fresh = await fetchDatasources();
           const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
@@ -577,16 +623,20 @@ export default function CustomizeView({
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-4">{Ico.link(32)}</span>}
-          title="No apps connected yet"
-          description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
-          action={<ConnectButton onClick={handleConnectNew} large />}
-          style={{ flex: 1 }}
-        />
-      ) : (
-        <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
+      <CollectionState
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        empty={{
+          icon: <span className="inline-flex text-ink-4">{Ico.link(32)}</span>,
+          title: 'No apps connected yet',
+          description: `Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`,
+          action: <ConnectButton onClick={handleConnectNew} large />,
+          style: { flex: 1 },
+        }}
+      >
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 px-8 pb-[60px]">
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}
@@ -595,13 +645,11 @@ export default function CustomizeView({
               onModify={setSelectedConn}
             />
           ))}
-          {/* Trailing dashed "New connection" card — appears only
-              when there's at least one existing connection (the
-              EmptyState handles the zero-connection case with its
-              own larger CTA). Mirrors the Projects pattern. */}
-          <NewConnectionCard onClick={handleConnectNew} />
+          {/* Trailing dashed tile — same connect flow as the header's
+              "+ Connect". The empty state carries its own CTA. */}
+          <NewTile label="New connection" onClick={handleConnectNew} />
         </div>
-      )}
+      </CollectionState>
 
       {selectedConn && (
         <ConnectionDetailPanel

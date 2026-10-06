@@ -96,12 +96,15 @@ function clearEvidence(): void {
 export function reconcileDownloadedTarget(
   currentVersion: string,
   evidence: DownloadedTargetEvidence | null,
-): Pick<ShellUpdateSnapshot, 'phase' | 'targetVersion' | 'recoverable' | 'errorCode' | 'errorMessage'> {
+): Pick<ShellUpdateSnapshot, 'phase' | 'targetVersion' | 'recoverable' | 'errorCode' | 'errorMessage' | 'lastInstall'> {
   if (!evidence) return { phase: 'idle' };
   const comparison = compareUpdaterSemVer(currentVersion, evidence.targetVersion);
-  if (comparison !== null && comparison >= 0) return { phase: 'complete' };
+  const applied = comparison !== null && comparison >= 0;
+  const lastInstall = { applied, version: currentVersion, expected: evidence.targetVersion };
+  if (applied) return { phase: 'complete', lastInstall };
   return {
     phase: 'failed',
+    lastInstall,
     targetVersion: evidence.targetVersion,
     recoverable: true,
     errorCode: 'install-not-applied',

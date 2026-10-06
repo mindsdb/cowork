@@ -213,7 +213,7 @@ export function ArtifactViewerBody({
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
-            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
           }}
         />
       )}
@@ -227,12 +227,19 @@ export function ArtifactViewerBody({
       <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
-            {htmlSource ? (
+            {/* A framed preview sits in its surface from the first render. The
+                workspace source loads separately and, on a slow connection,
+                after the page painted; moving the iframe into a surface only
+                once `htmlSource` turned true re-created it and reloaded the
+                page (ENG-3070). */}
+            {htmlSource || !(isText || isImage) ? (
               <>
-                {(showEditor || retainedEditorKey === editorKey) && (
+                {htmlSource && (showEditor || retainedEditorKey === editorKey) && (
                   <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
-                <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                {!htmlSource && showEditor ? sourceEditor : (
+                  <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                )}
               </>
             ) : showEditor ? sourceEditor : previewContent}
           </div>

@@ -30,7 +30,8 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../lib/analytics', () => analyticsMock);
 
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
   id: 'conv-a',
@@ -77,6 +78,59 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('free_serving_paused: the paused-free-Air card records its own trigger, not token_limit', async () => {
+    const user = userEvent.setup();
+    // A fleet-wide pause is not this user running out, so its clicks cannot be
+    // filed under either of the cap cards.
+    render(<ChatView task={taskWith(failedTurn('free_serving_paused', 'Free MindsHub Air is paused.'))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_serving_paused');
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('free_serving_paused', 'Free MindsHub Air is paused.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('token_limit with free allowance left: Add funds keeps its trigger and the Air switch records nothing', async () => {
+    const user = userEvent.setup();
+    const onSwitchToAirAndResend = vi.fn();
+    const usage = {
+      reachable: true,
+      isBillingOwner: false,
+      freeTokens: { limit: 100, used: 20, remaining: 80, resetsAt: null },
+    };
+    render(
+      <HubUsageContext.Provider value={{ usage, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView
+          task={taskWith(failedTurn('token_limit', "You've run out of credits."))}
+          model={{ id: 'claude-sonnet-4' }}
+          onSwitchToAirAndResend={onSwitchToAirAndResend}
+        />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Switch to MindsHub Air' }));
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+    expect(onSwitchToAirAndResend).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('token_limit');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 

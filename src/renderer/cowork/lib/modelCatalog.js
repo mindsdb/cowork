@@ -228,19 +228,99 @@ export function groupModelOptions(options) {
 // global non-emptiness is not.
 
 /**
- * True when the wallet cannot currently pay for `id`.
+ * True when MindsHub says `id` cannot run for this org right now, for any reason.
  *
- * `modelEnabled` is MindsHub's availability map: it flags a model the org's wallet
- * cannot pay for, or whose free monthly allowance is spent, as `false`. An id it
- * does not mention counts as available, which is what keeps every BYOK provider
- * (no such map at all) and an older gateway (no flag for a model it serves)
- * selectable.
+ * `modelEnabled` is MindsHub's availability map: it flags a model as `false` when
+ * the org's wallet cannot pay for it, when its free allowance is spent, or when an
+ * org admin's model rule blocks it. An id it does not mention counts as available,
+ * which is what keeps every BYOK provider (no such map at all) and an older
+ * gateway (no flag for a model it serves) selectable. `isModelRestricted` tells
+ * the admin rule apart from the money reasons.
  *
  * Both pickers read this one predicate so they cannot disagree about which rows a
  * user may choose. They already share the family rules below for the same reason.
  */
 export function isModelLocked(modelEnabled, id) {
   return (modelEnabled || {})[id] === false;
+}
+
+/* The `modelDisabledReasons` value for a row an org admin's model rule blocks.
+   The same word the gateway puts on its 403 for that denial, so one vocabulary
+   serves the picker row and the turn card. */
+export const MODEL_RESTRICTED_REASON = 'model_restricted';
+
+/* The row tooltip for a restricted model. */
+export const RESTRICTED_MODEL_TITLE = 'An admin in your organization restricted this model.';
+
+/* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
+   admin's model rule, the empty wallet, and the spent allowance. */
+const KNOWN_MODEL_DISABLED_REASONS = new Set([
+  MODEL_RESTRICTED_REASON,
+  'wallet_empty',
+  'included_allowance_exhausted',
+]);
+
+/**
+ * The entries of cowork-server's `modelDisabledReasons` relay whose reason the
+ * renderer recognizes, id → reason.
+ *
+ * cowork-server relays any non-empty `disabled_reason` string MindsHub sends. An
+ * entry whose value is not one of the three known reasons is dropped, so its row
+ * reads as having no reason, the same as a row from a server too old to send
+ * one: "Needs credits". Anything that is not a plain object gives `{}`.
+ *
+ * @param {unknown} raw
+ * @returns {Record<string, import('./modelCatalog').ModelDisabledReason>}
+ */
+export function knownModelDisabledReasons(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, reason]) => KNOWN_MODEL_DISABLED_REASONS.has(reason)),
+  );
+}
+
+/**
+ * True when `id` is unavailable because an org admin's model rule blocks it.
+ *
+ * `modelDisabledReasons` is cowork-server's relay of MindsHub's per-row
+ * `disabled_reason`, taken from the MindsHub listing only. A reason counts only
+ * beside `enabled: false`: the enabled map stays the authority on whether a row
+ * can run, and the reason only says why it cannot.
+ */
+export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === MODEL_RESTRICTED_REASON;
+}
+
+/**
+ * @typedef {{
+ *   disabled?: true,
+ *   locked?: true,
+ *   restricted?: true,
+ *   tag?: string,
+ *   title?: string,
+ * }} UnavailableModelFields
+ */
+
+/**
+ * The picker-row fields for a model that cannot run, shared by both option
+ * builders so the pickers cannot drift.
+ *
+ * - Available: `{}`.
+ * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
+ *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
+ *   button: money cannot unlock an admin rule.
+ * - Anything else unavailable (the wallet, the spent allowance, or a server too
+ *   old to send a reason): disabled and `locked`, tagged "Needs credits".
+ *
+ * @returns {UnavailableModelFields}
+ */
+export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
+  if (!isModelLocked(modelEnabled, id)) return {};
+  if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
+    return { disabled: true, restricted: true, tag: 'Restricted', title: RESTRICTED_MODEL_TITLE };
+  }
+  return { disabled: true, locked: true, tag: 'Needs credits' };
 }
 
 /** True when `id` is a frozen version of some other alias. */

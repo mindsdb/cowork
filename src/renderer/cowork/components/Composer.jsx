@@ -55,15 +55,15 @@ function TaskModeChip({ mode, onClear }) {
   return (
     <button
       type="button"
-      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] animate-chip-in motion-reduce:animate-none active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] animate-chip-in active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
       aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
       onClick={onClear}
     >
       <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
           {Ico[mode.icon](14)}
         </span>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
           {Ico.close(14)}
         </span>
       </span>

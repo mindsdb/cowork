@@ -421,7 +421,7 @@ export interface UpdateApplyDecision {
  *  fixing anything.
  *
  *  ENG-858: `mode` is no longer a user-facing setting — everyone gets `auto`
- *  unless `UI_UPDATE_MODE=manual` is hand-set in `~/.anton/.env` (support /
+ *  unless `UI_UPDATE_MODE=manual` is hand-set in the Cowork home's `.env` (support /
  *  QA escape hatch). The parameter and this decision logic are unchanged;
  *  only the Settings UI control that used to feed it was removed. */
 export function decideUpdateApply(input: {

@@ -5,8 +5,9 @@
 // composer knows about the current pick. Output is copy + action keys; the
 // renderer decides how to paint them and where the actions open.
 //
-// Two resources, always named apart: the FREE monthly MindsHub Air tokens and
-// the PAID balance. "Out of tokens" on its own is never one of the outputs.
+// Two resources, always named apart: the FREE MindsHub Air allowance, which
+// refills on its own, and the PAID balance. "Out of tokens" on its own is never
+// one of the outputs.
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
@@ -142,11 +143,89 @@ function freeState(free) {
   };
 }
 
+/* The console's no-grant sentence (mindshub_frontend grant-usage-card.jsx
+   NO_GRANT_SENTENCE), word for word, so both apps describe the same account
+   the same way. It names no cause and no size. */
+export const NO_FREE_GRANT_SENTENCE =
+  'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.';
+
+/**
+ * @typedef {'has_room' | 'spent' | 'no_grant' | 'no_figure'} FreeAllowanceStatus
+ * @typedef {{ status: FreeAllowanceStatus, resetsAt: string | null }} FreeAllowanceState
+ */
+
+/** Where the free MindsHub Air allowance stands, for a surface outside the
+ *  composer bar that has to say so (ChatView's stopped-task cards, the
+ *  Settings probe notice).
+ *
+ *  `has_room` and `spent` only ever describe a capped grant from a reachable
+ *  read. `no_grant` is the sidecar's explicit no-grant value, a limit of 0,
+ *  which cowork-server sends only when auth reports `free_grant_eligible:
+ *  false`. It carries no `resetsAt`: nothing refills, so no card may name a
+ *  refill time, even if an older sidecar still relays one. Everything else is
+ *  `no_figure`: signed out or unreachable, a missing figure, or auth's uncapped
+ *  sentinel, none of which gives a card a number to speak from. A missing read
+ *  is unknown, never `no_grant`. `resetsAt` is the refill instant auth
+ *  reported, carried whenever the read is reachable and a grant exists,
+ *  because a caller that already knows the allowance is spent (the gate said
+ *  so) still needs the time.
+ *
+ *  @returns {FreeAllowanceState} */
+export function freeAllowanceState(usage) {
+  if (!usage?.reachable) return { status: 'no_figure', resetsAt: null };
+  if (usage.freeTokens?.limit === 0) return { status: 'no_grant', resetsAt: null };
+  const resetsAt = usage.freeTokens?.resetsAt || null;
+  const f = freeState(usage.freeTokens);
+  if (f.fractionLeft === null) return { status: 'no_figure', resetsAt };
+  return { status: f.available ? 'has_room' : 'spent', resetsAt };
+}
+
+/** Whether a hub usage `balance` says the wallet cannot pay: auth flagged it
+ *  depleted, or said it cannot be drawn on. The one place that rule is
+ *  written, for the composer bar, the drained-wallet card and Settings > Usage
+ *  alike. A missing balance is not an empty one, because a read without it
+ *  says nothing about the wallet. */
+export function isBalanceEmpty(balance) {
+  return !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
+}
+
+/** What a stop on `included_allowance_exhausted` says, for the stopped-task
+ *  card and the Settings probe notice alike. The drained-wallet card's
+ *  spent-allowance branch describes the same state, so it uses this too.
+ *
+ *  An org with no free grant is told that, in the console's words, and never a
+ *  refill time. Otherwise the refill time is the gate's (`resetAt`), falling
+ *  back to the hub usage read's. When neither is a usable future instant, the
+ *  sentence offers funds alone: nothing then says the allowance refills at
+ *  all, and the org may have no grant to refill. */
+export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
+  const free = freeAllowanceState(usage);
+  if (free.status === 'no_grant') {
+    return `${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`;
+  }
+  const stopped = 'Your free MindsHub Air allowance is used up and your balance is empty.';
+  const time = formatResetTime(resetAt || free.resetsAt);
+  return time
+    ? `${stopped} Add funds to keep working, or wait for it to refill at ${time}.`
+    : `${stopped} Add funds to keep working.`;
+}
+
+/** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
+ *  on a turn, `free_air_daily_spend_fuse_exceeded` on the Settings probe). The
+ *  fuse lifts at the next UTC midnight, which the gate sends as its reset
+ *  instant, on a desktop or a hosted turn. Without a usable one (a hosted turn
+ *  from a cowork-server that predates it, say) the sentence names the event
+ *  instead. */
+export function freeServingPausedCopy(resetAt) {
+  const until = formatResetTime(resetAt) || 'the daily budget resets';
+  return `Free MindsHub Air is paused for everyone until ${until}. This doesn't use your allowance. Add funds to keep working now.`;
+}
+
 /** Whether a bar descriptor is something to WARN about, as opposed to the
- *  standing figure. The one place that rule is written: a resting figure
- *  shows for every free user all month, so counting it as a warning would
- *  mean a dismissal is never forgotten again and a bar closed in one month
- *  would still be closed in the next. */
+ *  standing figure. The one place that rule is written: a resting figure can
+ *  sit on screen for a whole window, so counting it as a warning would mean a
+ *  dismissal is never forgotten again and a bar closed in one window would
+ *  still be closed in the next. */
 export function countsAsWarning(descriptor) {
   return !!descriptor && !descriptor.resting;
 }
@@ -166,10 +245,13 @@ function resetClause(free, lead) {
   return time ? `${lead} at ${time}` : lead;
 }
 
-/* The standing allowance figure: what the bar says when nothing is wrong.
-   Built here because two branches need the same object. The terminal branch
-   below returns it, and `free_low` carries it as the state a dismissal falls
-   back to, so closing the warning drops to the number rather than to nothing. */
+/* The standing allowance figure: what the bar says when nothing is wrong, to
+   someone the allowance running out would actually stop. Built here because
+   two branches need the same object. The terminal branch below returns it, and
+   `free_low` carries it as the state a dismissal falls back to, so closing the
+   warning drops to the number rather than to nothing. It closes too
+   (ENG-2749), on its own flag rather than a dismissal key: see
+   useStandingFigureHidden for how long that holds. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
   const resets = formatResetTime(free.resetsAt);
   let body = resets ? `Resets at ${resets}.` : 'Air runs on these until they are used up.';
@@ -216,8 +298,15 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   const isAir = model === MINDSHUB_AIR_MODEL_ID;
   const isPaidModel = isExplicitPaidModel(model);
   const f = freeState(free);
-  const balanceEmpty = !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
+  const balanceEmpty = isBalanceEmpty(balance);
   const balanceLow = !!balance && !balanceEmpty && balance.alert === 'low';
+  // A wallet the next task falls through to once the allowance is gone. Air
+  // running out never stops someone who has one, so the standing figure has
+  // nothing to tell them (ENG-2749). The warnings still do: falling through to
+  // paid changes what they spend, and that is worth hearing.
+  // Rounds toward showing the figure: a wallet auth has not flagged but that
+  // holds nothing is not one the next task can fall through to.
+  const balanceUsable = !!balance && !balanceEmpty && Number(balance.usd) > 0;
   const freeInUse = !isPaidModel;
   const paidInUse = !isAir || f.out || !free;
   // An empty balance only stops the next task when nothing else can pay for
@@ -321,10 +410,11 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       // Stepped like the balance: closing this at 20% left asks again at 10%,
       // which is also where the console escalates its own usage alert.
       dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
-      // Closing a warning steps down to the standing figure, never to nothing.
-      // Hiding the only place the allowance is visible is what this bar exists
-      // to stop, and 20% left is where the figure matters most.
-      whenDismissed: restingFigure(free, f, { balanceEmpty }),
+      // For someone the allowance can stop, closing this steps down to the
+      // standing figure, never to nothing: 20% left is where the figure matters
+      // most. With a balance to fall through to there is no figure to step
+      // down to, so the close hides the bar until the next step asks again.
+      ...(balanceUsable ? {} : { whenDismissed: restingFigure(free, f, { balanceEmpty }) }),
       title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
       body,
       actions,
@@ -332,11 +422,15 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   }
 
   // Nothing is wrong, so say where the allowance stands rather than nothing at
-  // all. A warning the person only meets at 20% left is a warning they cannot
-  // plan around, and Settings is somewhere they have to think to go. `resting`
-  // marks this as a figure and not a warning: it carries no close button, and
-  // it does not count as something to warn about (see `countsAsWarning`).
-  if (freeInUse && f.available && f.fractionLeft !== null) {
+  // all, but only to someone it can stop. A free user with no wallet meets the
+  // 20% warning with nothing to plan around unless the number was already in
+  // view, and Settings is somewhere they have to think to go, so the figure
+  // shows at any level, as it always has. Someone with a balance keeps working
+  // when the allowance runs out, so for them the number has nothing to inform
+  // and the bar stays empty (ENG-2749). `resting` marks this as a figure and
+  // not a warning: it does not count as something to warn about (see
+  // `countsAsWarning`), and closing it holds.
+  if (freeInUse && f.available && f.fractionLeft !== null && !balanceUsable) {
     return restingFigure(free, f, { balanceEmpty });
   }
 

@@ -1,42 +1,38 @@
 // Standard filter / toolbar row for collection screens. Lays out:
 //
-//   [search] [sort] ……spacer…… [right] [view]
-//   [counts]
+//   [search] [filter] ……spacer…… [right] [sort] [view]
+//   [chips]
+//   (32px)
+//   [counts]   ← caption for the list below
+//   (8px)
 //
-// Each slot accepts a ReactNode so views can drop in customised
-// pieces without re-implementing the spacing rhythm. The kit's
-// own `<SearchInput>`, `<SortPill>` plug in directly, but a 
-// view can pass any node it wants.
+// Each slot accepts a ReactNode. The rule for what goes in them:
+// search = <SearchInput>, filter = <FilterMenu> with its <FilterChips> in
+// chips, sort = <SortPill>, view = <ViewToggle>. The left side changes what
+// is shown, the right side how it is shown.
 //
-// `counts` is also a ReactNode (not a string) so views can mix
-// values + accents however they like — e.g. Projects highlights
-// the pinned count with `var(--accent)`, Artifacts highlights
-// the published count, Scheduled would highlight catch-up.
+// The row owns the space down to the page body, so bodies start flush
+// below it and every page has the same gap. `counts` sits at the bottom
+// of that gap as the list's caption, not under the controls. It is a
+// ReactNode so views can mix values and accents (Projects highlights the
+// pinned count with `var(--accent)`).
 
-const FONT_MONO = 'var(--font-mono)';
-
-export function FilterRow({ search, sort, view, counts, right }) {
+export function FilterRow({ search, filter, sort, view, counts, right, chips }) {
   return (
-    <div style={{
-      padding: '0 32px',
-      display: 'flex', flexDirection: 'column', gap: 6,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      }}>
+    <div className="flex flex-col px-8 pb-2">
+      <div className="flex flex-wrap items-center gap-2.5">
         {search}
-        {sort}
-        <span style={{ flex: 1 }} />
+        {filter}
+        <span className="flex-1" />
         {right}
+        {sort}
         {view}
       </div>
-      {counts && (
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
-          {counts}
-        </div>
+      {chips && <div className="mt-2.5">{chips}</div>}
+      {counts ? (
+        <div className="mt-8 font-body text-xs text-ink-4">{counts}</div>
+      ) : (
+        <div className="h-6" aria-hidden="true" />
       )}
     </div>
   );

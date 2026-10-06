@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
-import { isModelLocked, orderByFamily } from './modelCatalog';
+import { isModelLocked, knownModelDisabledReasons, orderByFamily, unavailableModelFields } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -253,6 +253,14 @@ function keepListOrder(current, live) {
  *     the same reason. An empty `modelEnabled` reads as "everything is
  *     available" and would silently unlock paid models; cowork-server refuses
  *     to persist an empty map for exactly this reason.
+ *   - `modelDisabledReasons` says why a `modelEnabled` row is false, so it
+ *     moves with that map and never on its own: replaced (by the live map, or
+ *     by `{}` when the response carries none) exactly when `modelEnabled` is,
+ *     and kept exactly when it is kept. A reason must never outlive the
+ *     enabled map it described, and an empty reasons map is a real answer
+ *     ("no row is restricted"), unlike an empty enabled map. The live map
+ *     keeps only the reasons `knownModelDisabledReasons` recognizes, so a
+ *     reason word the renderer does not know reads as no reason.
  *
  * The cost of that is a stale entry outliving a model's removal from the
  * policy, which self-corrects on the next successful fetch. Losing the list
@@ -273,9 +281,9 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     }
     return merged;
   };
-  const overlayMap = (current, live) => (
-    live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
-  );
+  const hasEntries = (live) => !!live && typeof live === 'object' && Object.keys(live).length > 0;
+  const overlayMap = (current, live) => (hasEntries(live) ? live : (current || {}));
+  const liveReasons = knownModelDisabledReasons(rec.modelDisabledReasons);
   return {
     // `keepOrder` is for the refresh a picker fires as it opens: the list is on
     // screen by the time the response lands, so a row that moves is a row that
@@ -290,6 +298,7 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // A live entry wins over a held one; an entry the server omits is kept.
     modelEfforts: { ...(base.modelEfforts || {}), ...(overlayMap(null, rec.modelEfforts)) },
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
+    modelDisabledReasons: hasEntries(rec.modelEnabled) ? liveReasons : (base.modelDisabledReasons || {}),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
     // Picker grouping metadata, same rule: an empty map from the server (older
     // cowork-server, BYOK provider, failed fetch) must not wipe what we hold.
@@ -432,14 +441,20 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders disabled, tagged
- *   "Needs credits", and flagged `locked` so the picker puts an "Add credits"
- *   button on the row.
+ *   (settings.modelEnabled); a model mapped to `false` renders disabled. Its
+ *   tag comes from `unavailableModelFields`: "Needs credits" and `locked` (so
+ *   the picker puts an "Add credits" button on the row), or "Restricted" and
+ *   `restricted` when `meta.modelDisabledReasons` names an admin's model rule.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
  *   model missing here (every direct provider; a minds-cloud model with no
  *   label) falls back to modelLabel()'s id-derived label.
+ * @param {{
+ *   modelProviders?: Record<string, string>,
+ *   modelFamilies?: Record<string, string>,
+ *   modelDisabledReasons?: Record<string, string>,
+ * }} meta picker metadata from the settings blob
  */
 export function buildModelOptions(
   curModel,
@@ -454,7 +469,7 @@ export function buildModelOptions(
   const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
-  const { modelProviders = {}, modelFamilies = {} } = meta || {};
+  const { modelProviders = {}, modelFamilies = {}, modelDisabledReasons = {} } = meta || {};
 
   // Display-only ordering: a frozen version is listed directly under the alias it
   // froze. Total by construction — see orderByFamily; a dropped id would give
@@ -482,14 +497,19 @@ export function buildModelOptions(
        * A stored pin that is locked also still renders here, disabled and
        * selected, which is what keeps a saved value from ever being a value with
        * no matching option.
+       *
+       * A row an org admin's model rule blocks is closed the same way but is
+       * `restricted`, not `locked`: credits cannot unlock it, so it carries no
+       * "Add credits" button (see unavailableModelFields).
        */
       disabled: locked,
-      // Wallet state is the only row tag (ENG-2591), and it rides on `tag`,
+      // Availability is the only row tag, and it rides on `tag`,
       // never in `label`: ModelSelect shows the selected label verbatim in the
       // closed trigger and filters on it. Version state needs no tag: the name
       // carries the version and the ordering above seats a pinned version under
-      // its head. Same rule as lib/modelPickerOptions, so both pickers agree.
-      ...(locked ? { locked: true, tag: 'Needs credits' } : {}),
+      // its head. The same helper feeds lib/modelPickerOptions, so both pickers
+      // agree.
+      ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
       ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
@@ -531,7 +551,7 @@ export function buildModelOptions(
  * masking, defaultModel derivation, and provider card backfill.
  */
 export function transformSettingsRows(rows) {
-  const result = { ...STATIC_SETTINGS, providerStatus: {}, providerStatusDetails: {} };
+  const result = { ...STATIC_SETTINGS, providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {} };
 
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
@@ -657,7 +677,7 @@ function backfillProviders(result) {
  */
 /** Keys that are read from the server but never written back — they are
  *  transient UI-only state (e.g. provider test results). */
-const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails']);
+const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons']);
 
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -364,5 +364,225 @@ describe('artifacts rail click on desktop', () => {
 
     expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
     expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
+// ENG-2979: another member's artifact gets a person icon right after the
+// type icon. The column is reserved on every row of a list that has at least
+// one marker, so names stay in one column; an owner-only list is unchanged.
+describe('artifacts rail authorship marker', () => {
+  beforeEach(() => setOrgMode(true));
+
+  const FOUR = 'grid-cols-[14px_12px_minmax(0,1fr)_auto]';
+  const THREE = 'grid-cols-[14px_minmax(0,1fr)_auto]';
+  const other = (overrides = {}) => draft({
+    id: '22222222222222222222222222222222',
+    title: 'Ops Console',
+    path: '/proj/.anton/artifacts/ops/console.md',
+    capabilities: { role: 'reviewer', canEdit: false },
+    ...overrides,
+  });
+  const renderRows = async (list) => {
+    fetchArtifacts.mockResolvedValue(list);
+    render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    await screen.findByText(list[0].title);
+  };
+  const rowOf = (title) => screen.getByText(title).closest('[role="button"]');
+
+  it('marks another member\'s row with a labelled icon', async () => {
+    await renderRows([other()]);
+    expect(screen.getByRole('img', { name: 'Another member' })).toBeInTheDocument();
+    expect(rowOf('Ops Console').getAttribute('title')).toContain(' · Another member');
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+  });
+
+  it('marks an ownerless row', async () => {
+    await renderRows([other({ capabilities: { role: 'reviewer', canEdit: false, ownerUnknown: true } })]);
+    expect(screen.getByRole('img', { name: 'Unknown owner' })).toBeInTheDocument();
+    expect(rowOf('Ops Console').getAttribute('title')).toContain(' · Unknown owner');
+  });
+
+  it('leaves an owner-only list exactly as it was', async () => {
+    await renderRows([draft()]);
+    expect(screen.queryByRole('img', { name: /Another member|Unknown owner/ })).toBeNull();
+    expect(rowOf('Weekly Report').className).toContain(THREE);
+    expect(rowOf('Weekly Report').getAttribute('title')).not.toContain('Another member');
+  });
+
+  it('aligns names in a mixed list', async () => {
+    await renderRows([other(), draft()]);
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+    expect(rowOf('Weekly Report').className).toContain(FOUR);
+    expect(screen.getAllByRole('img', { name: 'Another member' })).toHaveLength(1);
+    // The owner row keeps the column with an empty, hidden cell.
+    expect(rowOf('Weekly Report').children[1].getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // ENG-2979 fix wave (code review): recomputing the column from the raw
+  // top-12 slice on every 3s poll made it — and every row's horizontal
+  // position — jump as a colleague's artifact entered/left the slice.
+  it('keeps the marker column once set, even when a later poll comes back owner-only', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchArtifacts.mockResolvedValueOnce([other()]);
+      const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await screen.findByText('Ops Console');
+      expect(rowOf('Ops Console').className).toContain(FOUR);
+
+      // Simulate the "streaming just ended" poll: it fires once, ~1s after
+      // isStreaming flips back to false, and this time the slice is owner-only.
+      fetchArtifacts.mockResolvedValueOnce([draft()]);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming />);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      await screen.findByText('Weekly Report');
+
+      expect(screen.queryByText('Ops Console')).toBeNull();
+      // Column stays reserved for this project even though nothing in the
+      // current slice needs it any more.
+      expect(rowOf('Weekly Report').className).toContain(FOUR);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the marker column to three when the project changes', async () => {
+    const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };
+    fetchArtifacts.mockResolvedValueOnce([other()]);
+    const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    await screen.findByText('Ops Console');
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+
+    fetchArtifacts.mockResolvedValueOnce([draft()]);
+    rerender(<WorkingFolderLive project={OTHER_PROJECT} isStreaming={false} />);
+    await screen.findByText('Weekly Report');
+
+    expect(rowOf('Weekly Report').className).toContain(THREE);
+  });
+});
+
+describe('artifacts rail grouping by conversation', () => {
+  const CHAT = 'conv-1';
+  const art = (title, originConversationId, i = 0) => draft({
+    id: `${i}`.padStart(32, '0'),
+    title,
+    path: `/proj/.anton/artifacts/${title.replace(/\s+/g, '-')}/report.md`,
+    originConversationId,
+  });
+  // Artifact rows are the role="button" divs whose native title is the path;
+  // the name is the row's `.truncate` span.
+  const titles = () => screen.getAllByRole('button')
+    .filter((el) => el.getAttribute('title')?.startsWith('/proj/'))
+    .map((el) => el.querySelector('.truncate').textContent);
+  const renderList = async (list, conversationId = CHAT) => {
+    fetchArtifacts.mockResolvedValue(list);
+    const utils = render(
+      <WorkingFolderLive project={PROJECT} isStreaming={false} conversationId={conversationId} />,
+    );
+    await screen.findByText(list[0].title);
+    return utils;
+  };
+
+  it('lists this chat\'s artifacts first, separated from the rest of the project', async () => {
+    await renderList([
+      art('Other A', 'conv-2', 1),
+      art('Mine A', CHAT, 2),
+      art('Legacy', '', 3),
+      art('Mine B', CHAT, 4),
+    ]);
+
+    expect(titles()).toEqual(['Mine A', 'Mine B', 'Other A', 'Legacy']);
+    const separator = screen.getByRole('separator');
+    expect(separator.previousElementSibling).toHaveTextContent('Mine B');
+    expect(separator.nextElementSibling).toHaveTextContent('Other A');
+    expect(separator).toHaveAttribute('aria-label', 'Other artifacts in this project');
+  });
+
+  it('draws no separator when only one group has rows', async () => {
+    await renderList([art('Mine A', CHAT, 1)]);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('draws no separator when no row is from this chat', async () => {
+    await renderList([art('Other A', 'conv-2', 1), art('Other B', '', 2)]);
+    expect(titles()).toEqual(['Other A', 'Other B']);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('draws no separator and keeps server order outside a chat', async () => {
+    await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)], null);
+    expect(titles()).toEqual(['Other A', 'Mine A']);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('keeps an older artifact of this chat that the 12 newest others would push out', async () => {
+    const others = Array.from({ length: 12 }, (_, i) => art(`Other ${i}`, 'conv-2', i + 1));
+    await renderList([...others, art('Mine Old', CHAT, 99)]);
+    expect(titles()[0]).toBe('Mine Old');
+    expect(titles()).toHaveLength(13);
+  });
+
+  it('regroups on a chat switch within the project without refetching', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+    expect(titles()).toEqual(['Mine A', 'Other A']);
+    const calls = fetchArtifacts.mock.calls.length;
+
+    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+    expect(titles()).toEqual(['Other A', 'Mine A']);
+    expect(fetchArtifacts.mock.calls.length).toBe(calls);
+  });
+
+  it('keeps an open row menu on its artifact when the chat regroups the rows', async () => {
+    // happy-dom has no layout: place each element 20px below the previous row.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rowRect() {
+      const row = this.closest('[role="button"][title]');
+      const top = row ? [...row.parentElement.children].indexOf(row) * 20 : 0;
+      return { top, bottom: top + 20, left: 0, right: 100, width: 100, height: 20, x: 0, y: top, toJSON() {} };
+    });
+    try {
+      const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+      fireEvent.click(screen.getAllByLabelText('More actions')[1]);
+      const topBefore = screen.getByRole('menu').style.top;
+
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+      expect(screen.getByRole('menu').style.top).not.toBe(topBefore);
+      fireEvent.click(screen.getByText('Delete'));
+      expect(screen.getByText('Delete "Other A"?')).toBeInTheDocument();
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('closes an open row menu once its row leaves the list', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1)]);
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+
+    fetchArtifacts.mockResolvedValue([]);
+    rerender(<WorkingFolderLive project={{ id: 'proj-2', name: 'other', path: '/proj2' }} isStreaming={false} conversationId={CHAT} />);
+
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
+  // Moving to a chat of another project changes `project` and `conversationId`
+  // in one commit. The rows effect then still sees the old project's rows, so
+  // the project-switch effect must run after it and win.
+  it('resets the marker column when switching to a chat of another project', async () => {
+    const FOUR = 'grid-cols-[14px_12px_minmax(0,1fr)_auto]';
+    const THREE = 'grid-cols-[14px_minmax(0,1fr)_auto]';
+    const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };
+    const colleague = art('Colleague', 'conv-9', 1);
+    colleague.capabilities = { role: 'reviewer', canEdit: false };
+    const { rerender } = await renderList([colleague]);
+    expect(screen.getByText('Colleague').closest('[role="button"]').className).toContain(FOUR);
+
+    const mine = draft({ title: 'Mine B', path: '/proj2/.anton/artifacts/mine-b/report.md', originConversationId: 'conv-2' });
+    fetchArtifacts.mockResolvedValue([mine]);
+    rerender(<WorkingFolderLive project={OTHER_PROJECT} isStreaming={false} conversationId="conv-2" />);
+    await screen.findByText('Mine B');
+
+    expect(screen.getByText('Mine B').closest('[role="button"]').className).toContain(THREE);
   });
 });

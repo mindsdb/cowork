@@ -10,7 +10,9 @@
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
-import { Badge } from '../ui';
+import { Badge, Tooltip } from '../ui';
+import { isOwnerOnlySelection } from '../artifact/publish/AccessChooser';
+import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
 // public artifact gets the green "success" treatment — password/restricted
@@ -36,17 +38,55 @@ const ACCESS_BADGE = {
 // like `constructor`/`__proto__` from yielding a blank inherited-property pill.
 const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
 
-function accessBadge(artifact) {
+function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? mode : null;
+}
+
+function accessBadge(artifact) {
+  const mode = accessMode(artifact);
+  return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+}
+
+/*
+ * One line under each idle label saying what it means for who can open the
+ * artifact (ENG-2177). "Draft" and "Restricted" were shown bare, and nothing
+ * said which state can be shared. Public and Password name their own meaning,
+ * so they get none. The unknown fallback says so rather than naming an
+ * audience it cannot see, for the same fail-closed reason as its badge.
+ */
+export function artifactStatusHint(artifact, publishable = true) {
+  if (!artifact?.publishedUrl) {
+    return publishable
+      ? 'Not shared yet. Open it and choose Share to get a web link.'
+      : 'Not shared. Only web pages and Markdown documents can be shared as a link.';
+  }
+  const mode = accessMode(artifact);
+  if (mode === 'restricted') {
+    return isOwnerOnlySelection(artifact)
+      ? 'Shared, but only you can open the link.'
+      : 'Shared. Only the people you chose can open the link.';
+  }
+  if (!mode) return 'Shared. Who can open the link could not be confirmed, so it is treated as restricted.';
+  return '';
 }
 
 // `inlineChanges` — list view flows the "Unpublished changes" pill inline
 // right after the access chip; the card (default) pushes it to the right edge.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false }) {
+//
+// `authorship` — the artifactAuthorship() result, rendered as the "Another
+// member" / "Unknown owner" tag right after the primary badge (ENG-2979).
+// Pass null, not an element that renders nothing, when there is none: without
+// it the DOM is exactly what it was.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null }) {
+  const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
+  const withExtra = (primary) => (tag
+    ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
+    : primary);
+
   // Transient phases win over the persisted state.
   if (phase === 'failed') {
-    return (
+    return withExtra(
       <span className="inline-flex items-center gap-2 min-w-0">
         <Badge variant="danger" size="sm">Sharing failed</Badge>
         <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
@@ -62,27 +102,35 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
             >Try again</button>
           )}
         </span>
-      </span>
+      </span>,
     );
   }
-  if (phase === 'publishing') return <Badge variant="accent" size="sm">Sharing…</Badge>;
-  if (phase === 'updating') return <Badge variant="accent" size="sm">Updating…</Badge>;
-  if (phase === 'unpublishing') return <Badge variant="default" size="sm">Stopping sharing…</Badge>;
-  if (phase === 'deleting') return <Badge variant="default" size="sm">Deleting…</Badge>;
+  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">Sharing…</Badge>);
+  if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">Updating…</Badge>);
+  if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">Stopping sharing…</Badge>);
+  if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">Deleting…</Badge>);
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>;
+    return withExtra(
+      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+        <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>
+      </Tooltip>,
+    );
   }
   const badge = accessBadge(artifact);
   return (
     // Fills the status area: access badge on the left, the "Unpublished
     // changes" warning pushed to the right (margin-left:auto). On a tight
-    // card it wraps to its own line, still right-aligned there.
+    // card it wraps to its own line, still right-aligned there. `tag` sits
+    // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
-        {badge.label}
-      </Badge>
+      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+        <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
+          {badge.label}
+        </Badge>
+      </Tooltip>
+      {tag}
       {artifact.modified && (
         inlineChanges
           ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>

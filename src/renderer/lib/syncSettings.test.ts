@@ -32,6 +32,20 @@ describe('syncSettingsToDb', () => {
     expect(keys).toContain('planning_provider');
   });
 
+  // Memory settings change in the product and never reach .env, so a .env line
+  // is stale by construction and must not overwrite the user's choice.
+  it('never PUTs memory_mode / episodic_memory, even when present in the lines', async () => {
+    await syncSettingsToDb([
+      'ANTON_PLANNING_PROVIDER=minds-cloud',
+      'ANTON_MEMORY_MODE=autopilot',
+      'ANTON_EPISODIC_MEMORY=true',
+    ]);
+    const keys = settingKeysWritten(fetchMock.mock.calls);
+    expect(keys).not.toContain('memory_mode');
+    expect(keys).not.toContain('episodic_memory');
+    expect(keys).toContain('planning_provider');
+  });
+
   it('translates a minds-cloud provider to the minds_cloud enum when a minds key is present', async () => {
     await syncSettingsToDb([
       'ANTON_MINDS_API_KEY=mdb_abc',

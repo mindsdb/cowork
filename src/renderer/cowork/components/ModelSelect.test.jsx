@@ -17,6 +17,7 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 
 import { ModelSelect } from './ModelSelect';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 
 const OPTIONS = [
   { value: 'mindshub_air', label: 'MindsHub Air' },
@@ -275,6 +276,44 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     expect(within(row).getByRole('button', { name: 'Router Settings' })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+});
+
+/* A row an org admin's model rule blocks is closed off like a locked one, but
+   money cannot open it, so it must not carry the route to credits. Fed the
+   real builder's output: a builder that marked the row `locked` would hand it
+   the button here. */
+describe('ModelSelect: a restricted row offers no credits', () => {
+  const OPTIONS = buildModelPickerOptions([
+    { id: 'mindshub_air', name: 'MindsHub Air' },
+    { id: 'opus', name: 'Claude Opus 5' },
+    { id: 'fable', name: 'Claude Fable 5' },
+  ], {
+    modelEnabled: { mindshub_air: true, opus: false, fable: false },
+    modelDisabledReasons: { opus: 'model_restricted', fable: 'wallet_empty' },
+  });
+
+  it('tags the restricted row, explains it on hover, and attaches no Add credits button', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={OPTIONS} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const restricted = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(restricted).toHaveTextContent('Restricted');
+    expect(restricted).not.toHaveTextContent('Needs credits');
+    expect(restricted).toHaveAttribute('title', 'An admin in your organization restricted this model.');
+    expect(restricted).toHaveAttribute('aria-disabled', 'true');
+    expect(within(restricted).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+
+  it('still puts Add credits on a row the wallet closes', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={OPTIONS} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const walletRow = screen.getByRole('option', { name: /Claude Fable 5/ });
+    expect(walletRow).toHaveTextContent('Needs credits');
+    expect(within(walletRow).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
   });
 });
 

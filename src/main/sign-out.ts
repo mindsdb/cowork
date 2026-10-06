@@ -37,6 +37,11 @@ export interface SignOutDeps {
   isServerStarting: () => boolean;
   getServerPort: () => number;
   httpRequest: SignOutHttpRequest;
+  // httpRequest is raw Node http/https, not fetch — it never passes through
+  // the renderer's webRequest injection hook, so with COWORK_REQUIRE_AUTH=true
+  // (the local-mode default) these calls need this themselves, same reason
+  // minds-credential.ts's PUT does.
+  getAuthHeader: () => Record<string, string>;
   // Local files.
   scrubEnvCredentials: (envPath: string) => Promise<void>;
   getAntonEnvPath: () => string;
@@ -152,7 +157,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
       const res = await Promise.race([
         deps.httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...deps.getAuthHeader() },
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('logout request timed out')), 5000),
@@ -173,7 +178,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
       const deletes = DB_CREDENTIAL_KEYS.map((key) =>
         deps.httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...deps.getAuthHeader() },
         }).catch(() => { /* best effort */ }),
       );
       await Promise.race([

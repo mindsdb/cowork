@@ -111,21 +111,42 @@ function patchScratchpadStepById(steps, toolUseId, patch) {
   return next;
 }
 
-/** Close any still-open inspectable step on terminal stream events.
- *  Keep this scoped to step types whose lifetime is owned by this
- *  adapter so future progress/artifact step types can define their
- *  own terminal behavior. */
+/** Close any still-open inspectable step on terminal stream events
+ *  (`response.completed` / `response.failed`). Keep this scoped to step
+ *  types whose lifetime is owned by this adapter — scratchpad cells, tool
+ *  calls and their ToolProgress rows — so future progress/artifact step
+ *  types can define their own terminal behavior. */
 function closeOpenInspectableSteps(steps, completedAt) {
+  return closeOpenSteps(
+    steps,
+    completedAt,
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+  );
+}
+
+/** Close open ToolProgress rows — only the given tool's when `toolUseId`
+ *  is set, else every tool's. A row is one step line a running tool
+ *  announced (`thought.tool_call.progress`); it ends when that tool
+ *  announces the next line, asks the user, or finishes. `patch` adds
+ *  fields to the closed row (e.g. the tool's failure verdict). */
+function closeOpenToolProgress(steps, completedAt, toolUseId = null, patch = null) {
+  return closeOpenSteps(
+    steps,
+    completedAt,
+    (step) => step.badge === 'ToolProgress' && (!toolUseId || step._scratchpadTabId === toolUseId),
+    patch,
+  );
+}
+
+/** Mark every `in_progress` step that matches `predicate` completed at
+ *  `completedAt`, merging `patch` into it. Returns the original array when
+ *  nothing matched, so callers keep reference equality for no-ops. */
+function closeOpenSteps(steps, completedAt, predicate, patch = null) {
   let changed = false;
   const next = steps.map((step) => {
-    if (
-      step?.status !== 'in_progress'
-      || (!step._isScratchpad && !step._isToolCall)
-    ) {
-      return step;
-    }
+    if (step?.status !== 'in_progress' || !predicate(step)) return step;
     changed = true;
-    return { ...step, status: 'completed', completedAt };
+    return { ...step, status: 'completed', completedAt, ...patch };
   });
   return changed ? next : steps;
 }
@@ -297,7 +318,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // impression and they are simply different ways of being out of credits:
     //   token_limit                   a drained wallet mid-turn (the original
     //                                 ENG-385 signal)
-    //   included_allowance_exhausted  the free monthly allowance is spent, not
+    //   included_allowance_exhausted  the free allowance is spent, not
     //                                 the wallet (ENG-1537). Splitting it out
     //                                 into its own code would otherwise have
     //                                 silently dropped it from this metric —
@@ -310,10 +331,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     //                                 so it was a paywall impression with no
     //                                 impression event at all.
     //
-    // Two codes are deliberately NOT counted. `model_disabled` — an admin
+    // Four codes are deliberately NOT counted. `model_disabled` — an admin
     // turned the model off, and credits do not unlock it, so it is not upgrade
     // intent. `rate_limited` — a velocity limit was never upgrade intent, and
     // counting it would inflate the signal with users who already pay.
+    // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
+    // `model_restricted`: an org admin's model rule, which credits do not lift.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
@@ -486,7 +509,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     }
     const step = {
       id: `question-${key}`,
-      label: event.prompt || 'Question',
+      // Fixed text, not the prompt: the prompt can be a long markdown brief,
+      // and this label is the collapsed ThinkingBlock header while the
+      // question is open. The card renders the full prompt from data.prompt.
+      label: 'Question for you',
       badge: 'AskUser',
       icon: 'question',
       status: 'in_progress',
@@ -507,7 +533,16 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _isScratchpad: false,
       _scratchpadTabId: null,
     };
-    return { ...state, steps: [...state.steps, step] };
+    // The step that led to the question ("Preparing a short brief for you")
+    // ends when the question is shown: the tool now waits on the user, so the
+    // row must stop animating over the pending card, and the segment's
+    // "Worked for …" must not include the time the user spends reading.
+    // After the guards above, so an ignored event changes nothing.
+    // The event carries no tool_use_id, so every open row closes, not only
+    // the asking tool's. That is exact today: anton dispatches tool calls one
+    // at a time, so the asking tool is the only one running. If tools ever
+    // run concurrently, a sibling tool's row would show as finished here.
+    return { ...state, steps: [...closeOpenToolProgress(state.steps, eventTs), step] };
   }
 
   // Retires a published ask_user question once the user answers, cancels,
@@ -541,6 +576,29 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type !== 'response.in_progress') return state;
 
   const role = event.thought_role;
+
+  // A tool's message to the user (generate_artifact's brief when the agent
+  // acts first). Rendered as an agent message between the steps, so it is a
+  // step of its own and never body text.
+  if (role === 'thought.tool_call.message') {
+    const markdown = typeof event.content === 'string' ? event.content : '';
+    if (!markdown.trim()) return state;
+    const toolUseId = event.tool_use_id || null;
+    // The progress row that produced the message is done once it shows.
+    const closed = toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps;
+    return {
+      ...state,
+      steps: [...closed, {
+        id: `step-${closed.length + 1}`,
+        label: '',
+        badge: 'Message',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: { markdown },
+      }],
+    };
+  }
 
   // New scratchpad cell starts. We push a placeholder step now so the
   // UI sees activity even before the .end event delivers the input.
@@ -717,7 +775,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // review, anton repo).
       ...(event.ok === false ? { cellStatus: 'error' } : null),
     };
-    return { ...state, steps };
+    // The tool's last announced line ends with the tool, carrying the same
+    // verdict so a failed run is visible on the row the user last saw.
+    return {
+      ...state,
+      steps: closeOpenToolProgress(steps, eventTs, toolUseId, event.ok === false ? { cellStatus: 'error' } : null),
+    };
   }
 
   if (role === 'thought.tool_call.progress') {
@@ -725,27 +788,54 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const text = event.content || '';
     if (!toolUseId || !text) return state;
 
-    const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    // Parent tool step. Tools like generate_artifact get no tool_call.start,
+    // so the first progress line seeds it — same idiom as the
+    // scratchpad_start seed-if-missing case above.
+    let base = state;
+    let idx = base.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
     if (idx === -1) {
-      // First progress event for this tool call — seed a step, same
-      // idiom as the scratchpad_start seed-if-missing case above.
-      const seeded = reduceStream(state, {
+      base = reduceStream(base, {
         type: 'response.in_progress',
         thought_role: 'thought.tool_call.start',
         tool_use_id: toolUseId,
         content: event.tool_name || 'Tool',
         at_ms: eventTs,
       }, now);
-      const newIdx = seeded.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
-      if (newIdx === -1) return seeded;
-      const steps = seeded.steps.slice();
-      steps[newIdx] = { ...steps[newIdx], data: { ...steps[newIdx].data, one_line_description: text } };
-      return { ...seeded, steps };
+      // tool_call.start appends the new step.
+      idx = base.steps.length - 1;
     }
+    const parent = base.steps[idx];
 
-    const steps = state.steps.slice();
-    steps[idx] = { ...steps[idx], data: { ...steps[idx].data, one_line_description: text } };
-    return { ...state, steps };
+    // The rail (PhaseProgress) and ScratchpadModal read the latest line
+    // from the parent.
+    const withParent = base.steps.slice();
+    withParent[idx] = { ...parent, data: { ...parent.data, one_line_description: text } };
+
+    // Each line is its own row, kept in event order like the CLI prints it
+    // (ENG-2981); the previous line of this tool ends where this one starts.
+    // No dedupe: the server does not repeat events, and the same line after
+    // a question ("Updating the brief…" twice) is a real second step.
+    const steps = closeOpenToolProgress(withParent, eventTs, toolUseId);
+    const row = {
+      id: `step-${steps.length + 1}`,
+      label: text,
+      badge: 'ToolProgress',
+      icon: parent.icon,
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      // The parent tool's tab id (its tool_use_id). ScratchpadModal opens a
+      // clicked step's tab by this field and builds tabs only from
+      // scratchpad/tool-call steps, so clicking a row opens its tool's pad.
+      // Also how closeOpenToolProgress finds this tool's rows.
+      _scratchpadTabId: toolUseId,
+    };
+    return { ...base, steps: [...steps, row] };
   }
 
   // ── Reasoning/thinking ───────────────────────────────────────────

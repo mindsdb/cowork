@@ -55,7 +55,11 @@ const HTML_SLIDES = `<!doctype html>
 
 const SEARCH_PARAMS = new URLSearchParams(window.location.search);
 const IS_HTML_SLIDES = SEARCH_PARAMS.get('artifact') === 'slides';
-const IS_REVIEWER = SEARCH_PARAMS.get('role') === 'reviewer';
+// `?owner=unknown` is what the server sends for an artifact nobody is recorded
+// as owning (ENG-2961): role 'reviewer' plus ownerUnknown (ENG-2979 tag).
+const IS_OWNER_UNKNOWN = SEARCH_PARAMS.get('owner') === 'unknown';
+const IS_REVIEWER = SEARCH_PARAMS.get('role') === 'reviewer' || IS_OWNER_UNKNOWN;
+const OWNER_UNKNOWN_CAPABILITIES = IS_OWNER_UNKNOWN ? { ownerUnknown: true } : {};
 const IS_DESKTOP = SEARCH_PARAMS.get('deployment') === 'desktop';
 const PROJECT_REF = IS_DESKTOP ? 'local' : '11111111-1111-1111-1111-111111111111';
 const INITIAL_CONTENT = IS_HTML_SLIDES ? HTML_SLIDES : MARKDOWN;
@@ -153,6 +157,7 @@ window.fetch = async (input, init) => {
         canEdit: !IS_REVIEWER,
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
+        ...OWNER_UNKNOWN_CAPABILITIES,
       },
       currentRevision,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -239,6 +244,7 @@ window.fetch = async (input, init) => {
         canEdit: !IS_REVIEWER,
         canAddressWithAgent: !IS_REVIEWER,
         canResolveComments: !IS_REVIEWER,
+        ...OWNER_UNKNOWN_CAPABILITIES,
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
