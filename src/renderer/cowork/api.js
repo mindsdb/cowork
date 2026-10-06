@@ -63,14 +63,14 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
-// the socket open with nothing behind it) can't hang a caller forever. Only
-// callers on the "server may be dead" path opt in (Stop's cancelResponse,
-// the history reload after Stop/error, the health check every send waits
-// on). Everything else stays unbounded, since some endpoints have their own
-// longer server-side budget (e.g. connector validation allows 15s). Streaming
-// calls use authFetch directly and manage their own longer-lived idle timeout
-// (see _streamResponse/tailInFlight).
+/* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+   the socket open with nothing behind it) can't hang a caller forever. Only
+   callers on the "server may be dead" path opt in (Stop's cancelResponse,
+   the history reload after Stop/error, the health check every send waits
+   on). Everything else stays unbounded, since some endpoints have their own
+   longer server-side budget (e.g. connector validation allows 15s). Streaming
+   calls use authFetch directly and manage their own longer-lived idle timeout
+   (see _streamResponse/tailInFlight). */
 export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
 function _timeoutSignal(existingSignal, timeoutMs) {
@@ -175,6 +175,29 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *   retry_after: number|null,
  *   retry_at: string|null,
  * }} RefusalError
+ */
+
+/**
+ * What a stream's onError gets beside its message. A response.failed frame
+ * arrives whole, so any other field the server sends rides along too.
+ * @typedef {object} StreamFailure
+ * @property {string} [code] Why the turn ended: a wire code such as
+ *   server_busy, or api.js's own stalled, interrupted, stream_error or
+ *   reconnect_error.
+ * @property {string} [type] `response.failed` when the server ended the turn.
+ * @property {string} [user_message_id] The question's id, from this stream's
+ *   response.created.
+ * @property {number} [http_status] The status of a question refused before
+ *   the stream. Present only on such a refusal.
+ * @property {number|null} [retry_after] Seconds the server asked to wait.
+ * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
+ *   ISO 8601 instant.
+ * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [request_id] The server's id for the failed request.
+ * @property {boolean} [reconnectable] The credential is MindsHub's, so
+ *   signing in again fixes it.
+ * @property {string} [provider_label] The model provider's display name.
+ * @property {string} [model] The model the failed turn asked for.
  */
 
 /**
@@ -566,6 +589,7 @@ const STREAM_IDLE_TIMEOUT_MS = 300_000;
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -620,7 +644,19 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw await responseError(res, `Response stream failed (${res.status})`);
+      if (!res.ok) {
+        /* Refused before the stream, so no turn started. Keep what the server
+           said: its status, its code, such as server_busy or
+           turn_in_progress, and when to try again. */
+        const refusal = await responseError(res, `Response stream failed (${res.status})`);
+        reportError(refusal.message, {
+          code: refusal.code || 'stream_error',
+          http_status: refusal.status,
+          retry_after: refusal.retry_after,
+          retry_at: refusal.retry_at,
+        });
+        return;
+      }
 
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -703,25 +739,18 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
          first to tell it apart from a caller-initiated cancel (Stop button,
          new send, navigation). */
       if (idledOut) {
-        /* Stop the server's turn only when this stream started one. A cancel
-           names the whole conversation, and a stream that never got its own
-           response.created holds no turn: cancelling would stop whichever
-           answer is running there, which can be another tester's. */
+        /* Stop the server's turn only when this stream got its own
+           response.created. A cancel names the whole conversation, and a
+           stream without one may hold no turn of its own: cancelling would
+           stop whichever answer is running there, which can be another
+           tester's. If this tab's own turn stalls before response.created,
+           the server's idle watchdog ends it instead. */
         if (userMessageId) cancelResponse(cid);
         reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        /* A refusal before the stream (responseError) keeps what the server
-           said: its status, its code, such as server_busy or turn_in_progress,
-           and when to try again. Anything else is a dropped connection on the
-           initial send, coded apart from tailInFlight's reconnect_error. */
-        reportError(err.message, typeof err.status === 'number'
-          ? {
-              code: err.code || 'stream_error',
-              http_status: err.status,
-              retry_after: err.retry_after,
-              retry_at: err.retry_at,
-            }
-          : { code: 'stream_error' });
+        // Distinct code from tailInFlight's reconnect_error: this is a dropped
+        // connection on the initial send, not a reconnect attempt.
+        reportError(err.message, { code: 'stream_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -777,6 +806,7 @@ export function tailInFlight(conversationId, {
 } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -880,12 +910,10 @@ export function tailInFlight(conversationId, {
       // caller-initiated abort (a new send or navigation) it must release the
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
-        // Tell the server to actually drop the wedged turn. Aborting the tail
-        // only tears down our consumer; the producer keeps running and the next
-        // in-flight poll would re-select it and reopen a fresh tail, looping this
-        // message. cancelResponse is idempotent and swallows errors, so
-        // fire-and-forget is safe.
-        cancelResponse(conversationId);
+        /* End only this tab's view of the turn. A tail watches whatever turn
+           is running in the conversation, which can be another tester's, and
+           a cancel would stop it for everyone. The server's idle watchdog
+           ends a turn that stays stuck. */
         reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         reportError(err.message, { code: 'reconnect_error' });

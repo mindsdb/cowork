@@ -602,6 +602,7 @@ describe('server_busy failure card', () => {
     expect(screen.getByText('The server is busy')).toBeInTheDocument();
     expect(screen.getByText(BODY)).toBeInTheDocument();
     expect(screen.queryByText('Too many requests too quickly')).toBeNull();
+    expect(screen.queryByText('Rate limit')).toBeNull();
   });
 
   it('gates Retry until the Retry-After instant, then resends the question', () => {

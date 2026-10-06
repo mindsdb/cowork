@@ -65,6 +65,20 @@ export function readRefusalBody(text) {
   };
 }
 
+/* RFC 9110's three HTTP-date forms (section 5.6.7), which a recipient must
+   all accept. IMF-fixdate and the obsolete RFC 850 form name GMT. asctime
+   names no zone but means GMT too, so it gets one before Date.parse, which
+   would otherwise read it in the viewer's own time zone. */
+const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+const RFC850_DATE = /^[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT$/;
+const ASCTIME_DATE = /^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/;
+
+function parseHttpDate(raw) {
+  if (IMF_FIXDATE.test(raw) || RFC850_DATE.test(raw)) return Date.parse(raw);
+  if (ASCTIME_DATE.test(raw)) return Date.parse(`${raw} GMT`);
+  return NaN;
+}
+
 function hintAt(retryAfter, atMs) {
   const at = new Date(atMs);
   return Number.isNaN(at.getTime())
@@ -76,7 +90,8 @@ function hintAt(retryAfter, atMs) {
  * Reads a Retry-After header, which is either delay-seconds or an HTTP-date
  * (RFC 9110, section 10.2.3). Both become the seconds left and the absolute
  * instant the wait ends, which is what ChatView's Retry gate counts down to.
- * A date already past means no wait. Anything else is no hint.
+ * A date already past means no wait. Anything else is no hint: Date.parse
+ * alone would read "-1" as a day in 2001 and "soon 3000" as the year 3000.
  *
  * @param {string|null|undefined} value
  * @param {number} [nowMs]
@@ -88,11 +103,7 @@ export function readRetryAfter(value, nowMs = Date.now()) {
     const seconds = Number(raw);
     return hintAt(seconds, nowMs + seconds * 1000);
   }
-  /* Every HTTP-date form names its day and month. Requiring a letter keeps
-     Date.parse, which reads "-1" or "1.5" as a day in 2001, away from values
-     that are no date at all. */
-  if (!/[a-z]/i.test(raw)) return NO_HINT;
-  const atMs = Date.parse(raw);
+  const atMs = parseHttpDate(raw);
   if (Number.isNaN(atMs)) return NO_HINT;
   return hintAt(Math.max(0, Math.ceil((atMs - nowMs) / 1000)), atMs);
 }

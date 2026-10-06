@@ -62,6 +62,22 @@ describe('readRetryAfter', () => {
       .toEqual({ retry_after: 7, retry_at: '2026-10-06T12:00:07.000Z' });
   });
 
+  it("reads the obsolete RFC 850 and asctime forms as GMT, whatever the viewer's time zone", () => {
+    /* asctime names no zone, and Date.parse alone reads it in local time:
+       7 h late in Los Angeles, 9 h early (so no wait at all) in Tokyo. */
+    const wait = { retry_after: 7, retry_at: '2026-10-06T12:00:07.000Z' };
+    const savedTz = process.env.TZ;
+    try {
+      for (const tz of ['America/Los_Angeles', 'Asia/Tokyo']) {
+        process.env.TZ = tz;
+        expect(readRetryAfter('Tue Oct  6 12:00:07 2026', NOW)).toEqual(wait);
+        expect(readRetryAfter('Tuesday, 06-Oct-26 12:00:07 GMT', NOW)).toEqual(wait);
+      }
+    } finally {
+      process.env.TZ = savedTz;
+    }
+  });
+
   it('waits no time for a date already past', () => {
     expect(readRetryAfter('Tue, 06 Oct 2026 11:59:00 GMT', NOW))
       .toEqual({ retry_after: 0, retry_at: '2026-10-06T11:59:00.000Z' });
@@ -73,6 +89,9 @@ describe('readRetryAfter', () => {
     expect(readRetryAfter(undefined, NOW)).toEqual(none);
     expect(readRetryAfter('', NOW)).toEqual(none);
     expect(readRetryAfter('soon', NOW)).toEqual(none);
+    /* Date.parse reads this as the year 3000, which would hold Retry at the
+       card's 10-minute cap. */
+    expect(readRetryAfter('soon 3000', NOW)).toEqual(none);
     /* Date.parse reads both of these as a day in 2001. */
     expect(readRetryAfter('-1', NOW)).toEqual(none);
     expect(readRetryAfter('1.5', NOW)).toEqual(none);
