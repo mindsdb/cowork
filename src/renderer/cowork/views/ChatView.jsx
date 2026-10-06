@@ -8,7 +8,7 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
@@ -521,7 +521,26 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
 // carries the in-flight header (orb slot, live thought, working label) —
 // `liveSegmentIndex` puts it above a pending card and below an answered one.
 // Every other segment is a finished, collapsed block.
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null }) {
+// Step ids repeat across turns (`step-1` in every turn); prefixed with the
+// turn's key they are unique across the conversation.
+const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+
+// A tool's message to the user, rendered like an agent message. Memoised: the
+// live turn re-renders on every progress line, the message never changes.
+const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) {
+  return (
+    <MarkdownContent
+      text={markdown}
+      id={id}
+      complete
+      conversationId={conversationId}
+      isAssistant
+      enableForms={false}
+    />
+  );
+});
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive }),
     [steps, startedAt, conversationLive],
@@ -530,12 +549,28 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
   // The live segment sits right before a pending question, if there is one.
   const next = live ? segments[liveIdx + 1] : null;
   const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
-  // splitTurnSegments returns a single steps segment when there is no question.
-  const hasQuestion = segments.length > 1;
+  // Any boundary — a question card or a tool's message — keeps the live
+  // header up for the rest of the turn: without it the working indicator
+  // vanishes while the segment below the boundary is still empty.
+  const hasBoundary = segments.length > 1;
 
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'message') {
+      out.push(
+        // Same spacing as a question card: the message is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <ToolMessage
+            markdown={seg.step.data?.markdown || ''}
+            id={prefixId(idPrefix, seg.step.id)}
+            conversationId={conversationId}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'question') {
       out.push(
         // Spacing: 4px under a block, 12px between consecutive cards.
@@ -565,7 +600,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         || live.currentThought?.text
         || (live.isActive && !live.hasBodyText)
         || pendingQuestion
-        || (live.isActive && hasQuestion);
+        || (live.isActive && hasBoundary);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
       // While a question waits, it is the question's label, as before this
@@ -1872,7 +1907,6 @@ export default function ChatView({
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
-  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
   const railMsgKey = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -2709,6 +2743,7 @@ export default function ChatView({
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    idPrefix={messageKey(m, i)}
                   />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
@@ -2757,6 +2792,7 @@ export default function ChatView({
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                   onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
