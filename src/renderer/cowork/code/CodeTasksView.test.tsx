@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { CodeProject, CodingSession } from './api';
@@ -208,5 +208,48 @@ describe('CodeTasksView', () => {
     await user.click(screen.getByRole('combobox', { name: 'Sort' }));
     await user.click(screen.getByRole('option', { name: 'Title' }));
     expect(titles()).toEqual(['Approval needed', 'Folder task', 'Older task']);
+  });
+
+  it('offers the same task actions as the sidebar row', async () => {
+    const taskActions = {
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      onRename: vi.fn().mockResolvedValue(undefined),
+      onSetArchived: vi.fn().mockResolvedValue(undefined),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+    };
+    const { user } = setup({ taskActions });
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Older task' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Pin', 'Rename', 'Archive', 'Delete']);
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
+    expect(taskActions.onSetPinned).toHaveBeenCalledWith('Older task', true);
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Older task' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    expect(taskActions.onSetArchived).toHaveBeenCalledWith('Older task', true);
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Older task' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Delete task' }));
+    await waitFor(() => expect(taskActions.onDelete).toHaveBeenCalledWith('Older task'));
+  });
+
+  it('explains a failed archive without leaving the list', async () => {
+    const taskActions = {
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      onRename: vi.fn().mockResolvedValue(undefined),
+      onSetArchived: vi.fn().mockRejectedValue(new Error('offline')),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+    };
+    const { user } = setup({ taskActions });
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Older task' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    expect(await screen.findByText("Couldn't archive this task.")).toBeInTheDocument();
+  });
+
+  it('has no row menu without task actions', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 });

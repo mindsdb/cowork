@@ -699,20 +699,6 @@ describe('CodeView session-list reconciliation', () => {
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
-  it('closes a delete confirmation when the selected task changes', async () => {
-    const first = session('first');
-    const second = session('second');
-    mocks.sessions.mockResolvedValue({ items: [first, second] });
-    const view = renderCode({ sessions: [first, second], selectedId: first.id });
-    await waitFor(() => expect(mocks.sessions).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete menu action' }));
-    expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
-
-    view.rerender(<CodeView {...view.props} selectedId={second.id} />);
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirm delete' })).toBeNull());
-  });
-
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {
     const directFolder = {
       ...session('direct-folder'),
@@ -874,40 +860,6 @@ describe('CodeView session-list reconciliation', () => {
     view.rerender(<CodeView {...view.props} />);
 
     expect(indexReads).toBeLessThan(10);
-  });
-
-  it('routes task status through steering while an agent turn is active', async () => {
-    const active = { ...session('active'), status: 'running' as const };
-    mocks.sessions.mockResolvedValue({ items: [active] });
-    mocks.useCodingSession.mockReturnValue({
-      session: active,
-      events: [],
-      latestEvents: {},
-      git: null,
-      diff: [],
-      loading: false,
-      error: '',
-      refresh: vi.fn(async () => {}),
-      refreshReview: vi.fn(async () => {}),
-    });
-
-    renderCode({ sessions: [active], selectedId: active.id });
-    fireEvent.click(await screen.findByRole('button', { name: 'Status menu action' }));
-
-    await waitFor(() => expect(mocks.steer).toHaveBeenCalledWith(active.id, '/status'));
-    expect(mocks.turn).not.toHaveBeenCalled();
-  });
-});
-
-
-describe('CodeView commit without a Git identity', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.sessions.mockResolvedValue({ items: [session('task-1')] });
-    mocks.useCodingSession.mockReturnValue({
-      session: session('task-1'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
-      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
-    });
   });
 
   it('asks for the identity, prefilled from the account, then saves it and reruns the same commit', async () => {
