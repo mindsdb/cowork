@@ -656,7 +656,7 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -897,7 +897,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
     ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
     : null;
-  // A disabled button takes no hover, so its reason is said beside it.
   const primaryDisabled = !orgMode && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
@@ -954,6 +953,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
         </span>
+        {/* A disabled button takes no hover, so its reason is said here, in
+            the text column: beside the button it would widen the actions
+            track and squeeze the title to nothing. */}
+        {!deleted && primaryAction && primaryReason && (
+          <span className="font-body text-xs text-ink-4">{primaryReason}</span>
+        )}
       </div>
       {/* The card is role="button" with a whole-surface click and Enter/Space
           handler. Actions, and the overflow menu whose events React bubbles
@@ -969,9 +974,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           size="sm"
           align="start"
           className="flex-wrap"
-          leading={!deleted && primaryAction && primaryReason
-            ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
-            : null}
           primary={!deleted && primaryAction
             ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
             : null}
