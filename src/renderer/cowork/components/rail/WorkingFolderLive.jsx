@@ -31,6 +31,7 @@ import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
+import { artifactIdentity } from '../../lib/artifactIdentity';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -188,6 +189,16 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
     });
   }, [artifacts]);
+  // The viewer's publish refresh reports its result even when it lands after
+  // the modal closed, and applying that re-opened what the user just dismissed.
+  const handleArtifactChange = (updated) => {
+    setPreviewArt((cur) => {
+      if (!cur) return cur;
+      const open = artifactIdentity(cur);
+      const same = open ? open === artifactIdentity(updated) : !!cur.path && cur.path === updated?.path;
+      return same ? updated : cur;
+    });
+  };
   // Per-row kebab menu state (single-open) + portal coords.
   //
   // Why a portal: the rail-card body wraps this component with
@@ -638,7 +649,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => {
-          setPreviewArt(updated);
+          handleArtifactChange(updated);
           setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
         }}
         onDelete={(path) => {
