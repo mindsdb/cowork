@@ -52,7 +52,8 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       data-coming-soon={comingSoon ? '' : undefined}
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
-      <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
+      {/* A 1px line sits level with the 13px label; the app's 1.5px outweighs it. */}
+      <span className="nav-row__icon inline-flex shrink-0 items-center">{icon(16, { stroke: 1 })}</span>
       {/* Keep long labels ("Connected Apps and Data") on one line — at the
           narrow end of the sidebar's clamp they'd otherwise wrap to two rows.
           min-w-0 lets the flex item shrink below its content so the ellipsis
@@ -616,10 +617,10 @@ export default function Sidebar({
             product look like the same action. */}
         {!codeRoute && (
           <div className="nav-list px-2.5 flex flex-col gap-px">
-            <NavItem icon={Ico.folder(16)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-            <NavItem icon={Ico.clock(16)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+            <NavItem icon={Ico.folder}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
+            <NavItem icon={Ico.clock}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
             <NavItem
-              icon={Ico.sparkle(16)}
+              icon={Ico.sparkle}
               label="Live Artifacts"
               elementRef={artifactsNavRef}
               onClick={() => {
@@ -639,7 +640,7 @@ export default function Sidebar({
                 data source is connected; the badge then reads as a
                 live "you have N connections" indicator. */}
             <NavItem
-              icon={Ico.link(16)}
+              icon={Ico.link}
               label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
               onClick={() => onNavigate('customize')}
               active={activeRoute === 'customize'}
@@ -657,25 +658,25 @@ export default function Sidebar({
           <>
             <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
               <NavItem
-                icon={Ico.folder(16)}
+                icon={Ico.folder}
                 label="Projects"
                 onClick={onOpenCodingProjects}
                 active={activeCodeRoute === 'projects'}
               />
               <NavItem
-                icon={Ico.list(16)}
+                icon={Ico.list}
                 label="All tasks"
                 onClick={onOpenCodingTasks}
                 active={activeCodeRoute === 'tasks'}
               />
               <NavItem
-                icon={Ico.link(16)}
+                icon={Ico.link}
                 label="Connectors"
                 onClick={onOpenCodingConnectors}
                 active={activeCodeRoute === 'connectors'}
               />
               <NavItem
-                icon={Ico.cube(16)}
+                icon={Ico.cube}
                 label="Skills"
                 onClick={onOpenCodingSkills}
                 active={activeCodeRoute === 'skills'}
@@ -698,8 +699,8 @@ export default function Sidebar({
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
         <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+          <NavItem icon={Ico.brain} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty

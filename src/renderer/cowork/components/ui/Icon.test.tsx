@@ -24,6 +24,11 @@ describe('Icon', () => {
     }
   });
 
+  it('draws a 1px line on request', () => {
+    const { container } = render(<Icon of={Folder} size={16} stroke={1} />);
+    expect(Number(container.querySelector('svg')!.getAttribute('stroke-width')) * 16 / 24).toBeCloseTo(1);
+  });
+
   it('passes through classes and labels', () => {
     const { container } = render(<Icon of={Folder} size={14} className="x" aria-label="Local changes" />);
     const svg = container.querySelector('svg')!;

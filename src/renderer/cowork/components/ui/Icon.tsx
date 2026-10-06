@@ -13,17 +13,21 @@ import type { LucideProps } from 'lucide-react';
 
 export const ICON_SIZES = [12, 14, 16, 20, 32] as const;
 export type IconSize = (typeof ICON_SIZES)[number];
+// 1.5px is the app line. 1px is for glyphs set beside 13px text in a nav
+// list, where a heavier line outweighs the font.
+export type IconStroke = 1 | 1.5;
 
 // Nearest step, rounding up on a tie, for sizes computed at runtime.
 export function iconSize(n: number): IconSize {
   return ICON_SIZES.reduce((best, step) => (Math.abs(step - n) <= Math.abs(best - n) ? step : best));
 }
 
-export interface IconProps extends Omit<LucideProps, 'size' | 'strokeWidth' | 'absoluteStrokeWidth'> {
+export interface IconProps extends Omit<LucideProps, 'size' | 'stroke' | 'strokeWidth' | 'absoluteStrokeWidth'> {
   of: ComponentType<LucideProps>;
   size?: IconSize;
+  stroke?: IconStroke;
 }
 
-export function Icon({ of: Glyph, size = 16, ...rest }: IconProps) {
-  return <Glyph size={iconSize(size)} strokeWidth={1.5} absoluteStrokeWidth {...rest} />;
+export function Icon({ of: Glyph, size = 16, stroke = 1.5, ...rest }: IconProps) {
+  return <Glyph size={iconSize(size)} strokeWidth={stroke} absoluteStrokeWidth {...rest} />;
 }

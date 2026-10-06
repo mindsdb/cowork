@@ -93,8 +93,9 @@ import {
 } from 'lucide-react';
 import { Icon } from './ui/Icon';
 
-// (Component, default size) → the old call-style drawer fn.
-const ico = (Cmp, d = 16) => (s = d) => <Icon of={Cmp} size={s} />;
+// (Component, default size) → the old call-style drawer fn. `opts` takes
+// the primitive's props (`stroke`).
+const ico = (Cmp, d = 16) => (s = d, opts) => <Icon of={Cmp} size={s} {...opts} />;
 
 const Ico = {
   search:   ico(Search),
