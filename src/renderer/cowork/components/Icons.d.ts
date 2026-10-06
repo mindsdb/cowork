@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { IconSize, IconStroke } from './ui/Icon';
+import type { IconSize } from './ui/Icon';
 
-type IconRenderer = (size?: IconSize, opts?: { stroke?: IconStroke }) => ReactNode;
+type IconRenderer = (size?: IconSize) => ReactNode;
 
 declare const Ico: {
   attach: IconRenderer;

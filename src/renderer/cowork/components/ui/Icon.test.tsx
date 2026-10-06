@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Folder } from 'lucide-react';
-import { Icon, ICON_SIZES, iconSize } from './Icon';
+import { Icon, ICON_SIZES, iconSize, iconStroke } from './Icon';
 
 describe('iconSize', () => {
   it('snaps to the nearest step and rounds up on a tie', () => {
@@ -13,20 +13,16 @@ describe('iconSize', () => {
 });
 
 describe('Icon', () => {
-  it('draws a 1.5px line at every size', () => {
+  it('draws 1.25px up to 16 and 1.5px above, as absolute pixels', () => {
+    expect(ICON_SIZES.map(iconStroke)).toEqual([1.25, 1.25, 1.25, 1.5, 1.5]);
     for (const size of ICON_SIZES) {
       const { container, unmount } = render(<Icon of={Folder} size={size} />);
       const svg = container.querySelector('svg')!;
       expect(svg.getAttribute('width')).toBe(String(size));
-      expect(Number(svg.getAttribute('stroke-width')) * size / 24).toBeCloseTo(1.5);
+      expect(Number(svg.getAttribute('stroke-width')) * size / 24).toBeCloseTo(iconStroke(size));
       expect(svg.getAttribute('aria-hidden')).toBe('true');
       unmount();
     }
-  });
-
-  it('draws a 1px line on request', () => {
-    const { container } = render(<Icon of={Folder} size={16} stroke={1} />);
-    expect(Number(container.querySelector('svg')!.getAttribute('stroke-width')) * 16 / 24).toBeCloseTo(1);
   });
 
   it('passes through classes and labels', () => {

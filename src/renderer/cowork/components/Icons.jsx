@@ -5,8 +5,8 @@
 // from data (`Ico[connector.logo]`, `Ico[item.icon]`), so never rename or
 // remove a key without grepping for its string form too.
 //
-// Stroke weight and the size scale live in ui/Icon.tsx: every glyph draws a
-// 1.5px line and sizes snap to 12/14/16/20/32. No per-icon weights; a
+// Stroke weight and the size scale live in ui/Icon.tsx: the line is fixed
+// per size step and sizes snap to 12/14/16/20/32. No per-icon weights; a
 // heavier glyph is a design-system conversation, not a local override.
 //
 // Kept hand-rolled: brand marks (mindsdb, googleDrive) — Lucide ships no
@@ -93,9 +93,8 @@ import {
 } from 'lucide-react';
 import { Icon } from './ui/Icon';
 
-// (Component, default size) → the old call-style drawer fn. `opts` takes
-// the primitive's props (`stroke`).
-const ico = (Cmp, d = 16) => (s = d, opts) => <Icon of={Cmp} size={s} {...opts} />;
+// (Component, default size) → the old call-style drawer fn.
+const ico = (Cmp, d = 16) => (s = d) => <Icon of={Cmp} size={s} />;
 
 const Ico = {
   search:   ico(Search),
