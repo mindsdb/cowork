@@ -3593,7 +3593,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    a phone — so a viewport breakpoint would leave the action row overflowing
    on exactly the desktop case it was reported on. */
 .chat-transcript-col { container: chat-col / inline-size; }
-.chat-artifact-card {
+/* `.card.pad-none` holds the padding at 0; the cells carry the head inset. */
+.card.chat-artifact-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
@@ -3601,7 +3602,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     "loc  loc  tools";
   align-items: center;
   max-width: 600px;
-  padding: 0;
   overflow: hidden;
   box-shadow: var(--sh-1);
 }

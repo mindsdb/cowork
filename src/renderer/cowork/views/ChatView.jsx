@@ -920,7 +920,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       as="div"
       interactive={canActivate}
       flat
-      padding="snug"
+      padding="none"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
