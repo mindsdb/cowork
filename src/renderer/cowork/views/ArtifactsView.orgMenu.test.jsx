@@ -1,7 +1,7 @@
 // The org-mode action gate has to be applied at BOTH menu sites.
 //
-// ArtifactsView builds its kebab menu twice: the list view's `ArtifactMenu`
-// component owns its own item list, and the grid view's items are assembled
+// ArtifactsView builds its kebab menu twice: the list view's `rowMenuItems`
+// builds its own item list, and the grid view's items are assembled
 // inline by the page-level shared `HoverMenu`. They are separate arrays, so
 // wiring the gate into one leaves the other offering filesystem and publish
 // controls on a deployment where none of them can work. Preview is available
