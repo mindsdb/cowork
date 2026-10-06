@@ -3665,7 +3665,7 @@ body[data-theme="dark"] .mshell__drawer-title {
    under the title in the text column, so the tile column stays a column
    instead of leaving a hole beside a right-aligned button. */
 @container chat-col (max-width: 400px) {
-  .chat-artifact-card {
+  .card.chat-artifact-card {
     grid-template-areas:
       "tile text    text"
       "tile actions actions"
