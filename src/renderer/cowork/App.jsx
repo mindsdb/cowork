@@ -1163,14 +1163,16 @@ function AppCore() {
     const cidToCancel = opts?.taskId ?? null;
     if (!cidToCancel) return;
 
-    // Ask the server to cancel *before* any local teardown. On `error` the
-    // request never landed, so the cancel flag was not written and the remote
-    // turn may still be running (and spending tokens). Bail out with the
-    // in-flight state — Stop control, heartbeat, live stream — fully intact so
-    // the toast's "try again" is actually actionable; tearing down first would
-    // strip the very UI the user needs to retry. This ordering is the whole
-    // point of ENG-1919. The `silent` idle-timeout caller still fires the
-    // cancel but tears down regardless of the result and never toasts.
+    /*
+     * Ask the server to cancel *before* any local teardown. On `error` the
+     * request never landed, so the cancel flag was not written and the remote
+     * turn may still be running (and spending tokens). Bail out with the
+     * in-flight state (Stop control, heartbeat, live stream) fully intact so
+     * the toast's "try again" is actually actionable; tearing down first would
+     * strip the very UI the user needs to retry. The `silent` caller,
+     * performDeleteTurn, still fires the cancel but tears down regardless of
+     * the result and never toasts.
+     */
     const cancelResult = await cancelResponse(cidToCancel);
     if (!silent && cancelResult?.status === 'error') {
       toastManagerRef.current?.add({
@@ -1180,13 +1182,17 @@ function AppCore() {
       return;
     }
 
-    // Tear down the record for the conversation being stopped, not whichever
-    // one claimed the shared refs last: with concurrent streams those differ,
-    // and cancelling the wrong pad kills a cell inside a still-running turn.
+    /*
+     * Tear down the record for the conversation being stopped, not whichever
+     * one claimed the shared refs last: with concurrent streams those differ,
+     * and cancelling the wrong pad kills a cell inside a still-running turn.
+     * Only that record names a cell this conversation opened. Without one there
+     * is no cell to cancel, even when this conversation holds the slot.
+     */
     const stopped = abortStream(cidToCancel);
     const holdsSharedSlot = activeStreamingTaskIdRef.current === cidToCancel;
 
-    const padName = stopped ? stopped.pad : (holdsSharedSlot ? activeScratchpadRef.current : null);
+    const padName = stopped?.pad ?? null;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
@@ -3488,7 +3494,11 @@ function AppCore() {
     //      parallel stream against anton-core (which runs one turn at a
     //      time). The reservation is always cleared on done/error, so a
     //      broadened guard cannot wedge later sends.
-    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current) {
+    //   3) This task still has a live stream while the shared slot is free,
+    //      as after another task's Stop or terminal released it. A send now
+    //      would register over that stream and abort it mid-answer; the
+    //      stream's own terminal drops the record and drains this queue.
+    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || liveStreamsRef.current.has(id)) {
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
@@ -3808,10 +3818,16 @@ function AppCore() {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
+    /*
+     * A conversation with a live stream is still running its own turn, which a
+     * follow-up would replace (registerStream aborts it). Its own terminal drops
+     * the record before it drains, so its follow-up goes out then.
+     */
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
+      new Set(liveStreamsRef.current.keys()),
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4372,13 +4388,23 @@ function AppCore() {
       setDeletingTurns((prev) => ({ ...prev, [taskId]: turnIndex }));
     }
     try {
-      // If anton is actively streaming a response to the turn being
-      // deleted, stop the stream first so the SSE connection doesn't
-      // keep producing events for a turn that no longer exists. The
-      // silent flag skips the post-cancel session refetch.
-      // The registry first, since another conversation may hold the shared
-      // slot; the slot check still covers a send reserved before it registers.
-      if (liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId) {
+      /*
+       * If this conversation's turn is still running, stop it first so the
+       * SSE connection doesn't keep producing events for a turn that no
+       * longer exists, and so a turn running on the server ends with it. The
+       * silent flag skips the post-cancel session refetch. Running means any
+       * of: a live stream here (the registry, since another conversation may
+       * hold the shared slot); a send reserved before it registers (the slot);
+       * a turn the server lists as running with no stream here, such as a
+       * scheduled run (the in-flight set); or a live row on screen, the same
+       * signal that shows Stop.
+       */
+      const deletingTask = tasksRef.current.find((t) => t.id === taskId);
+      const running = liveStreamsRef.current.has(taskId)
+        || activeStreamingTaskIdRef.current === taskId
+        || inFlightSetRef.current.has(taskId)
+        || (deletingTask?.messages || []).some((m) => m.role === '_streaming');
+      if (running) {
         try { await handleStopStream({ taskId, silent: true }); } catch {}
       }
       if (isLocalOnly) {
