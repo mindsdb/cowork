@@ -725,6 +725,93 @@ describe('interrupted stream recovery', () => {
   });
 });
 
+/* cowork-server refuses a question before the stream with a 503 when no
+   database connection frees in time, and with a 409 when the conversation
+   already has a running turn. Real api.js streams, so the refusal travels the
+   same path a tester's does: response, onError, handleStreamError, ChatView. */
+describe('a question the server refuses', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Answers the question POST with `status` and a JSON body. */
+  const refuseWith = (status, body, headers = {}) => vi.fn(async (url) => {
+    if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+  });
+
+  /** Opens conv-a with real streams and a history reload that never answers,
+   *  as it wouldn't from a server whose pool is exhausted. */
+  async function openWithStalledReload(user) {
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    spies.fetchSession.mockClear();
+    spies.fetchSession.mockImplementation(() => new Promise(() => {}));
+    return composer;
+  }
+
+  it('shows the busy card at once, gated on Retry-After, without reloading the conversation', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByText(BUSY)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  it("shows a second question's 409 sentence at once, with nothing to retry", async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    await send(user, composer, 'a second question');
+
+    const sentence = await screen.findByText(SECOND);
+    expect(sentence.closest('[role="alert"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  it('gives a busy failure inside the stream the same gated card', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    const enc = new TextEncoder();
+    const frames = [
+      { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' },
+      {
+        type: 'response.failed',
+        code: 'server_busy',
+        error: BUSY,
+        retry_after: 5,
+        retry_at: new Date(Date.now() + 5_000).toISOString(),
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+      return { ok: true, status: 200, body: new ReadableStream({
+        start(controller) {
+          frames.forEach((frame) => controller.enqueue(enc.encode(`data: ${JSON.stringify(frame)}\n\n`)));
+          controller.close();
+        },
+      }) };
+    }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+  });
+});
+
 describe('turn failure telemetry', () => {
   it('tracks a real turn failure, but not a cancelled one', async () => {
     const user = userEvent.setup();

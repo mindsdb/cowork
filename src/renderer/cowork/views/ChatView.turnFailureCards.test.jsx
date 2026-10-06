@@ -594,6 +594,38 @@ describe('rate_limited failure card (ENG-1537)', () => {
   });
 });
 
+describe('server_busy failure card', () => {
+  const BODY = 'Cowork is busy. Try again in about 5 seconds.';
+
+  it('names a busy server, not a rate limit, and shows the server sentence', () => {
+    render(<ChatView task={taskWith(failedTurn('server_busy', BODY))} />);
+    expect(screen.getByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByText(BODY)).toBeInTheDocument();
+    expect(screen.queryByText('Too many requests too quickly')).toBeNull();
+  });
+
+  it('gates Retry until the Retry-After instant, then resends the question', () => {
+    const onSend = vi.fn();
+    const { unmount } = render(
+      <ChatView
+        task={taskWith(failedTurn('server_busy', BODY, { retryAt: new Date(Date.now() + 5_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    unmount();
+
+    render(
+      <ChatView
+        task={taskWith(failedTurn('server_busy', BODY, { retryAt: new Date(Date.now() - 1_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+});
+
 describe('image_format failure card', () => {
   it('names the fix (PNG/JPEG) with no dead-end buttons', () => {
     render(
@@ -817,6 +849,8 @@ const WIRE_CODES = [
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.
   'model_restricted',
+  // cowork-server found no free database connection in time; the user waits, then retries.
+  'server_busy',
   'anton_error',
 ];
 

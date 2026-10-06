@@ -1158,7 +1158,13 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
-    const loaded = cid
+    /* A refusal before the stream carries an HTTP status, and no
+       response.created gave its turn an id. The server saved nothing, so a
+       reload has no persisted ending to find. Skipping it shows the error at
+       once, instead of after up to three rounds of history requests to a
+       server that just refused. */
+    const refusedBeforeStream = typeof event?.http_status === 'number' && !event?.user_message_id;
+    const loaded = cid && !refusedBeforeStream
       ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
       : null;
     // A successful history GET can still contain only the pending question, or

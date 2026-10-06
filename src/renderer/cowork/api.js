@@ -6,6 +6,7 @@
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
+import { readRefusalBody, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
@@ -65,10 +66,11 @@ export async function authFetch(url, options = {}) {
 // Opt-in bound for a plain JSON request, so a dead server (a proxy holding
 // the socket open with nothing behind it) can't hang a caller forever. Only
 // callers on the "server may be dead" path opt in (Stop's cancelResponse,
-// the history reload after Stop/error) — everything else stays unbounded,
-// since some endpoints have their own longer server-side budget (e.g.
-// connector validation allows 15s). Streaming calls use authFetch directly
-// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+// the history reload after Stop/error, the health check every send waits
+// on). Everything else stays unbounded, since some endpoints have their own
+// longer server-side budget (e.g. connector validation allows 15s). Streaming
+// calls use authFetch directly and manage their own longer-lived idle timeout
+// (see _streamResponse/tailInFlight).
 export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
 function _timeoutSignal(existingSignal, timeoutMs) {
@@ -165,15 +167,43 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
   return promise;
 }
 
+/**
+ * A refused request, with what its body and headers said about it.
+ * @typedef {Error & {
+ *   status: number,
+ *   code: string|null,
+ *   retry_after: number|null,
+ *   retry_at: string|null,
+ * }} RefusalError
+ */
+
+/**
+ * Builds the Error a refused request throws. The message is the body's
+ * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * let a caller tell a busy server from a turn already running, and wait as
+ * long as the server asked. The body is read once, as text, and parsed from
+ * there: reading it as JSON first would consume it, and a body that isn't JSON
+ * would then have no text left to show.
+ *
+ * @param {Response} res
+ * @param {string} fallback
+ * @returns {Promise<RefusalError>}
+ */
 async function responseError(res, fallback) {
-  let detail = '';
+  let text = '';
   try {
-    const data = await res.json();
-    detail = data?.detail || data?.message || '';
+    text = await res.text();
   } catch {
-    detail = await res.text().catch(() => '');
+    /* An unreadable body leaves the fallback. */
   }
-  return new Error(detail || fallback);
+  const { message, code } = readRefusalBody(text);
+  const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
+  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  err.status = res.status;
+  err.code = code;
+  err.retry_after = retry_after;
+  err.retry_at = retry_at;
+  return err;
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
@@ -185,7 +215,10 @@ async function responseError(res, fallback) {
 // `setAntonInstallId` self-gates to desktop.
 export async function fetchHealth() {
   try {
-    const health = await rootReq('/api/v1/health');
+    /* Bounded, because every send waits on this check first: a server that
+       holds the request open would otherwise leave Send busy with no message.
+       A timeout reads as offline, the same answer as any other failure. */
+    const health = await rootReq('/api/v1/health', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
     // Isolated: analytics must never decide whether the server looks healthy.
     // This sits inside fetchHealth's try, so an exception here would fall to the
     // catch below and report `status: 'offline'` — making an analytics failure
@@ -666,16 +699,29 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       // that's a drop mid-read, this is a clean close with no terminal.
       reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
-      // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
-      // as an AbortError too, so check idledOut first to tell it apart from
-      // a caller-initiated cancel (Stop button, new send, navigation).
+      /* Our own idle abort surfaces as an AbortError too, so check idledOut
+         first to tell it apart from a caller-initiated cancel (Stop button,
+         new send, navigation). */
       if (idledOut) {
-        cancelResponse(cid);
+        /* Stop the server's turn only when this stream started one. A cancel
+           names the whole conversation, and a stream that never got its own
+           response.created holds no turn: cancelling would stop whichever
+           answer is running there, which can be another tester's. */
+        if (userMessageId) cancelResponse(cid);
         reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        // Distinct code from tailInFlight's reconnect_error: this is a dropped
-        // connection on the initial send, not a reconnect attempt.
-        reportError(err.message, { code: 'stream_error' });
+        /* A refusal before the stream (responseError) keeps what the server
+           said: its status, its code, such as server_busy or turn_in_progress,
+           and when to try again. Anything else is a dropped connection on the
+           initial send, coded apart from tailInFlight's reconnect_error. */
+        reportError(err.message, typeof err.status === 'number'
+          ? {
+              code: err.code || 'stream_error',
+              http_status: err.status,
+              retry_after: err.retry_after,
+              retry_at: err.retry_at,
+            }
+          : { code: 'stream_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
