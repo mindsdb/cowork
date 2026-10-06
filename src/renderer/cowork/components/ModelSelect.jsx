@@ -65,7 +65,7 @@
 // since the footer is plain content, not a selectable item (see
 // ui/Combobox.jsx's `footer` slot docs).
 //
-// Option shape: { value, label, disabled?, locked?, title?, tag?, maker?, provider?, pin? }.
+// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
@@ -77,6 +77,9 @@
 //     it beside `disabled: true`, and this component turns it into the "Add
 //     credits" button on the row — see `creditsAction` below for why the
 //     button lives here rather than in either builder.
+//   - `restricted`: an org admin's model rule blocks this model. Disabled,
+//     tagged "Restricted" with an explanatory `title`, and never `locked`, so
+//     no "Add credits" button attaches: credits cannot lift an admin rule.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape
@@ -110,11 +113,11 @@ const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but tak
 const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 
 // How long the popup lingers after picking a model with NO effort options
-// while the Effort footer is showing: the footer fades out (the 320ms
-// `fade-out` animation, with a small hold at 0), THEN the popup closes.
+// while the Effort footer is showing: the footer fades out (`fade-out`,
+// one --dur-layout = 200ms, plus a small hold at 0), THEN the popup closes.
 // Watching the row leave teaches why it's gone — this model has no effort
 // levels — where an instant close would just look like the footer vanished.
-const FOOTER_EXIT_MS = 400;
+const FOOTER_EXIT_MS = 260;
 
 const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
@@ -162,7 +165,7 @@ function creditsAction() {
         className={cn(
           'shrink-0 rounded-full border border-solid border-accent bg-transparent',
           'px-[7px] py-[1px] text-[10.5px] leading-[15px] text-accent',
-          'cursor-pointer [transition:background-color_.12s_ease]',
+          'cursor-pointer [transition:background-color_var(--dur-hover)_ease]',
           'hover:bg-surface-2',
         )}
         onClick={(e) => {
@@ -186,7 +189,7 @@ function makerKeyFor(option) {
 
 /*
  * Inline text segment whose box WIDTH glides between natural sizes when
- * `text` changes (a 160ms FLIP: pin the old width, transition to the new,
+ * `text` changes (a --dur-layout FLIP: pin the old width, transition to the new,
  * hand sizing back to the content), so the trigger pill relabeling live on
  * a pick reads as a slide rather than a snap.
  *
@@ -221,7 +224,7 @@ function AnimatedWidthText({ text, fadeOnChange = false }) {
     // measured.
     el.style.boxSizing = 'border-box';
     el.style.width = `${prev}px`;
-    el.style.transition = 'width 160ms ease';
+    el.style.transition = 'width var(--dur-layout) ease';
     const finish = () => {
       el.style.width = '';
       el.style.transition = '';

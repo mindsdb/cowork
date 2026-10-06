@@ -4,6 +4,10 @@ export interface ModelSelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** The wallet or the spent allowance closes the row; an "Add credits" button attaches. */
+  locked?: boolean;
+  /** An org admin's model rule closes the row; no credits action attaches. */
+  restricted?: boolean;
   title?: string;
   tag?: string;
   maker?: string;

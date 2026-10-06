@@ -3,6 +3,7 @@
 //   import { Button, Input, Textarea, Card, Bubble, Eyebrow, Badge } from '../components/ui';
 
 export { default as Button } from './Button.tsx';
+export { default as ActionBar } from './ActionBar.tsx';
 export { default as Input, Textarea } from './Input.tsx';
 export { default as Card, CardRow, Bubble } from './Card.tsx';
 export { default as Eyebrow } from './Eyebrow.tsx';
@@ -14,10 +15,13 @@ export { default as Tabs, TabList, Tab, TabPanel } from './Tabs.tsx';
 export { default as Spinner } from './Spinner.tsx';
 export { default as OrbitMorph } from './OrbitMorph.jsx';
 export { default as Menu } from './Menu.jsx';
+export { default as OutsidePressLayer } from './OutsidePressLayer.jsx';
 export { default as Select } from './Select.jsx';
 export { default as Combobox } from './Combobox.jsx';
+export { default as Command, CommandInput, CommandList, CommandGroup, CommandItem, CommandStatus, CommandFooter } from './Command.tsx';
 export { default as Tooltip } from './Tooltip.tsx';
 export { default as Checkbox } from './Checkbox.tsx';
+export { default as RadioGroup, Radio } from './RadioGroup.tsx';
 export { default as Kbd } from './Kbd.tsx';
 export { default as EmptyState } from './EmptyState.jsx';
 export { default as Meter } from './Meter.tsx';

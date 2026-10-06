@@ -47,11 +47,12 @@
 // email/org block.
 
 import { useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import { OutsidePressLayer } from './OutsidePressLayer';
+import { Tooltip } from './Tooltip';
 
 // Popup shell — background/radius/shadow + the open/close fade+scale.
 // Borderless and token-shadowed per ENG-790; this keeps that visual
@@ -59,6 +60,10 @@ import { cn } from '../../lib/cn';
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
+  // A long menu (the Filter menu's project list) scrolls within the space
+  // Base UI measures below its anchor instead of running off-screen, as
+  // Select's popup does.
+  'max-h-[var(--available-height,_320px)] overflow-y-auto overscroll-contain',
   'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
 );
 
@@ -125,6 +130,7 @@ function renderItems(items, z, onActivate) {
               <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
             )}
             <span className="flex-1 min-w-0 truncate">{it.label}</span>
+            {it.hint && <span className="max-w-[12rem] truncate text-[12px] text-ink-4">{it.hint}</span>}
             <span className="inline-flex shrink-0 text-ink-4">{CHEVRON_RIGHT}</span>
           </BaseMenu.SubmenuTrigger>
           <BaseMenu.Portal>
@@ -180,6 +186,10 @@ export function Menu({
   // over the modal chrome. Bump for menus inside system-layer modals.
   zIndex = 95,
   ariaLabel,
+  // Trigger mode: a hover/focus hint for the trigger. The Tooltip wraps
+  // Base UI's Menu.Trigger (not the trigger element) so the two triggers
+  // compose onto one element instead of competing for its ref.
+  tooltip,
   // Controlled open state. Pass for anchored mode (the call site owns
   // the trigger); omit for the common uncontrolled trigger case.
   open,
@@ -234,36 +244,23 @@ export function Menu({
   return (
     <>
       {/* Outside-press dismiss for anchored mode. We can't use a document
-          mousedown listener: the whole window is `-webkit-app-region:
-          drag` (App.jsx), and Electron swallows mouse events over drag
-          regions — so clicking the empty canvas would never reach a
-          listener. A transparent `no-drag` layer painted just under the
-          popup DOES receive those presses, so it dismisses on a click
-          anywhere outside the popup — including drag regions and the
-          trigger itself. Because the press lands on this layer (not the
-          trigger), the trigger's own onClick never fires, so re-clicking
-          it can't flicker the menu back open. */}
-      {anchoredMode && open && createPortal(
-        <div
-          onMouseDown={() => onClose?.()}
-          style={{
-            position: 'fixed', inset: 0,
-            zIndex: zIndex - 1,
-            background: 'transparent',
-            WebkitAppRegion: 'no-drag',
-          }}
-        />,
-        document.body,
+          mousedown listener: Electron swallows mouse events over the
+          window's drag regions, so clicking the empty canvas would never
+          reach one. See OutsidePressLayer for the rest. */}
+      {anchoredMode && open && (
+        <OutsidePressLayer onPress={() => onClose?.()} zIndex={zIndex - 1} />
       )}
       <BaseMenu.Root {...rootProps}>
         {trigger && (
-          <BaseMenu.Trigger
-            // !important beats the trigger's own inline background,
-            // which an onMouseOut handler would otherwise reset the
-            // moment the pointer leaves to travel into the menu.
-            className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
-            render={trigger}
-          />
+          <Tooltip content={tooltip}>
+            <BaseMenu.Trigger
+              // !important beats the trigger's own inline background,
+              // which an onMouseOut handler would otherwise reset the
+              // moment the pointer leaves to travel into the menu.
+              className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
+              render={trigger}
+            />
+          </Tooltip>
         )}
         <BaseMenu.Portal>
           <BaseMenu.Positioner

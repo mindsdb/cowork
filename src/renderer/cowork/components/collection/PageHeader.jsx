@@ -68,9 +68,11 @@ export function PageHeader({
   }
 
   return (
-    <div className="flex flex-col gap-[18px] pr-8 pb-5 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
-      <div className="flex items-start justify-between gap-6 min-w-0">
-        <div className="min-w-0 flex flex-col gap-1">
+    <div className="flex flex-col gap-[18px] pr-8 pb-6 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
+      {/* Wraps the actions below the title once the title column would drop
+          under 18rem, so narrow windows stack instead of crushing the title. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">
+        <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
           {eyebrow && (
             <div className="mb-0.5 font-[family-name:var(--font-mono)] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-4">
               {eyebrow}
@@ -86,7 +88,7 @@ export function PageHeader({
             </p>
           )}
         </div>
-        {actions && <div className="shrink-0">{actions}</div>}
+        {actions && <div className="shrink-0 max-w-full">{actions}</div>}
       </div>
     </div>
   );

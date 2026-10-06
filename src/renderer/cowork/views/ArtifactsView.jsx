@@ -15,7 +15,6 @@ import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
-import { EmptyState } from '../components/ui/EmptyState';
 import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
@@ -42,17 +41,20 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
+import { artifactAuthorship } from '../lib/artifactAuthorship';
 import {
   PageHeader,
   FilterRow,
   SearchInput,
   SortPill,
   HoverMenu,
+  ViewToggle,
+  CollectionState,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { surfaceCopy } from '../lib/surface';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const EMPTY_ARTIFACTS = [];
@@ -180,7 +182,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
         width: 28, height: 28, borderRadius: 7,
         display: 'inline-grid', placeItems: 'center',
         background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-        color: 'var(--ink-4)', transition: 'background .12s ease, color .12s ease',
+        color: 'var(--ink-4)', transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-4)'; }}
@@ -262,6 +264,9 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
   // Open the live thing: published URL, else served URL, else local file. In org
   // mode the last fallback is skipped — there is no local file the user can reach,
@@ -334,7 +339,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         </div>
 
         <div className="flex min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            authorship={authorship}
+          />
         </div>
       </div>
 
@@ -352,7 +363,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
                 all: 'unset', cursor: 'pointer',
                 fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-3)',
                 minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                transition: 'color 120ms ease',
+                transition: 'color var(--dur-hover) ease',
               }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
@@ -501,6 +512,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
@@ -548,7 +562,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
         {...hoverProps}
-        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
+        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_var(--dur-hover)_ease]"
         style={{
           gridTemplateColumns: LIST_GRID,
           background: hovered ? 'var(--surface-2)' : 'transparent',
@@ -594,7 +608,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
                   all: 'unset', cursor: 'pointer',
                   fontFamily: 'var(--font-body)', fontSize: 12.5, color: 'var(--ink-2)',
                   minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
+                  display: 'inline-block', maxWidth: '100%', transition: 'color var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
                 onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
@@ -605,10 +619,18 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           )}
         </div>
 
-        {/* Status — query container so the access chip drops to icon-only
-            when the column gets tight (frees room for "Unpublished changes"). */}
+        {/* Status — access chip, "Unshared changes" and the authorship tag
+            flow inline and wrap inside the cell. The container query that
+            used to collapse the chip is gone (ENG-1475). */}
         <div className="cw-status-cell flex items-center min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            inlineChanges
+            authorship={authorship}
+          />
         </div>
 
         {/* Updated + open + ⋯ */}
@@ -652,27 +674,30 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({
-  artifacts: initial = EMPTY_ARTIFACTS,
+  artifacts: list = EMPTY_ARTIFACTS,
+  // App owns the list (it also feeds the sidebar count), so publish-state
+  // changes go up rather than into a local copy that the next prop would reset.
+  // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
+  onArtifactChanged,
   projects = [],
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
   agentLabel = 'the agent',
+  // True until the app's first artifacts fetch settles; shows skeletons.
+  loading = false,
 }) {
   // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
-  const [list, setList] = useState(initial);
-  const [viewer, setViewer] = useState(null);
-  const { isMobile } = useBreakpoint();
-  const [view, setView] = useState(() =>
-    localStorage.getItem('anton:artifacts-view') === 'list' ? 'list' : 'grid'
-  );
-  // List rows break at phone widths (5-column grid). Force grid on
-  // mobile so the toggle isn't needed; the user's persisted desktop
-  // preference is left untouched.
-  const effectiveView = isMobile ? 'grid' : view;
+  // By path, so the viewer always shows the current card and closes once the
+  // card leaves the list (e.g. after a delete).
+  const [viewerPath, setViewerPath] = useState(null);
+  const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
+  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
+  // Phones always get the grid (list rows are 5 columns); see ViewToggle.
+  const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('published');
   // Per-artifact-path "in flight" set so multiple cards can publish
@@ -702,35 +727,12 @@ export default function ArtifactsView({
   const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
-  // Reflect parent refreshes exactly. The parent refetches when the
-  // route opens and after streams complete; if a file was trashed from
-  // another surface, the refreshed prop is the source of truth and the
-  // local grid must drop the stale card.
-  useEffect(() => {
-    setList(initial);
-    setViewer((cur) => {
-      if (!cur) return cur;
-      const fresh = initial.find((a) => a.path === cur.path);
-      return fresh ? { ...cur, ...fresh } : null;
-    });
-  }, [initial]);
-
-  // Persist view toggle.
-  useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
 
-  const updateOne = (updated) => {
-    setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
-    setViewer((cur) => (cur && cur.path === updated.path ? { ...cur, ...updated } : cur));
-  };
-
-  const removeOne = (path) => {
-    setList((prev) => prev.filter((a) => a.path !== path));
-    setViewer((cur) => (cur && cur.path === path ? null : cur));
-  };
+  const updateOne = (updated) => onArtifactChanged?.(updated);
 
   const setBusy = (path, isBusy) => {
     setBusyPaths((prev) => {
@@ -759,7 +761,7 @@ export default function ArtifactsView({
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
   // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into the local list so the UI flips to "Published"
+  // the returned URL into App's list so the UI flips to "Published"
   // without a refetch.
   // Publishing is two steps: choose visibility (public / password) in a
   // small dialog, then confirmPublish does the actual POST. Re-publishing
@@ -880,7 +882,6 @@ export default function ArtifactsView({
         await unpublishArtifact(artifact.path);
       }
       await deleteArtifactAndSync(artifact);
-      removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
@@ -931,7 +932,7 @@ export default function ArtifactsView({
     >
       <PageHeader
         title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
+        subtitle={`Documents, dashboards, and code ${agentLabel} produces. To get a web link for a page or document, open it and choose Share.`}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
@@ -946,7 +947,7 @@ export default function ArtifactsView({
           slightly taller — Artifacts compensates with a few extra. */}
       <div className="h-5" />
 
-      {total > 0 && (
+      {(loading || total > 0) && (
         <FilterRow
           search={
             <SearchInput
@@ -957,65 +958,81 @@ export default function ArtifactsView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
+          view={<ViewToggle value={view} onValueChange={setView} />}
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
-          title="No artifacts yet"
-          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
-          style={{ flex: 1 }}
-        />
-      ) : effectiveView === 'grid' ? (
-        <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
-          {/* Grid layout (display + responsive columns + gap) lives in CSS
-              (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-              mobile — pure CSS media queries, no JS resize listener. */}
-          {visible.map((a) => (
-            <ArtifactBubble
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={setViewer}
-              onMenuOpen={(art, rect) => setMenuFor((prev) =>
-                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
-              )}
-              isMenuOpen={menuFor?.artifact?.path === a.path}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
-          <ListHeaderRow />
-          {visible.map((a) => (
-            <ArtifactRow
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={setViewer}
-              onPublish={handlePublish}
-              onUnpublish={handleUnpublish}
-              onUpdate={handleUpdate}
-              onDelete={handleTrash}
-              onOpenProject={onOpenProject}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-            />
-          ))}
-        </div>
-      )}
+      <CollectionState
+        loading={loading}
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
+        skeletonClassName="px-8 pb-[60px]"
+        skeletonGridClassName="artifacts-grid"
+        empty={{
+          icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
+          title: 'No artifacts yet',
+          // Second line (ENG-2169): the two apps keep separate artifacts, so
+          // someone looking for work made in the other one is told where it is.
+          description: (
+            <>
+              {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+            </>
+          ),
+          style: { flex: 1 },
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <div className="artifacts-grid px-8 pb-[60px]">
+            {/* Grid layout (display + responsive columns + gap) lives in CSS
+                (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+                mobile — pure CSS media queries, no JS resize listener. */}
+            {visible.map((a) => (
+              <ArtifactBubble
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                  prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+                )}
+                isMenuOpen={menuFor?.artifact?.path === a.path}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
+            <ListHeaderRow />
+            {visible.map((a) => (
+              <ArtifactRow
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onPublish={handlePublish}
+                onUnpublish={handleUnpublish}
+                onUpdate={handleUpdate}
+                onDelete={handleTrash}
+                onOpenProject={onOpenProject}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+              />
+            ))}
+          </div>
+        )}
+      </CollectionState>
 
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewer(null)}
+        onClose={() => setViewerPath(null)}
         onChange={updateOne}
-        onDelete={removeOne}
         onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
@@ -1078,7 +1095,7 @@ export default function ArtifactsView({
               id: 'preview',
               label: 'Preview',
               icon: (Ico.eye?.(13) || Ico.sparkle(13)),
-              onClick: () => setViewer(a),
+              onClick: () => openViewer(a),
             });
           }
           /*

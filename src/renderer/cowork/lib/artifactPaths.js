@@ -27,6 +27,30 @@ function joinProjectPath(basePath, parts) {
   return [base, ...cleaned].join(sep);
 }
 
+/*
+ * What the user sees under the card title (ENG-2171). Stored paths carry
+ * storage detail the user never chose and cannot act on, such as
+ * `conversations/<uuid>/.anton/artifacts/deck/index.html`. Show the part below
+ * the artifacts or output folder, or the file name for any other `.anton`
+ * internal. Display only: `canonicalPath` stays the full path every action uses.
+ */
+const AGENT_OUTPUT_DIRS = new Set(['artifacts', 'output']);
+
+// `relative` is true only for a stored relative path, the one place the dotless
+// `anton/output` shim applies. In an absolute path `anton/` is a real folder.
+export function friendlyArtifactDisplayPath(value, { relative = false } = {}) {
+  const text = textValue(value);
+  const parts = text.replace(/\\/g, '/').replace(/^\.\//, '').split('/').filter(Boolean);
+  for (let i = parts.length - 2; i >= 0; i -= 1) {
+    const segment = parts[i];
+    if (segment !== '.anton' && !(relative && segment === 'anton' && i === 0)) continue;
+    const below = parts.slice(i + 1);
+    if (below.length > 1 && AGENT_OUTPUT_DIRS.has(below[0])) return below.slice(1).join('/');
+    return parts[parts.length - 1];
+  }
+  return text;
+}
+
 function relativeToProject(canonicalPath, projectPath) {
   const canonical = textValue(canonicalPath);
   const base = trimTrailingSeparators(projectPath);
@@ -54,7 +78,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
     return {
       rawPath: raw,
       canonicalPath: raw,
-      displayPath: relativeToProject(raw, base) || raw,
+      displayPath: friendlyArtifactDisplayPath(relativeToProject(raw, base) || raw),
       actionDisabledReason: '',
     };
   }
@@ -63,7 +87,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
     return {
       rawPath: raw,
       canonicalPath: '',
-      displayPath: raw,
+      displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
       actionDisabledReason: 'This artifact path is relative, but the task has no project folder.',
     };
   }
@@ -74,7 +98,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
     return {
       rawPath: raw,
       canonicalPath: '',
-      displayPath: raw,
+      displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
       actionDisabledReason: 'This artifact path points outside the project folder.',
     };
   }
@@ -93,7 +117,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
   return {
     rawPath: raw,
     canonicalPath,
-    displayPath: raw,
+    displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
     actionDisabledReason: '',
   };
 }

@@ -23,8 +23,8 @@ describe('transitionShellUpdate', () => {
     expect(downloading).toMatchObject({
       phase: 'downloading',
       targetVersion: '2.1.0',
+      trigger: 'boot',
     });
-    expect(downloading).not.toHaveProperty('trigger');
   });
 
   it('waits for an explicit download in manual mode', () => {
@@ -208,6 +208,46 @@ describe('transitionShellUpdate', () => {
       errorCode: 'install-not-applied',
       recoverable: true,
     });
+  });
+
+  it('keeps the trigger that found the update through download and failure', () => {
+    const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'periodic' });
+    const downloading = transitionShellUpdate(checking, { type: 'UPDATE_FOUND', targetVersion: '2.1.0' });
+    expect(downloading).toMatchObject({ phase: 'downloading', trigger: 'periodic' });
+    expect(transitionShellUpdate(downloading, { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' }).trigger).toBe('periodic');
+    expect(transitionShellUpdate(downloading, { type: 'FAILED', code: 'update-request-failed', recoverable: true }).trigger).toBe('periodic');
+  });
+
+  it('keeps the finding trigger through a background refresh', () => {
+    const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'boot' });
+    const downloading = transitionShellUpdate(checking, { type: 'UPDATE_FOUND', targetVersion: '2.1.0' });
+    const pending = transitionShellUpdate(downloading, { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' });
+    const refreshing = transitionShellUpdate(pending, { type: 'CHECK_REQUESTED', trigger: 'periodic' });
+    expect(refreshing).toMatchObject({ trigger: 'boot', refreshTrigger: 'periodic' });
+
+    // Nothing newer, or the refresh failed: Restart still credits the boot check.
+    for (const settle of [
+      { type: 'REFRESH_SETTLED' },
+      { type: 'FAILED', code: 'update-request-failed', recoverable: true },
+    ] as const) {
+      const settled = transitionShellUpdate(refreshing, settle);
+      expect(settled.refreshTrigger).toBeUndefined();
+      expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' })).toMatchObject({
+        phase: 'installing',
+        trigger: 'boot',
+      });
+    }
+
+    const superseded = transitionShellUpdate(refreshing, { type: 'SUPERSEDED', targetVersion: '2.2.0' });
+    expect(superseded).toMatchObject({ phase: 'downloading', trigger: 'periodic', refreshTrigger: undefined });
+  });
+
+  it('keeps the relaunch verdict through the boot check that replaces it', () => {
+    const lastInstall = { applied: true, version: '2.1.0', expected: '2.1.0' };
+    const complete: ShellUpdateSnapshot = { ...idle(), phase: 'complete', lastInstall };
+    const checking = transitionShellUpdate(complete, { type: 'CHECK_REQUESTED', trigger: 'boot' });
+    expect(transitionShellUpdate(checking, { type: 'NO_UPDATE' })).toMatchObject({ phase: 'idle', lastInstall });
+    expect(transitionShellUpdate(complete, { type: 'DISABLED', reason: 'rollout-disabled' }).lastInstall).toEqual(lastInstall);
   });
 
   it('fails closed when disabled', () => {

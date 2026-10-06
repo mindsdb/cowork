@@ -18,7 +18,7 @@ vi.mock('./workspace/TextSelectionComment', () => ({
 
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 
-function renderBody(mode, previewOverrides = {}) {
+function renderBody(mode, previewOverrides = {}, workspaceOverrides = {}) {
   const workspace = {
     mode,
     source: {
@@ -37,6 +37,7 @@ function renderBody(mode, previewOverrides = {}) {
     restoreRevision: vi.fn(),
     decideRepair: vi.fn(),
     load: vi.fn(),
+    ...workspaceOverrides,
   };
   const preview = {
     draftUrl: '/drafts/deck.html',
@@ -123,6 +124,20 @@ describe('ArtifactViewerBody HTML mode retention', () => {
     expect(screen.getByTitle('Deck preview')).toBe(previewFrame);
     expect(editor.parentElement.hidden).toBe(false);
     expect(previewFrame.parentElement.hidden).toBe(true);
+  });
+
+  // The workspace source loads separately from the preview, so on a slow
+  // connection it arrives after the page painted. Recognizing the HTML source
+  // must not move the preview into a new parent and reload it (ENG-3070).
+  it('keeps the painted preview when the HTML source arrives late', () => {
+    const { rerender } = render(renderBody('preview', {}, { source: null }));
+    const previewFrame = screen.getByTitle('Deck preview');
+
+    rerender(renderBody('preview'));
+    act(() => idleCallback());
+
+    expect(screen.getByTitle('Deck preview')).toBe(previewFrame);
+    expect(screen.getByTestId('source-editor').parentElement.hidden).toBe(true);
   });
 });
 

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 const spies = vi.hoisted(() => ({
   submitAnswer: vi.fn(async () => ({ accepted: true })),
   streamMessage: vi.fn(),
+  useActualStreams: false,
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
   // Default matches the real fn under this file's denied-network env (an
@@ -23,74 +24,78 @@ const spies = vi.hoisted(() => ({
 // reducer instead of reaching into its internals.
 const streams = [];
 
-vi.mock('./api', async (importOriginal) => ({
-  ...(await importOriginal()),
-  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
-  fetchSessions: vi.fn(async () => [
-    { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
-    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
-  ]),
-  fetchSession: (...args) => spies.fetchSession(...args),
-  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
-  fetchConversationList: vi.fn(async () => []),
-  fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
-  fetchArtifacts: vi.fn(async () => []),
-  fetchSettings: vi.fn(async () => ({})),
-  fetchPins: vi.fn(async () => []),
-  fetchSchedules: vi.fn(async () => []),
-  fetchDatasources: vi.fn(async () => ({ connections: [] })),
-  fetchInFlightList: vi.fn(async () => []),
-  fetchInFlightStatus: (...args) => spies.fetchInFlightStatus(...args),
-  fetchConnector: vi.fn(async () => ({})),
-  fetchSavedConnection: vi.fn(async () => ({})),
-  createProject: vi.fn(async () => ({})),
-  updateSettings: vi.fn(async () => ({})),
-  allocateConversationId: vi.fn(() => 'conv-new'),
-  uploadAttachments: vi.fn(async () => []),
-  deleteAttachment: vi.fn(async () => ({})),
-  deletePickedFile: vi.fn(async () => ({})),
-  searchCowork: vi.fn(async () => ({ results: [] })),
-  pinTask: vi.fn(async () => ({})),
-  unpinTask: vi.fn(async () => ({})),
-  recordTaskVisit: vi.fn(async () => ({})),
-  createSchedule: vi.fn(async () => ({})),
-  updateSchedule: vi.fn(async () => ({})),
-  deleteSchedule: vi.fn(async () => ({})),
-  pauseSchedule: vi.fn(async () => ({})),
-  resumeSchedule: vi.fn(async () => ({})),
-  runScheduleNow: vi.fn(async () => ({})),
-  renameConversation: vi.fn(async () => ({})),
-  deleteConversation: vi.fn(async () => ({})),
-  deleteConversationTurn: vi.fn(async () => ({})),
-  moveConversation: vi.fn(async () => ({})),
-  moveTaskToProject: vi.fn(async () => ({})),
-  deleteProject: vi.fn(async () => ({})),
-  deleteDatasource: vi.fn(async () => ({})),
-  cancelScratchpad: vi.fn(async () => ({})),
-  cancelResponse: (...args) => spies.cancelResponse(...args),
-  submitAnswer: (...args) => spies.submitAnswer(...args),
-  streamNewSession: (...args) => {
-    const handle = { kind: 'new', opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
-  streamDataVaultSubmission: (...args) => {
-    const handle = { kind: 'datavault', opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
-  tailInFlight: (...args) => {
-    const handle = { kind: 'tail', opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
-  streamMessage: (...args) => {
-    spies.streamMessage(...args);
-    const handle = { kind: 'reply', opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
-}));
+vi.mock('./api', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+    fetchSessions: vi.fn(async () => [
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]),
+    fetchSession: (...args) => spies.fetchSession(...args),
+    fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
+    fetchConversationList: vi.fn(async () => []),
+    fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
+    fetchArtifacts: vi.fn(async () => []),
+    fetchSettings: vi.fn(async () => ({})),
+    fetchPins: vi.fn(async () => []),
+    fetchSchedules: vi.fn(async () => []),
+    fetchDatasources: vi.fn(async () => ({ connections: [] })),
+    fetchInFlightList: vi.fn(async () => []),
+    fetchInFlightStatus: (...args) => spies.fetchInFlightStatus(...args),
+    fetchConnector: vi.fn(async () => ({})),
+    fetchSavedConnection: vi.fn(async () => ({})),
+    createProject: vi.fn(async () => ({})),
+    updateSettings: vi.fn(async () => ({})),
+    allocateConversationId: vi.fn(() => 'conv-new'),
+    uploadAttachments: vi.fn(async () => []),
+    deleteAttachment: vi.fn(async () => ({})),
+    deletePickedFile: vi.fn(async () => ({})),
+    searchCowork: vi.fn(async () => ({ results: [] })),
+    pinTask: vi.fn(async () => ({})),
+    unpinTask: vi.fn(async () => ({})),
+    recordTaskVisit: vi.fn(async () => ({})),
+    createSchedule: vi.fn(async () => ({})),
+    updateSchedule: vi.fn(async () => ({})),
+    deleteSchedule: vi.fn(async () => ({})),
+    pauseSchedule: vi.fn(async () => ({})),
+    resumeSchedule: vi.fn(async () => ({})),
+    runScheduleNow: vi.fn(async () => ({})),
+    renameConversation: vi.fn(async () => ({})),
+    deleteConversation: vi.fn(async () => ({})),
+    deleteConversationTurn: vi.fn(async () => ({})),
+    moveConversation: vi.fn(async () => ({})),
+    moveTaskToProject: vi.fn(async () => ({})),
+    deleteProject: vi.fn(async () => ({})),
+    deleteDatasource: vi.fn(async () => ({})),
+    cancelScratchpad: vi.fn(async () => ({})),
+    cancelResponse: (...args) => spies.cancelResponse(...args),
+    submitAnswer: (...args) => spies.submitAnswer(...args),
+    streamNewSession: (...args) => {
+      const handle = { kind: 'new', opts: args[args.length - 1], abort: vi.fn() };
+      streams.push(handle);
+      return handle;
+    },
+    streamDataVaultSubmission: (...args) => {
+      const handle = { kind: 'datavault', opts: args[args.length - 1], abort: vi.fn() };
+      streams.push(handle);
+      return handle;
+    },
+    tailInFlight: (...args) => {
+      const handle = { kind: 'tail', opts: args[args.length - 1], abort: vi.fn() };
+      streams.push(handle);
+      return handle;
+    },
+    streamMessage: (...args) => {
+      spies.streamMessage(...args);
+      if (spies.useActualStreams) return actual.streamMessage(...args);
+      const handle = { kind: 'reply', opts: args[args.length - 1], abort: vi.fn() };
+      streams.push(handle);
+      return handle;
+    },
+  };
+});
 
 // Spread the real host rather than listing methods, and override only what
 // these tests need to control. A hand-listed mock breaks whenever App gains a
@@ -111,6 +116,7 @@ vi.mock('../platform/host', async (importOriginal) => {
       isElectron: false,
       isMac: () => false,
       getApiOrigin: () => 'http://localhost:1',
+      getAccessToken: vi.fn(async () => null),
       openPath: vi.fn(),
       openExternal: vi.fn(),
       onUpdateStatus: () => () => {},
@@ -137,7 +143,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
-import { trackTurnFailed } from './lib/analytics';
+import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -146,6 +152,7 @@ import {
   uploadAttachments,
   renameConversation,
   moveTaskToProject,
+  cancelScratchpad,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -228,6 +235,7 @@ beforeEach(() => {
   // so unsent text from the previous test would otherwise still be in the box.
   __resetDraftsForTests();
   streams.length = 0;
+  spies.useActualStreams = false;
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
@@ -655,6 +663,69 @@ describe('a superseded stream\'s late abort', () => {
   });
 });
 
+describe('interrupted stream recovery', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(['pending question', 'unavailable transcript', 'older completed turn', 'missing turn identity'])(
+    'preserves partial text and an error after real EOF with %s history', async (historyKind) => {
+      const user = userEvent.setup();
+      const composer = await openTask(user);
+      spies.useActualStreams = true;
+      const pending = { id: 'user-current', role: 'user', content: 'do something' };
+      spies.fetchSession.mockResolvedValue(historyKind === 'unavailable transcript' ? null : {
+        messages: historyKind === 'older completed turn'
+          ? [{ id: 'user-previous', role: 'user', content: 'previous question' },
+            { role: 'assistant', content: 'old answer', _turnComplete: true }]
+          : historyKind === 'missing turn identity'
+            ? [pending, { role: 'assistant', content: 'unverified answer', _turnComplete: true }]
+            : [pending],
+      });
+      const enc = new TextEncoder();
+      const frames = [
+        { type: 'response.created', conversation_id: 'conv-a',
+          ...(historyKind !== 'missing turn identity' ? { user_message_id: 'user-current' } : {}) },
+        { type: 'response.output_text.delta', delta: 'Partial answer survives' },
+      ];
+      vi.stubGlobal('fetch', vi.fn(async (url) => {
+        if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+        return { ok: true, status: 200, body: new ReadableStream({
+          start(controller) {
+            frames.forEach((frame) => controller.enqueue(enc.encode(`data: ${JSON.stringify(frame)}\n\n`)));
+            controller.close(); // no terminal event: exercise api.js and App together
+          },
+        }) };
+      }));
+
+      await send(user, composer, 'do something');
+
+      expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
+      expect(screen.getByText('Partial answer survives')).toBeInTheDocument();
+      expect(screen.getByText('do something')).toBeInTheDocument();
+      expect(spies.fetchSession).toHaveBeenCalledWith('conv-a', { timeoutMs: 10_000 });
+      expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', {
+        code: 'interrupted',
+        ...(historyKind !== 'missing turn identity' ? { user_message_id: 'user-current' } : {}),
+      });
+    },
+  );
+
+  it('keeps a server-declared interruption visible when history has not saved it yet', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.output_text.delta', delta: 'Partial before restart' });
+    await act(async () => {
+      handle.opts.onError('The response was interrupted before it finished.', {
+        type: 'response.failed', code: 'interrupted',
+      });
+    });
+    expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
+    expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+});
+
 describe('turn failure telemetry', () => {
   it('tracks a real turn failure, but not a cancelled one', async () => {
     const user = userEvent.setup();
@@ -691,17 +762,21 @@ describe('turn failure telemetry', () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
 
-    // Default mock: the reload comes back with no error message — the
-    // stream dropped mid-answer, but the server had already finished the
-    // turn, so the user sees a normal answer and this must not count.
+    // The persisted terminal proves this turn finished despite a dropped stream.
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { role: 'assistant', content: 'finished answer', _turnComplete: true },
+    ] });
     await send(user, composer, 'do something');
     const handle = await waitForStream();
 
     await act(async () => {
-      handle.opts.onError('boom', { code: 'anton_error' });
+      handle.opts.onError('boom', { code: 'anton_error', user_message_id: 'user-current' });
       await Promise.resolve();
     });
 
+    expect(await screen.findByText('finished answer')).toBeInTheDocument();
+    expect(screen.queryByText('boom')).not.toBeInTheDocument();
     expect(trackTurnFailed).not.toHaveBeenCalled();
   });
 
@@ -716,8 +791,8 @@ describe('turn failure telemetry', () => {
       messages: [
         { role: 'user', content: 'turn 1' },
         { role: 'error', content: 'boom' },
-        { role: 'user', content: 'turn 2' },
-        { role: 'assistant', content: 'here is your answer' },
+        { id: 'user-current', role: 'user', content: 'turn 2' },
+        { role: 'assistant', content: 'here is your answer', _turnComplete: true },
       ],
     }));
 
@@ -725,7 +800,7 @@ describe('turn failure telemetry', () => {
     const handle = await waitForStream();
 
     await act(async () => {
-      handle.opts.onError('connection lost', { code: 'stream_error' });
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
       await Promise.resolve();
     });
 
@@ -1268,5 +1343,185 @@ describe('a background refresh must not blank the open transcript (ENG-2246)', (
 
     await waitFor(() => expect(moveTaskToProject).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
+  });
+});
+
+describe('a tail displaced by opening another running conversation', () => {
+  it('is still torn down when its own conversation is stopped', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Opening Beta attaches a second tail. Concurrent background streams are
+    // intended (see the two draining suites above), so Alpha's must survive.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    expect(tailB.kind).toBe('tail');
+    expect(tailA.abort).not.toHaveBeenCalled();
+
+    // Back on Alpha, which re-attaches. The tail conv-a held before must be
+    // torn down rather than left attached with nothing able to abort it: a
+    // leaked tail keeps replaying into the turn and its own idle timer can
+    // cancel it later with no UI trace.
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+    expect(tailA2.kind).toBe('tail');
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+
+    // Stopping conv-a leaves the other conversation streaming.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves a running conversation attached when the opened one is idle', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Beta has no producer, so opening it must not reach any teardown: the
+    // common navigation must never touch the conversation that is running.
+    await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-b'));
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('Stop with a scratchpad cell open', () => {
+  it('cancels the cell of a conversation started from home', async () => {
+    const user = userEvent.setup();
+    // Open a task first so HomeView mounts with its composer (see the
+    // new-session suite above for why).
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    cancelScratchpad.mockClear();
+
+    await send(user, composer, 'start something');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+
+    // The agent opens a cell, so Stop has to cancel it: cancelling the turn
+    // alone leaves the cell executing on the server.
+    await emitOn(handle, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(handle, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('Stop after re-attaching to a conversation with a cell open', () => {
+  it('still cancels the cell the conversation opened before the re-attach', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    cancelScratchpad.mockClear();
+
+    // Alpha opens a cell, then the user leaves and comes back, which re-attaches.
+    await emitOn(tailA, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailA, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+
+    // The replay has not re-reported the cell yet, so the record is all that
+    // remembers it. Stop must still cancel it rather than leave it executing.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('a stream that ends while silenced by a Stop elsewhere', () => {
+  it('still drops its registry record', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+
+    // Stop on Beta bumps the shared generation, which silences Alpha's tail.
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then finishes. The record has to go even though the rest of
+    // the terminal is skipped, or the registry keeps claiming a dead stream.
+    await act(async () => { tailA.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // Proof it went: re-attaching finds nothing to replace, so the finished
+    // tail is never aborted on its way out.
+    await openByTitle(user, 'Alpha task');
+    await waitForStream(tailB);
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Stop on one conversation', () => {
+  it('does not silence another conversation that is still streaming', async () => {
+    const user = userEvent.setup();
+    // Only Beta has a producer to re-attach to, so Alpha's stream is its own
+    // send and navigating back to it opens no tail to confuse the assertion.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    expect(alpha.kind).toBe('reply');
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    // Stop Beta, whose turn is unrelated to Alpha's.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then completes. Its terminal has to run: it is what commits
+    // the answer, records the turn and releases Alpha's queue.
+    classifyFirstResponse.mockClear();
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    expect(classifyFirstResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ isConfigError: false }),
+    );
   });
 });

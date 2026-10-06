@@ -11,7 +11,7 @@
 // - Polls every 3s while streaming, plus once when streaming ends.
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Ico from '../Icons';
@@ -27,6 +27,8 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
+import { railArtifactRows } from '../../lib/railArtifacts';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { artifactIdentity } from '../../lib/artifactIdentity';
@@ -92,7 +94,21 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
 
   const effectiveProject = project || resolvedProject;
 
-  const [rows, setRows] = useState([]);
+  // Full server response; rows are derived so a chat switch inside the same
+  // project regroups without a refetch.
+  const [artifacts, setArtifacts] = useState([]);
+  const { rows, currentCount } = useMemo(
+    () => railArtifactRows(artifacts, conversationId),
+    [artifacts, conversationId],
+  );
+  const authorships = useMemo(() => rows.map((r) => artifactAuthorship(r.capabilities)), [rows]);
+  // Sticky per project: once any row needed the authorship column, keep
+  // reserving it for this project even once a later poll's rows happen to be
+  // owner-only. Recomputing straight from `rows` on every 3s poll made the
+  // column — and every row's horizontal position — jump as a colleague's
+  // artifact entered/left the visible rows. Only the project-switch effect
+  // below ever turns it back off.
+  const [markerColumn, setMarkerColumn] = useState(false);
   // Bumped on every project switch / streaming-tick load. The async
   // load checks the version against the latest before applying its
   // result, so a request that finishes after a project switch can't
@@ -101,15 +117,19 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // and let the prior project's response paint into the wrong view.)
   const loadVersion = useRef(0);
 
-  // Apply a fetched artifacts list. We now scope the request
-  // server-side via `?project_path=...`, so the response is already
-  // narrowed to this project — no client-side prefix filter needed.
-  // Still slice to the top 12 newest for the rail.
-  const applyArtifacts = (proj, list, ticket) => {
+  // The request is scoped server-side, so the response is already this
+  // project's list; `railArtifactRows` picks what the rail shows.
+  const applyArtifacts = (list, ticket) => {
     if (ticket !== loadVersion.current) return;
-    const all = Array.isArray(list) ? list : [];
-    setRows(all.slice(0, 12));
+    setArtifacts(Array.isArray(list) ? list : []);
   };
+
+  // Must stay above the project-switch effect: on a move to another project's
+  // chat, `rows` still holds the old project's list in this commit, and the
+  // reset there has to run last.
+  useEffect(() => {
+    if (authorships.some(Boolean)) setMarkerColumn(true);
+  }, [authorships]);
 
   // Project switch — clear immediately, then load. The clear is
   // important: without it, the rail keeps painting the previous
@@ -118,14 +138,15 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
+    setMarkerColumn(false);
     if (!proj?.name || !(proj?.id || proj?.path)) {
-      setRows([]);
+      setArtifacts([]);
       return;
     }
-    setRows([]);
+    setArtifacts([]);
     fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
-      .then((list) => applyArtifacts(proj, list, ticket))
-      .catch(() => { if (ticket === loadVersion.current) setRows([]); });
+      .then((list) => applyArtifacts(list, ticket))
+      .catch(() => { if (ticket === loadVersion.current) setArtifacts([]); });
   }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
 
   // Streaming poll — every 3s while live, plus once shortly after
@@ -140,7 +161,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       if (!proj?.name || !(proj?.id || proj?.path)) return;
       const ticket = ++loadVersion.current;
       fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
-        .then((list) => applyArtifacts(proj, list, ticket))
+        .then((list) => applyArtifacts(list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };
     if (isStreaming) {
@@ -164,10 +185,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   useEffect(() => {
     setPreviewArt((cur) => {
       if (!cur) return cur;
-      const fresh = rows.find((r) => r.path === cur.path);
+      const fresh = artifacts.find((r) => r.path === cur.path);
       return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
     });
-  }, [rows]);
+  }, [artifacts]);
   // The viewer's publish refresh reports its result even when it lands after
   // the modal closed, and applying that re-opened what the user just dismissed.
   const handleArtifactChange = (updated) => {
@@ -206,17 +227,18 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     else kebabRefs.current.delete(path);
   };
 
+  // Menu opens just below the kebab, right-anchored so it can't
+  // extend past the right edge of the viewport. `position: fixed`
+  // applies these directly to viewport coordinates.
+  const menuPosFor = (btn) => {
+    const r = btn.getBoundingClientRect();
+    return { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) };
+  };
+
   const openMenuFor = (path) => {
     const btn = kebabRefs.current.get(path);
     if (!btn) return;
-    const r = btn.getBoundingClientRect();
-    // Menu opens just below the kebab, right-anchored so it can't
-    // extend past the right edge of the viewport. `position: fixed`
-    // applies these directly to viewport coordinates.
-    setMenuPos({
-      top: r.bottom + 4,
-      right: Math.max(8, window.innerWidth - r.right),
-    });
+    setMenuPos(menuPosFor(btn));
     setOpenMenuPath(path);
   };
 
@@ -242,6 +264,14 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       document.removeEventListener('scroll', onClose, true);
     };
   }, [openMenuPath]);
+  // Rows move under an open menu (a chat switch regroups them, a poll adds
+  // new ones on top): keep the menu on its row, or close it once the row is gone.
+  useLayoutEffect(() => {
+    if (openMenuPath == null) return;
+    const btn = kebabRefs.current.get(openMenuPath);
+    if (btn) setMenuPos(menuPosFor(btn));
+    else setOpenMenuPath(null);
+  }, [rows]);
 
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
@@ -300,7 +330,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     // Reached only after the ConfirmModal is accepted (see the
     // menu's Delete item, which sets `pendingDeleteArtifact`).
     const previous = a;
-    setRows((prev) => prev.filter((r) => r.path !== a.path));
+    setArtifacts((prev) => prev.filter((r) => r.path !== a.path));
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop. Skipped in org mode —
@@ -315,7 +345,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.
-      setRows((prev) => prev.find((r) => r.path === previous.path) ? prev : [previous, ...prev]);
+      setArtifacts((prev) => prev.find((r) => r.path === previous.path) ? prev : [previous, ...prev]);
     } finally {
       setBusyPath(null);
     }
@@ -363,6 +393,17 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // information and crowded the file list. The empty-state text below
   // covers the "no active workspace" case implicitly.
 
+  // "Another member" marker column (ENG-2979). Reserved on every row once any
+  // row needs it, so the names stay in one column; an owner-only list (always
+  // the case on Desktop) keeps its three-column grid. Literal class strings —
+  // Tailwind cannot see interpolated ones. `markerColumn` is the sticky flag
+  // set by the rows effect; the `||` covers a row set within this same render
+  // before that state commits.
+  const hasAuthorshipMarker = markerColumn || authorships.some(Boolean);
+  const rowGridCols = hasAuthorshipMarker
+    ? 'grid-cols-[14px_12px_minmax(0,1fr)_auto]'
+    : 'grid-cols-[14px_minmax(0,1fr)_auto]';
+
   return (
     <div className="pt-2">
       {rowError && (
@@ -377,87 +418,112 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {rows.map((a) => {
+          {rows.map((a, i) => {
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
+            const authorship = authorships[i];
             return (
-              <div
-                key={a.path}
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenArtifact(a)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onOpenArtifact(a);
-                  }
-                }}
-                title={`${a.path}${isPublished ? ` · published` : ''}`}
-                className={clsx(
-                  'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
-                  'cursor-pointer transition-colors hover:bg-surface-2',
-                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
+              <Fragment key={a.path}>
+                {i > 0 && i === currentCount && (
+                  <div
+                    role="separator"
+                    aria-label="Other artifacts in this project"
+                    className="h-px bg-[var(--border-0)] my-1 mx-1"
+                  />
                 )}
-              >
-                {/* Icon — picks up the accent color when the artifact
-                    has a publishedUrl so the user can spot what's
-                    published at a glance without opening each row. */}
-                <span
-                  className="inline-flex"
-                  style={{ color: isPublished ? 'var(--accent)' : 'var(--ink-4)' }}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenArtifact(a)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onOpenArtifact(a);
+                    }
+                  }}
+                  title={`${a.path}${isPublished ? ` · published` : ''}${authorship ? ` · ${authorship.label}` : ''}`}
+                  className={clsx(
+                    'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
+                    'cursor-pointer transition-colors hover:bg-surface-2',
+                    'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent [font:inherit]',
+                    rowGridCols,
+                  )}
                 >
-                  {(Ico[iconForRow(a)] || Ico.doc)(13)}
-                </span>
-                <span className="text-sm text-ink truncate">
-                  {a.title || (a.path?.split('/').pop() || '')}
-                </span>
-                {/* Trailing slot: timestamp normally, kebab on hover
-                    or while THIS row's menu is open. Shared-slot
-                    trick keeps row width stable. */}
-                <span className="relative inline-flex items-center justify-end flex-none min-w-[22px]">
-                  <span className={clsx(
-                    'text-[10.5px] text-ink-4 transition-opacity',
-                    'group-hover:opacity-0',
-                    menuOpen && 'opacity-0',
-                  )}>
-                    {/* Server pre-formats `updated` as a phrase like
-                        "updated 3h ago" — strip the redundant leading
-                        "updated " so the column reads as a timestamp
-                        rather than a sentence. */}
-                    {String(a.updated || '').replace(/^updated\s+/i, '')}
+                  {/* Icon — picks up the accent color when the artifact
+                      has a publishedUrl so the user can spot what's
+                      published at a glance without opening each row. */}
+                  <span
+                    className="inline-flex"
+                    style={{ color: isPublished ? 'var(--accent)' : 'var(--ink-4)' }}
+                  >
+                    {(Ico[iconForRow(a)] || Ico.doc)(13)}
                   </span>
-                  <Tooltip content="More actions">
-                    <button
-                      ref={setKebabRef(a.path)}
-                      type="button"
-                      aria-label="More actions"
-                      aria-haspopup="menu"
-                      aria-expanded={menuOpen}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (menuOpen) setOpenMenuPath(null);
-                        else openMenuFor(a.path);
-                      }}
-                      className={clsx(
-                        // `justify-end` (not center) pins the kebab to
-                        // the right edge of the trailing slot so it sits
-                        // flush against the row's right margin — matching
-                        // where the project-files trash icon lands. The
-                        // artifact timestamp ("3h ago") is wider than the
-                        // project-file one ("3h"), so a centered kebab
-                        // floated noticeably left of the edge.
-                        'absolute inset-0 inline-flex items-center justify-end',
-                        menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                        'transition-opacity rounded',
-                        'text-ink-4 hover:text-ink',
-                        'bg-transparent border-0 cursor-pointer p-0',
-                      )}
+                  {/* Authorship marker. No Tooltip: the row's native
+                      `title` already names it, and two hints on one hover is what
+                      ui/Tooltip replaced. role="img" so the label is announced. */}
+                  {hasAuthorshipMarker && (authorship ? (
+                    <span
+                      role="img"
+                      aria-label={authorship.label}
+                      className="inline-flex"
+                      style={{ color: 'var(--ink-4)' }}
                     >
-                      {Ico.moreVert(13)}
-                    </button>
-                  </Tooltip>
-                </span>
-              </div>
+                      {Ico.user(12)}
+                    </span>
+                  ) : (
+                    <span aria-hidden="true" />
+                  ))}
+                  <span className="text-sm text-ink truncate">
+                    {a.title || (a.path?.split('/').pop() || '')}
+                  </span>
+                  {/* Trailing slot: timestamp normally, kebab on hover
+                      or while THIS row's menu is open. Shared-slot
+                      trick keeps row width stable. */}
+                  <span className="relative inline-flex items-center justify-end flex-none min-w-[22px]">
+                    <span className={clsx(
+                      'text-[10.5px] text-ink-4 transition-opacity',
+                      'group-hover:opacity-0',
+                      menuOpen && 'opacity-0',
+                    )}>
+                      {/* Server pre-formats `updated` as a phrase like
+                          "updated 3h ago" — strip the redundant leading
+                          "updated " so the column reads as a timestamp
+                          rather than a sentence. */}
+                      {String(a.updated || '').replace(/^updated\s+/i, '')}
+                    </span>
+                    <Tooltip content="More actions">
+                      <button
+                        ref={setKebabRef(a.path)}
+                        type="button"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (menuOpen) setOpenMenuPath(null);
+                          else openMenuFor(a.path);
+                        }}
+                        className={clsx(
+                          // `justify-end` (not center) pins the kebab to
+                          // the right edge of the trailing slot so it sits
+                          // flush against the row's right margin — matching
+                          // where the project-files trash icon lands. The
+                          // artifact timestamp ("3h ago") is wider than the
+                          // project-file one ("3h"), so a centered kebab
+                          // floated noticeably left of the edge.
+                          'absolute inset-0 inline-flex items-center justify-end',
+                          menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                          'transition-opacity rounded',
+                          'text-ink-4 hover:text-ink',
+                          'bg-transparent border-0 cursor-pointer p-0',
+                        )}
+                      >
+                        {Ico.moreVert(13)}
+                      </button>
+                    </Tooltip>
+                  </span>
+                </div>
+              </Fragment>
             );
           })}
         </div>
@@ -584,10 +650,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => {
           handleArtifactChange(updated);
-          setRows((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
+          setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
         }}
         onDelete={(path) => {
-          setRows((prev) => prev.filter((a) => a.path !== path));
+          setArtifacts((prev) => prev.filter((a) => a.path !== path));
         }}
         conversationId={conversationId}
         onAddressWithAgent={onAddressWithAgent}

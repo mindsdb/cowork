@@ -99,7 +99,8 @@ describe('TaskBar', () => {
     expect(onPreview).toHaveBeenCalledOnce();
   });
 
-  it('keeps preview visible but unavailable until a run action starts', () => {
+  it('keeps preview visible but unavailable until a run action starts', async () => {
+    const user = userEvent.setup();
     render(
       <TaskBar
         session={session}
@@ -126,11 +127,11 @@ describe('TaskBar', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Preview running project' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Preview running project' })).toHaveAttribute(
-      'title',
-      'Run the project to enable preview',
-    );
+    const preview = screen.getByRole('button', { name: 'Preview running project' });
+    expect(preview).toBeDisabled();
+    // `.btn:disabled` drops pointer events, so the reason hangs off a wrapper.
+    await user.hover(preview.parentElement!);
+    expect(await screen.findByText('Run the project to enable preview')).toBeInTheDocument();
   });
 
   it('explains direct-folder tasks as work in the original folder', async () => {
@@ -173,7 +174,6 @@ describe('TaskBar', () => {
     expect(screen.getByText('Original folder')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show task details for original folder' }));
     expect(screen.getByText('Task setup')).toBeInTheDocument();
-    expect(screen.getByText('Edits happen in the folder you selected.')).toBeInTheDocument();
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
   });
 
@@ -214,7 +214,6 @@ describe('TaskBar', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
-    expect(screen.getByText('Task-only files keep parallel work separate.')).toBeInTheDocument();
     expect(screen.getByText('codex/task-1')).toBeInTheDocument();
     expect(screen.queryByText(/worktree/i)).not.toBeInTheDocument();
   });
@@ -254,6 +253,14 @@ describe('TaskBar', () => {
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
     expect(screen.getByText('Build computer')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  });
+
+  it('shows no status badge for a finished task at rest, but keeps one while it works', () => {
+    const { rerender } = render(<TaskBar {...barProps} session={{ ...session, status: 'completed' }} />);
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+
+    rerender(<TaskBar {...barProps} session={session} />);
+    expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
   it('opens the task origin only when the server-supplied link is a browser URL', async () => {

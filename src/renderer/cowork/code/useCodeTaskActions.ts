@@ -4,6 +4,7 @@ import {
   type CreateCodeTaskInput,
   type CodingSession,
 } from './api';
+import { trackCodeTaskStarted, trackCodeTaskStartFailed } from '../lib/analytics';
 
 
 const CONTROL_TIMEOUT_MS = 20_000;
@@ -25,6 +26,7 @@ export function withControlTimeout<Result>(request: Promise<Result>, message: st
 export function useCodeTaskActions({
   selectedId,
   session,
+  sessions,
   refresh,
   loadSessions,
   onSessionsChange,
@@ -32,6 +34,7 @@ export function useCodeTaskActions({
 }: {
   selectedId: string | null;
   session: CodingSession | null;
+  sessions: CodingSession[];
   refresh: () => Promise<void>;
   loadSessions: (preferId?: string) => Promise<CodingSession[]>;
   onSessionsChange: (sessions: CodingSession[]) => void;
@@ -52,9 +55,11 @@ export function useCodeTaskActions({
     if (pendingActions.current === 0) setBusy(false);
   };
   const selectedIdRef = useRef(selectedId);
+  const sessionsRef = useRef(sessions);
   const onSessionsChangeRef = useRef(onSessionsChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
   selectedIdRef.current = selectedId;
+  sessionsRef.current = sessions;
   onSessionsChangeRef.current = onSessionsChange;
   onSelectionChangeRef.current = onSelectionChange;
 
@@ -130,18 +135,25 @@ export function useCodeTaskActions({
       const created = await codingApi.create({
         ...workspace,
         resource_ids: input.resourceIds,
+        ...(input.repositorySetup ? { repository_setup: input.repositorySetup } : {}),
         computer_id: input.computerId,
         prompt: input.prompt,
         engine_id: input.engineId,
         model: input.model,
         ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
         permission_mode: input.permissionMode,
+        ...(input.taskMode === 'plan' ? { task_mode: 'plan' as const } : {}),
         attachments: input.attachments,
         source_contexts: input.sourceContexts,
       });
+      trackCodeTaskStarted(created, { origin: 'new', attachmentCount: input.attachments.length });
+      // The new task opens from the list cache; without it the view shows
+      // "Restoring task…" until the list or detail fetch returns.
+      onSessionsChangeRef.current([created, ...sessionsRef.current.filter((item) => item.id !== created.id)]);
       onSelectionChangeRef.current(created.id, false);
       await reconcile(() => loadSessions(created.id), 'The task started');
     } catch (reason) {
+      trackCodeTaskStartFailed('new', input, reason);
       setError(errorMessage(reason, 'Could not start this task.'));
     } finally {
       endAction();
@@ -154,9 +166,11 @@ export function useCodeTaskActions({
     setError('');
     try {
       const forked = await codingApi.forkSession(session.id);
+      trackCodeTaskStarted(forked, { origin: 'fork' });
       onSelectionChangeRef.current(forked.id, false);
       await reconcile(() => loadSessions(forked.id), 'The task was forked');
     } catch (reason) {
+      trackCodeTaskStartFailed('fork', null, reason);
       setError(errorMessage(reason, 'Could not fork this coding task.'));
     } finally {
       endAction();

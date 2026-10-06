@@ -35,6 +35,9 @@ const setViewportWidth = (width) => {
   window.dispatchEvent(new Event('resize'));
 };
 
+// The collection kit's HoverActions cluster around an item's controls.
+const actionCluster = (el) => el.closest('[data-item-actions]');
+
 const lockedProject = {
   id: 'project-1',
   name: 'shared-project',
@@ -102,16 +105,23 @@ describe('ProjectsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Delete/ })).not.toHaveAttribute('data-disabled');
   });
 
-  it('reveals list-view project actions when reached by keyboard', () => {
+  it('reveals list-view project actions when reached by keyboard', async () => {
+    const user = userEvent.setup();
     localStorage.setItem('anton:projects-view', 'list');
     render(<ProjectsView projects={[lockedProject]} />);
 
+    // The kit's action cluster hides at rest and reveals with CSS when focus
+    // is inside the row. happy-dom computes no Tailwind, so the reveal is
+    // pinned by its classes, and the keyboard path by real Tab presses.
     const menu = screen.getByRole('button', { name: 'Project menu' });
-    expect(menu).toHaveClass('opacity-0');
+    const cluster = actionCluster(menu);
+    expect(cluster).toHaveClass('opacity-0', 'group-focus-within/item:opacity-100');
 
-    fireEvent.focus(menu);
-
-    expect(menu).toHaveClass('opacity-100');
+    screen.getByRole('button', { name: lockedProject.name }).focus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Pin project' })).toHaveFocus();
+    await user.tab();
+    expect(menu).toHaveFocus();
   });
 
   it('does not activate a grid card when keyboard activates its nested actions', async () => {
@@ -158,10 +168,12 @@ describe('ProjectsView shared-resource permissions', () => {
     setViewportWidth(500);
     render(<ProjectsView projects={[lockedProject]} />);
 
-    expect(screen.getByRole('button', { name: 'Project menu' }))
-      .toHaveStyle({ opacity: '1' });
-    expect(screen.getByRole('button', { name: 'Pin project' }))
-      .toHaveStyle({ opacity: '1' });
+    // Revealed at rest: the cluster drops the kit's hide classes.
+    for (const name of ['Project menu', 'Pin project']) {
+      const cluster = actionCluster(screen.getByRole('button', { name }));
+      expect(cluster).not.toHaveClass('opacity-0');
+      expect(cluster).not.toHaveClass('pointer-events-none');
+    }
   });
 
   it('renders one mobile-reachable Context instructions surface in project detail', () => {
@@ -410,7 +422,8 @@ describe('ProjectsView shared-resource permissions', () => {
     );
 
     expect(screen.getByText('Deleting…')).toBeInTheDocument();
-    // Taken out of flow, the same way the row hides a reserved project's menu.
-    expect(screen.getByRole('button', { name: 'Project menu' })).toHaveClass('hidden');
+    // Withheld from the DOM, the same way the row withholds a reserved project's menu.
+    expect(screen.queryByRole('button', { name: 'Project menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pin project' })).not.toBeInTheDocument();
   });
 });

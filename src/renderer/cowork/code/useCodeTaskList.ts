@@ -6,6 +6,8 @@ import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 function sidebarProjectionChanged(previous: CodingSession, next: CodingSession): boolean {
   return previous.title !== next.title
     || previous.status !== next.status
+    || previous.task_mode !== next.task_mode
+    || previous.pending_question?.id !== next.pending_question?.id
     || previous.run_status !== next.run_status
     || previous.computer_status !== next.computer_status
     || previous.project_name !== next.project_name
@@ -76,6 +78,17 @@ export function useCodeTaskList({
     return page.items;
   }, []);
 
+  const retry = useCallback(async () => {
+    setLoading(true);
+    try {
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.');
+    } finally {
+      setLoading(false);
+    }
+  }, [load]);
+
   useEffect(() => {
     if (!active) return undefined;
     load()
@@ -109,5 +122,5 @@ export function useCodeTaskList({
     );
   }, [currentSession]);
 
-  return { loading, error, load };
+  return { loading, error, load, retry };
 }

@@ -366,8 +366,6 @@ export default function OnboardingScreen({
   const saveFinal = async (lines: string[]) => {
     if (finalizedRef.current) return; // guard double-finalize (see finalizedRef)
     finalizedRef.current = true;
-    lines.push('ANTON_MEMORY_MODE=autopilot');
-    lines.push('ANTON_EPISODIC_MEMORY=true');
     await finalizeSettings(lines);
   };
 
@@ -482,8 +480,9 @@ export default function OnboardingScreen({
       ...existing,
       ...buildProviderEnv(byokProvider, key, customBaseUrl, resolvedModel),
     };
-    merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
-    merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
+    // Stale .env copies; see the memory note on ENV_TO_SETTING in syncSettings.
+    delete merged.ANTON_MEMORY_MODE;
+    delete merged.ANTON_EPISODIC_MEMORY;
     // Continuing past the auth screen records terms consent (the standalone
     // terms screen is gone — consent is implicit per the "by continuing" line).
     merged.ANTON_TERMS_CONSENT = 'true';

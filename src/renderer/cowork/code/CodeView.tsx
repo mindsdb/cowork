@@ -1,16 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
+import { QuestionCard } from './QuestionCard';
+import { PlanDecision } from './PlanDecision';
+import { TaskAttentionBar } from './TaskAttentionBar';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
+import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { ComposerLip } from './ComposerLip';
+import { PromptQueue } from './ComposerMenus';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -34,6 +41,7 @@ import { useProjectActions } from './useProjectActions';
 import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
+import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -50,6 +58,8 @@ export default function CodeView({
   selectedId,
   newTask,
   projectsOpen = false,
+  tasksOpen = false,
+  tasksProjectId = null,
   connectorsOpen = false,
   skillsOpen = false,
   defaultEngineId,
@@ -62,16 +72,20 @@ export default function CodeView({
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
   onOpenProjects = () => {},
+  onOpenTasks = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
   active = true,
   onSessionsChange,
   onSelectionChange,
+  onAttentionSelect,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
   newTask: boolean;
   projectsOpen?: boolean;
+  tasksOpen?: boolean;
+  tasksProjectId?: string | null;
   connectorsOpen?: boolean;
   skillsOpen?: boolean;
   defaultEngineId: string;
@@ -85,15 +99,34 @@ export default function CodeView({
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
   onOpenProjects?: () => void;
+  onOpenTasks?: (projectId?: string | null) => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
   active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
+  onAttentionSelect?: (sessionId: string) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  const openReview = useCallback(() => {
+    setReviewOpen(true);
+    setFilesOpen(false);
+    setPreviewOpen(false);
+  }, []);
+  // The transcript reserves the floating dock's height so its end scrolls clear.
+  const dockObserver = useRef<ResizeObserver | null>(null);
+  const dockRef = useCallback((dock: HTMLDivElement | null) => {
+    dockObserver.current?.disconnect();
+    dockObserver.current = null;
+    const stage = dock?.parentElement;
+    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
+    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
+    sync();
+    dockObserver.current = new ResizeObserver(sync);
+    dockObserver.current.observe(dock);
+  }, []);
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -116,24 +149,26 @@ export default function CodeView({
   const draftSuspended = connectorsOpen && connectorReturn?.destination === 'task';
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
+  const [resolvingQuestionId, setResolvingQuestionId] = useState<string | null>(null);
   const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryComputerId, setRecoveryComputerId] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
   const [referenceRequest, setReferenceRequest] = useState<{ id: number; sessionId: string; item: InputReference } | null>(null);
   const catalog = useCodingCatalog();
-  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
+  const managementOpen = projectsOpen || tasksOpen || connectorsOpen || skillsOpen;
+  const detail = useCodingSession(newTask || managementOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
   // The session list already contains enough information to render the task
   // shell. Keep it interactive while detailed history and review data load in
   // the background instead of replacing the whole workspace with a spinner.
   const session = detail.session?.id === selectedId ? detail.session : cachedSession;
-  const projects = useCodeProjects(newTask ? null : session?.project_id);
+  const projects = useCodeProjects(newTask || draftSuspended ? null : session?.project_id);
   const taskList = useCodeTaskList({
     active,
     sessions,
     selectedId,
-    newTask: newTask || projectsOpen || connectorsOpen || skillsOpen,
+    newTask: newTask || managementOpen,
     currentSession: session,
     onSessionsChange,
     onSelectionChange,
@@ -141,6 +176,7 @@ export default function CodeView({
   const actions = useCodeTaskActions({
     selectedId,
     session,
+    sessions,
     refresh: detail.refresh,
     loadSessions: taskList.load,
     onSessionsChange,
@@ -202,21 +238,29 @@ export default function CodeView({
     setExtensionsOpen(false);
     setRenameOpen(false);
     setResolvingApprovalId(null);
+    setResolvingQuestionId(null);
     setRecoveringTaskId(null);
     setRecoveryPlan(null);
     setRecoveryComputerId('');
     setRecoveryError('');
     setReferenceRequest(null);
-  }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
+  }, [newTask, projectsOpen, tasksOpen, connectorsOpen, skillsOpen, selectedId]);
 
-  // Changing view closes the project editor, except when the Connectors view
-  // is handing the user back to the project they were editing.
-  const resumeProjectEditorId = useRef<string | null>(null);
+  // Keep the editor across explicit Connectors round trips, including a new
+  // project with no ID. Other navigation still closes it. This runs during
+  // render, not in an effect: an effect would commit one frame with the stale
+  // editor open, and a Base UI dialog opened and closed in consecutive commits
+  // never unmounts, leaving its backdrop over the app.
+  const resumeProjectEditor = useRef<{ id: string | null } | null>(null);
+  const editorRoute = [newTask, projectsOpen, tasksOpen, tasksProjectId, connectorsOpen, skillsOpen, selectedId].join('|');
+  const [projectEditorRoute, setProjectEditorRoute] = useState(editorRoute);
+  if (projectEditorRoute !== editorRoute) {
+    setProjectEditorRoute(editorRoute);
+    setProjectEditor(resumeProjectEditor.current);
+  }
   useEffect(() => {
-    const resumeId = resumeProjectEditorId.current;
-    resumeProjectEditorId.current = null;
-    setProjectEditor(resumeId ? { id: resumeId } : null);
-  }, [newTask, projectsOpen, skillsOpen, selectedId]);
+    resumeProjectEditor.current = null;
+  }, [editorRoute]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
@@ -234,6 +278,20 @@ export default function CodeView({
   const workspaceWarning = session?.workspace_kind === 'direct_folder'
     ? ''
     : session?.workspace_warning || '';
+  const latestSessionEvent = detail.latestEvents.session?.latest;
+  const latestErrorEvent = detail.latestEvents.error?.latest;
+  const taskRecovering = !!session && recoveringTaskId === session.id;
+  // One lip at a time, most blocking first; queued follow-ups come last.
+  const lip = useComposerNotice(session ? [
+    failureNotice(
+      accountFailure(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+      models.find((model) => model.id === session.model)?.name || session.model,
+    ),
+    recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    messageNotice('error', conversationError),
+    messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
+    queueNotice(session),
+  ] : [], selectedId);
   const approval = session?.pending_approval?.id === resolvingApprovalId
     ? null
     : session?.pending_approval;
@@ -290,6 +348,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}
           onSessionsChange={onSessionsChange}
@@ -310,7 +369,7 @@ export default function CodeView({
           onClose={() => { if (!recoveringTaskId) setRecoveryPlan(null); }}
           onConfirm={(option) => { if (selectedId) void performRecovery(selectedId, option); }}
         />
-        {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
+        {!newTask && !managementOpen && selectedId && taskBarSession && (
           <TaskBar
             session={taskBarSession}
             git={detail.git}
@@ -363,13 +422,16 @@ export default function CodeView({
             projects={projects.projects}
             onConnectionsChange={onConnectionsChange}
             returnProjectName={projects.projects.find((project) => project.id === connectorReturn?.projectId)?.name || ''}
-            backLabel={connectorReturn ? connectorReturnLabel(connectorReturn.destination) : undefined}
+            backLabel={connectorReturn ? connectorReturnLabel(projectEditor ? 'settings' : connectorReturn.destination) : undefined}
             onBack={connectorReturn ? () => {
               const { projectId, destination } = connectorReturn;
-              projects.setSelectedId(projectId);
+              resumeProjectEditor.current = projectEditor;
               if (destination === 'settings') {
-                resumeProjectEditorId.current = projectId;
+                projects.setSelectedId(projectId);
+                resumeProjectEditor.current = { id: projectId };
                 onOpenProjects();
+              } else if (connectorReturn.destination === 'session') {
+                onSelectionChange(connectorReturn.sessionId, false);
               } else {
                 onOpenNewTask();
               }
@@ -396,12 +458,28 @@ export default function CodeView({
             selectedId={projects.selectedId}
             loading={projects.loading}
             error={projects.error}
-            onOpen={(id) => {
+            onOpen={onOpenTasks}
+            onCreate={() => setProjectEditor({ id: null })}
+            onEdit={(id) => setProjectEditor({ id })}
+          />
+        ) : tasksOpen ? (
+          <CodeTasksView
+            key={tasksProjectId || 'all'}
+            active={active}
+            sessions={sessions}
+            projects={projects.projects}
+            projectId={tasksProjectId}
+            loading={taskList.loading || projects.loading}
+            error={taskList.error || projects.error}
+            onOpen={(id) => onSelectionChange(id, false)}
+            onOpenProject={onOpenTasks}
+            onNewTask={(id) => {
               projects.setSelectedId(id);
               onSelectionChange(null, true);
             }}
-            onCreate={() => setProjectEditor({ id: null })}
-            onEdit={(id) => setProjectEditor({ id })}
+            onEditProject={(id) => setProjectEditor({ id })}
+            onBack={onOpenProjects}
+            onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
         ) : taskList.loading && !sessions.length ? (
           <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
@@ -433,95 +511,136 @@ export default function CodeView({
         ) : session ? (
           <div className="code-workspace">
             <section className="code-conversation">
-              {(conversationError || workspaceWarning) && (
-                <div className="code-notices">
-                  {conversationError && <Alert variant="danger">{conversationError}</Alert>}
-                  {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
-                </div>
-              )}
-              <EventTimeline
-                key={`timeline-${session.id}`}
-                events={detail.events}
-                latestEvents={detail.latestEvents}
-                session={session}
-                modelName={models.find((model) => model.id === session.model)?.name || session.model}
-                recovering={recoveringTaskId === session.id}
-                onRecover={() => recoverTask(session.id)}
-                onChooseModel={() => setControlsOpen(true)}
-                onAddCredits={() => {
-                  trackBillingOpened('token_limit');
-                  void openCodeExternalUrl(MINDS_BILLING_URL);
-                }}
-              />
-              {approval && (
-                <ApprovalCard
-                  approval={approval}
-                  busy={!!resolvingApprovalId}
-                  onDecision={(decision) => {
-                    // The user's decision is final from the UI's perspective.
-                    // Remove the card synchronously, then reconcile with the
-                    // server; a failed request restores it with the error shown.
-                    setResolvingApprovalId(approval.id);
-                    void runAction(
-                      () => codingApi.approve(session.id, approval.id, decision),
-                      true,
-                      true,
-                    ).catch(() => {}).finally(() => setResolvingApprovalId(null));
-                  }}
+              {/* The dock floats over the timeline only; the terminal stays
+                  below this stage so the dock never covers it. */}
+              <div className="code-conversation__stage">
+                <EventTimeline
+                  key={`timeline-${session.id}`}
+                  events={detail.events}
+                  latestEvents={detail.latestEvents}
+                  session={session}
+                  recovering={recoveringTaskId === session.id}
+                  onOpenReview={can('review') ? openReview : undefined}
                 />
-              )}
-              <CodeComposer
-                key={`composer-${session.id}`}
-                session={session}
-                busy={busy}
-                onSend={(prompt, delivery, attachments) => runAction(
-                  () => delivery === 'steer'
-                    ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
-                    : delivery === 'queue'
-                      ? codingApi.queue(session.id, prompt, attachments)
-                      : codingApi.turn(session.id, prompt, attachments),
-                  true,
-                  true,
-                )}
-                onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
-                commands={commands}
-                onPermissionChange={(permissionMode) => runAction(
-                  () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
-                  true,
-                )}
-                onSteerQueued={(instructionId) => runAction(
-                  () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
-                  true,
-                )}
-                history={history}
-                // The effect that clears this runs after the next task's composer
-                // has already mounted and merged it.
-                referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
-                onRemoveQueued={(instructionId) => runAction(
-                  () => codingApi.removeQueued(session.id, instructionId),
-                  true,
-                )}
-                onClientCommand={(command) => {
-                  if (command.client_action === 'terminal') {
-                    setTerminalOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'controls') {
-                    setControlsOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'skills' || command.client_action === 'mcp') {
-                    setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
-                    setExtensionsOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'fork') {
-                    void forkTask();
-                    return;
-                  }
-                  setActionError(`/${command.name} controls are not available in this build yet.`);
-                }}
-              />
+                <div ref={dockRef} className="code-composer-dock">
+                  {lip.notice?.queue ? (
+                    <PromptQueue
+                      items={session.queued_instructions || []}
+                      active={isActiveStatus(session.status) && !session.pending_question && !session.pending_approval}
+                      busy={busy}
+                      onSteer={(instructionId) => runAction(
+                        () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                        true,
+                      )}
+                      onRemove={(instructionId) => runAction(
+                        () => codingApi.removeQueued(session.id, instructionId),
+                        true,
+                      )}
+                      more={lip.more}
+                      onShowMore={lip.showNext}
+                    />
+                  ) : lip.notice && (
+                    <ComposerLip
+                      key={lip.notice.key}
+                      notice={lip.notice}
+                      more={lip.more}
+                      onShowMore={lip.showNext}
+                      onChooseModel={() => setControlsOpen(true)}
+                      onAddCredits={(billingTrigger) => {
+                        trackBillingOpened(billingTrigger, 'code');
+                        void openCodeExternalUrl(MINDS_BILLING_URL);
+                      }}
+                      onReopen={() => void recoverTask(session.id)}
+                      onDismiss={lip.dismiss}
+                    />
+                  )}
+                  {session.pending_question && <QuestionCard
+                    key={session.pending_question.id}
+                    pending={session.pending_question}
+                    busy={resolvingQuestionId === session.pending_question.id}
+                    onAnswer={async answers => {
+                      // An input request can arrive while a steer RPC is waiting
+                      // on Codex's reader. Answering must remain independently usable.
+                      const questionId = session.pending_question!.id;
+                      setResolvingQuestionId(questionId);
+                      try { await runAction(() => codingApi.answerQuestion(session.id, questionId, answers), true, true); }
+                      finally { setResolvingQuestionId(current => current === questionId ? null : current); }
+                    }}
+                  />}
+                  {session.task_mode === 'plan' && session.status === 'completed' && <PlanDecision
+                    key={`plan-${session.id}`}
+                    busy={busy}
+                    onBuild={() => runAction(() => codingApi.modeTurn(session.id, 'Implement the plan we just reviewed. Verify the result and report what changed.', 'build', session.event_count), true, true)}
+                    onRevise={changes => runAction(() => codingApi.turn(session.id, changes), true, true)}
+                  />}
+                  {approval && !session.pending_question && (
+                    <ApprovalCard
+                      approval={approval}
+                      busy={!!resolvingApprovalId}
+                      onDecision={(decision) => {
+                        // The user's decision is final from the UI's perspective.
+                        // Remove the card synchronously, then reconcile with the
+                        // server; a failed request restores it with the error shown.
+                        setResolvingApprovalId(approval.id);
+                        void runAction(
+                          () => codingApi.approve(session.id, approval.id, decision),
+                          true,
+                          true,
+                        ).catch(() => {}).finally(() => setResolvingApprovalId(null));
+                      }}
+                    />
+                  )}
+                  <CodeComposer
+                    key={`composer-${session.id}`}
+                    session={session}
+                    busy={busy}
+                    supportsPlanning={session.computer_is_local !== false && catalog.engines.find(engine => engine.id === session.engine_id)?.features?.planning === 'supported'}
+                    planningLoading={session.computer_is_local !== false && catalog.enginesLoading}
+                    onModeSend={(prompt, mode, attachments) => runAction(
+                      () => codingApi.modeTurn(session.id, prompt, mode, session.event_count, attachments), true, true,
+                    )}
+                    onSend={(prompt, delivery, attachments) => runAction(
+                      () => delivery === 'steer'
+                        ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
+                        : delivery === 'queue'
+                          ? codingApi.queue(session.id, prompt, attachments)
+                          : codingApi.turn(session.id, prompt, attachments),
+                      true,
+                      true,
+                    )}
+                    onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
+                    commands={commands}
+                    onPermissionChange={(permissionMode) => runAction(
+                      () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
+                      true,
+                    )}
+                    history={history}
+                    // The effect that clears this runs after the next task's composer
+                    // has already mounted and merged it.
+                    referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
+                    onClientCommand={(command) => {
+                      if (command.client_action === 'terminal') {
+                        setTerminalOpen(true);
+                        return;
+                      }
+                      if (command.client_action === 'controls') {
+                        setControlsOpen(true);
+                        return;
+                      }
+                      if (command.client_action === 'skills' || command.client_action === 'mcp') {
+                        setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
+                        setExtensionsOpen(true);
+                        return;
+                      }
+                      if (command.client_action === 'fork') {
+                        void forkTask();
+                        return;
+                      }
+                      setActionError(`/${command.name} controls are not available in this build yet.`);
+                    }}
+                  />
+                </div>
+              </div>
               {can('terminal') && terminalOpen && <TaskTerminal sessionId={session.id} focusTerminalId={terminalFocusId} onClose={() => setTerminalOpen(false)} />}
             </section>
             {can('review') && <ReviewPanel
@@ -548,6 +667,17 @@ export default function CodeView({
                 false,
                 true,
               ))?.items || []}
+              onAdoptProjectCommands={async () => {
+                const refreshed = await runResult(async () => {
+                  const summary = await codingApi.refreshProjectCommands(session.id);
+                  // Run actions read the same task snapshot, so re-read them
+                  // before the panel reports what is now available.
+                  await project.refresh();
+                  return summary;
+                }, false, true);
+                if (!refreshed) throw new Error('Project commands were not updated.');
+                return refreshed;
+              }}
               connections={projects.selected?.connections || []}
               onDraftPullRequests={async (title, body, connectionName, drafts) => (await runResult(async () => {
                 const result = await codingApi.draftPullRequests(session.id, { title, body, drafts, connection_name: connectionName, confirmed: true });
@@ -638,6 +768,7 @@ export default function CodeView({
             models={models}
             modelMeta={modelMeta}
             busy={busy}
+            applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
               await runAction(() => codingApi.updateSession(session.id, value), true, true);
@@ -674,7 +805,15 @@ export default function CodeView({
             }
           }}
           onOpenConnectors={() => {
-            if (projectEditor?.id) setConnectorReturn({ projectId: projectEditor.id, destination: 'settings' });
+            resumeProjectEditor.current = projectEditor;
+            const projectId = projectEditor?.id ?? null;
+            if (projectsOpen) {
+              setConnectorReturn({ projectId, destination: 'settings' });
+            } else if (!newTask && selectedId) {
+              setConnectorReturn({ projectId, destination: 'session', sessionId: selectedId });
+            } else {
+              setConnectorReturn({ projectId, destination: 'task' });
+            }
             onOpenConnectors();
           }}
           onOpenSkills={() => {

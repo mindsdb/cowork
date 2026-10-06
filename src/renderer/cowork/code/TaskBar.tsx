@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
+import Tooltip from '../components/ui/Tooltip';
 import type { CodingSession, DiffFile, GitState, ProjectActionSummary } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
@@ -73,9 +74,6 @@ export function TaskBar({
     : folderCount > 1
       ? `${folderCount} isolated folders`
       : 'Isolated copy';
-  const workingCopyDescription = usesOriginalFolder
-    ? 'Edits happen in the folder you selected.'
-    : 'Task-only files keep parallel work separate.';
   const origin = session.source_contexts?.[0] || null;
   const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
   const scopedWorkspaceNames = (session.workspaces || []).map((workspace) => workspace.folder_name);
@@ -93,10 +91,13 @@ export function TaskBar({
         <div className="code-taskbar__copy">
           <div className="code-taskbar__title-row">
             <div className="code-taskbar__title" title={session.title}>{session.title}</div>
-            <span className={`code-task-status is-${status.tone}`}>
-              <span className="code-status-dot" aria-hidden="true" />
-              <span className="code-task-status__label">{status.label}</span>
-            </span>
+            {/* A finished task at rest needs no badge; colour is kept for work in motion and for what needs you. */}
+            {status.tone !== 'success' && (
+              <span className={`code-task-status is-${status.tone}`}>
+                <span className="code-status-dot" aria-hidden="true" />
+                <span className="code-task-status__label">{status.label}</span>
+              </span>
+            )}
           </div>
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
@@ -127,7 +128,6 @@ export function TaskBar({
                   <div className="code-taskbar-details">
                     <div className="code-taskbar-details__intro">
                       <strong>Task setup</strong>
-                      <p>{workingCopyDescription}</p>
                     </div>
                     <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
                     {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}
@@ -145,17 +145,18 @@ export function TaskBar({
       <div className="code-taskbar__actions">
         {can('project_actions') && !!projectActions.length && <div className="code-taskbar__action-group" aria-label="Run and preview">
           {projectActions.length === 1 && (
-            <Button
-              size="sm"
-              variant="subtle"
-              disabled={projectActionBusy}
-              onClick={() => onRunProjectAction(projectActions[0])}
-              title={`Run ${projectActions[0].label}`}
-              aria-label={projectActionBusy ? `Starting ${projectActions[0].label}` : `Run ${projectActions[0].label}`}
-            >
-              {Ico.play(12)}
-              <span>{projectActionBusy ? 'Starting…' : 'Run'}</span>
-            </Button>
+            <Tooltip content={`Run ${projectActions[0].label}`}>
+              <Button
+                size="sm"
+                variant="subtle"
+                disabled={projectActionBusy}
+                onClick={() => onRunProjectAction(projectActions[0])}
+                aria-label={projectActionBusy ? `Starting ${projectActions[0].label}` : `Run ${projectActions[0].label}`}
+              >
+                {Ico.play(12)}
+                <span>{projectActionBusy ? 'Starting…' : 'Run'}</span>
+              </Button>
+            </Tooltip>
           )}
           {projectActions.length > 1 && (
             <Menu
@@ -176,19 +177,24 @@ export function TaskBar({
               }))}
             />
           )}
-          <Button
-            size="sm"
-            variant={previewOpen ? 'tinted' : 'subtle'}
-            disabled={!previewAvailable}
-            onClick={onTogglePreview}
-            title={previewAvailable ? 'Preview running project' : 'Run the project to enable preview'}
-            aria-expanded={previewOpen}
-            aria-controls="code-preview-panel"
-            aria-label="Preview running project"
-          >
-            {Ico.globe(13)}
-            <span>Preview</span>
-          </Button>
+          {/* `.btn:disabled` drops pointer events, so the wrapper takes the hover
+              that explains why Preview is unavailable. */}
+          <Tooltip content={previewAvailable ? 'Preview running project' : 'Run the project to enable preview'}>
+            <span className="inline-flex">
+              <Button
+                size="sm"
+                variant={previewOpen ? 'tinted' : 'subtle'}
+                disabled={!previewAvailable}
+                onClick={onTogglePreview}
+                aria-expanded={previewOpen}
+                aria-controls="code-preview-panel"
+                aria-label="Preview running project"
+              >
+                {Ico.globe(13)}
+                <span>Preview</span>
+              </Button>
+            </span>
+          </Tooltip>
         </div>}
         {can('project_actions') && !!projectActions.length && <span className="code-taskbar__divider" aria-hidden="true" />}
         <div className="code-taskbar__action-group" aria-label="Task surfaces">

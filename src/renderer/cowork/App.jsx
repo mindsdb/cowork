@@ -5,6 +5,7 @@ import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -32,6 +33,7 @@ import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/
 import { useCodeWorkspace } from './code/useCodeWorkspace';
 import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
+import { projectLabel } from './lib/projectLabel';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
@@ -65,7 +67,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -76,7 +78,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -88,12 +90,14 @@ import {
   persistTurnState,
   mergeConvTurns,
 } from './lib/conversationHistory';
-import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
+import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -470,13 +474,13 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
-    const fresh = await fetchSession(cid);
+    const fresh = await fetchSession(cid, { timeoutMs });
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
@@ -532,6 +536,20 @@ export default function App() {
   );
 }
 
+// Cmd+K's starting list before anything is typed: the five most recently
+// updated tasks and the first three projects, from state App already holds.
+function searchRecents(tasks, projects) {
+  const labelFor = (task) => {
+    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    return project ? projectLabel(project) : undefined;
+  };
+  return [
+    ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
+      .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
+    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.name, title: projectLabel(project) })),
+  ];
+}
+
 function AppCore() {
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
@@ -563,6 +581,11 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // False until the first artifacts fetch settles, so Live Artifacts shows
+  // skeletons instead of a premature "No artifacts yet".
+  const [artifactsLoaded, setArtifactsLoaded] = useState(false);
+  // Same for Projects: skeletons, not "No projects yet", until the first fetch settles.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
   // fetch of the session comes back empty — an account that already has
   // artifacts is not a first-run and must never see the tip. Once armed,
@@ -582,6 +605,41 @@ function AppCore() {
       setArtifactTipOpen(true);
     }
   }, [artifacts.length]);
+  const artifactsRef = useRef(artifacts);
+  useEffect(() => { artifactsRef.current = artifacts; }, [artifacts]);
+  // Every load of `artifacts` goes through this loader. Strict: a failed load
+  // must not read as an empty list.
+  const [artifactsLoader] = useState(() => createLatestLoader(fetchArtifactsStrict, (data) => {
+    // One-time arm/disarm decision for the first-artifact tip, taken on
+    // the session's first successful fetch: empty list = fresh account
+    // (watch for the first artifact); anything else = existing account
+    // (flag it dismissed so no later session shows the tip either).
+    if (artifactTipArmedRef.current === null) {
+      if (data.length === 0 && !isArtifactTipDismissed()) {
+        artifactTipArmedRef.current = true;
+      } else {
+        artifactTipArmedRef.current = false;
+        if (data.length > 0) dismissArtifactTip();
+      }
+    }
+    setArtifacts(data);
+  }));
+  const reloadArtifacts = artifactsLoader.reload;
+  // A delete from any surface (the artifacts page, a chat's viewer or working
+  // folder) must reach the sidebar count.
+  useEffect(() => onArtifactDeleted((card) => {
+    if (artifactsRef.current.some((a) => a.path === card?.path)) {
+      artifactsLoader.change(() => setArtifacts((prev) => withoutArtifact(prev, card.path)));
+    } else {
+      // A chat card can name another file than the server card (a fullstack
+      // entry point sits under static/), so only the server can say which went.
+      reloadArtifacts();
+    }
+  }), [artifactsLoader, reloadArtifacts]);
+  // Publish state changes made on the artifacts page.
+  const handleArtifactChanged = useCallback((updated) => {
+    artifactsLoader.change(() => setArtifacts((prev) => withArtifactChange(prev, updated)));
+  }, [artifactsLoader]);
   const handleArtifactTipDismiss = useCallback(() => {
     setArtifactTipOpen(false);
     dismissArtifactTip();
@@ -647,7 +705,69 @@ function AppCore() {
   // reads it to tell a slow-to-register turn from a never-started fast-fail.
   // Reset to false at every new stream reservation below.
   const activeStreamProducedRef = useRef(false);
-  const activeStreamGenerationRef = useRef(0);
+  // Every live stream, keyed by conversation. Concurrent streams are intended
+  // (a background task keeps draining while another is on screen), so the refs
+  // above cannot own teardown: Stop has to reach the controller belonging to
+  // the conversation it stops, not whichever one claimed them last.
+  const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
+
+  // A second stream on the SAME conversation replaces the first, which has to
+  // be aborted: left attached it keeps replaying into a turn nobody reads and
+  // can later cancel it on its own idle timer. A stream on a different
+  // conversation is deliberately untouched.
+  const registerStream = useCallback((cid, ctrl) => {
+    if (!cid || !ctrl) return;
+    const prev = liveStreamsRef.current.get(cid);
+    if (prev?.ctrl && prev.ctrl !== ctrl) {
+      try { prev.ctrl.abort(); } catch { /* already closed */ }
+    }
+    liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
+  }, []);
+
+  // Drop the record only when `ctrl` is still the registered one, so a stream
+  // that ends after being replaced cannot evict its successor.
+  const releaseStream = useCallback((cid, ctrl) => {
+    if (!cid) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec && rec.ctrl === ctrl) liveStreamsRef.current.delete(cid);
+  }, []);
+
+  const abortStream = useCallback((cid) => {
+    if (!cid) return null;
+    const rec = liveStreamsRef.current.get(cid);
+    if (!rec) return null;
+    liveStreamsRef.current.delete(cid);
+    if (rec.ctrl) { try { rec.ctrl.abort(); } catch { /* already closed */ } }
+    return rec;
+  }, []);
+
+  // A tmp- conversation adopts its canonical server id mid-stream, so the
+  // record has to move with it or teardown looks for a key nobody holds.
+  const rekeyStream = useCallback((previousId, cid) => {
+    if (!previousId || !cid || previousId === cid) return;
+    const rec = liveStreamsRef.current.get(previousId);
+    if (!rec) return;
+    const existing = liveStreamsRef.current.get(cid);
+    if (existing?.ctrl && existing.ctrl !== rec.ctrl) {
+      try { existing.ctrl.abort(); } catch { /* already closed */ }
+    }
+    liveStreamsRef.current.delete(previousId);
+    liveStreamsRef.current.set(cid, rec);
+  }, []);
+
+  // Superseded means this stream is no longer the one its conversation holds:
+  // either Stop reaped the record or a replacement took the key. Scoped per
+  // conversation, so stopping one turn cannot silence another that is live.
+  const isCurrentStream = useCallback((cid, ctrl) => (
+    Boolean(cid) && liveStreamsRef.current.get(cid)?.ctrl === ctrl
+  ), []);
+
+  // The pad belongs to the turn that opened it, not to the app.
+  const setStreamPad = useCallback((cid, pad) => {
+    if (!cid || !pad) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec) rec.pad = pad;
+  }, []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -757,8 +877,17 @@ function AppCore() {
       cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
     };
     if (decision.release && streaming) {
+      // Reap the record for the stranded conversation, not just the shared
+      // ref: another conversation may legitimately be streaming behind it.
+      const reaped = abortStream(streaming);
       const ctrl = activeStreamCtrlRef.current;
-      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      // Abort the shared controller only when no conversation owns it; one
+      // owned by a different conversation is legitimately still running.
+      const ownedElsewhere = ctrl
+        && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
+      if (ctrl && !reaped && !ownedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
@@ -805,7 +934,7 @@ function AppCore() {
       }
       return next;
     });
-  }, []);
+  }, [abortStream]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -935,8 +1064,8 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
-    // Every stream's onEvent funnels through here (after dropping stale-generation
-    // events), so reaching this line means the active stream delivered data.
+    // Every stream's onEvent funnels through here (after dropping the events of
+    // a superseded stream), so reaching this line means it delivered data.
     // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
     // Anything the agent just produced is alive by definition, whatever a
@@ -1057,16 +1186,23 @@ function AppCore() {
       }
     }
 
-    activeStreamGenerationRef.current += 1;
+    // Tear down the record for the conversation being stopped, not whichever
+    // one claimed the shared refs last: with concurrent streams those differ,
+    // and cancelling the wrong pad kills a cell inside a still-running turn.
+    const stopped = cidToCancel ? abortStream(cidToCancel) : null;
 
-    const padName = activeScratchpadRef.current;
+    const padName = stopped ? stopped.pad : activeScratchpadRef.current;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
 
     const ctrl = activeStreamCtrlRef.current;
-    if (ctrl) {
-      try { ctrl.abort(); } catch {}
+    const ctrlOwnedElsewhere = ctrl
+      && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
+    if (ctrl && (!stopped || ctrl === stopped.ctrl)) {
+      if (!stopped && !ctrlOwnedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
     }
 
@@ -1108,7 +1244,7 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
 
     // Stop frees the shared stream slot with no onDone/onError behind it — the
-    // generation bump above silences the aborted run's cancelled callback — so
+    // reaped record above silences the aborted run's cancelled callback — so
     // a message queued against a *different* task would strand forever at
     // "N queued · waiting for Anton" with no future turn to release it. Sweep
     // the siblings now (the cancelled task's own queue was just deleted). Via
@@ -1119,7 +1255,9 @@ function AppCore() {
     if (silent || !cidToCancel) return;
 
     try {
-      const loaded = await loadSessionMessagesWithRetry(cidToCancel, { skipLocalSidecar: true });
+      const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
+        skipLocalSidecar: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+      });
       if (loaded) {
         setTasks((prev) => prev.map((t) =>
           t.id === cidToCancel
@@ -1135,7 +1273,7 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone, releaseLiveStepsWithAliases]);
+  }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
@@ -1156,32 +1294,34 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
-    const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
-    // A stream that merely dropped mid-answer can still have finished on the
-    // server — the reload then carries no error message. Gating on the same
-    // check the UI uses means a turn the user actually saw succeed doesn't
-    // also count as a failure. Unlike fireFirstResponse (once per user), this
-    // fires on every failed turn — the failure rate had no measurement at
-    // all before this.
-    const hasError = loaded
-      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
-      : true;
-    // `some()` over the whole history is right for the UI status below, but
-    // it's a permanent yes once any earlier turn in the conversation has
-    // ever failed — worthless as a failure-tracking gate, since it also
-    // counts turns that actually recovered. A server-declared
-    // response.failed (api.js's onError passes the raw SSE message through,
-    // so `type` survives) is authoritative on its own. Only the client-side
-    // transport codes (stream_error, reconnect_error, stalled) need the
-    // reload heuristic, and only against the *last* turn.
-    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
-    const lastTurnFailed = loaded
-      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
-      : true;
-    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
+    const loaded = cid
+      ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
+      : null;
+    // A successful history GET can still contain only the pending question, or
+    // an older completed turn. Only this turn's persisted terminal can replace
+    // the partial text and transport error. The response.created user message
+    // id ties recovery to this turn even when local history is incomplete.
+    // Without that correlation, keep the error. _turnComplete comes from replaying
+    // response.completed/failed in api.js's _hydrateAssistantEvents.
+    const history = loaded?.messages || [];
+    const lastUserIndex = history.findLastIndex((m) => m.role === 'user');
+    const latestTurn = history.slice(lastUserIndex + 1);
+    const currentTurnLoaded = event?.user_message_id
+      && history[lastUserIndex]?.id === event.user_message_id;
+    const persistedFailure = currentTurnLoaded && latestTurn.some(
+      (m) => m.role === 'error' || m.role === 'provider_required',
+    );
+    const persistedCompletion = currentTurnLoaded && latestTurn.some(
+      (m) => m.role === 'assistant' && m._turnComplete,
+    );
+    // A server-declared failure remains authoritative even if history lags.
+    const recovered = persistedFailure
+      || (event?.type !== 'response.failed' && persistedCompletion);
+    const hasError = history.some((m) => m.role === 'error' || m.role === 'provider_required');
+    if (!recovered || persistedFailure) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
-      if (loaded) {
+      if (recovered) {
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
@@ -1191,7 +1331,13 @@ function AppCore() {
             : {}),
         };
       }
-      const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+      // Keep text already received when the server has not durably sealed it.
+      // The adjacent error trailer identifies this assistant row as partial.
+      const msgs = markActivityDone(removeThinkingPlaceholder(t.messages.flatMap((m) => {
+        if (m.role !== '_streaming') return [m];
+        if (!m.content && !m.steps?.length) return [];
+        return [{ ...m, role: 'assistant', streamStatus: 'error' }];
+      })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
@@ -1203,11 +1349,12 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
-            // ENG-1537 review: this local trailer is reached when
-            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
-            // MORE likely precisely when the gateway is rate-limiting. Without
-            // these the rate-limit card loses its gate and the allowance card
-            // always reads "resets on next month".
+            /* ENG-1537 review: this local trailer is reached when
+               loadSessionMessagesWithRetry gives up after 3 attempts — which is
+               MORE likely precisely when the gateway is rate-limiting. Without
+               these the rate-limit card loses its gate, and the allowance and
+               paused cards lose the time the gate sent on a desktop or a
+               hosted turn. */
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
@@ -1268,6 +1415,10 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Why a row above is unavailable, so an admin-restricted model reads
+    // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
+    // in step with modelEnabled).
+    modelDisabledReasons: settings.modelDisabledReasons,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
@@ -1278,7 +1429,7 @@ function AppCore() {
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1402,6 +1553,14 @@ function AppCore() {
   const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
     ? 'code'
     : 'cowork';
+  // Keyed on the effective mode so every entry point reports the switch, and a
+  // Code preference that is off never records a visit. The tracker keeps only
+  // the first per launch.
+  useEffect(() => {
+    if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
+  }, [effectiveWorkspaceMode]);
+  // Mirror the active workspace onto <html data-workspace> for workspace-scoped styles.
+  useWorkspaceAttribute(effectiveWorkspaceMode);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
@@ -1421,11 +1580,15 @@ function AppCore() {
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
+    tasksOpen: codeTasksOpen,
+    tasksProjectId: codeTasksProjectId,
+    managementRoute: codeManagementRoute,
     connectorsOpen: codeConnectorsOpen,
     skillsOpen: codeSkillsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
+    openTasks: openCodingTasks,
     openConnectors: openCodingConnectors,
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
@@ -1641,23 +1804,8 @@ function AppCore() {
       }
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
-    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    fetchArtifacts().then((data) => {
-      if (!Array.isArray(data)) return;
-      // One-time arm/disarm decision for the first-artifact tip, taken on
-      // the session's first successful fetch: empty list = fresh account
-      // (watch for the first artifact); anything else = existing account
-      // (flag it dismissed so no later session shows the tip either).
-      if (artifactTipArmedRef.current === null) {
-        if (data.length === 0 && !isArtifactTipDismissed()) {
-          artifactTipArmedRef.current = true;
-        } else {
-          artifactTipArmedRef.current = false;
-          if (data.length > 0) dismissArtifactTip();
-        }
-      }
-      setArtifacts(data);
-    });
+    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
+    reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules();
     fetchDatasources()
@@ -1668,7 +1816,7 @@ function AppCore() {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, [refreshSchedules]);
+  }, [refreshSchedules, reloadArtifacts]);
 
   useEffect(() => {
     refreshData();
@@ -1813,11 +1961,13 @@ function AppCore() {
   // it has one, else whatever the home composer currently shows.
   const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
-  // "Switch to MindsHub Air" escape hatch on the model-denial card
-  // (ENG-1304): offered only while Air itself is payable — the free monthly
-  // grant covers Air, so it's the one model an empty wallet can usually
-  // still run. `modelEnabled` is the same availability map the Settings
-  // picker tags rows with (absent id ⇒ available).
+  /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
+     cards (ENG-1304): offered only while Air itself is payable — the free
+     allowance covers Air, so it's the one model an empty wallet can usually
+     still run. `modelEnabled` is the same availability map the Settings
+     picker tags rows with (absent id ⇒ available). Whether the allowance has
+     room right now is ChatView's call (BalanceEmptyCard reads the hub usage);
+     this gate only says Air is offered and not locked. */
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
@@ -1863,7 +2013,9 @@ function AppCore() {
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
     // Already tailing locally — second-mount of the same task should
-    // not double up.
+    // not double up. Deliberately still the shared refs and not the registry:
+    // a record also covers a live send, and re-attaching over one would abort
+    // it in favour of a tail that immediately 404s.
     if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
       return true;
     }
@@ -1900,23 +2052,27 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = tailInFlight(taskId, {
+    const ctrl = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
                   // over text deltas, and from_seq=0 keeps the rebuild
                   // simple. A per-task last-seen-seq optimisation is
                   // possible later if we see network overhead.
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(taskId, ctrl)) return;
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(taskId, ctrl);
+        releaseStream(taskId, ctrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
@@ -1956,7 +2112,7 @@ function AppCore() {
           // Open the side panel if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // A reconnect tail also holds the shared stream slot, so a message
         // queued against any task while it ran must be drained here too —
         // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
@@ -1964,12 +2120,18 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
-        // Order matters twice over. The generation guard comes first: a
-        // superseded stream's late abort must not clear liveStepsRef for a
-        // NEWER run on the same conversation. The release then comes before
-        // the `cancelled` bail-out, because an aborted run's question is dead
-        // too and leaving it behind would hijack the composer.
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        // Read first, drop second: the record is what answers "am I still the
+        // live stream here", so releasing before reading would make every
+        // terminal look superseded. Releasing is controller-guarded, so a
+        // superseded stream still cannot evict its successor.
+        const superseded = !isCurrentStream(taskId, ctrl);
+        releaseStream(taskId, ctrl);
+        // The superseded check comes first so a stream that lost its slot cannot
+        // clear liveStepsRef for a NEWER run on the same conversation, and
+        // releaseLiveSteps comes before the `cancelled` bail-out because an
+        // aborted run's question is dead too and leaving it behind would hijack
+        // the composer.
+        if (superseded) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -1979,8 +2141,10 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad]);
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
@@ -2694,7 +2858,7 @@ function AppCore() {
     projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
     setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
     if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+      reloadArtifacts();
     } else if (key === 'projects') {
       // Bare `/projects` is the grid — clear the selection so a Back from
       // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
@@ -2703,7 +2867,7 @@ function AppCore() {
     } else if (key === 'scheduled') {
       refreshSchedules();
     }
-  }, [refreshSchedules]);
+  }, [refreshSchedules, reloadArtifacts]);
 
   // Detail routes → state (v1). No single-resource loader: resolve the entity
   // client-side from the fetched list, so refresh / deep-link restore the
@@ -3014,6 +3178,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -3043,6 +3208,7 @@ function AppCore() {
     // Append the user message + thinking placeholder, then start the
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
+    let sessionCtrl = null;
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -3062,7 +3228,9 @@ function AppCore() {
             }
           : t,
       ));
-      activeStreamCtrlRef.current = streamNewSessionFn();
+      sessionCtrl = streamNewSessionFn();
+      activeStreamCtrlRef.current = sessionCtrl;
+      registerStream(taskId, sessionCtrl);
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
@@ -3071,7 +3239,6 @@ function AppCore() {
     };
     trackAgentSessionStarted();
     trackFirstQuery();
-    const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
@@ -3083,7 +3250,7 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
@@ -3091,11 +3258,14 @@ function AppCore() {
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreamingMessage());
       },
       onProgress(event, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         if (sid) adoptServerId(sid);
         // Intentionally a no-op for messages: every `response.in_progress`
         // event already passed through onEvent → flushStreamingMessage,
@@ -3107,8 +3277,10 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId, sessionCtrl);
+        releaseStream(resolvedId, sessionCtrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
@@ -3168,13 +3340,15 @@ function AppCore() {
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
+        releaseStream(resolvedId || taskId, sessionCtrl);
+        if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3478,6 +3652,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -3525,8 +3700,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamMessage(id, sendText, {
+    const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
       projectPath: taskProjectPath,
@@ -3535,7 +3709,7 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
         // server's `chat_stream` strips `tmp-` prefixes and mints a
         // fresh id; the new value rides on `response.created`.
@@ -3544,12 +3718,17 @@ function AppCore() {
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || id, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId || id, ctrl);
+        releaseStream(resolvedId || id, ctrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         // Turn done → conversation persisted; drop the optimistic flag (set if
@@ -3593,7 +3772,7 @@ function AppCore() {
           persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
-        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        reloadArtifacts();
         // Drain the next queued message now that the single stream slot is
         // free. Sweeps every task's queue (preferring this task for FIFO
         // order on its own follow-ups), not just the finishing task's — a
@@ -3602,7 +3781,9 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || id, ctrl);
+        releaseStream(resolvedId || id, ctrl);
+        if (superseded) return;
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3612,6 +3793,8 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(resolvedId || id, ctrl);
     // The stream is running; whatever happens to it now is reported through the
     // callbacks above, not through this return value.
     return true;
@@ -3739,6 +3922,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);
       // Migrate the formStore entry so the DataVaultFormPanel
@@ -3775,8 +3959,8 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
-    // Same generation guard the other three stream sites carry, in the same
-    // order: generation → release → (`cancelled` bail, where the transport
+    // Same superseded guard the other three stream sites carry, in the same
+    // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
     // — that is a claim about today's server, while onEvent below pushes
     // through the same `updateLiveStepsAndDrainQueue` and `reduceStream` as
@@ -3789,14 +3973,7 @@ function AppCore() {
     // Either way the composer stops redirecting, the next send is queued
     // behind a turn that cannot complete, and it sits there until the
     // server's 300 s question timeout.
-    //
-    // The counter is deliberately global rather than per conversation: there
-    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
-    // live, and the sole bump site (handleStopStream) explicitly releases the
-    // conversation it just stopped. Making it per conversation would buy
-    // nothing while one-stream-at-a-time holds.
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamDataVaultSubmission({
+    const vaultCtrl = streamDataVaultSubmission({
       formId,
       // Pass the local id only when it's a real server id — otherwise
       // send null so the server mints a fresh canonical id. (The
@@ -3809,7 +3986,7 @@ function AppCore() {
       name,
       method,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
@@ -3848,7 +4025,7 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         if (sid) adoptServerId(sid);
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
@@ -3863,9 +4040,11 @@ function AppCore() {
         }
       },
       onDone(sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
+        releaseStream(resolvedId || id, vaultCtrl);
+        if (superseded) return;
         if (sid) adoptServerId(sid);
-        activeStreamCtrlRef.current = null;
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
@@ -3898,18 +4077,21 @@ function AppCore() {
         fetchDatasources()
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
+        reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(resolvedId);
       },
       // No `cancelled` bail here, unlike the other three sites: this
       // transport's onError takes a message only, with no event/code to
-      // inspect. An abort therefore lands as a plain error — but the
-      // generation guard above already swallows it, because the only thing
-      // that aborts this stream is handleStopStream, which bumps first.
+      // inspect. An abort therefore lands as a plain error — but the superseded
+      // check swallows it, because the only things that abort this stream reap
+      // its record first.
       onError(message) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
+        releaseStream(resolvedId || id, vaultCtrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         setTasks((prev) => prev.map((t) => {
@@ -3923,6 +4105,11 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
     });
+    activeStreamCtrlRef.current = vaultCtrl;
+    // No setStreamPad: the probe does emit scratchpad events on this stream,
+    // but this path never tracked the open pad, so Stop cannot cancel a probe
+    // cell. It used to reach the shared ref and cancel someone else's instead.
+    registerStream(resolvedId || id, vaultCtrl);
   };
 
   const setSetting = (key, value) => {
@@ -4354,8 +4541,11 @@ function AppCore() {
       setActiveTaskId(null);
       if (routeRef.current === 'task') setRoute('home');
     }
+    // The project's artifacts went with its directory.
+    setArtifacts((prev) => withoutProjectArtifacts(prev, project));
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
+    reloadArtifacts();
     fetchSessions().then((data) => {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }).catch(() => {});
@@ -4578,6 +4768,33 @@ function AppCore() {
     },
   };
 
+  // Desktop corner button. Each Appearance switch gates only its own control
+  // (ENG-3201): both on opens Display settings, one on flips just that one.
+  const displayToggle = (() => {
+    switch (displayToggleMode(settings)) {
+      case 'menu':
+        return {
+          label: 'Display settings',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setThemeModalOpen(true),
+        };
+      case 'theme':
+        return {
+          label: 'Toggle dark/light mode',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
+        };
+      case 'style':
+        return {
+          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          icon: Ico.gamepad(15),
+          onClick: () => setSkin(nextToggledSkin(skin)),
+        };
+      default:
+        return null;
+    }
+  })();
+
   // The app chrome — sidebar, content column, modals. Still holds the
   // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
   // via context.
@@ -4599,8 +4816,8 @@ function AppCore() {
         isMobile — MobileShell replaces it with a mobile drawer below 640.
       */}
       {/* Narrow-band popout backdrop — dims content behind the slid-in
-          sidebar. Same 320ms curve as the drawer so the two read as one
-          motion (the old overlay used mismatched 280/380ms durations). */}
+          sidebar. Same --dur-layout timing as the drawer so the two read as
+          one motion. */}
       {sidebarPopout && !isMobile && (
         <div
           onClick={() => setNavPopoutOpen(false)}
@@ -4620,7 +4837,7 @@ function AppCore() {
             WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
-            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+            transition: 'opacity var(--dur-layout) var(--ease-out)',
           }}
         />
       )}
@@ -4628,21 +4845,15 @@ function AppCore() {
       {/* Code has one deliberate entry point while it is opt-in: Settings.
           Keeping this corner control exclusively about appearance prevents a
           hidden product from leaking into ordinary Cowork. */}
-      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+      {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+          <Tooltip content={displayToggle.label}>
             <button
-              onClick={() => {
-                if (settings.show8bitToggle === false) {
-                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                } else {
-                  setThemeModalOpen(true);
-                }
-              }}
-              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              onClick={displayToggle.onClick}
+              aria-label={displayToggle.label}
               className="floating-toggle"
             >
-              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              {displayToggle.icon}
             </button>
           </Tooltip>
         </div>
@@ -4652,11 +4863,11 @@ function AppCore() {
       <div
         style={sidebarPopout ? {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
-          // 320ms curve as the scrim above. Docked (display:contents)
+          // timing as the scrim above. Docked (display:contents)
           // otherwise — a wide desktop viewport with Coding Mode off.
           position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
           transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          transition: 'transform var(--dur-layout) var(--ease-out)',
           willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
@@ -4676,7 +4887,7 @@ function AppCore() {
           activeWorkspace={effectiveWorkspaceMode}
           showWorkspaceSwitch={codeModeEnabled}
           activeCodeRoute={effectiveWorkspaceMode === 'code'
-            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            ? codeManagementRoute
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4684,7 +4895,7 @@ function AppCore() {
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeManagementRoute
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4698,6 +4909,7 @@ function AppCore() {
           onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
+          onOpenCodingTasks={() => openCodingTasks()}
           onOpenCodingConnectors={openCodingConnectors}
           onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
@@ -4828,6 +5040,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            onPrefillConsumed={() => setComposerPrefill(null)}
             codingModeEnabled={false}
           />
         )}
@@ -4970,7 +5183,7 @@ function AppCore() {
           <ProjectsView
             projects={projects}
             selectedProject={selectedProjectForView}
-            loading={projectDetailResolving}
+            loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5086,6 +5299,8 @@ function AppCore() {
         {route === 'artifacts' && (
           <ArtifactsView
             artifacts={artifacts}
+            onArtifactChanged={handleArtifactChanged}
+            loading={!artifactsLoaded}
             projects={projects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
@@ -5139,7 +5354,7 @@ function AppCore() {
             projects={projects}
             kind={route}
             project={selectedProject}
-            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
+            onRefreshArtifacts={reloadArtifacts}
             agentLabel={agentLabel}
           />
         )}
@@ -5158,6 +5373,8 @@ function AppCore() {
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
+              tasksOpen={codeTasksOpen}
+              tasksProjectId={codeTasksProjectId}
               connectorsOpen={codeConnectorsOpen}
               skillsOpen={codeSkillsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
@@ -5169,10 +5386,12 @@ function AppCore() {
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
               onOpenProjects={openCodingProjects}
+              onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
+              onAttentionSelect={selectCodingSession}
             />
           </div>
         )}
@@ -5236,7 +5455,7 @@ function AppCore() {
                       color: 'var(--ink-3)',
                       fontFamily: 'var(--font-body)', fontSize: 12.5,
                       cursor: 'pointer', flexShrink: 0,
-                      transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                      transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease, border-color var(--dur-hover) ease',
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
@@ -5282,6 +5501,7 @@ function AppCore() {
         onClose={() => setSearchOpen(false)}
         onSearch={searchCowork}
         onSelect={handleSearchSelect}
+        recents={searchOpen ? searchRecents(tasks, projects) : undefined}
       />
 
       <ConnectorPicker
@@ -5422,7 +5642,7 @@ function AppCore() {
                   color: 'var(--ink)',
                   fontFamily: 'var(--font-body)', fontSize: 13.5,
                   cursor: 'pointer', textAlign: 'left',
-                  transition: 'background 120ms ease',
+                  transition: 'background var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}

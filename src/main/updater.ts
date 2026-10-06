@@ -1,7 +1,7 @@
 // Unified update orchestrator for the Electron desktop app.
 // Coordinates UI bundle (OTA) and server (cowork-server) updates.
 // Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
-// env-only escape hatch (UI_UPDATE_MODE in ~/.anton/.env), not a user
+// env-only escape hatch (UI_UPDATE_MODE in the Cowork home's .env), not a user
 // setting. Applied together — server first, then UI, then window reload.
 
 import { app, BrowserWindow } from 'electron';

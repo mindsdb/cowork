@@ -731,6 +731,10 @@ export interface ShellAutoUpdateSnapshot {
   errorCode?: string;
   errorMessage?: string;
   disabledReason?: string;
+  trigger?: 'boot' | 'periodic' | 'manual' | 'retry';
+  /** Whether the update downloaded before the last relaunch was applied. Absent
+   *  on older shells. */
+  lastInstall?: { applied: boolean; version: string; expected: string };
 }
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
@@ -822,7 +826,11 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
 export type OAuthConnectOpts =
-  | { engine: string; name?: string }
+  // extraFields carries a connector's own non-OAuth required fields declared
+  // alongside browser_oauth_builtin (e.g. Google Ads' developer_token) —
+  // persisted into the saved connection's values, same as the web redirect
+  // flow's extraFields already does via startConnectorOAuth.
+  | { engine: string; name?: string; extraFields?: Record<string, string> }
   | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number; tokenAuthStyle?: 'body' | 'basic' };
 
 export interface OAuthConnectResult {

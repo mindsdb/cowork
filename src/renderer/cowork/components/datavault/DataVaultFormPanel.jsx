@@ -35,10 +35,11 @@ const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
 // The web-fallback OAuth routes' "service" slug and the "X connected"
 // success title both come from the connector's own spec (oauth.service_id,
-// label) rather than a hardcoded per-engine map, so any OAuth-builtin
-// connector works here without a code change.
-function getBrowserOAuthMethod(spec) {
-  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
+// label) rather than a hardcoded per-engine map, so any OAuth connector works
+// here without a code change. Looked up by the method actually chosen: the
+// OAuth method isn't always `browser_oauth_builtin` (HubSpot's is `mcp`).
+function getOAuthMethod(spec, methodId) {
+  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null) || null;
 }
 
 const FONT_BODY = 'var(--font-body)';
@@ -285,8 +286,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
 
     // Built-in browser OAuth — user clicked Submit after filling any
-    // required fields (e.g. developer token for Google Ads).
-    if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
+    // required fields (e.g. developer token for Google Ads). 'mcp' drives
+    // the identical host.oauthConnect() PKCE call — HubSpot's MCP Auth App
+    // (ENG-487) is OAuth 2.1 + PKCE with a fixed client_id/secret, same
+    // shape as browser_oauth_builtin, just a different method id since it
+    // authenticates against HubSpot's MCP server rather than its REST API.
+    if ((authMethod === 'browser_oauth_builtin' || authMethod === 'mcp') && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const providerLabel = providerNameFromSpec(spec);
       const successTitle = `${providerLabel} connected`;
@@ -303,7 +308,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           form_error: null,
         });
         try {
-          const result = await host.oauthConnect({ engine, name: values?.label || '' });
+          const result = await host.oauthConnect({ engine, name: values?.label || '', extraFields: values || {} });
           if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
           setBusy(false);
           try { await fetchDatasources(); } catch { /* best effort */ }
@@ -324,8 +329,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
 
       // Web fallback — server-side redirect flow.
-      const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
-      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+      const serviceId = getOAuthMethod(spec, authMethod)?.oauth?.service_id;
+      if (!serviceId) {
+        setError(`No OAuth configuration for "${engine}".`);
+        setBusy(false);
+        return;
+      }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
         if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
@@ -710,8 +719,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         boxShadow: highlighted
           ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
           : 'none',
-        transition: 'box-shadow 180ms ease',
-        animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+        transition: 'box-shadow var(--dur-hover) ease',
+        animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
       }}
     >
       {/* Header bar — during the connect flow it's the
@@ -732,7 +741,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             style={{
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
-              transition: 'background 120ms ease',
+              transition: 'background var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -756,7 +765,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onClick={handleClose}
             aria-label="Close form"
             className="shrink-0 w-[38px] self-stretch bg-transparent border-0 text-ink-4 inline-grid place-items-center cursor-pointer"
-            style={{ transition: 'color 140ms ease, background 140ms ease' }}
+            style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
           >
@@ -842,7 +851,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 style={{
                   background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
                   border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+                  animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
                 }}
               >
                 <span
@@ -863,7 +872,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     onClick={() => setDismissedStatus(spec.status_text)}
                     aria-label="Dismiss status"
                     className="w-[20px] h-[20px] rounded-[5px] bg-transparent border-0 p-0 text-ink-4 inline-grid place-items-center cursor-pointer flex-[0_0_20px]"
-                    style={{ transition: 'color 120ms ease, background 120ms ease' }}
+                    style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
@@ -880,7 +889,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               userLabel={!spec._is_success ? userLabel : undefined}
               onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
-                if (methodId !== 'browser_oauth_builtin') return;
+                // 'mcp' (HubSpot, ENG-487) drives the identical zero-field
+                // auto-start flow as browser_oauth_builtin — found in code
+                // review: this gate wasn't widened alongside the primary
+                // submit handler's, so selecting HubSpot's recommended hero
+                // silently required an extra Submit click instead of the
+                // one-click flow every other zero-field connector gets.
+                if (methodId !== 'browser_oauth_builtin' && methodId !== 'mcp') return;
                 // Methods with fields wait for Submit — handleAction takes over.
                 const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
                 if (method?.fields?.length) return;
@@ -907,9 +922,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   return;
                 }
 
-                // Web fallback
+                // Web fallback — server-side redirect flow.
                 const serviceId = method?.oauth?.service_id;
-                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+                if (!serviceId) {
+                  setError(`No OAuth configuration for "${engine}".`);
+                  setBusy(false);
+                  return;
+                }
                 try {
                   const result = await startConnectorOAuth(serviceId);
                   if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);

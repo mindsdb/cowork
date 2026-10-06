@@ -114,6 +114,9 @@ export function Combobox({
     <BaseCombobox.Root
       items={groups}
       value={selected}
+      // No null guard needed, unlike Select (ENG-2416): Base UI's Combobox
+      // only changes the value on user action, never when the item list
+      // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       open={open}
       onOpenChange={onOpenChange}

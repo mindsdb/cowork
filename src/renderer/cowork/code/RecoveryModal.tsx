@@ -1,7 +1,9 @@
 import { Laptop, RotateCcw } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
+import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
+import { RadioGroup, Radio } from '../components/ui/RadioGroup';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import type { RecoveryOption, RecoveryPlan } from './api';
 
@@ -48,43 +50,43 @@ export function RecoveryModal({
         onClose={busy ? undefined : onClose}
       />
       <ModalBody>
-        <div className="code-recovery-options" role="radiogroup" aria-label="Computer for resumed task">
-          {plan?.options.map((option) => {
-            const active = option.computer.id === selectedComputerId;
-            return (
-              <button
-                type="button"
-                key={option.computer.id}
-                role="radio"
-                aria-checked={active}
-                className={`code-recovery-option${active ? ' is-selected' : ''}`}
-                onClick={() => onSelect(option.computer.id)}
-                disabled={busy}
-              >
-                <span className="code-recovery-option__icon"><Laptop size={17} strokeWidth={1.6} /></span>
-                <span className="code-recovery-option__copy">
-                  <span className="code-recovery-option__title">
-                    <strong>{option.computer.name}</strong>
-                    {option.recommended && <span className="code-recovery-option__recommended">Recommended</span>}
-                  </span>
-                  <span className="code-recovery-option__meta">
-                    {platformName(option.computer.capabilities.platform)}
-                    <span aria-hidden="true">·</span>
-                    {option.mode === 'restore' ? 'Saved working copy' : 'Fresh working copy'}
-                  </span>
-                  <span className="code-recovery-option__detail">{option.detail}</span>
+        <RadioGroup
+          className="code-recovery-options"
+          aria-label="Computer for resumed task"
+          value={selectedComputerId}
+          onValueChange={onSelect}
+          disabled={busy}
+        >
+          {plan?.options.map((option) => (
+            <Radio
+              key={option.computer.id}
+              value={option.computer.id}
+              variant="card"
+              size="sm"
+              indicator="end"
+            >
+              <span className="code-recovery-option__icon"><Laptop size={17} strokeWidth={1.6} /></span>
+              <span className="code-recovery-option__copy">
+                <span className="code-recovery-option__title">
+                  <strong>{option.computer.name}</strong>
+                  {option.recommended && <Badge variant="muted" size="sm">Recommended</Badge>}
                 </span>
-                <span className="code-recovery-option__radio" aria-hidden="true" />
-              </button>
-            );
-          })}
+                <span className="code-recovery-option__meta">
+                  {platformName(option.computer.capabilities.platform)}
+                  <span aria-hidden="true">·</span>
+                  {option.mode === 'restore' ? 'Saved working copy' : 'Fresh working copy'}
+                </span>
+                <span className="code-recovery-option__detail">{option.detail}</span>
+              </span>
+            </Radio>
+          ))}
           {!plan?.options.length && (
             <div className="code-recovery-empty">
               <RotateCcw size={18} strokeWidth={1.5} />
               <div><strong>No compatible computer is online</strong><span>Bring the original computer online or connect another compatible computer.</span></div>
             </div>
           )}
-        </div>
+        </RadioGroup>
         {selected?.mode === 'recreate' && (
           <Alert variant="warning">
             This starts from the saved repository revisions. Unpushed changes on the previous computer cannot move with the task.

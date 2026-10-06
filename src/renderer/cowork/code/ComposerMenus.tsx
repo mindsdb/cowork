@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import type { EngineCommand, InputReference, QueuedInstruction } from './api';
+import { MoreNotices } from './ComposerLip';
 
 
 export function PromptQueue({
@@ -9,12 +10,17 @@ export function PromptQueue({
   busy,
   onSteer,
   onRemove,
+  more = 0,
+  onShowMore = () => {},
 }: {
   items: QueuedInstruction[];
   active: boolean;
   busy: boolean;
   onSteer: (instructionId: string) => Promise<void>;
   onRemove: (instructionId: string) => Promise<void>;
+  /** Notices waiting behind the queue, which holds the composer lip's place. */
+  more?: number;
+  onShowMore?: () => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -49,6 +55,7 @@ export function PromptQueue({
           </div>
         </div>
       ))}
+      {more > 0 && <span className="code-prompt-queue__more"><MoreNotices count={more} onShow={onShowMore} /></span>}
     </div>
   );
 }

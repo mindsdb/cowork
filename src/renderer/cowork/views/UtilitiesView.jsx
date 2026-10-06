@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
+import { Alert, Button, Card, Field, EmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
@@ -26,10 +26,6 @@ const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
   publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
-
-function EmptyState({ children }) {
-  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
-}
 
 function credentialTemplate(engineDef) {
   return Object.fromEntries(activeCredentialFields(engineDef).map((field) => [field.name, field.default || '']));
@@ -92,7 +88,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
           keep the plain header here. */}
       {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
       {status && <Alert variant="danger" role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Alert>}
-      {!data ? <EmptyState>Loading…</EmptyState> : null}
+      {!data ? <EmptyState size="sm" title="Loading…" /> : null}
       {data && kind === 'memory' && (
         <MemoryView
           data={data}
@@ -247,7 +243,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
+          {totalFiles === 0 && <EmptyState size="sm" title="No memory entries found." />}
         </Card>
         <div className="scroll-clean overflow-y-auto min-h-0">
           {editing === 'edit' && selected ? (
@@ -316,7 +312,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
             </>
           ) : (
             <div className="h-full flex items-center justify-center">
-              <UiEmptyState description="Select a memory entry to inspect it." />
+              <EmptyState description="Select a memory entry to inspect it." />
             </div>
           )}
         </div>
@@ -466,7 +462,7 @@ function ConnectView({ data, setData, setStatus }) {
             </div>
             <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
-        )) : <EmptyState>No data vault connections found.</EmptyState>}
+        )) : <EmptyState size="sm" title="No data vault connections found." />}
       </div>
       <form onSubmit={save} className="flex flex-col gap-[10px]">
         <Select
@@ -573,7 +569,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
-      )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
+      )) : <EmptyState size="sm" title="No HTML artifacts found in output folders." />}
       {(data.history || []).length > 0 && (
         <div className="mt-[18px]">
           <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>

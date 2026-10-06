@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
 // (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
@@ -10,9 +13,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // hostState.isElectron is a hoisted mutable so a test can flip the surface to
 // web before importAnalytics() (SURFACE/LIB are read at import time); getters
 // keep the mock reading the current value on each fresh import.
-const { getAccessToken, checkInstall, hostState } = vi.hoisted(() => ({
+const { getAccessToken, checkInstall, getVersionInfo, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   checkInstall: vi.fn(),
+  getVersionInfo: vi.fn(),
   hostState: { isElectron: true },
 }));
 vi.mock('../../platform/host', () => ({
@@ -22,6 +26,7 @@ vi.mock('../../platform/host', () => ({
     },
     getAccessToken,
     checkInstall,
+    getVersionInfo,
   },
   get isElectron() {
     return hostState.isElectron;
@@ -74,6 +79,7 @@ beforeEach(() => {
   hostState.isElectron = true;
   getAccessToken.mockReset().mockResolvedValue(null); // unauthenticated by default
   checkInstall.mockReset().mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+  getVersionInfo.mockReset().mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: null });
   try {
     window.localStorage.clear();
   } catch {
@@ -344,6 +350,32 @@ describe('trackBootScreenResolved boot event (ENG-921)', () => {
     expect(body.properties.server_deps_ready).toBe(false);
   });
 
+  it('stamps the shell version and ring, which OTA does not move with app_version', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockResolvedValue({ app: '2.26.9.28.1', ui: '2.26.9.30.1', source: 'ota', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.build_kind).toBe('prod');
+    expect(body.properties.shell_version).toBe('2.26.9.28.1');
+  });
+
+  it('still fires without shell facts when the version bridge throws', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockRejectedValue(new Error('old shell'));
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.build_kind).toBeNull();
+    expect(body.properties.shell_version).toBeNull();
+  });
+
   it('is a no-op off Electron (the web SPA has no local server to install)', async () => {
     hostState.isElectron = false; // web SPA
     const fetchMock = mockFetch();
@@ -353,6 +385,80 @@ describe('trackBootScreenResolved boot event (ENG-921)', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(checkInstall).not.toHaveBeenCalled();
+  });
+});
+
+describe('trackShellUpdatePhase', () => {
+  const snapshot = (over = {}) => ({ phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.260928.1', ...over });
+  const sent = (fetchMock) => fetchMock.mock.calls
+    .map((c) => JSON.parse(c[1].body))
+    .filter((b) => b.event === 'shell_update_phase')
+    .map((b) => b.properties);
+
+  beforeEach(() => window.sessionStorage.clear());
+
+  it('sends each milestone once, even when a reload re-reads the same snapshot', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'checking', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'ready-to-install', targetVersion: '2.260930.1', trigger: 'boot' }));
+    trackShellUpdatePhase(snapshot({ phase: 'ready-to-install', targetVersion: '2.260930.1', trigger: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({
+      phase: 'ready-to-install', channel: 'prod', mode: 'auto', trigger: 'boot',
+      current_version: '2.260928.1', target_version: '2.260930.1', recoverable: null,
+    });
+  });
+
+  it('counts an auto-mode download as discovery, once, even when manual mode shows available first', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'available', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', targetVersion: '2.261001.1', trigger: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(2));
+    expect(sent(fetchMock).map((p) => [p.phase, p.target_version, p.trigger])).toEqual([
+      ['available', '2.260930.1', 'periodic'],
+      ['available', '2.261001.1', 'boot'],
+    ]);
+  });
+
+  it('reports a failure with its code and whether it can be retried', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'failed', targetVersion: '2.260930.1', errorCode: 'artifact-verification-failed', recoverable: false }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({ phase: 'failed', error_code: 'artifact-verification-failed', recoverable: false });
+  });
+
+  it('reports the relaunch verdict once, and not again as a failed phase', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1' };
+
+    trackShellUpdatePhase(snapshot({ phase: 'failed', errorCode: 'install-not-applied', recoverable: true, targetVersion: '2.260930.1', lastInstall }));
+    trackShellUpdatePhase(snapshot({ phase: 'idle', lastInstall }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({
+      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied',
+    });
+  });
+
+  it('is a no-op off Electron', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'available', targetVersion: '2.260930.1' }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -640,6 +746,50 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'billing_opened');
     expect(event.properties.trigger).toBe('token_limit');
+  });
+
+  it('billing_opened: every trigger a renderer call site sends is named in the EVENTS vocabulary', () => {
+    /* The comment on EVENTS.BILLING_OPENED is the list a funnel query is
+       written from. A trigger that is sent but not listed there is a cohort
+       nobody knows to filter on, or to exclude. Reads the source, because the
+       vocabulary is a comment and the call sites pass string literals. */
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const rendererRoot = path.resolve(here, '../..');
+    const vocabularyLine = fs.readFileSync(path.join(here, 'analytics.js'), 'utf8')
+      .split('\n')
+      .find((line) => line.includes('BILLING_OPENED:'));
+    const vocabulary = new Set([...vocabularyLine.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+
+    const sent = new Set();
+    for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
+      if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
+      const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
+      // The trigger is the first argument; the second is workspace_mode.
+      for (const call of src.matchAll(/trackBillingOpened\(([^,)]*)/g)) {
+        for (const literal of call[1].matchAll(/'([a-z_]+)'/g)) sent.add(literal[1]);
+      }
+      // Code Mode's recovery cards name their trigger in a table, not a call.
+      for (const entry of src.matchAll(/billingTrigger: '([a-z_]+)'/g)) sent.add(entry[1]);
+    }
+
+    // Guards the sweep itself: a path or regex that matched nothing would pass.
+    expect(sent.has('token_limit')).toBe(true);
+    expect(sent.has('included_allowance_exhausted')).toBe(true);
+    expect([...sent].filter((trigger) => !vocabulary.has(trigger))).toEqual([]);
+  });
+
+  it('billing_opened marks a Code Mode route with workspace_mode and leaves chat routes unmarked', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened('included_allowance_exhausted', 'code');
+    trackBillingOpened('nav');
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [code, chat] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(code.trigger).toBe('included_allowance_exhausted');
+    expect(code.workspace_mode).toBe('code');
+    expect(chat).not.toHaveProperty('workspace_mode');
   });
 
   it('billing_opened records an unnamed trigger as unknown, never as a real one', async () => {
@@ -1110,5 +1260,175 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
       'sso_organization_id'
     );
+  });
+});
+
+describe('Code Mode events', () => {
+  const created = {
+    id: 'task-1',
+    engine_id: 'codex',
+    model: 'gpt',
+    reasoning_effort: 'high',
+    permission_mode: 'workspace_write',
+    task_mode: 'plan',
+    workspace_kind: 'git_worktree',
+    project_id: 'project-1',
+    computer_is_local: true,
+    source_contexts: [{ kind: 'github_issue' }],
+    source_path: '/Users/someone/private-repo',
+    title: 'Fix the customer bug',
+  };
+
+  it('code_view_opened fires with the standard stamps', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeViewOpened } = await importAnalytics();
+
+    trackCodeViewOpened();
+
+    const event = await sentEvent(fetchMock, 'code_view_opened');
+    expect(event.properties.surface).toBe('desktop');
+  });
+
+  it('code_view_opened fires once per launch, however often Code is reopened', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeViewOpened, trackCodeTaskStarted, resetDeviceIdentity } = await importAnalytics();
+    const opened = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body).event)
+      .filter((event) => event === 'code_view_opened').length;
+
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    // A later event proves the repeats had their chance to send and did not.
+    trackCodeTaskStarted(created);
+    await sentEvent(fetchMock, 'code_task_started');
+    expect(opened()).toBe(1);
+
+    // A sign-out hands the launch to the next account, whose first visit counts.
+    resetDeviceIdentity();
+    trackCodeViewOpened();
+    await vi.waitFor(() => expect(opened()).toBe(2));
+  });
+
+  it('code_task_started describes the created task without its path or title', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted(created, { origin: 'new', attachmentCount: 2 });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({
+      task_id: 'task-1',
+      origin: 'new',
+      engine_id: 'codex',
+      model: 'gpt',
+      reasoning_effort: 'high',
+      permission_mode: 'workspace_write',
+      task_mode: 'plan',
+      workspace_kind: 'git_worktree',
+      in_project: true,
+      computer_is_local: true,
+      attachment_count: 2,
+      source_context_count: 1,
+    });
+    // A path or task title names a customer's code; neither may leave the app.
+    expect(JSON.stringify(properties)).not.toContain('private-repo');
+    expect(JSON.stringify(properties)).not.toContain('customer bug');
+  });
+
+  it('code_task_started reads a standalone build task as such', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted({ ...created, project_id: null, task_mode: undefined, workspace_kind: 'direct_folder' }, { origin: 'fork' });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({ origin: 'fork', in_project: false, task_mode: 'build', workspace_kind: 'direct_folder' });
+    expect(properties).not.toHaveProperty('attachment_count');
+  });
+
+  it('code_task_started sends nothing for a session without an id', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted(null);
+    trackCodeTaskStarted({});
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('code_task_start_failed carries the server error code and status', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStartFailed } = await importAnalytics();
+    const reason = Object.assign(new Error('refused'), { status: 409, code: 'git_identity_missing' });
+
+    trackCodeTaskStartFailed('new', { engineId: 'codex', model: 'gpt', projectId: null }, reason);
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_start_failed');
+    expect(properties).toMatchObject({
+      origin: 'new', engine_id: 'codex', model: 'gpt', in_project: false, code: 'git_identity_missing', status: 409,
+    });
+  });
+
+  it('code_task_start_failed records a codeless failure as unknown', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStartFailed } = await importAnalytics();
+
+    trackCodeTaskStartFailed('fork', null, new Error('timed out'));
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_start_failed');
+    expect(properties.code).toBe('unknown');
+    expect(properties).not.toHaveProperty('status');
+    expect(properties).not.toHaveProperty('in_project');
+  });
+});
+
+describe('console handoff attribution', () => {
+  it('stamps the handoff on the next agent_session_started only, then clears it', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'classic-snake-game');
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(first.event).toBe('agent_session_started');
+    expect(first.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game' });
+    expect(second.properties).not.toHaveProperty('entry_source');
+    expect(second.properties).not.toHaveProperty('example_id');
+  });
+
+  it('drops the handoff from a task started more than 30 minutes later', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+    const now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      setEntryAttribution('console', 'classic-snake-game');
+      now.mockReturnValue(1_000_000 + 31 * 60 * 1000);
+      trackAgentSessionStarted();
+    } finally {
+      now.mockRestore();
+    }
+
+    const body = await sentEvent(fetchMock, 'agent_session_started');
+    expect(body.properties).not.toHaveProperty('entry_source');
+    expect(body.properties).not.toHaveProperty('example_id');
+  });
+
+  it('composer_ready carries only the source, the example id and whether it was prefilled', async () => {
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', 'classic-snake-game', true);
+    const body = await sentEvent(fetchMock, 'composer_ready');
+
+    expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    // No prompt text rides on the event under any key.
+    expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
   });
 });

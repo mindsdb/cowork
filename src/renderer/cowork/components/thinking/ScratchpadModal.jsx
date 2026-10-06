@@ -143,7 +143,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTabId(t.id)}
-                  className="relative inline-flex items-center gap-2 shrink-0 py-[10px] px-3 bg-transparent border-0 cursor-pointer font-[family-name:var(--font-display)] text-sm font-medium tracking-[0] [transition:color_120ms_ease]"
+                  className="relative inline-flex items-center gap-2 shrink-0 py-[10px] px-3 bg-transparent border-0 cursor-pointer font-[family-name:var(--font-display)] text-sm font-medium tracking-[0] [transition:color_var(--dur-hover)_ease]"
                   // Colour is active-state driven; the hover tint only applies to
                   // inactive tabs, so it stays a conditional JS handler rather
                   // than a CSS :hover (which can't see `active`).
@@ -271,7 +271,7 @@ function CellView({ cell, index, total, focused = false }) {
         // layout so non-focused cells don't shift.
         'border-l-2',
         highlight ? 'border-l-accent bg-surface-2' : 'border-l-transparent',
-        'transition-colors duration-700',
+        'transition-colors duration-[calc(var(--dur-layout)*3.5)]',
       )}
     >
       {/* Two-column grid: step-badge | content. Everything visible
@@ -392,12 +392,12 @@ function CodeToggle({ checked, onChange, label = 'Code' }) {
       aria-checked={!!checked}
       aria-label={checked ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
       onClick={() => onChange?.(!checked)}
-      className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_120ms_ease]"
+      className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_var(--dur-hover)_ease]"
     >
       <span>{label}</span>
       <span
         aria-hidden
-        className="relative inline-block w-8 h-[18px] rounded-full [transition:background_180ms_ease]"
+        className="relative inline-block w-8 h-[18px] rounded-full [transition:background_var(--dur-hover)_ease]"
         style={{
           background: checked
             ? 'var(--accent)'
@@ -405,7 +405,7 @@ function CodeToggle({ checked, onChange, label = 'Code' }) {
         }}
       >
         <span
-          className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(15,16,17,0.18)] [transition:left_180ms_cubic-bezier(0.4,0,0.2,1)]"
+          className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(15,16,17,0.18)] [transition:left_var(--dur-hover)_var(--ease-in-out)]"
           style={{ left: checked ? 16 : 2 }}
         />
       </span>
