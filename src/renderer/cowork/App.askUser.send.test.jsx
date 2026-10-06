@@ -1569,8 +1569,15 @@ describe('Stop on the conversation on screen', () => {
     expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
     expect(tailB.abort).not.toHaveBeenCalled();
 
-    // Beta's tail is still the one its conversation holds, so its Stop reaches it.
+    // Beta still holds the shared slot, so reopening it must not re-attach a
+    // second tail over the one already running.
+    const streamCount = streams.length;
     await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+
+    // Beta's tail is still the one its conversation holds, so its Stop reaches it.
     await emitOn(tailB, { type: 'response.output_text.delta', delta: ' more' });
     spies.cancelResponse.mockClear();
     await user.click(await screen.findByRole('button', { name: /stop/i }));

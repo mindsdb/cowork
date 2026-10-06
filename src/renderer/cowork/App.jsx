@@ -1241,7 +1241,8 @@ function AppCore() {
       activeStreamingTaskIdRef.current = null;
     }
 
-    // Stop frees the shared stream slot with no onDone/onError behind it — the
+    // When the stopped conversation held the shared slot, Stop frees it with no
+    // onDone/onError behind it — the
     // reaped record above silences the aborted run's cancelled callback — so
     // a message queued against a *different* task would strand forever at
     // "N queued · waiting for Anton" with no future turn to release it. Sweep
