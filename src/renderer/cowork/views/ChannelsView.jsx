@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
+import { iconSize } from '../components/ui/Icon';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
@@ -89,7 +90,7 @@ function ChannelLogo({ type, size = 26 }) {
   const [failed, setFailed] = useState(false);
   return (
     <span className="channels-logo" style={{ width: size, height: size }} aria-hidden="true">
-      {failed ? Ico.chats(Math.round(size * 0.6)) : (
+      {failed ? Ico.chats(iconSize(size * 0.6)) : (
         <img
           src={`logos/${type}.svg`}
           alt=""
@@ -313,7 +314,7 @@ function ChannelCard({ plugin, status, onChanged }) {
 
       <div className="channels-actions">
         <Button variant="primary" onClick={connect} disabled={busy || !orgReady || configPending}>
-          {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
+          {Ico.power(14)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
         </Button>
         {configured && caps.supports_verify ? (
           <Button variant="subtle" onClick={testConnection} disabled={busy || !orgReady}>
@@ -361,7 +362,7 @@ export default function ChannelsView() {
         <span>Channels</span>
         <Tooltip content="Refresh">
           <Button variant="subtle" icon onClick={refreshAll} aria-label="Refresh">
-            {Ico.refresh(15)}
+            {Ico.refresh(16)}
           </Button>
         </Tooltip>
       </header>

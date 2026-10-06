@@ -173,7 +173,7 @@ export function ArtifactViewerBody({
                 : 'Preview is truncated.'}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-              {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
+              {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
               {host.isWeb ? 'Download full file' : 'Open full file in OS'}
             </Button>
           </div>

@@ -213,24 +213,24 @@ export function CodeSidebarSessions({
   const menuItems = [
     { heading: <span className="code-sidebar-organize-menu__heading">Organize</span>, id: 'organize-heading' },
     {
-      id: 'organize-project', icon: Ico.folder(13), label: 'Projects', hint: organization === 'project' ? '✓' : undefined,
+      id: 'organize-project', icon: Ico.folder(14), label: 'Projects', hint: organization === 'project' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'project' ? 'true' : undefined },
       onClick: () => updatePreference('project', sortOrder),
     },
     {
-      id: 'organize-list', icon: Ico.list(13), label: 'Task list', hint: organization === 'list' ? '✓' : undefined,
+      id: 'organize-list', icon: Ico.list(14), label: 'Task list', hint: organization === 'list' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'list' ? 'true' : undefined },
       onClick: () => updatePreference('list', sortOrder),
     },
     { separator: true, id: 'organize-separator' },
     { heading: <span className="code-sidebar-organize-menu__heading">Sort</span>, id: 'sort-heading' },
     {
-      id: 'sort-priority', icon: Ico.slider(13), label: 'Priority', hint: sortOrder === 'priority' ? '✓' : undefined,
+      id: 'sort-priority', icon: Ico.slider(14), label: 'Priority', hint: sortOrder === 'priority' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'priority' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'priority'),
     },
     {
-      id: 'sort-updated', icon: Ico.clock(13), label: 'Last updated', hint: sortOrder === 'updated' ? '✓' : undefined,
+      id: 'sort-updated', icon: Ico.clock(14), label: 'Last updated', hint: sortOrder === 'updated' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'updated' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'updated'),
     },
@@ -243,7 +243,7 @@ export function CodeSidebarSessions({
         <Menu
           trigger={(
             <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
-              {Ico.slider(11)}<span>Organize</span>
+              {Ico.slider(12)}<span>Organize</span>
             </Button>
           )}
           items={menuItems}

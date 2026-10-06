@@ -279,7 +279,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       />
       <header className="code-terminal__header">
         <div className="code-terminal__tabs" role="tablist" aria-label="Terminal tabs">
-          <span className="code-terminal__mark" aria-hidden="true">{Ico.code(13)}</span>
+          <span className="code-terminal__mark" aria-hidden="true">{Ico.code(14)}</span>
           {tabs.map((tab) => (
             <div key={tab.id} className={`code-terminal__tab${tab.id === selectedId ? ' is-active' : ''}`}>
               {renamingId === tab.id ? (
@@ -328,7 +328,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
                 disabled={busy}
                 onClick={() => void deleteTerminal(tab.id)}
               >
-                {Ico.close(10)}
+                {Ico.close(12)}
               </Button>
             </div>
           ))}
@@ -352,7 +352,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
           {selected?.status === 'running' ? (
             <Tooltip content="Stop this terminal without closing its tab">
               <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()}>
-                {Ico.stop(11)} Stop terminal
+                {Ico.stop(12)} Stop terminal
               </Button>
             </Tooltip>
           ) : selected && selected.status !== 'stopped' && (
@@ -362,7 +362,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
           )}
           <Tooltip content="Hide terminal panel">
             <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Hide terminal panel">
-              {Ico.close(13)}
+              {Ico.close(14)}
             </Button>
           </Tooltip>
         </div>

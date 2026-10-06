@@ -111,7 +111,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             says the count, so we don't repeat it here. */}
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
+            <span className="inline-flex text-ink-3">{Ico.code(16)}</span>
             <span className="s-h3 text-ink">
               {modalTitle}
             </span>

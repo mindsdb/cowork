@@ -176,7 +176,7 @@ export function InboxCard({
             aria-busy={agentBusy || agentWorking}
             onClick={() => onAddressWithAgent(thread)}
           >
-            {Ico.sparkle(13)}
+            {Ico.sparkle(14)}
             {agentWorking ? 'Agent is working…' : agentBusy ? 'Starting…' : 'Address with agent'}
           </button>
         )}
@@ -200,7 +200,7 @@ export function InboxCard({
             size="md"
             items={[{
               label: 'Delete',
-              icon: Ico.trash(13),
+              icon: Ico.trash(14),
               danger: true,
               onClick: () => onRequestDelete?.({ threadId: thread.id }),
             }]}

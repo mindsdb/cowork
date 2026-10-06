@@ -334,7 +334,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div className="flex items-center gap-0.5 shrink-0">
             <Tooltip content="Open">
-              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
+              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
             </Tooltip>
             <Tooltip content="More actions">
               <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
@@ -358,7 +358,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 
       {/* Footer — project origin + last-updated, divided from the body. */}
       <div className="card__rail flex items-center gap-2 py-[9px] px-4">
-        <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
+        <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
         {canOpenProject ? (
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
             <button
@@ -464,7 +464,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
+      <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
       {canOpenProject ? (
         <HoverActions reveal className="min-w-0 shrink">
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
@@ -523,7 +523,7 @@ function ArtifactActions({ onOpen, menuItems }) {
         items={menuItems}
         label="Artifact menu"
         title="More actions"
-        icon={Ico.moreVert(15)}
+        icon={Ico.moreVert(16)}
         size="sm"
         zIndex={60}
       />
@@ -545,20 +545,20 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
        * opens. The filter below drops it when nothing is shared yet.
        */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
-      icon: Ico.externalLink(13),
+      icon: Ico.externalLink(14),
       onClick: orgMode ? onOpenShared : onOpen,
     },
     // Org only: on Desktop the item above already opens the viewer.
     orgMode && canPreviewOrgDraft(artifact) && {
       id: 'preview',
       label: 'Preview',
-      icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+      icon: (Ico.eye?.(13) || Ico.sparkle(14)),
       onClick: onPreview,
     },
     onReveal && {
       id: 'reveal',
       label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
-      icon: Ico.folder(13),
+      icon: Ico.folder(14),
       onClick: onReveal,
     },
     // Presence of EITHER url, checked without building it: the org draft URL
@@ -566,31 +566,31 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
     onDownload && (artifact?.serveUrl || canDownloadOrgDraft(artifact)) && {
       id: 'download',
       label: 'Download',
-      icon: Ico.download(13),
+      icon: Ico.download(14),
       onClick: onDownload,
     },
     published && {
       id: 'copy-url',
       label: 'Copy URL',
-      icon: Ico.copy(13),
+      icon: Ico.copy(14),
       onClick: onCopyUrl,
     },
     published && artifact.modified && {
       id: 'update',
       label: 'Update',
-      icon: Ico.refresh(13),
+      icon: Ico.refresh(14),
       onClick: onUpdate,
     },
     !published && isPublishableArtifact(artifact) && {
       id: 'publish',
       label: 'Share',
-      icon: Ico.upload(13),
+      icon: Ico.upload(14),
       onClick: onPublish,
     },
     published && {
       id: 'unpublish',
       label: 'Stop sharing',
-      icon: Ico.upload(13),
+      icon: Ico.upload(14),
       onClick: onUnpublish,
     },
     onDelete && { divider: true },
@@ -598,7 +598,7 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
       id: 'delete',
       // See the grid menu's delete for why this is disabled while busy.
       label: busy ? 'Deleting…' : 'Delete artifact',
-      icon: Ico.trash(13),
+      icon: Ico.trash(14),
       danger: true,
       disabled: busy,
       onClick: onDelete,
@@ -1053,21 +1053,21 @@ export default function ArtifactsView({
               items.push({
                 id: 'update',
                 label: busyA ? 'Working…' : 'Update',
-                icon: Ico.refresh(13),
+                icon: Ico.refresh(14),
                 onClick: () => handleUpdate(a),
               });
             }
             items.push({
               id: 'unpublish',
               label: busyA ? 'Working…' : 'Stop sharing',
-              icon: Ico.power(13),
+              icon: Ico.power(14),
               onClick: () => handleUnpublish(a),
             });
           } else if (isHtml) {
             items.push({
               id: 'publish',
               label: busyA ? 'Sharing…' : 'Share',
-              icon: Ico.power(13),
+              icon: Ico.power(14),
               onClick: () => handlePublish(a),
             });
           }
@@ -1078,7 +1078,7 @@ export default function ArtifactsView({
             items.push({
               id: 'preview',
               label: 'Preview',
-              icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+              icon: (Ico.eye?.(13) || Ico.sparkle(14)),
               onClick: () => openViewer(a),
             });
           }
@@ -1100,7 +1100,7 @@ export default function ArtifactsView({
             items.push({
               id: 'open',
               label: orgMode ? 'Open shared link' : 'Open in browser',
-              icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
+              icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(14)),
               /*
                * Awaited like the card's own onOpenPublished above: a
                * synchronous try around an async bridge call cannot reach the
@@ -1122,7 +1122,7 @@ export default function ArtifactsView({
             items.push({
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
-              icon: Ico.folder(13),
+              icon: Ico.folder(14),
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
@@ -1136,7 +1136,7 @@ export default function ArtifactsView({
             items.push({
               id: 'download',
               label: 'Download',
-              icon: Ico.download(13),
+              icon: Ico.download(14),
               onClick: () => downloadWithFeedback(a, toastManager),
             });
           }
@@ -1149,7 +1149,7 @@ export default function ArtifactsView({
               // call, but a menu item that still looks clickable reads as "nothing
               // happened" and invites the second click.
               label: busyA ? 'Deleting…' : 'Delete',
-              icon: Ico.trash(13),
+              icon: Ico.trash(14),
               danger: true,
               disabled: busyA,
               onClick: () => handleTrash(a),

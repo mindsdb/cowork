@@ -769,7 +769,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
           >
-            {Ico.close ? Ico.close(13) : <span className="text-[16px] leading-none">×</span>}
+            {Ico.close ? Ico.close(14) : <span className="text-[16px] leading-none">×</span>}
           </button>
         </Tooltip>
       </div>
@@ -876,7 +876,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
-                    {Ico.close ? Ico.close(11) : <span className="text-base leading-none">×</span>}
+                    {Ico.close ? Ico.close(12) : <span className="text-base leading-none">×</span>}
                   </button>
                 </Tooltip>
               </div>

@@ -69,7 +69,7 @@ export function WorkItemPicker({
           <strong>Start from work</strong>
           <span>{query.trim() ? 'Search issues and pull requests' : 'Recently updated and assigned to you'}</span>
         </div>
-        <Button icon size="sm" variant="subtle" aria-label="Close work picker" onClick={onClose} disabled={busy}>{Ico.close(13)}</Button>
+        <Button icon size="sm" variant="subtle" aria-label="Close work picker" onClick={onClose} disabled={busy}>{Ico.close(14)}</Button>
       </header>
 
       {hasConnections ? (

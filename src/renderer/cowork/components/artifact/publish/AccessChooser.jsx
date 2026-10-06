@@ -229,7 +229,7 @@ export function AccessChooser({
               <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
                 aria-label={draft._reveal ? 'Hide password' : 'Show password'}
                 className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-                {draft._reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+                {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
               </button>
             </Tooltip>
           </div>

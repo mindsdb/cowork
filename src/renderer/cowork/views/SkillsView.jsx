@@ -374,7 +374,7 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     >
       {Ico.plus(14)}
       <span>Create skill</span>
-      <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(11)}</span>
+      <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(12)}</span>
     </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;

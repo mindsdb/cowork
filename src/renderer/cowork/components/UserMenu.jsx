@@ -34,6 +34,7 @@ import {
   Settings,
   UsersRound,
 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import Menu from './ui/Menu';
 import Spinner from './ui/Spinner';
 import { useToastManager } from './ui/Toast';
@@ -51,10 +52,10 @@ import {
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
 
-const icon = (I) => <I size={14} strokeWidth={1.5} aria-hidden="true" />;
+const icon = (I) => <Icon of={I} size={14} />;
 
 // Right-aligned ↗ on items that leave the app for the OS browser.
-const EXTERNAL_HINT = <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />;
+const EXTERNAL_HINT = <Icon of={ArrowUpRight} size={12} />;
 const OPENS_IN_BROWSER = 'Opens in your browser';
 
 // `beforeOpen` runs just before the jump out, for the one destination that is
@@ -160,7 +161,7 @@ export function UserMenu({ user, onOpenSettings }) {
     <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
   );
 
-  const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+  const activeRowHint = <Icon of={Check} size={14} className="text-accent" />;
   // Same slot as the check, so the row acknowledges the click in the place the
   // answer will appear. Labelled for screen readers, which the check is not:
   // the check reads from the row it sits on, where this reports a state.
@@ -288,7 +289,7 @@ export function UserMenu({ user, onOpenSettings }) {
         )}
       </span>
       <span className="inline-flex shrink-0 text-ink-3">
-        <EllipsisVertical size={15} strokeWidth={1.5} aria-hidden="true" />
+        <Icon of={EllipsisVertical} size={16} />
       </span>
     </button>
   );

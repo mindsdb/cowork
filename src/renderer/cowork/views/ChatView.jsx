@@ -102,7 +102,7 @@ function formatMetaTime(value) {
 // fade in on hover of the parent turn, but stay visible when `isLast`
 // is true (matching Claude's pattern where the most recent exchange
 // always shows its toolbar).
-const ICON_SZ = 15;
+const ICON_SZ = 16;
 function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
@@ -264,7 +264,7 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
       }`}
     >
       <span className="inline-flex items-center">
-        {typeof renderIcon === 'function' ? renderIcon(13) : null}
+        {typeof renderIcon === 'function' ? renderIcon(14) : null}
       </span>
       {label}
     </button>
@@ -273,9 +273,9 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
 
 function userTurnAttachmentIcon(a) {
   const src = a.source || a.kind || 'file';
-  if (src === 'connector') return Ico.link(13);
-  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(13);
-  return Ico.doc(13);
+  if (src === 'connector') return Ico.link(14);
+  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(14);
+  return Ico.doc(14);
 }
 
 function userTurnAttachmentMeta(a) {
@@ -2046,7 +2046,7 @@ export default function ChatView({
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
-            {Ico.panelExpandLeft(15)}
+            {Ico.panelExpandLeft(16)}
           </button>
         </Tooltip>
 
@@ -2169,7 +2169,7 @@ export default function ChatView({
               )}
               {task.pinned && !titleEditing && (
                 <span aria-hidden className="inline-flex flex-shrink-0 text-accent">
-                  {Ico.pin(11)}
+                  {Ico.pin(12)}
                 </span>
               )}
               {!titleEditing && (
@@ -2197,7 +2197,7 @@ export default function ChatView({
                     }}
                     className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
-                    {Ico.moreVert(13)}
+                    {Ico.moreVert(14)}
                   </button>
                 </Tooltip>
               )}
@@ -2880,7 +2880,7 @@ export default function ChatView({
                         onClick={() => onRemoveFromQueue?.(q.id)}
                         aria-label="Remove from queue"
                         className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
-                      >{Ico.close(11)}</button>
+                      >{Ico.close(12)}</button>
                     </Tooltip>
                   </span>
                 ))}
@@ -2975,7 +2975,7 @@ export default function ChatView({
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
             >
-              {Ico.panelCollapseRight(15)}
+              {Ico.panelCollapseRight(16)}
             </button>
           </Tooltip>
         </div>

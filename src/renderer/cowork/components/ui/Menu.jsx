@@ -49,6 +49,7 @@
 import { useEffect, useMemo } from 'react';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { ChevronRight } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import { OutsidePressLayer } from './OutsidePressLayer';
@@ -94,7 +95,7 @@ const itemVariants = cva(
 
 // Chevron for submenu triggers. Lucide directly so the primitive stays
 // free of any app-icon dependency.
-const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_RIGHT = <Icon of={ChevronRight} size={12} />;
 
 // Maps the item array to Base UI nodes. Recursive so `submenu` items
 // nest cleanly. `z` rises by one per level so deeper fly-outs always

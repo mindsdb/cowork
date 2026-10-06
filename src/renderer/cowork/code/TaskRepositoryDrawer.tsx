@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { GitBranch, Folder, RefreshCw } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import { RadioGroup, Radio } from '../components/ui/RadioGroup';
@@ -137,7 +138,7 @@ export function TaskRepositoryDrawer({
             </label>
             <Input
               id={branchId}
-              leading={<GitBranch size={15} />}
+              leading={<Icon of={GitBranch} size={16} />}
               placeholder="feat/repo-status"
               value={draft.branch || ''}
               onChange={(value) => setDraft({ ...draft, branch: value || null })}
@@ -189,7 +190,7 @@ export function TaskRepositoryDrawer({
                   />
                   <span>
                     <strong>
-                      {resource.kind === 'local_folder' && <Folder size={14} />} {resource.name}
+                      {resource.kind === 'local_folder' && <Icon of={Folder} size={14} />} {resource.name}
                     </strong>
                     <small>
                       {location ||
@@ -238,7 +239,7 @@ export function TaskRepositoryDrawer({
                 )}
               </span>
               <Button size="sm" variant="subtle" disabled={loading || checkingBranches} onClick={onRefresh}>
-                <RefreshCw size={13} />
+                <Icon of={RefreshCw} size={14} />
                 Refresh
               </Button>
             </div>

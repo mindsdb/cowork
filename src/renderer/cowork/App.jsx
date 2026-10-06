@@ -4775,19 +4775,19 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
         return {
           label: 'Toggle dark/light mode',
-          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
           onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
         };
       case 'style':
         return {
           label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
-          icon: Ico.gamepad(15),
+          icon: Ico.gamepad(14),
           onClick: () => setSkin(nextToggledSkin(skin)),
         };
       default:

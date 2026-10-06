@@ -1,4 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 import { Badge, Button, Meter } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
@@ -33,7 +34,7 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
       {action.label}
-      <ExternalLink size={12} strokeWidth={1.5} aria-hidden="true" />
+      <Icon of={ExternalLink} size={12} />
     </Button>
   );
 }
@@ -184,7 +185,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>
-              <RefreshCw size={12} strokeWidth={1.5} aria-hidden="true" />
+              <Icon of={RefreshCw} size={12} />
               Try again
             </Button>
           )}

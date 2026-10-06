@@ -45,7 +45,7 @@ export function ProjectConnectedTools({
             );
           })}
           <div className="code-project-list__actions">
-            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(13)} Manage connectors</Button>
+            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(14)} Manage connectors</Button>
           </div>
         </div>
       ) : (

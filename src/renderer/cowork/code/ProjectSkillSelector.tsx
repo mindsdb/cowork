@@ -127,18 +127,18 @@ export function ProjectSkillSelector({
       }}
     >
       <summary>
-        <span className="code-project-skill-picker__icon" aria-hidden="true">{Ico.cube(15)}</span>
+        <span className="code-project-skill-picker__icon" aria-hidden="true">{Ico.cube(16)}</span>
         <span className="code-project-skill-picker__summary">
           <strong>{pickerHeading}</strong>
           <small>{loading ? 'Loading engineering skills…' : selectionSummary}</small>
         </span>
-        <span className="code-project-skill-picker__chevron" aria-hidden="true">{Ico.chevDown(11)}</span>
+        <span className="code-project-skill-picker__chevron" aria-hidden="true">{Ico.chevDown(12)}</span>
       </summary>
 
       <div className="code-project-skill-picker__panel">
         {teamItems.length + maintainedItems.length > 0 && (
           <label className="code-project-skill-picker__search">
-            <span aria-hidden="true">{Ico.search(13)}</span>
+            <span aria-hidden="true">{Ico.search(14)}</span>
             <Input value={query} onChange={setQuery} placeholder="Search Code skills" aria-label="Search Code skills" />
           </label>
         )}
