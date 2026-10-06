@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
-  CollectionState, FilterChips, FilterMenu, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, SortMenu,
+  CollectionState, FilterChips, FilterMenu, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, SortPill,
   StatusDot, useCollectionShortcut, type Filter, type StatusTone,
 } from '../components/collection';
 import Alert from '../components/ui/Alert';
@@ -20,9 +20,9 @@ const STATUS_OPTIONS = [
 ];
 
 const SORT_OPTIONS = [
-  { value: 'updated', label: 'Recently updated' },
-  { value: 'created', label: 'Recently created' },
-  { value: 'title', label: 'Title' },
+  { id: 'updated', label: 'Recently updated' },
+  { id: 'created', label: 'Recently created' },
+  { id: 'title', label: 'Title' },
 ];
 
 const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> = {
@@ -137,7 +137,7 @@ export function CodeTasksView({
         search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
         filter={<FilterMenu filters={filters} />}
         chips={<FilterChips filters={filters} onClear={clearFilters} />}
-        right={<SortMenu value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
         counts={!loading && !error ? (filtered.length === total
           ? `${total} ${total === 1 ? 'task' : 'tasks'}`
           : `${filtered.length} of ${total} tasks`) : undefined}

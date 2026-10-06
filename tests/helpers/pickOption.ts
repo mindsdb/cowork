@@ -26,3 +26,24 @@ export function orderOf(names: string[]): string[] {
     .getAllByText((_, el) => !!el && set.has(el.textContent ?? '') && ![...el.children].some((c) => set.has(c.textContent ?? '')))
     .map((el) => el.textContent ?? '');
 }
+
+// Opens the collection Filter menu at one facet's options. By keyboard:
+// happy-dom drops pointer clicks inside Base UI submenus, which work in a
+// real browser.
+export async function openFilterFacet(user: UserEvent, facet: string): Promise<void> {
+  await user.click(screen.getByRole('button', { name: /^Filter/ }));
+  screen.getByRole('menuitem', { name: new RegExp(`^${facet}`) }).focus();
+  await user.keyboard('{ArrowRight}');
+  await screen.findAllByRole('menuitemradio');
+}
+
+// Picks `option` under `facet` in the collection Filter menu.
+export async function pickFilter(user: UserEvent, facet: string, option: string): Promise<void> {
+  await openFilterFacet(user, facet);
+  const options = screen.getAllByRole('menuitemradio');
+  const target = options.findIndex((item) => item.textContent === option);
+  if (target < 0) throw new Error(`No ${facet} option "${option}"`);
+  const from = options.findIndex((item) => item === document.activeElement);
+  for (let i = from; i < target; i++) await user.keyboard('{ArrowDown}');
+  await user.keyboard('{Enter}');
+}

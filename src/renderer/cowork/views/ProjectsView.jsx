@@ -148,7 +148,7 @@ const SORT_OPTIONS = [
 function ProjectsCounts({ search, total, filtered, pinnedCount }) {
   const filterActive = (search || '').trim().length > 0;
   const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
+    ? `${filtered} of ${total} projects`
     : `${total} ${total === 1 ? 'project' : 'projects'}`;
   return (
     <>

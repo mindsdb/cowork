@@ -8,9 +8,10 @@ import Button from '../components/ui/Button';
 import Checkbox from '../components/ui/Checkbox';
 import Input from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import Select from '../components/ui/Select';
 import {
   CollectionState,
+  FilterChips,
+  FilterMenu,
   FilterRow,
   HoverActions,
   ListGroup,
@@ -18,6 +19,7 @@ import {
   ListNotice,
   PageHeader,
   SearchInput,
+  type Filter,
 } from '../components/collection';
 import {
   codingApi,
@@ -34,7 +36,7 @@ import './code-skills.css';
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
 
 const ORIGIN_OPTIONS = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All sources' },
   { value: 'team', label: 'Team' },
   { value: 'personal', label: 'Yours' },
   { value: 'built_in', label: 'MindsHub' },
@@ -323,6 +325,11 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const showTeam = filter === 'all' || filter === 'team';
   const searching = Boolean(query.trim());
 
+  const filters: Filter[] = [{
+    id: 'source', label: 'Source', value: filter, allValue: 'all', options: ORIGIN_OPTIONS,
+    onChange: (value) => setFilter(value as OriginFilter),
+  }];
+
   return (
     <main className="code-skills-view">
       <PageHeader
@@ -335,14 +342,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
       />
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} placeholder="Search skills" shortcut="" />}
-        sort={<Select
-          variant="pill"
-          label="Source"
-          value={filter}
-          onValueChange={(value: string) => setFilter(value as OriginFilter)}
-          options={ORIGIN_OPTIONS}
-          menuMinWidth={160}
-        />}
+        filter={<FilterMenu filters={filters} />}
+        chips={<FilterChips filters={filters} onClear={() => setFilter('all')} />}
       />
 
       {error && <div className="mx-8 mb-4"><Alert variant="danger">{error}</Alert></div>}

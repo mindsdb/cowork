@@ -1,6 +1,6 @@
 // Standard filter / toolbar row for collection screens. Lays out:
 //
-//   [search] [filter] [sort] ……spacer…… [right] [view]
+//   [search] [filter] ……spacer…… [right] [sort] [view]
 //   [chips]
 //   (32px)
 //   [counts]   ← caption for the list below
@@ -8,8 +8,8 @@
 //
 // Each slot accepts a ReactNode. The rule for what goes in them:
 // search = <SearchInput>, filter = <FilterMenu> with its <FilterChips> in
-// chips, sort = <SortMenu> in right, view = <ViewToggle>. (Pages not yet on
-// FilterMenu still put <SortPill> / <Select variant="pill"> in sort.)
+// chips, sort = <SortPill>, view = <ViewToggle>. The left side changes what
+// is shown, the right side how it is shown.
 //
 // The row owns the space down to the page body, so bodies start flush
 // below it and every page has the same gap. `counts` sits at the bottom
@@ -23,9 +23,9 @@ export function FilterRow({ search, filter, sort, view, counts, right, chips }) 
       <div className="flex flex-wrap items-center gap-2.5">
         {search}
         {filter}
-        {sort}
         <span className="flex-1" />
         {right}
+        {sort}
         {view}
       </div>
       {chips && <div className="mt-2.5">{chips}</div>}
