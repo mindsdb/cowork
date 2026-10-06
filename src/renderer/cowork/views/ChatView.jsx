@@ -948,7 +948,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
           <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
