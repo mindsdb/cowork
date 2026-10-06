@@ -3,6 +3,8 @@ import { submitAnswer } from '../api';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
+import Ico from './Icons';
+import Kbd from './ui/Kbd';
 
 // An option button. Hover is `enabled:` only and the cursor resets when
 // disabled: `hover:` also matches a disabled button, and globals.css gives
@@ -10,9 +12,9 @@ import { cn } from '../lib/cn';
 // on both branches: preflight is off, so a button with no background falls
 // through to native chrome. Only unselected options dim: the chosen one is
 // the answer.
-const OPTION = 'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default';
-const OPTION_IDLE = 'border-line bg-surface text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
-const OPTION_SELECTED = 'border-accent bg-accent-bg text-ink font-medium';
+const OPTION = 'flex w-full items-center gap-3 rounded-lg border-0 px-3 py-2 text-left text-sm transition-colors disabled:cursor-default';
+const OPTION_IDLE = 'bg-transparent text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
+const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -170,8 +172,22 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           worse to a screen reader than an honest toggle group. `aria-pressed`
           is therefore set in BOTH modes — for single-select it reflects the
           server's recorded answer. */}
-      <div className="flex flex-col gap-1.5" role="group" aria-labelledby={promptId}>
-        {(q.options || []).map((option) => {
+      <div
+        className="group/opts flex flex-col gap-0.5"
+        role="group"
+        aria-labelledby={promptId}
+        // 1–9 pick an option while focus is in the options (never from the
+        // composer, so typing a reply can't answer by accident).
+        onKeyDown={(e) => {
+          if (settled || busy || e.metaKey || e.ctrlKey || e.altKey) return;
+          const n = Number(e.key);
+          const option = Number.isInteger(n) && n >= 1 && n <= 9 ? (q.options || [])[n - 1] : null;
+          if (!option) return;
+          e.preventDefault();
+          onOption(option.value);
+        }}
+      >
+        {(q.options || []).map((option, index) => {
           // Single-select submits on click, so "selected" only ever means
           // the server-confirmed answer. Multi-select stages picks locally
           // until Send, so before settling it must reflect that local
@@ -191,9 +207,17 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               onClick={() => onOption(option.value)}
               className={cn(OPTION, isSelected ? OPTION_SELECTED : OPTION_IDLE)}
             >
-              <span>{option.label || option.value}</span>
-              {option.detail ? (
-                <span className="text-xs text-ink-4">{option.detail}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{option.label || option.value}</span>
+                {option.detail ? (
+                  <span className="text-xs font-normal text-ink-4">{option.detail}</span>
+                ) : null}
+              </span>
+              {isSelected ? (
+                <span aria-hidden className="ml-auto inline-flex shrink-0 text-accent">{Ico.check(14)}</span>
+              ) : !settled && index < 9 ? (
+                // Shown only while the options have keyboard focus, when 1–9 work.
+                <span aria-hidden className="ml-auto hidden shrink-0 opacity-60 group-focus-within/opts:inline-flex"><Kbd>{index + 1}</Kbd></span>
               ) : null}
             </button>
           );

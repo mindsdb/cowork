@@ -68,6 +68,59 @@ describe('AskUserCard', () => {
     expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
   });
 
+  it('picks an option with its number key while focus is in the options', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('2');
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
+  });
+
+  it('toggles multi-select options with number keys and still waits for Send', async () => {
+    const user = userEvent.setup();
+    renderCard({ select: 'many' });
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('1');
+    await user.keyboard('2');
+    expect(submitAnswer).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /mysql/i })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['pg', 'my'] });
+  });
+
+  it('ignores number keys typed outside the options and numbers with no option', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <input aria-label="Reply" />
+        <AskUserCard step={step()} conversationId="conv-1" onAnswered={vi.fn()} />
+      </>,
+    );
+    await user.click(screen.getByRole('textbox', { name: 'Reply' }));
+    await user.keyboard('1');
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('9');
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('keeps option names free of the key hint and check mark', () => {
+    // Unanswered: every option carries a key hint.
+    const { unmount } = renderCard();
+    expect(screen.getByRole('button', { name: 'postgres primary' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+    unmount();
+    // Answered: the chosen option carries the check mark.
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+  });
+
+  it('marks the chosen option with a check and no outline', async () => {
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    const chosen = screen.getByRole('button', { name: /mysql/i });
+    expect(chosen.querySelector('svg')).not.toBeNull();
+    expect(chosen.className).not.toMatch(/(^|\s)border-accent(\s|$)/);
+  });
+
   it('multi-select accumulates and submits once', async () => {
     const user = userEvent.setup();
     renderCard({ select: 'many' });
