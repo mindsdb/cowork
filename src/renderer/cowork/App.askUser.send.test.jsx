@@ -1525,3 +1525,81 @@ describe('a Stop on one conversation', () => {
     );
   });
 });
+
+/**
+ * Alpha streams its own reply, then Beta re-attaches a tail and claims the
+ * shared slot. Back on Alpha nothing re-claims it, because Alpha's in-flight
+ * probe does not list it yet. Resolves with Alpha's transcript on screen.
+ */
+async function streamAlphaWhileBetaHoldsTheSlot(user) {
+  spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+  const composer = await openTask(user);
+  await send(user, composer, 'alpha turn');
+  const alpha = await waitForStream();
+  await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+  await openByTitle(user, 'Beta task');
+  const tailB = await waitForStream(alpha);
+  await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+
+  await openByTitle(user, 'Alpha task');
+  await screen.findByText('alpha turn');
+  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenLastCalledWith('conv-a'));
+  return { alpha, tailB };
+}
+
+describe('Stop on the conversation on screen', () => {
+  it('cancels that conversation, not the one holding the shared slot', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves the other conversation stoppable from its own chat', async () => {
+    const user = userEvent.setup();
+    const { tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+
+    // Beta's tail is still the one its conversation holds, so its Stop reaches it.
+    await openByTitle(user, 'Beta task');
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: ' more' });
+    spies.cancelResponse.mockClear();
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+    expect(tailB.abort).toHaveBeenCalled();
+  });
+
+  it('frees the slot when the stopped stream holds it after a sibling finished', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+
+    // Alpha finishing clears the shared task id but not Beta's controller, so
+    // the two shared refs now disagree about who holds the slot.
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // A stale controller left in the slot would queue this send forever.
+    spies.streamMessage.mockClear();
+    const betaComposer = document.querySelector('textarea');
+    await send(user, betaComposer, 'next turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalled());
+  });
+});

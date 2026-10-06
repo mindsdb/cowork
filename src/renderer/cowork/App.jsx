@@ -1158,14 +1158,10 @@ function AppCore() {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-
-    let cidToCancel = activeStreamingTaskIdRef.current;
-    if (!cidToCancel) {
-      const streamingTask = tasksRef.current.find(
-        (t) => (t.messages || []).some((m) => m.role === '_streaming'),
-      );
-      cidToCancel = streamingTask?.id ?? null;
-    }
+    // The conversation whose Stop was clicked. The shared refs name whichever
+    // stream claimed them last, which with concurrent streams is another one.
+    const cidToCancel = opts?.taskId ?? null;
+    if (!cidToCancel) return;
 
     // Ask the server to cancel *before* any local teardown. On `error` the
     // request never landed, so the cancel flag was not written and the remote
@@ -1175,31 +1171,32 @@ function AppCore() {
     // strip the very UI the user needs to retry. This ordering is the whole
     // point of ENG-1919. The `silent` idle-timeout caller still fires the
     // cancel but tears down regardless of the result and never toasts.
-    if (cidToCancel) {
-      const cancelResult = await cancelResponse(cidToCancel);
-      if (!silent && cancelResult?.status === 'error') {
-        toastManagerRef.current?.add({
-          type: 'danger',
-          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
-        });
-        return;
-      }
+    const cancelResult = await cancelResponse(cidToCancel);
+    if (!silent && cancelResult?.status === 'error') {
+      toastManagerRef.current?.add({
+        type: 'danger',
+        title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+      });
+      return;
     }
 
     // Tear down the record for the conversation being stopped, not whichever
     // one claimed the shared refs last: with concurrent streams those differ,
     // and cancelling the wrong pad kills a cell inside a still-running turn.
-    const stopped = cidToCancel ? abortStream(cidToCancel) : null;
+    const stopped = abortStream(cidToCancel);
+    const holdsSharedSlot = activeStreamingTaskIdRef.current === cidToCancel;
 
-    const padName = stopped ? stopped.pad : activeScratchpadRef.current;
+    const padName = stopped ? stopped.pad : (holdsSharedSlot ? activeScratchpadRef.current : null);
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
 
+    // The controller clears by identity, not by task id: a finished sibling
+    // nulls the shared task id but leaves a controller it does not own.
     const ctrl = activeStreamCtrlRef.current;
     const ctrlOwnedElsewhere = ctrl
       && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
-    if (ctrl && (!stopped || ctrl === stopped.ctrl)) {
+    if (ctrl && (stopped ? ctrl === stopped.ctrl : holdsSharedSlot)) {
       if (!stopped && !ctrlOwnedElsewhere) {
         try { ctrl.abort(); } catch { /* already closed */ }
       }
@@ -1219,29 +1216,30 @@ function AppCore() {
       };
     }));
 
-    if (cidToCancel) {
-      markInFlightDone(cidToCancel);
-      // Stop kills the run, and with it any question that run was waiting
-      // on. Without this the composer stays hijacked: the next send would be
-      // routed into submitAnswer, 404 on the dead run, and the user's text
-      // would be discarded.
-      releaseLiveStepsWithAliases(cidToCancel);
-      setMessageQueue((prev) => {
-        const next = { ...prev };
-        delete next[cidToCancel];
-        return next;
-      });
-      // Prune the ref in lockstep: the sibling drain below reads
-      // messageQueueRef synchronously and the state→ref effect hasn't run yet,
-      // so without this it would still see (and could re-pick) the cancelled
-      // task's own queue.
-      const prunedQueue = { ...messageQueueRef.current };
-      delete prunedQueue[cidToCancel];
-      messageQueueRef.current = prunedQueue;
-    }
+    markInFlightDone(cidToCancel);
+    // Stop kills the run, and with it any question that run was waiting
+    // on. Without this the composer stays hijacked: the next send would be
+    // routed into submitAnswer, 404 on the dead run, and the user's text
+    // would be discarded.
+    releaseLiveStepsWithAliases(cidToCancel);
+    setMessageQueue((prev) => {
+      const next = { ...prev };
+      delete next[cidToCancel];
+      return next;
+    });
+    // Prune the ref in lockstep: the sibling drain below reads
+    // messageQueueRef synchronously and the state→ref effect hasn't run yet,
+    // so without this it would still see (and could re-pick) the cancelled
+    // task's own queue.
+    const prunedQueue = { ...messageQueueRef.current };
+    delete prunedQueue[cidToCancel];
+    messageQueueRef.current = prunedQueue;
 
-    activeScratchpadRef.current = null;
-    activeStreamingTaskIdRef.current = null;
+    // Re-read after the awaits above: only the holder clears the shared slot.
+    if (activeStreamingTaskIdRef.current === cidToCancel) {
+      activeScratchpadRef.current = null;
+      activeStreamingTaskIdRef.current = null;
+    }
 
     // Stop frees the shared stream slot with no onDone/onError behind it — the
     // reaped record above silences the aborted run's cancelled callback — so
@@ -1252,7 +1250,7 @@ function AppCore() {
     // drain (same reason reconnect uses it).
     drainNextQueuedMessageRef.current?.();
 
-    if (silent || !cidToCancel) return;
+    if (silent) return;
 
     try {
       const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
@@ -4378,7 +4376,7 @@ function AppCore() {
       // keep producing events for a turn that no longer exists. The
       // silent flag skips the post-cancel session refetch.
       if (activeStreamingTaskIdRef.current === taskId) {
-        try { await handleStopStream({ silent: true }); } catch {}
+        try { await handleStopStream({ taskId, silent: true }); } catch {}
       }
       if (isLocalOnly) {
         // No server-side history yet — drop the local pair only.
@@ -5101,7 +5099,7 @@ function AppCore() {
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
             deletingTurnIndex={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
             onMoveTaskToProject={handleOpenMoveModal}
-            onStop={handleStopStream}
+            onStop={() => handleStopStream({ taskId: currentTask?.id })}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
             onDismissConnectForm={handleConnectFormDismiss}
