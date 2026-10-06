@@ -29,6 +29,7 @@ export interface MenuProps {
   sideOffset?: number;
   width?: number;
   ariaLabel?: string;
+  tooltip?: ReactNode;
   onOpenChange?: (open: boolean, details?: unknown) => void;
 }
 

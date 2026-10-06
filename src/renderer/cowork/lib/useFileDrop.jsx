@@ -158,7 +158,7 @@ export const FileDropOverlay = memo(function FileDropOverlay({ active, label, bu
   return (
     <div
       aria-hidden={!visible}
-      className="absolute inset-0 z-[120] flex items-center justify-center pointer-events-none rounded-card [backdrop-filter:blur(1.5px)] [-webkit-backdrop-filter:blur(1.5px)] [transition:opacity_140ms_ease,transform_160ms_cubic-bezier(.2,.7,.3,1)]"
+      className="absolute inset-0 z-[120] flex items-center justify-center pointer-events-none rounded-card [backdrop-filter:blur(1.5px)] [-webkit-backdrop-filter:blur(1.5px)] [transition:opacity_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)]"
       style={{
         // Dynamic: dashed border colour + fill switch on the error state; the
         // whole overlay fades + scales on `visible`.
@@ -171,7 +171,7 @@ export const FileDropOverlay = memo(function FileDropOverlay({ active, label, bu
       }}
     >
       <div
-        className="inline-flex items-center gap-[10px] py-3 px-[18px] rounded-[10px] bg-surface border border-solid border-line shadow-[0_8px_28px_rgba(0,0,0,0.18)] font-[family-name:var(--font-body)] text-base font-semibold [transition:transform_160ms_cubic-bezier(.2,.7,.3,1)]"
+        className="inline-flex items-center gap-[10px] py-3 px-[18px] rounded-[10px] bg-surface border border-solid border-line shadow-[0_8px_28px_rgba(0,0,0,0.18)] font-[family-name:var(--font-body)] text-base font-semibold [transition:transform_var(--dur-hover)_var(--ease-out)]"
         style={{
           color: error ? '#C2453B' : 'var(--ink)',
           transform: visible ? 'translateY(0)' : 'translateY(6px)',

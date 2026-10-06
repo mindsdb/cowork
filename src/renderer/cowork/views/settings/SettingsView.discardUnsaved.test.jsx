@@ -234,6 +234,35 @@ describe('SettingsView draft ownership', () => {
 
 
 describe('SettingsView appearance request ownership', () => {
+  it.each([
+    ['Sidebar title text', 'navTitle'],
+    ['Greeting text', 'greeting'],
+  ])('flushes the latest %s edit once when closed mid-debounce', async (label, key) => {
+    const latest = { current: null };
+    const onSave = vi.fn(async () => ({}));
+    render(<Harness onSave={onSave} latest={latest} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    fireEvent.change(screen.getByLabelText(label), { target: { value: 'First' } });
+    fireEvent.change(screen.getByLabelText(label), { target: { value: 'Latest' } });
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+    await waitFor(() => expect(latest.current[key]).toBe('Latest'));
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({ [key]: 'Latest' });
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not commit a rejected appearance flush to App', async () => {
+    const latest = { current: null };
+    const onSave = vi.fn(async () => { throw new Error('rejected'); });
+    render(<Harness onSave={onSave} latest={latest} initial={{ ...SERVER, navTitle: 'Before' }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    fireEvent.change(screen.getByLabelText('Sidebar title text'), { target: { value: 'Rejected' } });
+    fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ navTitle: 'Rejected' }));
+    expect(latest.current.navTitle).toBe('Before');
+  });
+
   it('does not clear a reopened view preview when an old auto-save completes', async () => {
     const latest = { current: null };
     let resolveSave;

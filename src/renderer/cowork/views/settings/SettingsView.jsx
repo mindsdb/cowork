@@ -477,7 +477,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
                 // only pops in and holds — it's cleared by state (next attempt
                 // or blur), not by the animation, so it stays legible.
-                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
+                animation: copyState === 'failed' ? 'failed-pop var(--dur-layout) ease forwards' : 'copied-pop 1.5s ease forwards',
               }}
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
@@ -560,7 +560,7 @@ function SetBadge({ hasValue, active }) {
         // we explicitly clear any inherited shadow.
         boxShadow: active ? undefined : 'none',
         animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
-        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+        transition: 'box-shadow var(--dur-hover) ease, background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
     >
       Set
@@ -661,7 +661,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
     </span>
   );
   return (
-    <div className={`[transition:opacity_.15s_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
+    <div className={`[transition:opacity_var(--dur-hover)_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
       <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
@@ -697,7 +697,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
             aria-disabled={disabled ? 'true' : undefined}
-            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
@@ -970,9 +970,9 @@ export default function SettingsView({
       delete nextStatus[type];
       delete nextDetails[type];
       delete nextReasons[type];
-      setSetting('providerStatus', nextStatus);
-      setSetting('providerStatusDetails', nextDetails);
-      setSetting('providerStatusReasons', nextReasons);
+      setSettingProp('providerStatus', nextStatus);
+      setSettingProp('providerStatusDetails', nextDetails);
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     if (key === 'baseUrl' && (type === 'openai-compatible' || type === 'gemini')) {
       setSetting('openaiBaseUrl', value);
@@ -1488,7 +1488,7 @@ export default function SettingsView({
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
                     title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
-                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
                       transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
@@ -1501,7 +1501,7 @@ export default function SettingsView({
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
                 <div
-                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_220ms_ease,transform_220ms_ease]"
+                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                   style={{
                     opacity: addPickerOpen ? 1 : 0,
                     transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
@@ -1954,6 +1954,7 @@ export default function SettingsView({
   // at all (see AutoSaveTag and renderAppearanceSection).
   const [autoSaveStatus, setAutoSaveStatus] = useState({});
   const autoSaveTimersRef = useRef({});
+  const pendingAutoSavesRef = useRef({});
   const autoSaveFadeTimersRef = useRef({});
   const autoSaveRemoveTimersRef = useRef({});
 
@@ -1965,11 +1966,15 @@ export default function SettingsView({
     const submitted = setSetting(key, value, { autoSave: true });
     onAppearancePreview?.(key, value);
     clearTimeout(autoSaveTimersRef.current[key]);
+    delete pendingAutoSavesRef.current[key];
     clearTimeout(autoSaveFadeTimersRef.current[key]);
     clearTimeout(autoSaveRemoveTimersRef.current[key]);
 
     const commit = async () => {
-      setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      delete pendingAutoSavesRef.current[key];
+      if (mountedRef.current) {
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      }
       try {
         await onSave({ [key]: value });
         if (!mountedRef.current) return;
@@ -2000,6 +2005,7 @@ export default function SettingsView({
     };
 
     if (debounceMs > 0) {
+      pendingAutoSavesRef.current[key] = commit;
       autoSaveTimersRef.current[key] = setTimeout(commit, debounceMs);
     } else {
       commit();
@@ -2009,6 +2015,8 @@ export default function SettingsView({
   useEffect(() => () => {
     onAppearancePreview?.(null);
     Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
+    // Appearance promises automatic persistence, including when closed mid-debounce.
+    Object.values(pendingAutoSavesRef.current).forEach((commit) => { commit(); });
     Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
     Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);
   }, []);
@@ -2300,7 +2308,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
@@ -2310,7 +2318,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
+          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
             <div className="flex items-center">
               <Switch
                 checked={settings.show8bitToggle !== false}

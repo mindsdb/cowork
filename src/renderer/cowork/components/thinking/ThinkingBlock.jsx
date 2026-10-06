@@ -143,7 +143,7 @@ export function ThinkingBlock({
               <span
                 className={clsx(
                   'inline-flex flex-none items-center self-center text-ink-4',
-                  'transition-transform duration-200',
+                  'transition-transform duration-layout',
                   isExpanded && 'rotate-180'
                 )}
               >

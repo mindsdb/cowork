@@ -24,7 +24,7 @@ function Row({ task, onSelect, onDelete }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={onSelect}
-      className="flex items-center justify-between gap-2 py-[6px] px-[10px] rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] [transition:background_.1s_ease,color_.12s_ease]"
+      className="flex items-center justify-between gap-2 py-[6px] px-[10px] rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
       style={{
         background: hover ? 'color-mix(in srgb, var(--ink) 4%, transparent)' : 'transparent',
         color: hover ? 'var(--ink)' : 'var(--ink-2)',
@@ -39,7 +39,7 @@ function Row({ task, onSelect, onDelete }) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
             aria-label="Delete this task"
-            className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_120ms_ease]"
+            className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_var(--dur-hover)_ease]"
           >
             {Ico.trash(13)}
           </button>
