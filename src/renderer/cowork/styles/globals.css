@@ -1722,6 +1722,26 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
 
+/* Railed — a card with a footer strip (`.card__rail`): the artifact and skill
+   cards. The surface tint would swallow the rail, so hover firms the edge,
+   deepens the shadow and warms the rail instead, together on the glow curve
+   because a glowing primary button usually sits in the head. */
+.card.railed { padding: 0; overflow: hidden; box-shadow: var(--card-shadow-rest); }
+.card.railed.interactive { transition: border-color var(--dur-glow) ease, box-shadow var(--dur-glow) ease; }
+.card.railed.interactive:hover {
+  background: var(--card-surface);
+  border-color: var(--line-2);
+  box-shadow: var(--sh-2);
+}
+.card__rail {
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  transition: background-color var(--dur-glow) ease;
+}
+.card.railed.interactive:hover .card__rail {
+  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface-2));
+}
+
 /* Bubble — floating glassy container; slightly translucent so the
    gravity-field shows behind. Radius slightly tighter than .card. */
 .bubble {
@@ -3593,7 +3613,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    a phone — so a viewport breakpoint would leave the action row overflowing
    on exactly the desktop case it was reported on. */
 .chat-transcript-col { container: chat-col / inline-size; }
-/* `.card.pad-none` holds the padding at 0; the cells carry the head inset. */
+/* A small window onto the artifact, on the railed card treatment: the head
+   cells carry their own inset, and the footer cells are the rail. */
 .card.chat-artifact-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -3602,39 +3623,19 @@ body[data-theme="dark"] .mshell__drawer-title {
     "loc  loc  tools";
   align-items: center;
   max-width: 600px;
-  overflow: hidden;
-  box-shadow: var(--sh-1);
-}
-/* A small window onto the artifact, not a list tile: the surface opens the
-   preview, and hover deepens the shadow and warms the location bar together
-   on the glow curve, matching the Preview button beside it. */
-.card.chat-artifact-card.interactive {
-  transition: border-color var(--dur-glow) ease, box-shadow var(--dur-glow) ease;
-}
-.card.chat-artifact-card.interactive:hover {
-  background: var(--card-surface);
-  border-color: var(--line-2);
-  box-shadow: var(--sh-2);
 }
 /* Head spacing lives on the cells, not a grid gap, so the footer cells meet
    with no seam of card surface between them. */
 .chat-artifact-card__tile    { grid-area: tile;    margin: 12px 12px 10px; }
 .chat-artifact-card__text    { grid-area: text;    margin: 12px 12px 10px 0; }
 .chat-artifact-card__actions { grid-area: actions; margin: 12px 12px 10px 0; min-width: 0; }
-/* Footer — the path as a location bar, with the secondary actions at its end. */
+/* Footer — the path as a location bar, with the secondary actions at its end.
+   Each cell is a `.card__rail` so the strip reads as one. */
 .chat-artifact-card__loc,
 .chat-artifact-card__status,
 .chat-artifact-card__tools {
-  background: var(--surface-2);
-  border-top: 1px solid var(--line);
   min-height: 34px;
   box-sizing: border-box;
-  transition: background-color var(--dur-glow) ease;
-}
-.card.chat-artifact-card.interactive:hover .chat-artifact-card__loc,
-.card.chat-artifact-card.interactive:hover .chat-artifact-card__status,
-.card.chat-artifact-card.interactive:hover .chat-artifact-card__tools {
-  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface-2));
 }
 .chat-artifact-card__loc,
 .chat-artifact-card__status {

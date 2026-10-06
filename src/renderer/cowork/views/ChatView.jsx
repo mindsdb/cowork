@@ -925,7 +925,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="chat-artifact-card"
+      className="railed chat-artifact-card"
     >
       <div
         className={cn(
@@ -982,19 +982,19 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           other, so a long message never crushes the path beside it. */}
       {status ? (
         <span
-          className={cn('chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
       ) : (
-        <span className="chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
           {Ico.folder(12)}
           <span className="min-w-0 truncate">{previewText}</span>
         </span>
       )}
       {(sharedLinkAction || downloadAction) && (
         <div
-          className="chat-artifact-card__tools"
+          className="card__rail chat-artifact-card__tools"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
         >

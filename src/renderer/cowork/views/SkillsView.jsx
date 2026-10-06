@@ -37,11 +37,11 @@ function SkillGridCard({ skill, onClick, projects = [] }) {
       as="button"
       interactive
       padding="none"
+      className="railed"
       onClick={() => onClick(skill)}
       style={{
-        padding: '12px 0 0',
+        paddingTop: 12,
         display: 'flex', flexDirection: 'column', gap: 12,
-        overflow: 'hidden',
       }}
     >
       {/* Top content */}
@@ -72,9 +72,7 @@ function SkillGridCard({ skill, onClick, projects = [] }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-2 bg-bg font-[family-name:var(--font-body)] text-[12px] text-ink-3" style={{
-        boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
-      }}>
+      <div className="card__rail flex items-center justify-between px-3 py-2 font-[family-name:var(--font-body)] text-[12px] text-ink-3">
         <span className="inline-flex items-center gap-1">
           {Ico.folder(14)}
           <span>{project}</span>
