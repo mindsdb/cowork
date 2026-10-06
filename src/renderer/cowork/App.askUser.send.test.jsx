@@ -1630,14 +1630,16 @@ describe('Stop on the conversation on screen', () => {
       content: JSON.stringify({ name: 'pad-b', one_line_description: 'run', code: 'x=1' }),
     });
 
-    // A cancelled end drops Alpha's record but leaves its placeholder, so Stop
-    // has no record of its own and must not borrow the slot holder's cell.
+    // A response.failed with code `cancelled` drops Alpha's record but leaves its
+    // placeholder, so Stop has no record of its own to take a cell from.
     await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
     await openByTitle(user, 'Alpha task');
     await screen.findByText('alpha turn');
     cancelScratchpad.mockClear();
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    // The placeholder is stripped after the pad step, so the check below is not early.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
     expect(cancelScratchpad).not.toHaveBeenCalledWith('pad-b');
     expect(tailB.abort).not.toHaveBeenCalled();
   });
