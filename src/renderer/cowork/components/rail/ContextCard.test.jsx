@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { ContextCard } from './ContextCard';
+import { setOrgMode } from '../../../lib/orgMode';
 
 // Regression coverage: disconnecting a Google Drive connection (from
 // Connected Apps and Data, the in-chat "Modify connection" bubble, or the
@@ -27,18 +28,24 @@ const apiMock = vi.hoisted(() => ({
   uploadProjectFiles: vi.fn(),
   deleteAttachment: vi.fn(),
   attachmentRawUrl: vi.fn(),
+  listConversationFolders: vi.fn(),
+  addConversationFolder: vi.fn(),
+  removeConversationFolder: vi.fn(),
+  listConversationFolderFiles: vi.fn(),
   ANTON_PROJECT_INSTRUCTIONS_PATH: '.anton/anton.md',
 }));
-const hostState = vi.hoisted(() => ({ isWeb: true }));
+const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false }));
 vi.mock('../../api', () => apiMock);
 vi.mock('../../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
     get isWeb() { return hostState.isWeb; },
+    get isElectron() { return hostState.isElectron; },
     host: {
       ...actual.host,
       get isWeb() { return hostState.isWeb; },
+      get isElectron() { return hostState.isElectron; },
     },
   };
 });
@@ -46,6 +53,10 @@ vi.mock('../../../platform/host', async (importOriginal) => {
 beforeEach(() => {
   vi.clearAllMocks();
   hostState.isWeb = true;
+  hostState.isElectron = false;
+  setOrgMode(false);
+  apiMock.fetchAttachments.mockResolvedValue({ attachments: [] });
+  apiMock.listConversationFolders.mockResolvedValue({ folders: [] });
   apiMock.fetchMemory.mockResolvedValue({});
   apiMock.listProjectFiles.mockResolvedValue({ files: [] });
   apiMock.readProjectFile.mockResolvedValue({ content: 'Project guidance.' });
@@ -727,3 +738,81 @@ describe('ContextCard — truncated project file listings', () => {
     expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
   });
 });
+
+describe('ContextCard — working folders section', () => {
+  async function renderCard(conversationId = 'chat-1') {
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general' }} conversationId={conversationId} />);
+    });
+  }
+
+  it('is offered for a saved chat on desktop', async () => {
+    hostState.isElectron = true;
+    hostState.isWeb = false;
+
+    await renderCard();
+
+    expect(screen.getByRole('button', { name: 'Add a folder to this chat' })).toBeTruthy();
+    expect(apiMock.listConversationFolders).toHaveBeenCalledWith('chat-1');
+  });
+
+  it('is hidden on web', async () => {
+    await renderCard();
+
+    expect(screen.queryByText(/Working folders/)).toBeNull();
+    expect(apiMock.listConversationFolders).not.toHaveBeenCalled();
+  });
+
+  it('is hidden in org mode, even on desktop', async () => {
+    hostState.isElectron = true;
+    hostState.isWeb = false;
+    setOrgMode(true);
+
+    await renderCard();
+
+    expect(screen.queryByText(/Working folders/)).toBeNull();
+    setOrgMode(false);
+  });
+
+  it('is hidden before the first message', async () => {
+    hostState.isElectron = true;
+    hostState.isWeb = false;
+
+    await renderCard('tmp-123');
+
+    expect(screen.queryByText(/Working folders/)).toBeNull();
+  });
+
+  it("never paints one chat's folders into the next after a switch mid-add", async () => {
+    hostState.isElectron = true;
+    hostState.isWeb = false;
+    let finishAdd;
+    apiMock.addConversationFolder.mockImplementation(() => new Promise((resolve) => { finishAdd = resolve; }));
+    apiMock.listConversationFolders.mockImplementation(async (chat) => ({
+      folders: chat === 'chat-a'
+        ? [{ id: 'a1', path: '/Users/me/a-docs', name: 'a-docs', available: true }]
+        : [{ id: 'b1', path: '/Users/me/b-docs', name: 'b-docs', available: true }],
+    }));
+    const pick = vi.spyOn((await import('../../../platform/host')).host, 'pickCodeFolder')
+      .mockResolvedValue({ ok: true, path: '/Users/me/a-new' });
+    let view;
+    await act(async () => {
+      view = render(<ContextCard project={{ name: 'general' }} conversationId="chat-a" />);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add a folder to this chat' }));
+    });
+    await act(async () => {
+      view.rerender(<ContextCard project={{ name: 'general' }} conversationId="chat-b" />);
+    });
+    await act(async () => {
+      finishAdd({ id: 'a2' });
+    });
+
+    expect(screen.getByText('b-docs')).toBeTruthy();
+    expect(screen.queryByText('a-docs')).toBeNull();
+    pick.mockRestore();
+  });
+});
+

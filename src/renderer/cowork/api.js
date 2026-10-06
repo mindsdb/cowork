@@ -2323,6 +2323,29 @@ export async function patchConversation(id, body) {
   });
 }
 
+/** GET /conversations/{id}/folders: `{ folders: [{ id, path, name, available }] }`, oldest first. */
+export async function listConversationFolders(conversationId) {
+  return req(`/conversations/${enc(conversationId)}/folders`);
+}
+
+/** POST /conversations/{id}/folders. A refusal throws with the server's user-facing reason. */
+export async function addConversationFolder(conversationId, path) {
+  return req(`/conversations/${enc(conversationId)}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** DELETE /conversations/{id}/folders/{folderId}. Detaches only; nothing on disk changes. */
+export async function removeConversationFolder(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}`, { method: 'DELETE' });
+}
+
+/** GET /conversations/{id}/folders/{folderId}/files: `{ files, truncated? }`, like the project listing. */
+export async function listConversationFolderFiles(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}/files`);
+}
+
 const DELETE_TURN_TIMEOUT_MS = 30000;
 
 // Delete one user→answer cycle (the question + the assistant
