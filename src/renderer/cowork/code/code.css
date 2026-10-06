@@ -511,23 +511,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-projects-view,
 .code-connectors-view { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding-bottom: 72px; }
 
-/* Projects are a first-class Code destination, not another sidebar tree. */
-.code-projects-table { margin: 20px 32px 0; border-top: 1px solid var(--line); }
-.code-projects-table__head { min-height: 36px; padding: 0 7px; display: grid; grid-template-columns: minmax(0, 1fr) 82px 92px 32px; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 9.5px; }
-.code-project-row { min-height: 66px; padding: 0 7px; display: grid; grid-template-columns: minmax(0, 1fr) 82px 92px 32px; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); transition: background var(--dur-hover) ease; }
-.code-project-row:hover { background: color-mix(in srgb, var(--surface-2) 62%, transparent); }
-.code-project-row.is-current { box-shadow: inset 2px 0 0 var(--accent); }
-.code-project-row__main { min-width: 0; height: 100%; padding: 8px 0; display: flex; align-items: center; gap: 11px; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
-.code-project-row__folder { display: inline-flex; flex: none; color: var(--ink-3); }
-.code-project-row__name { min-width: 0; display: grid; gap: 4px; }
-.code-project-row__name strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
-.code-project-row__name small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
-.code-project-row__count,
-.code-project-row__updated { color: var(--ink-4); font-size: 10.5px; }
-.code-project-row__updated { font-family: var(--font-mono); }
-.code-projects-table__empty { min-height: 170px; padding: 28px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ink-4); text-align: center; font-size: 11.5px; }
-.code-projects-table__empty.is-error { color: var(--danger); }
-
 .code-connector-return { min-height: 42px; margin: 0 32px 18px; padding: 7px 9px 7px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line)); border-radius: var(--r-lg); background: color-mix(in srgb, var(--accent-bg) 44%, var(--surface-1)); color: var(--ink-3); font-size: 10.5px; }
 .code-connector-return strong { color: var(--ink-2); font-weight: 620; }
 

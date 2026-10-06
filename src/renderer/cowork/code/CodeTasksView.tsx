@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { PageHeader, FilterRow, SearchInput, useCollectionShortcut } from '../components/collection';
+import {
+  CollectionState, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, StatusDot, useCollectionShortcut,
+  type StatusTone,
+} from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
@@ -16,6 +19,10 @@ const STATUS_OPTIONS = [
   { value: 'danger', label: 'Failed' },
   { value: 'neutral', label: 'Ready or stopped' },
 ];
+
+const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> = {
+  warning: 'warning', accent: 'accent', success: 'success', danger: 'danger', neutral: 'muted',
+};
 
 export function CodeTasksView({
   sessions, projects, projectId = null, active = true, loading, error,
@@ -92,7 +99,9 @@ export function CodeTasksView({
       );
     }).sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
   }, [sessions, scope, archiveFilter, statusFilter, query, projectNames]);
-  const hasFilters = !!query || statusFilter !== 'all' || (!projectId && projectFilter !== 'all');
+  // Search and filters narrow this; zero here is "nothing yet", not "no match".
+  const total = useMemo(() => sessions.filter(task => (archiveFilter === 'archived' ? task.archived : !task.archived)
+    && (!projectId || task.project_id === projectId)).length, [sessions, archiveFilter, projectId]);
 
   return (
     <main className="code-tasks-view">
@@ -119,29 +128,45 @@ export function CodeTasksView({
         </>}
         counts={!loading && !error ? `${filtered.length} ${filtered.length === 1 ? 'task' : 'tasks'} · Most recently updated first` : undefined}
       />
-      <div className="code-tasks-view__body" aria-busy={loading}>
-        {error && <Alert variant="danger">{error}<div className="code-tasks-view__retry"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
-        {loading && !sessions.length ? <p className="code-tasks-view__notice" role="status">Loading tasks…</p> : (
-          filtered.length ? <table className="code-tasks-table" aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
-            <thead><tr><th scope="col">Task</th><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Updated</th></tr></thead>
-            <tbody>{filtered.map(task => {
+      <div className="mx-8 mt-5 grid gap-4">
+        {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
+        {/* A failed load shows the error alone, never an empty state. */}
+        {!(error && !sessions.length) && <CollectionState
+          loading={loading && !sessions.length}
+          skeleton="group"
+          skeletonCount={4}
+          total={total}
+          shown={filtered.length}
+          noMatchTitle="No matching tasks"
+          clearLabel="Clear filters"
+          onClear={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}
+          empty={archiveFilter === 'archived'
+            ? { title: 'No archived tasks', description: 'Tasks you archive will appear here.' }
+            : { icon: Ico.code(20), title: 'No tasks yet', description: 'Start a task to begin working on your code.' }}
+        >
+          <ListGroup density="compact" aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
+            {filtered.map(task => {
               const status = codingSessionStatus(task);
               const name = task.project_id ? projectNames.get(task.project_id) : undefined;
-              return <tr key={task.id}>
-                <td className="code-tasks-table__title"><button type="button" title={task.title} onClick={() => onOpen(task.id)}>{task.title || 'Untitled task'}</button></td>
-                <td className="code-tasks-table__project">{task.project_id
-                  ? <button type="button" title={name} onClick={() => onOpenProject(task.project_id!)}>{name}</button>
-                  : <span className="code-tasks-table__muted">No project</span>}</td>
-                <td><span className={`code-task-status is-${status.tone}`}><i aria-hidden="true" />{status.label}</span></td>
-                <td className="code-tasks-table__updated"><time dateTime={task.updated_at} title={new Date(task.updated_at).toLocaleString()}>{relativeTime(task.updated_at)}</time></td>
-              </tr>;
-            })}</tbody>
-          </table> : !error && !loading && <div className="code-tasks-view__notice">
-            <h2>{hasFilters ? 'No matching tasks' : archiveFilter === 'archived' ? 'No archived tasks' : 'No tasks yet'}</h2>
-            <p>{hasFilters ? 'Try another search or clear the filters.' : archiveFilter === 'archived' ? 'Tasks you archive will appear here.' : 'Start a task to begin working on your code.'}</p>
-            {hasFilters && <Button variant="subtle" size="sm" onClick={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}>Clear filters</Button>}
-          </div>
-        )}
+              return <ListItem
+                key={task.id}
+                title={task.title || 'Untitled task'}
+                onActivate={() => onOpen(task.id)}
+                activateLabel={task.title || 'Untitled task'}
+                meta={<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  {!projectId && (name
+                    ? <HoverActions reveal className="min-w-0 max-w-[12rem] shrink max-sm:max-w-[8rem]">
+                      <button type="button" title={name} onClick={() => onOpenProject(task.project_id!)}
+                        className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2">{name}</button>
+                    </HoverActions>
+                    : <span>No project</span>)}
+                  <StatusDot tone={TONE[status.tone]}>{status.label}</StatusDot>
+                  <time dateTime={task.updated_at} title={new Date(task.updated_at).toLocaleString()}>{relativeTime(task.updated_at)}</time>
+                </span>}
+              />;
+            })}
+          </ListGroup>
+        </CollectionState>}
       </div>
     </main>
   );

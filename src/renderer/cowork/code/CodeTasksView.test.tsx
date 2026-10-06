@@ -33,6 +33,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof CodeTasksView>> = 
   };
   return { ...render(<CodeTasksView {...props} />), props, user: userEvent.setup() };
 }
+// Task titles in list order: each row's opening button.
+const titles = () => Array.from(document.querySelectorAll('[data-item-activator]'), el => el.textContent);
 async function select(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
   await user.click(screen.getByRole('combobox', { name: label }));
   await user.click(screen.getByRole('option', { name: option }));
@@ -41,9 +43,7 @@ async function select(user: ReturnType<typeof userEvent.setup>, label: string, o
 describe('CodeTasksView', () => {
   it('shows every unarchived task, newest first, and opens the existing task', async () => {
     const { user, props } = setup();
-    const rows = screen.getAllByRole('row').slice(1);
-    expect(within(rows[0]).getByRole('button', { name: 'Approval needed' })).toBeInTheDocument();
-    expect(rows).toHaveLength(3);
+    expect(titles()).toEqual(['Approval needed', 'Older task', 'Folder task']);
     expect(screen.queryByText('Archived task')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Older task' }));
     expect(props.onOpen).toHaveBeenCalledWith('Older task');
@@ -98,21 +98,20 @@ describe('CodeTasksView', () => {
   it('combines search and status filters and clears them', async () => {
     const { user } = setup();
     await select(user, 'Filter by status', 'Needs attention');
-    expect(screen.getAllByRole('row')).toHaveLength(2);
+    expect(titles()).toEqual(['Approval needed']);
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'not found');
     expect(screen.getByText('No matching tasks')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(titles()).toHaveLength(3);
   });
 
   it('searches the current project name and supports folder-only tasks', async () => {
     const { user, props } = setup();
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'mindshub');
-    expect(screen.getAllByRole('row')).toHaveLength(3);
+    expect(titles()).toEqual(['Approval needed', 'Older task']);
     await user.clear(screen.getByRole('textbox', { name: 'Search tasks' }));
     await select(user, 'Filter by project', 'No project');
-    expect(screen.getAllByRole('row')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Folder task' })).toBeInTheDocument();
+    expect(titles()).toEqual(['Folder task']);
     await user.click(screen.getByRole('button', { name: 'New task' }));
     expect(props.onNewTask).toHaveBeenCalledWith(null);
   });
@@ -135,7 +134,7 @@ describe('CodeTasksView', () => {
 
   it('does not show an empty state as if a failed or pending load succeeded', async () => {
     const { user, props, rerender } = setup({ sessions: [], loading: true });
-    expect(screen.getByRole('status')).toHaveTextContent('Loading tasks');
+    expect(screen.getByLabelText('Loading')).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByText('No tasks yet')).not.toBeInTheDocument();
     rerender(<CodeTasksView {...props} loading={false} error="Could not load coding tasks." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load coding tasks.');
@@ -161,7 +160,7 @@ describe('CodeTasksView', () => {
     const { user, props, rerender } = setup({ sessions: [updated, task('Broken', { status: 'failed' }), task('Done')] });
     await select(user, 'Filter by status', 'Needs attention');
     expect(screen.getByText('Review plan')).toBeInTheDocument();
-    expect(within(screen.getByRole('table')).getByText('Failed')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Code tasks' })).getByText('Failed')).toBeInTheDocument();
     expect(screen.queryByText('Done')).not.toBeInTheDocument();
     rerender(<CodeTasksView {...props} sessions={[{ ...updated, status: 'running' }]} />);
     expect(screen.getByText('No matching tasks')).toBeInTheDocument();
@@ -169,7 +168,7 @@ describe('CodeTasksView', () => {
 
   it('opens a project by ID from its task row', async () => {
     const { user, props } = setup();
-    const row = screen.getByRole('button', { name: 'Older task' }).closest('tr')!;
+    const row = screen.getByRole('button', { name: 'Older task' }).closest<HTMLElement>('[class~="group/item"]')!;
     await user.click(within(row).getByRole('button', { name: 'MindsHub' }));
     expect(props.onOpenProject).toHaveBeenCalledWith('p1');
     expect(props.onOpen).not.toHaveBeenCalled();
