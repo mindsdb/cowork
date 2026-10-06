@@ -3583,7 +3583,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    minimum the rest of the mobile shell uses. */
 @media (hover: none), (pointer: coarse) {
   .chat-card-shell .btn,
-  .chat-artifact-card__actions .btn { min-height: 44px; }
+  .chat-artifact-card__actions .btn,
+  .chat-artifact-card__tools .btn { min-height: 44px; }
 }
 
 /* ─── Inline artifact card in the transcript ─────────────────────────────
@@ -3595,37 +3596,84 @@ body[data-theme="dark"] .mshell__drawer-title {
 .chat-artifact-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "tile text actions"
+    "loc  loc  tools";
   align-items: center;
-  gap: 12px;
   max-width: 600px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--sh-1);
 }
-/* An attachment, not a tile: the whole surface opens the preview, but the
-   cue is the title underline and a firmer edge, not the list-card tint. */
-.card.chat-artifact-card.interactive { transition: border-color var(--dur-glow) ease; }
+/* A small window onto the artifact, not a list tile: the surface opens the
+   preview, and hover deepens the shadow and warms the location bar together
+   on the glow curve, matching the Preview button beside it. */
+.card.chat-artifact-card.interactive {
+  transition: border-color var(--dur-glow) ease, box-shadow var(--dur-glow) ease;
+}
 .card.chat-artifact-card.interactive:hover {
   background: var(--card-surface);
   border-color: var(--line-2);
+  box-shadow: var(--sh-2);
 }
-.chat-artifact-card__actions { min-width: 0; }
-/* The title and path truncate before the actions move: the path is a
-   reference, the button is the point. Only below this does the row stop
-   holding a readable title beside the actions, and they drop under the
-   title in the text column, so the thumbnail column stays a column instead
-   of leaving a hole beside a right-aligned button. */
-@container chat-col (max-width: 400px) {
-  .chat-artifact-card { grid-template-columns: auto minmax(0, 1fr); }
-  .chat-artifact-card__actions { grid-column: 2 / -1; }
+/* Head spacing lives on the cells, not a grid gap, so the footer cells meet
+   with no seam of card surface between them. */
+.chat-artifact-card__tile    { grid-area: tile;    margin: 12px 12px 10px; }
+.chat-artifact-card__text    { grid-area: text;    margin: 12px 12px 10px 0; }
+.chat-artifact-card__actions { grid-area: actions; margin: 12px 12px 10px 0; min-width: 0; }
+/* Footer — the path as a location bar, with the secondary actions at its end. */
+.chat-artifact-card__loc,
+.chat-artifact-card__status,
+.chat-artifact-card__tools {
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  min-height: 34px;
+  box-sizing: border-box;
+  transition: background-color var(--dur-glow) ease;
 }
-/* The action status gets a row of its own rather than a slot in the button
-   row. Sharing that row made a long message crush the filename track beside
-   it, and any rule that reacted to the message instead would restructure the
-   card for the second or two it is on screen. */
+.card.chat-artifact-card.interactive:hover .chat-artifact-card__loc,
+.card.chat-artifact-card.interactive:hover .chat-artifact-card__status,
+.card.chat-artifact-card.interactive:hover .chat-artifact-card__tools {
+  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface-2));
+}
+.chat-artifact-card__loc,
 .chat-artifact-card__status {
-  grid-column: 2 / -1;
+  grid-area: loc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  padding: 0 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.chat-artifact-card__loc svg { flex: none; color: var(--ink-4); }
+/* No secondary actions: the bar runs the full width. */
+.chat-artifact-card__loc:last-child,
+.chat-artifact-card__status:last-child { grid-column: 1 / -1; }
+.chat-artifact-card__tools {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px 0 0;
+  min-width: 0;
+}
+/* The title truncates before the primary action moves. Only below this does
+   the head stop holding a readable title beside the button, and it drops
+   under the title in the text column, so the tile column stays a column
+   instead of leaving a hole beside a right-aligned button. */
+@container chat-col (max-width: 400px) {
+  .chat-artifact-card {
+    grid-template-areas:
+      "tile text    text"
+      "tile actions actions"
+      "loc  loc     tools";
+    align-items: start;
+  }
+  .chat-artifact-card__text    { margin-bottom: 0; }
+  .chat-artifact-card__actions { margin: 8px 12px 10px 0; }
 }
 
 /* ─── Chat-view accent damping ───────────────────────────────────────────────

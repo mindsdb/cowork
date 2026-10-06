@@ -929,7 +929,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     >
       <div
         className={cn(
-          'grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-ink-3',
+          'chat-artifact-card__tile grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent-bg text-accent',
           deleted && 'opacity-70',
         )}
       >
@@ -939,7 +939,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="chat-artifact-card__text flex min-w-0 flex-col gap-0.5">
         {/* The title is a keyboard stop of its own: it opens what the card
             opens, and carries the reason in `title` when there is nowhere to
             go. Preflight is off, so the native button chrome is reset here. */}
@@ -950,16 +950,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
           className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        {/* One meta line, kind · path, so the row stays two lines tall. */}
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
           <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
-          {previewText && (
-            <>
-              <span aria-hidden="true" className="text-ink-4">·</span>
-              <span title={previewText} className="min-w-0 truncate text-ink-4">{previewText}</span>
-            </>
-          )}
         </span>
       </div>
       {/* The card is role="button" with a whole-surface click and Enter/Space
@@ -979,19 +972,38 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           leading={!deleted && primaryAction && primaryReason
             ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
             : null}
-          secondary={sharedLinkAction || downloadAction}
           primary={!deleted && primaryAction
             ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
             : null}
-          overflow={[sharedLinkAction && downloadAction]}
         />
       </div>
-      {status && (
+      {/* The footer is the artifact's location bar: the path at rest, and the
+          result of an action for the moment it is on screen. One or the
+          other, so a long message never crushes the path beside it. */}
+      {status ? (
         <span
-          className={cn('chat-artifact-card__status font-body text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
+      ) : (
+        <span className="chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+          {Ico.folder(12)}
+          <span className="min-w-0 truncate">{previewText}</span>
+        </span>
+      )}
+      {(sharedLinkAction || downloadAction) && (
+        <div
+          className="chat-artifact-card__tools"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+        >
+          <ActionBar
+            size="xs"
+            secondary={sharedLinkAction || downloadAction}
+            overflow={[sharedLinkAction && downloadAction]}
+          />
+        </div>
       )}
     </Card>
     </>

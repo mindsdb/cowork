@@ -708,10 +708,13 @@ describe('inline artifact card layout hooks', () => {
     // keeps its three-track desktop layout at every width.
     expect(card.closest('.chat-transcript-col')).not.toBeNull();
 
-    // Download sits behind "More actions" when the shared link is the visible
-    // secondary; the menu's trigger is in the same grouped element.
-    for (const label of ['Shared link', 'Preview', 'More actions']) {
-      expect(actions).toContainElement(screen.getByRole('button', { name: label }));
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Preview' }));
+    // The secondary and the overflow trigger live in the footer's own
+    // grouped element, which the grid places as the location bar's end.
+    const tools = card.querySelector(':scope > .chat-artifact-card__tools');
+    expect(tools).not.toBeNull();
+    for (const label of ['Shared link', 'More actions']) {
+      expect(tools).toContainElement(screen.getByRole('button', { name: label }));
     }
   });
 
@@ -734,6 +737,7 @@ describe('inline artifact card layout hooks', () => {
     const status = card.querySelector(':scope > .chat-artifact-card__status');
     expect(status).not.toBeNull();
     expect(card.querySelector('.chat-artifact-card__actions')).not.toContainElement(status);
+    expect(card.querySelector('.chat-artifact-card__tools')).not.toContainElement(status);
   });
 
   it('announces an action result through a region that was already mounted', async () => {
