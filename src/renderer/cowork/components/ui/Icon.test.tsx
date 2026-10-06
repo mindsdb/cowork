@@ -13,8 +13,8 @@ describe('iconSize', () => {
 });
 
 describe('Icon', () => {
-  it('draws 1.25px up to 16 and 1.5px above, as absolute pixels', () => {
-    expect(ICON_SIZES.map(iconStroke)).toEqual([1.25, 1.25, 1.25, 1.5, 1.5]);
+  it('draws 1px up to 16 and 1.5px above, as absolute pixels', () => {
+    expect(ICON_SIZES.map(iconStroke)).toEqual([1, 1, 1, 1.5, 1.5]);
     for (const size of ICON_SIZES) {
       const { container, unmount } = render(<Icon of={Folder} size={size} />);
       const svg = container.querySelector('svg')!;
