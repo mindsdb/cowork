@@ -684,11 +684,12 @@ function AppCore() {
      state is shown on the project itself instead. */
   const [deletingProjectKeys, setDeletingProjectKeys] = useState([]);
 
-  // Live stream control — refs to the active fetch's AbortController
-  // and the latest scratchpad name so we can fire a Stop that aborts
-  // both the SSE read and the in-flight scratchpad cell.
+  /*
+   * Live stream control: the active fetch's AbortController. The scratchpad
+   * cell a turn opens lives on that stream's liveStreamsRef record
+   * (setStreamPad), which is where Stop finds the cell to cancel.
+   */
   const activeStreamCtrlRef = useRef(null);
-  const activeScratchpadRef = useRef(null);
   // Which task id (if any) the active stream belongs to. Used to
   // distinguish "this conversation is mid-flight, keep the running
   // indicators" from "this conversation has zombie running indicators
@@ -889,7 +890,6 @@ function AppCore() {
         try { ctrl.abort(); } catch { /* already closed */ }
       }
       activeStreamCtrlRef.current = null;
-      activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
       activeStreamProducedRef.current = false;
       staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
@@ -1243,7 +1243,6 @@ function AppCore() {
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     if (activeStreamingTaskIdRef.current === cidToCancel) {
-      activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
     }
 
@@ -1295,7 +1294,6 @@ function AppCore() {
       isConfigError: isAntonConfigError(message, event),
     }));
     activeStreamCtrlRef.current = null;
-    activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
@@ -2068,7 +2066,6 @@ function AppCore() {
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) {
-          activeScratchpadRef.current = open._scratchpadTabId;
           setStreamPad(taskId, open._scratchpadTabId);
         }
         flushSync(() => flushStreaming());
@@ -2078,7 +2075,6 @@ function AppCore() {
         releaseStream(taskId, ctrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
         releaseLiveSteps([taskId]);
@@ -3260,11 +3256,12 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
-        // Track latest in-progress scratchpad so the Stop button
-        // can cancel anton's current cell, not just abort our stream.
+        /*
+         * Record the open scratchpad cell on this stream's record so Stop
+         * can cancel anton's current cell, not just abort our stream.
+         */
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) {
-          activeScratchpadRef.current = open._scratchpadTabId;
           setStreamPad(resolvedId || taskId, open._scratchpadTabId);
         }
         flushSync(() => flushStreamingMessage());
@@ -3286,7 +3283,6 @@ function AppCore() {
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
         // Turn done → conversation persisted; drop the optimistic flag so a
@@ -3728,7 +3724,6 @@ function AppCore() {
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) {
-          activeScratchpadRef.current = open._scratchpadTabId;
           setStreamPad(resolvedId || id, open._scratchpadTabId);
         }
         flushSync(() => flushStreaming());
@@ -3738,7 +3733,6 @@ function AppCore() {
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         // Turn done → conversation persisted; drop the optimistic flag (set if
         // `id` was a tmp-connect id that adopted a server id).
