@@ -4376,7 +4376,8 @@ function AppCore() {
       // deleted, stop the stream first so the SSE connection doesn't
       // keep producing events for a turn that no longer exists. The
       // silent flag skips the post-cancel session refetch.
-      if (activeStreamingTaskIdRef.current === taskId) {
+      // The registry, not the shared slot: another conversation may hold that.
+      if (liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId) {
         try { await handleStopStream({ taskId, silent: true }); } catch {}
       }
       if (isLocalOnly) {

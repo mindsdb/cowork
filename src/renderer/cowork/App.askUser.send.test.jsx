@@ -1610,6 +1610,27 @@ describe('Stop on the conversation on screen', () => {
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalled());
   });
 
+  it('stops the stream of a turn deleted while another conversation holds the slot', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+    // The post-delete re-sync reads this file's unavailable session and warns
+    // through a bare alert(), which this environment does not define.
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    try {
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+      expect(alpha.abort).toHaveBeenCalled();
+      expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+      expect(tailB.abort).not.toHaveBeenCalled();
+    } finally {
+      window.alert = originalAlert;
+    }
+  });
+
   it('leaves the running indicators of another streaming conversation', async () => {
     const user = userEvent.setup();
     spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
