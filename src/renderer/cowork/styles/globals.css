@@ -489,17 +489,31 @@ input, textarea { font-family: inherit; }
 /* ─── App titlebar ──────────────────────────────────────────────────────────
    One fixed row across the window: the sidebar zone (window controls inset,
    sidebar toggle, brand menu), the active view's header, and app-wide
-   controls. One hairline under the whole row; the docked sidebar zone shares
-   the sidebar's surface and right edge so the sidebar reads as one column. */
+   controls. No hairline under the row: the header sits on the page surface.
+   The docked sidebar zone shares the sidebar's surface and right edge so the
+   sidebar reads as one column. */
 .app-titlebar {
   height: var(--titlebar-h);
   flex: none;
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--line);
   -webkit-app-region: drag;
   position: relative;
   z-index: 2;
+}
+/* The titlebar has no hairline, so a view's scroller fades its content out
+   under the row instead of clipping it at a hard edge. The fade sits in the
+   scroller's top padding, so it only shows once content scrolls into it. A
+   second opaque layer over the right 16px keeps the scrollbar unfaded. */
+.titlebar-fade {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 24px), linear-gradient(#000, #000);
+  -webkit-mask-size: 100% 100%, 16px 100%;
+          mask-size: 100% 100%, 16px 100%;
+  -webkit-mask-position: 0 0, 100% 0;
+          mask-position: 0 0, 100% 0;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
 }
 .app-titlebar__zone {
   flex: none;
@@ -2064,7 +2078,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
-.anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
+.anton-sidebar__cta-wrap { padding: 2px 10px 10px; }
 /* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
    Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
    default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
@@ -2130,7 +2144,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   /* Group headers (Pinned, Recent tasks, Agent, Code tasks) are a quiet label
      on the text scale, not a spaced-caps overline. */
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink-3);

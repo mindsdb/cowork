@@ -477,7 +477,7 @@ export default function Sidebar({
           toggle in the same spot. */}
       {popout && (
         <div
-          className="flex items-center shrink-0 h-[var(--titlebar-h)] border-0 border-b border-solid border-line"
+          className="flex items-center shrink-0 h-[var(--titlebar-h)]"
           style={{ paddingLeft: lightsInset }}
         >
           <Tooltip content="Close sidebar">

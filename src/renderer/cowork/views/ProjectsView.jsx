@@ -355,7 +355,7 @@ function ProjectDetail({
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="flex-[1_1_0] min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
+                  className="flex-[1_1_0] min-w-0 font-sans font-medium text-[13px] tracking-normal text-ink-2 bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <CrumbCurrent
@@ -419,7 +419,7 @@ function ProjectDetail({
           onDelete={() => onDelete?.(project)}
         />
 
-        <div data-scroll="true" className="row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
+        <div data-scroll="true" className="titlebar-fade row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
             <div className="flex flex-col gap-2">
               <SharedResourceAttribution resource={project} />
@@ -481,7 +481,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-transparent border-0 border-l border-solid border-line pt-[18px] px-5 pb-[22px] flex flex-col gap-[22px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail bg-surface border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 pb-6 flex flex-col gap-7 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <WorkingFolderBox project={project} />
           <ContextBox
             projects={projects}

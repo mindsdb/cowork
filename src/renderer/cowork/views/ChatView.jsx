@@ -2132,7 +2132,7 @@ export default function ChatView({
                   // current crumb, so it's a CrumbCurrent sibling in every
                   // way but its interactivity (click opens the task menu,
                   // dbl-click edits), hence not the component itself.
-                  className="flex-1 min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
+                  className="flex-1 min-w-0 font-sans font-medium text-[13px] tracking-normal text-ink-2 bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <span
@@ -2154,7 +2154,7 @@ export default function ChatView({
                       setSettingsOpen((v) => !v);
                     }
                   }}
-                  className="font-display font-semibold text-[13px] tracking-normal text-ink overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:anywhere] min-w-0 flex-initial cursor-pointer"
+                  className="font-sans font-medium text-[13px] tracking-normal text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:anywhere] min-w-0 flex-initial cursor-pointer"
                 >{task.title}</span>
               )}
               {task.pinned && !titleEditing && (
@@ -2268,7 +2268,7 @@ export default function ChatView({
         <div
           ref={scrollRef}
           data-scroll="true"
-          className="scroll-clean row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean titlebar-fade row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-12 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
@@ -2933,7 +2933,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div className="chat-floating-composer absolute left-12 right-12 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3018,7 +3018,7 @@ export default function ChatView({
         className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
             ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-transparent min-w-0 border-0 border-l border-solid border-line pt-[18px] px-5 gap-[22px] transition-opacity duration-layout ease-[ease]'
+            : 'bg-surface min-w-0 border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 gap-7 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

@@ -674,7 +674,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="font-sans text-xs font-medium text-ink-4">
               Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
             </span>
             <OverflowMenu
@@ -806,7 +806,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="font-sans text-xs font-medium text-ink-4">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
             <Tooltip content="Attach files to this task">
@@ -969,7 +969,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            <span className="font-sans text-xs font-medium text-ink-4 px-1 mb-1">
               {/* Display label spelled out — "Project" / "Global" on
                   their own read as project metadata, not memory. The
                   vault scope (`section.scope`) is still the canonical

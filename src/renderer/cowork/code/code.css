@@ -252,15 +252,15 @@
    terminal rather than over it. */
 .code-conversation__stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 .code-notices { z-index: 1; display: grid; flex: none; gap: 7px; width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 2px auto 0; }
-/* Fade under the floating dock with a mask, so it holds over any backdrop.
+/* Fade out under the titlebar and under the floating dock with a mask, so it holds over any backdrop.
    The mask clips the element's own scrollbar too, so a second opaque layer
    keeps the scrollbar strip fully visible. 16px clears the native thin
    scrollbar; the 28px content gutter keeps text out of it. */
 .code-timeline {
   --code-fade-end: calc(100% - var(--code-dock-height, 0px) + 8px);
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
-          mask-image: linear-gradient(to bottom, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
   -webkit-mask-size: 100% 100%, 16px 100%;
           mask-size: 100% 100%, 16px 100%;
   -webkit-mask-position: 0 0, 100% 0;
