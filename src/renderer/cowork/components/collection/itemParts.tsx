@@ -57,8 +57,17 @@ export const REVEAL_ON_HOVER = [
   // An open menu keeps its trigger visible after the pointer leaves.
   'has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100',
   'has-[[aria-expanded=true]]:pointer-events-auto has-[[aria-expanded=true]]:opacity-100',
-  // No hover on touch: always visible, or it would be unreachable.
+  // No hover on touch: always visible, or it would be unreachable. A touch
+  // laptop reports hover but a coarse pointer, so it counts as touch too.
   '[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100',
+  '[@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100',
+].join(' ');
+
+/** Layout classes that drop an overlaid cluster back into flow on touch,
+ *  where it is always visible and must not cover the item. */
+export const ACTIONS_IN_FLOW_ON_TOUCH = [
+  '[@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0',
+  '[@media(pointer:coarse)]:static [@media(pointer:coarse)]:bg-none [@media(pointer:coarse)]:p-0',
 ].join(' ');
 
 export interface HoverActionsProps {
@@ -72,7 +81,7 @@ export interface HoverActionsProps {
 /** The control cluster on an item. Sits above the stretched activator. */
 export function HoverActions({ children, reveal = false, className }: HoverActionsProps) {
   return (
-    <div data-revealed={reveal || undefined} className={cn('relative z-10 flex shrink-0 items-center gap-1', !reveal && REVEAL_ON_HOVER, className)}>
+    <div data-item-actions="" data-revealed={reveal || undefined} className={cn('relative z-10 flex shrink-0 items-center gap-1', !reveal && REVEAL_ON_HOVER, className)}>
       {children}
     </div>
   );
@@ -94,7 +103,8 @@ export interface ItemSlots {
   meta?: ReactNode;
   /** Kebab etc., revealed on hover / focus-within / open menu / touch. */
   actions?: ReactNode;
-  /** Keep `actions` visible at rest. */
+  /** Keep `actions` visible at rest. Visible actions sit in flow, so they
+   *  never cover the title or meta. */
   revealActions?: boolean;
   /** Opens the item. Omit while the title holds an input (inline rename). */
   onActivate?: () => void;

@@ -86,6 +86,17 @@ describe.each([
     expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled();
   });
 
+  // Positioning is pinned by class (jsdom computes no Tailwind CSS): an
+  // overlaid cluster is `absolute`, an in-flow one is not.
+  it('overlays hidden actions but keeps revealed ones in flow, so they never cover the title or meta', () => {
+    const { rerender } = render(<Item title="Weekly report" actions={<button type="button">More</button>} />);
+    const cluster = () => screen.getByRole('button', { name: 'More' }).closest('[data-item-actions]');
+    expect(cluster()).toHaveClass('absolute', '[@media(hover:none)]:static', '[@media(pointer:coarse)]:static');
+    rerender(<Item title="Weekly report" revealActions actions={<button type="button">More</button>} />);
+    expect(cluster()).not.toHaveClass('absolute');
+    expect(cluster()).not.toHaveClass('opacity-0');
+  });
+
   it('keeps hover actions in the tab order after the activator, so keyboard users reach them', async () => {
     const user = userEvent.setup();
     const onMenu = vi.fn();
@@ -109,7 +120,7 @@ describe.each([
 describe('HoverActions', () => {
   // jsdom computes no Tailwind CSS, so the reveal contract is pinned by the
   // variants that implement it: focus-within, an open menu, and touch.
-  it('hides at rest and reveals on hover, focus-within, an open menu, and touch', () => {
+  it('hides at rest and reveals on hover, focus-within, an open menu, and touch (incl. coarse pointers)', () => {
     render(<HoverActions><button type="button">Edit</button></HoverActions>);
     const cluster = screen.getByRole('button', { name: 'Edit' }).parentElement!;
     expect(cluster).toHaveClass(
@@ -120,6 +131,7 @@ describe('HoverActions', () => {
       'group-focus-within/item:pointer-events-auto',
       'has-[[data-popup-open]]:opacity-100',
       '[@media(hover:none)]:opacity-100',
+      '[@media(pointer:coarse)]:opacity-100',
     );
   });
 

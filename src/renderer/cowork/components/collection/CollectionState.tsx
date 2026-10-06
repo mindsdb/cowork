@@ -25,6 +25,7 @@ import Button from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import type { EmptyStateProps } from '../ui/EmptyState';
 import { cn } from '../../lib/cn';
+import { ListGroup } from './ListGroup';
 
 // One shimmer bar. The `background` stays inline: the shorthand resets
 // background-image, which keeps .collection-shimmer's gradient suppressed
@@ -56,6 +57,21 @@ export function SkeletonRow() {
   );
 }
 
+/** A comfortable <ListItem> placeholder: leading icon, title over a
+ *  description, and meta at the end. */
+export function SkeletonGroupRow() {
+  return (
+    <div className="flex min-h-[60px] items-center gap-x-3 px-4 py-3">
+      <span className="inline-flex w-6 shrink-0 justify-center"><Bar className="size-3.5" /></span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <Bar className="h-3.5 w-1/3" />
+        <Bar className="h-[11px] w-1/2" />
+      </div>
+      <Bar className="h-[11px] w-20 shrink-0 max-sm:hidden" />
+    </div>
+  );
+}
+
 export interface CollectionStateProps {
   /** Items are still loading; shows skeletons. */
   loading?: boolean;
@@ -67,7 +83,9 @@ export interface CollectionStateProps {
   onClear?: () => void;
   noMatchTitle?: ReactNode;
   clearLabel?: string;
-  skeleton?: 'cards' | 'rows';
+  /** `cards` for a card grid, `rows` for a hairline list, `group` for rows
+   *  in a <ListGroup>. */
+  skeleton?: 'cards' | 'rows' | 'group';
   skeletonCount?: number;
   /** Layout (padding/margin) of the skeleton wrapper, matching the page body. */
   skeletonClassName?: string;
@@ -95,6 +113,13 @@ export function CollectionState({
 }: CollectionStateProps) {
   if (loading) {
     const items = Array.from({ length: skeletonCount });
+    if (skeleton === 'group') {
+      return (
+        <ListGroup aria-busy="true" aria-label="Loading" className={skeletonClassName}>
+          {items.map((_, i) => <SkeletonGroupRow key={i} />)}
+        </ListGroup>
+      );
+    }
     return (
       <div
         aria-busy="true"

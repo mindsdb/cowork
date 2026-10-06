@@ -1,12 +1,10 @@
-// Projects page — D1 "Quiet" direction.
+// Projects page.
 //
 // Header (title + subtitle + accent "+ New project") • Filter row
-// (search ⌘K + sort + count + grid/list toggle) • Grid OR list. Each
-// card surfaces a single activity line, mono timestamp w/ active dot,
-// and a demoted stats row (tasks · mem · sched · art) with zero values
-// dimmed. Pin + ⋯ menu reveal on hover.
-//
-// Design source: docs/design-handoff/Anton Projects (D1).
+// (search ⌘K + sort + count + grid/list toggle) • cards (default) or
+// rows on the collection kit. A project is a place you work in, so it
+// reads as a card; the list is the same item with its meta inline.
+// See components/project/ProjectCard.jsx.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches } from '../lib/projectLabel';
@@ -14,7 +12,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
-import { ProjectCard } from '../components/project/ProjectCard';
+import { ProjectCard, ProjectRow } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
 import {
   PageHeader,
@@ -24,6 +22,9 @@ import {
   ViewToggle,
   CollectionState,
   NewTile,
+  CardGrid,
+  ListGroup,
+  NewRow,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -31,12 +32,10 @@ import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
-  fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
 import { Button, Menu, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
-import { belongsToProject } from '../lib/artifactProject';
 import { host } from '../../platform/host';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import {
@@ -110,16 +109,6 @@ function timestampOfProject(project, tasks) {
   return max;
 }
 
-function isActive(project, tasks) {
-  const list = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path,
-  );
-  if (list.some((t) => t.status === 'active')) return true;
-  const HOUR = 60 * 60 * 1000;
-  const ts = timestampOfProject(project, tasks);
-  return ts > 0 && Date.now() - ts < HOUR;
-}
-
 /* Equality probe for the server-owned fields the detail refresh tracks. Both are
    small plain payloads, so a serialized compare is enough to tell "the server
    said the same thing again" from "hand the detail subtree a new object".
@@ -127,17 +116,6 @@ function isActive(project, tasks) {
    omitted block reads the same either way. */
 function sameServerField(a, b) {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-}
-
-function activitySummaryFor(project, tasks) {
-  const list = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path,
-  );
-  if (list.length === 0) return null;
-  const sorted = [...list].sort((a, b) =>
-    (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0),
-  );
-  return sorted[0];
 }
 
 // ─── Header ──────────────────────────────────────────────────────────────
@@ -152,6 +130,11 @@ function NewProjectButton({ onClick }) {
     </Button>
   );
 }
+
+// Page padding of the card grid and the row group, shared with their
+// loading skeletons so loading does not shift the layout.
+const GRID_CLASS = 'mt-[18px] px-8 pb-[60px] pt-1.5';
+const LIST_CLASS = 'mx-8 mb-[60px] mt-6';
 
 // Sort options for the projects collection. Kept here (and not in
 // the kit) because the choices are page-specific.
@@ -251,206 +234,6 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       ariaLabel="Project actions"
       items={items}
     />
-  );
-}
-
-// ─── List view ───────────────────────────────────────────────────────────
-
-// Adds an "Active" column between Tasks and Memories — the count of
-// currently-streaming tasks in this project. Client-side derivable
-// from `tasks` (status === 'active'), so no new server endpoint
-// needed; the data is already on the client.
-//
-// Name leads with the most fr-share so long names don't ellipsize at
-// the typical sidebar width — the prior 1.6fr lost the name to the
-// "Last activity" cell. Updated column was dropped (the activity
-// summary already implies recency); the freed width goes to Name.
-const LIST_GRID_COLS = 'grid-cols-[3fr_1.2fr_64px_64px_64px_64px_64px_36px]';
-
-function ListHeader() {
-  const Cell = ({ children, align }) => (
-    <div className={`font-mono text-[10.5px] text-ink-4 tracking-widest uppercase ${align === 'right' ? 'text-right' : 'text-left'}`}>{children}</div>
-  );
-  return (
-    <div className={`grid ${LIST_GRID_COLS} gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line`}>
-      <Cell>Name</Cell>
-      <Cell>Last activity</Cell>
-      <Cell align="right">Tasks</Cell>
-      <Cell align="right">Active</Cell>
-      <Cell align="right">Memories</Cell>
-      <Cell align="right">Sched.</Cell>
-      <Cell align="right">Artifacts</Cell>
-      <Cell />
-    </div>
-  );
-}
-
-function D1Num({ value }) {
-  const isZero = !value;
-  return (
-    <span className={`font-mono text-[12px] text-right tabular-nums ${isZero ? 'text-ink-5' : 'text-ink'}`}>{value ?? 0}</span>
-  );
-}
-
-// Same shape as D1Num but with a pulsing accent dot + accent number
-// when > 0. Used by the "Active" column so live projects stand out
-// without dragging in a full status pill.
-function ActiveNum({ value }) {
-  const isZero = !value;
-  return (
-    <span className={`inline-flex items-center justify-end gap-[6px] font-mono text-[12px] text-right tabular-nums ${isZero ? 'text-ink-5' : 'text-accent'}`}>
-      {!isZero && (
-        <span aria-hidden className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_color-mix(in_srgb,var(--accent)_55%,transparent)] shrink-0" />
-      )}
-      {value ?? 0}
-    </span>
-  );
-}
-
-// Lazy memory + artifact counts per project, identical to the card.
-// We could lift this to a single fetch + share but per-row keeps the
-// list view drop-in simple.
-function useRowStats(project) {
-  const [mem, setMem] = useState(0);
-  const [art, setArt] = useState(0);
-  useEffect(() => {
-    if (!project?.id && !project?.path) return;
-    let cancelled = false;
-    fetchMemory(project).then((data) => {
-      if (cancelled) return;
-      setMem(countNonEmptyMemory(data));
-    }).catch(() => {});
-    fetchArtifacts().then((data) => {
-      if (cancelled || !Array.isArray(data)) return;
-      setArt(data.filter((a) => belongsToProject(a, project)).length);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [project?.id, project?.path]);
-  return { mem, art };
-}
-
-function ListRow({
-  project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen, isMenuOpen = false,
-  // Inline-edit plumbing — wired from the parent the same way the
-  // grid `ProjectCard` is, so the kebab → Rename action works in both
-  // views. Earlier the list row showed no input when editing, which
-  // forced users to flip to grid view to actually rename.
-  editing = false,
-  // The server is still working through this project's delete.
-  deleting = false,
-  onRenameSubmit,
-  onRenameCancel,
-}) {
-  const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
-  const [actionFocused, setActionFocused] = useState(false);
-  const triggerRef = useRef(null);
-  const inputRef = useRef(null);
-  const { mem, art } = useRowStats(project);
-  const summary = activitySummaryFor(project, tasks);
-  const projectTasks = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path);
-  const taskCount = projectTasks.length;
-  // App.jsx sets task.status to 'active' while a turn is streaming
-  // and back to 'idle' on completion, so this count reflects the
-  // live in-flight work for the project.
-  const activeTaskCount = projectTasks.filter((t) => t.status === 'active').length;
-  const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
-  const active = isActive(project, tasks);
-  const isReserved = isReservedProjectName(project.name);
-
-  // Auto-focus + select-all when the row enters edit mode so the user
-  // can start typing the new name immediately.
-  useEffect(() => {
-    if (!editing) return;
-    const el = inputRef.current;
-    if (!el) return;
-    el.focus();
-    try { el.setSelectionRange(0, el.value.length); } catch {}
-  }, [editing]);
-
-  const submitRename = () => {
-    const next = inputRef.current?.value ?? projectLabel(project);
-    onRenameSubmit?.(next);
-  };
-
-  return (
-    <div
-      role={editing || deleting ? undefined : 'button'}
-      tabIndex={editing || deleting ? undefined : 0}
-      onClick={editing || deleting ? undefined : () => onOpen?.(project)}
-      aria-busy={deleting || undefined}
-      {...hoverProps}
-      onKeyDown={(e) => { if (!editing && !deleting && e.key === 'Enter') onOpen?.(project); }}
-      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_var(--dur-hover)_ease,opacity_var(--dur-hover)_ease] ${hovered && !deleting ? 'bg-surface' : 'bg-transparent'} ${editing || deleting ? 'cursor-default' : 'cursor-pointer'} ${deleting ? 'opacity-60' : ''}`}
-    >
-      {/* Name */}
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span aria-hidden className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)]' : 'bg-ink-5'}`} />
-          <span className="inline-flex text-ink-3 shrink-0">
-            {Ico.folder(13)}
-          </span>
-          {editing ? (
-            <input
-              ref={inputRef}
-              defaultValue={projectLabel(project)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-                else if (e.key === 'Escape') { e.preventDefault(); onRenameCancel?.(); }
-              }}
-              onBlur={submitRename}
-              spellCheck={false}
-              autoCapitalize="none"
-              autoCorrect="off"
-              className="flex-[1_1_0] min-w-0 font-display text-[14.5px] font-semibold text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
-            />
-          ) : (
-            <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel(project)}</span>
-          )}
-          {pinned && !editing && (
-            <span className="inline-flex text-accent shrink-0">
-              {Ico.pin(11)}
-            </span>
-          )}
-        </div>
-        <SharedResourceAttribution resource={project} className="pl-[30px]" />
-      </div>
-
-      {/* Last activity */}
-      <div className="font-body text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">
-        {deleting
-          ? <span className="text-ink-4">Deleting…</span>
-          : summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
-      </div>
-
-      {/* Number cells */}
-      <D1Num value={taskCount} />
-      <ActiveNum value={activeTaskCount} />
-      <D1Num value={mem} />
-      <D1Num value={schedCount} />
-      <D1Num value={art} />
-
-      {/* ⋯ menu */}
-      <div className="flex justify-end">
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = triggerRef.current?.getBoundingClientRect();
-            onMenuOpen?.(project, rect);
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-          onFocus={() => setActionFocused(true)}
-          onBlur={() => setActionFocused(false)}
-          aria-label="Project menu"
-          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] ${isReserved || deleting ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
-        >
-          {Ico.moreVert(15)}
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -786,7 +569,7 @@ export default function ProjectsView({
   harnessClaudeCodeEnabled,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
-  // Phones always get the grid (list rows are 5 columns); see ViewToggle.
+  // Phones always get the grid; see ViewToggle.
   const { view, setView, effectiveView, isMobile } = useCollectionView('anton:projects-view');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
@@ -955,6 +738,23 @@ export default function ProjectsView({
     return [...pinnedList, ...unpinnedList];
   }, [projects, tasks, search, sort, pinned]);
 
+  // What the card and the row share; the card adds selection.
+  const itemProps = (p) => ({
+    project: p,
+    tasks,
+    scheduled,
+    pinned: pinned.has(p.name),
+    editing: editingProjectName === p.name,
+    deleting: isDeleting(p),
+    onOpen: handleOpen,
+    onTogglePin: (proj, next) => togglePin(proj.name, next),
+    onMenuOpen: (proj, rect) => setMenuFor({ project: proj, rect }),
+    isMenuOpen: menuFor?.project?.name === p.name,
+    onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
+    onRenameCancel: handleRenameCancel,
+    alwaysShowActions: isMobile,
+  });
+
   if (detailProject) {
     return (
       <ProjectDetail
@@ -1049,8 +849,9 @@ export default function ProjectsView({
         shown={visibleProjects.length}
         query={search}
         onClear={() => setSearch('')}
-        skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
-        skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        // The skeleton takes the loaded layout's own wrapper classes.
+        skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
+        skeletonClassName={effectiveView === 'grid' ? GRID_CLASS : LIST_CLASS}
         empty={{
           icon: <span className="inline-flex text-ink-4">{Ico.folder(32)}</span>,
           title: 'No projects yet',
@@ -1060,51 +861,21 @@ export default function ProjectsView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
+          <CardGrid className={GRID_CLASS}>
             {visibleProjects.map((p) => (
-              <ProjectCard
-                key={p.name || p.path}
-                project={p}
-                isSelected={selectedProject?.name === p.name}
-                tasks={tasks}
-                scheduled={scheduled}
-                pinned={pinned.has(p.name)}
-                editing={editingProjectName === p.name}
-                deleting={isDeleting(p)}
-                onOpen={handleOpen}
-                onTogglePin={(proj, next) => togglePin(proj.name, next)}
-                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-                isMenuOpen={menuFor?.project?.name === p.name}
-                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-                onRenameCancel={handleRenameCancel}
-                alwaysShowActions={isMobile}
-              />
+              <ProjectCard key={p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.name === p.name} />
             ))}
             {/* Trailing dashed tile; opens the same NewProjectModal as the
                 header button. Hidden on phones, where the FAB is the create entry. */}
             <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
-          </div>
+          </CardGrid>
         ) : (
-          <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
-            <ListHeader />
+          <ListGroup className={LIST_CLASS}>
             {visibleProjects.map((p) => (
-              <ListRow
-                key={p.name || p.path}
-                project={p}
-                tasks={tasks}
-                scheduled={scheduled}
-                pinned={pinned.has(p.name)}
-                onOpen={handleOpen}
-                onTogglePin={(proj, next) => togglePin(proj.name, next)}
-                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-                isMenuOpen={menuFor?.project?.name === p.name}
-                editing={editingProjectName === p.name}
-                deleting={isDeleting(p)}
-                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-                onRenameCancel={handleRenameCancel}
-              />
+              <ProjectRow key={p.name || p.path} {...itemProps(p)} />
             ))}
-          </div>
+            <NewRow label="New project" onClick={handleNewProject} className="proj-new-tile" />
+          </ListGroup>
         )}
       </CollectionState>
 

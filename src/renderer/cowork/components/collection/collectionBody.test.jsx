@@ -15,6 +15,14 @@ describe('CollectionState', () => {
     expect(screen.queryByText('items')).not.toBeInTheDocument();
   });
 
+  it('draws group skeleton rows inside a list group, so loading matches the loaded rows', () => {
+    render(<CollectionState loading skeleton="group" skeletonCount={3} total={0} shown={0} empty={EMPTY} />);
+    const group = screen.getByLabelText('Loading');
+    expect(group.tagName).toBe('SECTION');
+    expect(group).toHaveAttribute('aria-busy', 'true');
+    expect(group.querySelector('.rounded-card').children).toHaveLength(3);
+  });
+
   it('renders the given empty state when the collection has no items', () => {
     render(<CollectionState total={0} shown={0} empty={EMPTY}><p>items</p></CollectionState>);
     expect(screen.getByText('Nothing yet')).toBeInTheDocument();
