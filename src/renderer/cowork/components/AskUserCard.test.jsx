@@ -68,6 +68,59 @@ describe('AskUserCard', () => {
     expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
   });
 
+  it('picks an option with its number key while focus is in the options', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('2');
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
+  });
+
+  it('toggles multi-select options with number keys and still waits for Send', async () => {
+    const user = userEvent.setup();
+    renderCard({ select: 'many' });
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('1');
+    await user.keyboard('2');
+    expect(submitAnswer).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /mysql/i })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['pg', 'my'] });
+  });
+
+  it('ignores number keys typed outside the options and numbers with no option', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <input aria-label="Reply" />
+        <AskUserCard step={step()} conversationId="conv-1" onAnswered={vi.fn()} />
+      </>,
+    );
+    await user.click(screen.getByRole('textbox', { name: 'Reply' }));
+    await user.keyboard('1');
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('9');
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('keeps option names free of the key hint and check mark', () => {
+    // Unanswered: every option carries a key hint.
+    const { unmount } = renderCard();
+    expect(screen.getByRole('button', { name: 'postgres primary' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+    unmount();
+    // Answered: the chosen option carries the check mark.
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+  });
+
+  it('marks the chosen option with a check and no outline', async () => {
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    const chosen = screen.getByRole('button', { name: /mysql/i });
+    expect(chosen.querySelector('svg')).not.toBeNull();
+    expect(chosen.className).not.toMatch(/(^|\s)border-accent(\s|$)/);
+  });
+
   it('multi-select accumulates and submits once', async () => {
     const user = userEvent.setup();
     renderCard({ select: 'many' });
@@ -157,7 +210,7 @@ describe('AskUserCard', () => {
     expect(shown.querySelector('strong')).toHaveTextContent('Answered:');
   });
 
-  it('shows no hover effect or pointer cursor on disabled options and Send', () => {
+  it('shows no hover effect or pointer cursor on disabled options, and holds Send until a pick', () => {
     const { unmount } = renderCard({ answer: { status: 'answered', values: [], text: 'other' } });
     for (const name of [/postgres/i, /mysql/i]) {
       const option = screen.getByRole('button', { name });
@@ -169,7 +222,9 @@ describe('AskUserCard', () => {
     renderCard({ select: 'many' });
     const send = screen.getByRole('button', { name: /^send$/i });
     expect(send).toBeDisabled();
-    expectInertWhenDisabled(send);
+    // Send is the card's one primary action: a pick enables it.
+    fireEvent.click(screen.getByRole('button', { name: /postgres/i }));
+    expect(send).toBeEnabled();
   });
 
   it('says so when the question was skipped', () => {
@@ -210,8 +265,8 @@ describe('AskUserCard', () => {
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
     const skip = screen.getByRole('button', { name: /skip/i });
     expect(skip).toBeDisabled();
-    // ...and looks it: Skip dims like the options.
-    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
+    // ...and so is every other button on the card.
+    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled();
     await act(async () => { release({ accepted: true }); });
   });
 

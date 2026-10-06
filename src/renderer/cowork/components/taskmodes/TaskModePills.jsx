@@ -9,9 +9,8 @@ import { TASK_MODES } from './taskModes';
 // Styling notes: Tailwind utilities (no globals.css entries). Hover rules are
 // gated behind (hover:hover) and (pointer:fine) via arbitrary variants — a
 // bare hover: compiles to plain :hover, which sticks on touch. The stagger
-// delay rides a --stagger CSS var so the animation itself lives in a class
-// that motion-reduce can override (an inline animation style would win over
-// any class).
+// delay rides a --stagger CSS var built from the motion tokens, so reduced
+// motion (tokens zeroed) makes the entrance instant.
 export default function TaskModePills({ onPick }) {
   return (
     <div
@@ -25,12 +24,12 @@ export default function TaskModePills({ onPick }) {
           type="button"
           // Stagger in behind the composer's own fade — same curve the
           // rest of the home surface uses.
-          style={{ '--stagger': `${140 + i * 40}ms` }}
-          className="group inline-flex cursor-pointer items-center gap-[7px] rounded-full border border-solid border-line-2 bg-[var(--surface-0)] px-[14px] py-2 [font-family:inherit] text-[13.5px] font-medium text-[var(--frost-700)] opacity-0 [animation:fadein-up_300ms_cubic-bezier(0.23,1,0.32,1)_var(--stagger)_both] motion-reduce:animate-none motion-reduce:opacity-100 [transition:background_140ms_ease,color_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_5%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
+          style={{ '--stagger': `calc(${3.5 + i} * var(--dur-stagger))` }}
+          className="group inline-flex cursor-pointer items-center gap-[7px] rounded-full border border-solid border-line-2 bg-[var(--surface-0)] px-[14px] py-2 [font-family:inherit] text-[13.5px] font-medium text-[var(--frost-700)] opacity-0 [animation:fadein-up_var(--dur-layout)_var(--ease-out)_var(--stagger)_both] [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_5%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
           onClick={() => onPick(mode)}
         >
           <span
-            className="inline-flex text-[var(--frost-600)] [transition:color_140ms_ease] [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-[var(--text-strong)]"
+            className="inline-flex text-[var(--frost-600)] [transition:color_var(--dur-hover)_ease] [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-[var(--text-strong)]"
             aria-hidden
           >
             {Ico[mode.icon](15)}

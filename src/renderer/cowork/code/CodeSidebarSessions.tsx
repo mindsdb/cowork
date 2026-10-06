@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
+import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
+import Tooltip from '../components/ui/Tooltip';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
 import { useTaskSeen } from './taskSeen';
@@ -107,6 +110,12 @@ export function CodeSidebarSessions({
   const archived = useMemo(() => visibleSessions
     .filter((session) => session.archived && matchesSession(session, normalizedQuery))
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at)), [normalizedQuery, visibleSessions]);
+  // Archived stays folded until you open it, or until the selected task is one of them.
+  const selectedArchived = archived.some((session) => session.id === selectedId);
+  const [archivedOpen, setArchivedOpen] = useState(selectedArchived);
+  useEffect(() => {
+    if (selectedArchived) setArchivedOpen(true);
+  }, [selectedArchived]);
 
   const projectGroups = new Map<string, CodingSession[]>();
   unpinned.forEach((session) => {
@@ -176,19 +185,20 @@ export function CodeSidebarSessions({
             {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
           </span>
         </button>
-        <Button
-          icon
-          size="xxs"
-          variant="subtle"
-          className="code-sidebar-session__pin"
-          disabled={pinBusy.has(session.id)}
-          onClick={() => void togglePinned(session)}
-          aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${session.title || 'untitled coding task'}`}
-          aria-pressed={isPinned}
-          title={isPinned ? 'Unpin task' : 'Pin task'}
-        >
-          {Ico.pin(12)}
-        </Button>
+        <Tooltip content={isPinned ? 'Unpin task' : 'Pin task'}>
+          <Button
+            icon
+            size="xxs"
+            variant="subtle"
+            className="code-sidebar-session__pin"
+            disabled={pinBusy.has(session.id)}
+            onClick={() => void togglePinned(session)}
+            aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${session.title || 'untitled coding task'}`}
+            aria-pressed={isPinned}
+          >
+            {Ico.pin(12)}
+          </Button>
+        </Tooltip>
       </div>
     );
   };
@@ -244,10 +254,16 @@ export function CodeSidebarSessions({
         />
       </div>
       {sessions.length >= 5 && (
-        <label className="code-sidebar-session-search">
-          <span aria-hidden="true">{Ico.search(12)}</span>
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a task" aria-label="Find a coding task" />
-        </label>
+        <Input
+          type="search"
+          value={query}
+          onChange={setQuery}
+          size="sm"
+          leading={Ico.search(12)}
+          wrapperClassName="code-sidebar-session-search"
+          placeholder="Find a task"
+          aria-label="Find a coding task"
+        />
       )}
       {pinError && <div className="code-sidebar-sessions__error" role="status">{pinError}</div>}
       <div className="scroll-clean code-sidebar-sessions__list">
@@ -263,10 +279,18 @@ export function CodeSidebarSessions({
           // first and work in motion next, and each row's status shows why.
           : unpinned.map(sessionRow)}
         {archived.length > 0 && (
-          <details className="code-sidebar-archived" open={archived.some((session) => session.id === selectedId)}>
-            <summary>Archived <span>{archived.length}</span></summary>
+          <Collapsible
+            open={archivedOpen}
+            onOpenChange={setArchivedOpen}
+            variant="compact"
+            className="code-sidebar-archived"
+            triggerClassName="px-2"
+            panelClassName="code-sidebar-archived__panel"
+            title="Archived"
+            meta={archived.length}
+          >
             {archived.map(sessionRow)}
-          </details>
+          </Collapsible>
         )}
       </div>
     </div>

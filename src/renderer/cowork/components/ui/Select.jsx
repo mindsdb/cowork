@@ -68,7 +68,7 @@ export const triggerVariants = cva(
     // beveled/uneven instead of a clean line.
     'font-body bg-surface border border-solid border-line rounded-[var(--r)] text-ink',
     'cursor-pointer outline-none box-border',
-    '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
+    '[transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]',
     'hover:border-line-2',
     'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
@@ -79,6 +79,8 @@ export const triggerVariants = cva(
       variant: {
         field: 'w-full px-[10px] py-[7px] text-[13px]',
         pill: 'rounded-[7px] px-[11px] py-[7px] bg-surface-2 text-ink-2 text-[12.5px]',
+        // Borderless until hover: for display controls (sort) beside filter pills.
+        quiet: 'gap-[6px] rounded-[7px] px-[9px] py-[7px] bg-transparent border-transparent text-ink-3 text-[12.5px] hover:border-transparent hover:bg-surface-2',
       },
       size: {
         md: '',
@@ -210,6 +212,8 @@ export function Select({
   // Optional identity shown only inside the open popup. Composer controls
   // use this to stay terse when closed without making a menu ambiguous.
   menuLabel,
+  // Quiet-variant icon before the value (the sort arrows).
+  leading,
   ariaLabel,
   title,
   id,
@@ -262,6 +266,7 @@ export function Select({
         style={{ width, minWidth, ...style }}
         {...rest}
       >
+        {variant === 'quiet' && leading && <span className="inline-flex shrink-0 text-ink-4">{leading}</span>}
         {variant === 'pill' && (label || ariaLabel) && (
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}

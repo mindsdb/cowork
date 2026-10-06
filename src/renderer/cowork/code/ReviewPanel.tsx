@@ -3,6 +3,8 @@ import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
+import EmptyState from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import { Tab, TabList, Tabs } from '../components/ui/Tabs';
 import Tooltip from '../components/ui/Tooltip';
@@ -225,13 +227,14 @@ export function ReviewPanel({
               {files.length > 0 && <><span className="code-diff-add">+{additions}</span><span className="code-diff-del">−{deletions}</span></>}
             </div>
             {files.length === 0 && (
-              <div className="code-review__empty">
-                <span>{Ico.code(18)}</span>
-                <strong>{directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}</strong>
-                <p>{directFolderWithoutDiff
+              <EmptyState
+                size="sm"
+                icon={Ico.code(18)}
+                title={directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}
+                description={directFolderWithoutDiff
                   ? 'Direct folders do not have a Git baseline, so Cowork cannot build an inline diff.'
-                  : 'File changes will collect here while the agent works.'}</p>
-              </div>
+                  : 'File changes will collect here while the agent works.'}
+              />
             )}
             {groupedFiles.map((group, groupIndex) => (
               <section className="code-diff-group" key={group.workspace.folder_id}>
@@ -322,19 +325,16 @@ export function ReviewPanel({
                   </Tooltip>
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
-                {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
-                  <summary>Git options <span>{Ico.chevDown(11)}</span></summary>
-                  <div className="code-git-advanced__body">
-                    <div className="code-git-action">
-                      <div className="code-field-label">Create a branch in the task worktree</div>
-                      <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>
-                    </div>
-                    <div className="code-git-action">
-                      <div className="code-field-label">Commit all task changes</div>
-                      <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
-                    </div>
+                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title="Git options">
+                  <div className="code-git-action">
+                    <div className="code-field-label">Create a branch in the task worktree</div>
+                    <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>
                   </div>
-                </details>}
+                  <div className="code-git-action">
+                    <div className="code-field-label">Commit all task changes</div>
+                    <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
+                  </div>
+                </Collapsible>}
               </>
             ) : <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
             <SourceUpdateSection

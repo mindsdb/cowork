@@ -42,7 +42,7 @@ function ScheduledList({ items, onSelect }) {
               fontSize: 12.5, color: 'var(--ink-2)',
               cursor: clickable ? 'pointer' : 'default',
               transition: clickable
-                ? 'background 120ms ease, color 120ms ease'
+                ? 'background var(--dur-hover) ease, color var(--dur-hover) ease'
                 : undefined,
             }}
             onMouseOver={clickable ? (e) => {

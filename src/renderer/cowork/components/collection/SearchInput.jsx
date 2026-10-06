@@ -1,12 +1,10 @@
-// Standard search input for collection toolbars. The styling matches
-// the Projects flavour (single-line input with a leading magnifier
-// glyph and a trailing ⌘K shortcut hint). Width flexes within
+// Search input for collection toolbars: `<Input>` with a leading magnifier and
+// a trailing shortcut hint (⌘K by default; pass "" or null to hide it, e.g.
+// when the page doesn't wire `useCollectionShortcut`). Width flexes within
 // FilterRow's flex container; pass a custom `placeholder` per view.
 
 import Ico from '../Icons';
-import { Kbd } from '../ui';
-
-const FONT_BODY = 'var(--font-body)';
+import { Input, Kbd } from '../ui';
 
 export function SearchInput({
   value,
@@ -17,33 +15,16 @@ export function SearchInput({
   shortcut = '⌘K',
 }) {
   return (
-    <div className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent" style={{
-      flex: '0 1 320px', minWidth: 220,
-      display: 'inline-flex', alignItems: 'center', gap: 8,
-      padding: '7px 11px', borderRadius: 7,
-      background: 'var(--surface-2)',
-      border: '1px solid var(--line)',
-    }}>
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
-        {Ico.search(13)}
-      </span>
-      <input
-        ref={inputRef}
-        type="text"
-        aria-label={ariaLabel}
-        value={value || ''}
-        onChange={(e) => onChange?.(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          flex: 1, minWidth: 0,
-          background: 'transparent', border: 0, outline: 'none',
-          fontFamily: FONT_BODY, fontSize: 12.5,
-          color: 'var(--ink-2)',
-        }}
-      />
-      {shortcut && (
-        <Kbd style={{ flexShrink: 0 }}>{shortcut}</Kbd>
-      )}
-    </div>
+    <Input
+      ref={inputRef}
+      type="text"
+      aria-label={ariaLabel}
+      value={value || ''}
+      onChange={(next) => onChange?.(next)}
+      placeholder={placeholder}
+      leading={Ico.search(13)}
+      trailing={shortcut && <Kbd>{shortcut}</Kbd>}
+      wrapperClassName="flex-[0_1_320px] min-w-[220px]"
+    />
   );
 }

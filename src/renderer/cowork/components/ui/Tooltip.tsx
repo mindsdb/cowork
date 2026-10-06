@@ -16,13 +16,39 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
 
+// Used only until globals.css has loaded; the token sets the real delay.
+const DEFAULT_DELAY_MS = 0;
+
+// Parses a CSS time ("0", "0ms", "0s", "250ms", "0.8s"). Returns null for
+// an empty or unreadable value so the caller falls back to the default.
+export function parseTooltipDelay(raw: string): number | null {
+  const match = /^(\d*\.?\d+)(ms|s)?$/.exec(raw.trim());
+  if (!match) return null;
+  return parseFloat(match[1]) * (match[2] === 's' ? 1000 : 1);
+}
+
+// The open delay comes from the `--tooltip-delay` motion token on :root
+// (globals.css). The first readable value is cached for the session; an
+// unreadable one (stylesheet not loaded yet) is retried on the next render.
+let cachedDelay: number | null = null;
+
+function tokenDelay(): number {
+  if (cachedDelay != null) return cachedDelay;
+  if (typeof document === 'undefined') return DEFAULT_DELAY_MS;
+  const parsed = parseTooltipDelay(
+    getComputedStyle(document.documentElement).getPropertyValue('--tooltip-delay'),
+  );
+  if (parsed == null) return DEFAULT_DELAY_MS;
+  cachedDelay = parsed;
+  return parsed;
+}
+
 export interface TooltipProps {
   content: ReactNode;
   children: ReactElement;
   side?: 'top' | 'bottom' | 'left' | 'right';
   sideOffset?: number;
-  // Tooltips that hint a frequently-used control should appear fast;
-  // the Base UI default (600ms) feels sluggish for top-bar icons.
+  // Overrides the `--tooltip-delay` token for this one tooltip.
   delay?: number;
   className?: string;
 }
@@ -32,7 +58,7 @@ export function Tooltip({
   children,
   side = 'bottom',
   sideOffset = 8,
-  delay = 250,
+  delay,
   className,
 }: TooltipProps) {
   // No content → render the trigger bare so callers can pass a
@@ -40,7 +66,7 @@ export function Tooltip({
   if (content == null || content === '') return children;
   return (
     <BaseTooltip.Root>
-      <BaseTooltip.Trigger delay={delay} render={children} />
+      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
           <BaseTooltip.Popup

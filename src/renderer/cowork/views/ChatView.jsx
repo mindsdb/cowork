@@ -8,15 +8,16 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
+import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -28,10 +29,11 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -75,9 +77,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO    = "var(--font-mono)";
-const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
@@ -195,7 +195,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
           onMouseEnter={() => onHoverChange?.(true)}
           onMouseLeave={() => onHoverChange?.(false)}
-          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
@@ -257,7 +257,7 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-hover ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
           : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
@@ -326,7 +326,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   }, [content]);
   return (
     <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       <div className="user-turn-inner">
@@ -433,7 +433,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       {children}
@@ -667,20 +667,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
-  // Close the export menu on any outside click. Clicks on the menu/toggle
-  // stopPropagation, so this only fires for clicks elsewhere.
-  useEffect(() => {
-    if (!exportOpen) return undefined;
-    const close = () => setExportOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -751,36 +741,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const noDestinationReason = orgMode && !openTarget
     ? 'This artifact cannot be previewed and has no shared link yet.'
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
-  const canExport = false;
-  const handleExport = async (fmt) => {
-    setExportOpen(false);
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    setExporting(true);
-    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
-    try {
-      const res = await exportArtifact(path, fmt);
-      showStatus('ok', `Exported ${res.filename}`);
-      // Desktop: open the result in the OS. Web: it's saved in the artifact
-      // folder and shows in the Artifacts panel.
-      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-export] failed', e);
-      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
-      revalidateAfterFailure();
-    }
-    finally {
-      setExporting(false);
-    }
-  };
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
@@ -924,6 +884,22 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * the shared page and a second button would point at the same place.
    */
   const showSharedLink = orgMode && published && openTarget === 'preview';
+  /*
+   * Org mode: every artifact with a primary file can be saved through its
+   * draft URL, previewable ones included, unless Download already IS the
+   * primary action (ENG-2044). The shared link, when there is one, is the
+   * visible secondary and Download moves behind "…"; otherwise Download is
+   * the secondary.
+   */
+  const sharedLinkAction = !deleted && showSharedLink
+    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    : null;
+  const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
+    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    : null;
+  // A disabled button takes no hover, so its reason is said beside it.
+  const primaryDisabled = !orgMode && !canAct;
+  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -943,7 +919,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     <Card
       as="div"
       interactive={canActivate}
-      padding="cozy"
+      flat
+      padding="snug"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
@@ -951,131 +928,66 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       className="chat-artifact-card"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
-        style={{ opacity: deleted ? 0.7 : 1 }}
+        className={cn(
+          'grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-ink-3',
+          deleted && 'opacity-70',
+        )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
         ) : (
-          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+          isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {/* The title is a keyboard stop of its own: it opens what the card
+            opens, and carries the reason in `title` when there is nowhere to
+            go. Preflight is off, so the native button chrome is reset here. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
-           */
-          style={{
-            all: 'unset',
-            cursor: canActivate ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
-            opacity: canActivate ? 1 : 0.7,
-          }}
-          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
-          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
-          {artifact.kind || 'live artifact'}
+        {/* One meta line, kind · path, so the row stays two lines tall. */}
+        <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
+          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
+          {previewText && (
+            <>
+              <span aria-hidden="true" className="text-ink-4">·</span>
+              <span title={previewText} className="min-w-0 truncate text-ink-4">{previewText}</span>
+            </>
+          )}
         </span>
-        {previewText && (
-          <span
-            title={previewText}
-            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            {previewText}
-          </span>
-        )}
       </div>
-      <div className="chat-artifact-card__actions">
-        {canExport && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content="Export to another format">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <SmallBtn
-                disabled={!canAct || exporting}
-                onClick={() => setExportOpen((v) => !v)}
-                title={(!canAct || exporting) ? 'Export to another format' : undefined}
-              >
-                Export ▾
-              </SmallBtn>
-            </Tooltip>
-            {exportOpen && (
-              <div
-                role="menu"
-                // No border — floats on --sh-popup alone (ENG-790).
-                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
-              >
-                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    role="menuitem"
-                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
-                    style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
-                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >{label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {!deleted && showSharedLink && (
-          <Tooltip content="Open the shared artifact in a new tab">
-            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
-        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
-          <Tooltip content="Save this artifact's file">
-            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && primaryAction && (
-          <Tooltip content={primaryAction.tooltip}>
-            <SmallBtn
-              primary
-              disabled={!orgMode && !canAct}
-              onClick={primaryAction.onClick}
-              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
-            >
-              {primaryAction.label}
-            </SmallBtn>
-          </Tooltip>
-        )}
+      {/* The card is role="button" with a whole-surface click and Enter/Space
+          handler. Actions, and the overflow menu whose events React bubbles
+          through its portal, must not also open the preview. Only Enter and
+          Space stop here: other keys (Cmd+K, Cmd+N, Escape) must still reach
+          the window-level shortcut listeners. */}
+      <div
+        className="chat-artifact-card__actions"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+      >
+        <ActionBar
+          size="sm"
+          className="flex-wrap"
+          leading={!deleted && primaryAction && primaryReason
+            ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
+            : null}
+          secondary={sharedLinkAction || downloadAction}
+          primary={!deleted && primaryAction
+            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+            : null}
+          overflow={[sharedLinkAction && downloadAction]}
+        />
       </div>
       {status && (
         <span
-          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          className={cn('chat-artifact-card__status font-body text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
@@ -1084,24 +996,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     </>
   );
 }
-
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
-const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
-      title={title}
-      disabled={disabled}
-      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
-      {...rest}
-    >{children}</button>
-  );
-});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1142,42 +1036,19 @@ async function waitForServerReady(timeoutMs = 8000) {
 //
 // ── ActionCard: the shared shell for inline "actionable error" cards ───────
 // One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
+// cards (ENG-650), drawn by ChatCardShell. Callers own copy, button wiring and
+// the `kind` named in the card's top row (Billing, Model, …); the shell owns
+// layout and the action hierarchy (`cardActions`: the button marked `primary`
+// is the filled action, the next is the quiet secondary, any further ones go
+// behind "…").
+// buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
+// the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
-        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
-        <div className="s-h3">
-          {title}
-        </div>
-        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
-          {body}
-        </div>
-        {buttons.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {buttons.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={b.onClick}
-                disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
-                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
-                style={b.style}
-              >{b.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+        {body}
+      </ChatCardShell>
     </AnswerTurn>
   );
 }
@@ -1223,6 +1094,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
+      kind="Billing"
       title="Task stopped"
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={[
@@ -1320,6 +1192,7 @@ export function BalanceEmptyCard({
       agentLabel={agentLabel}
       // A billing failure ends the turn; there is no resume,
       // so this is "stopped", never "paused".
+      kind="Billing"
       title="Task stopped"
       body={body}
       buttons={buttons}
@@ -1348,6 +1221,7 @@ export function FreeServingPausedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free MindsHub Air is paused"
       body={freeServingPausedCopy(resetAt)}
       buttons={[
@@ -1373,6 +1247,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
     <ActionCard
       deleting={deleting}
       time={time}
+      kind="Connection"
       title="Connect a provider to start chatting"
       body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
       buttons={[
@@ -1415,6 +1290,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Usage"
         title="Free Air allowance running low"
         body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1426,6 +1302,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Billing"
         title="Auto top up failed"
         body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
         buttons={[
@@ -1439,6 +1316,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <ActionCard
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free Air allowance used up"
       body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1506,6 +1384,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Rate limit"
       title="Too many requests too quickly"
       body={body}
       buttons={buttons}
@@ -1585,6 +1464,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Connection"
       title={title}
       body={body}
       buttons={done ? [] : [
@@ -1592,8 +1472,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
           primary: true,
-          disabled: busy,
-          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+          busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
@@ -1651,6 +1530,7 @@ export function ModelUnavailableCard({
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
+        kind="Model"
         title={`${label} is restricted`}
         body="An admin in your organization restricted this model. Choose another model in Settings."
         buttons={[
@@ -1682,6 +1562,7 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Model"
       title={title}
       body={denied
         ? "You don't have enough credits for this model. Top up your balance to use it."
@@ -1734,6 +1615,7 @@ function ProviderOverloadedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Provider"
       title={`${who} is having a temporary issue`}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
@@ -2108,7 +1990,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2144,8 +2026,8 @@ export default function ChatView({
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
               pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
               transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
@@ -2164,7 +2046,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2298,7 +2180,7 @@ export default function ChatView({
                       opacity: titleControlsShown ? 1 : 0,
                       pointerEvents: titleControlsShown ? 'auto' : 'none',
                     }}
-                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
                     {Ico.moreVert(13)}
                   </button>
@@ -2615,6 +2497,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
@@ -2642,6 +2525,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image couldn't be read"
                       body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
                     />
@@ -2663,6 +2547,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
                       buttons={retryText
@@ -2694,6 +2579,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image is too large"
                       body={m.content}
                     />
@@ -2710,6 +2596,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Billing"
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                       buttons={retryText
@@ -2734,6 +2621,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={retryText
@@ -2958,7 +2846,7 @@ export default function ChatView({
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
               <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
@@ -2968,7 +2856,7 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <Tooltip content="Remove from queue">
@@ -3025,7 +2913,7 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
@@ -3037,8 +2925,8 @@ export default function ChatView({
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

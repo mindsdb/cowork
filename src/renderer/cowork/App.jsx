@@ -5,6 +5,7 @@ import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -32,6 +33,7 @@ import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/
 import { useCodeWorkspace } from './code/useCodeWorkspace';
 import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
+import { projectLabel } from './lib/projectLabel';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
@@ -95,6 +97,7 @@ import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from '
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -533,6 +536,20 @@ export default function App() {
   );
 }
 
+// Cmd+K's starting list before anything is typed: the five most recently
+// updated tasks and the first three projects, from state App already holds.
+function searchRecents(tasks, projects) {
+  const labelFor = (task) => {
+    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    return project ? projectLabel(project) : undefined;
+  };
+  return [
+    ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
+      .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
+    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.name, title: projectLabel(project) })),
+  ];
+}
+
 function AppCore() {
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
@@ -564,6 +581,11 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // False until the first artifacts fetch settles, so Live Artifacts shows
+  // skeletons instead of a premature "No artifacts yet".
+  const [artifactsLoaded, setArtifactsLoaded] = useState(false);
+  // Same for Projects: skeletons, not "No projects yet", until the first fetch settles.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
   // fetch of the session comes back empty — an account that already has
   // artifacts is not a first-run and must never see the tip. Once armed,
@@ -1459,6 +1481,8 @@ function AppCore() {
   useEffect(() => {
     if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
   }, [effectiveWorkspaceMode]);
+  // Mirror the active workspace onto <html data-workspace> for workspace-scoped styles.
+  useWorkspaceAttribute(effectiveWorkspaceMode);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
@@ -1702,8 +1726,8 @@ function AppCore() {
       }
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
-    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    reloadArtifacts();
+    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
+    reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules();
     fetchDatasources()
@@ -4630,6 +4654,33 @@ function AppCore() {
     },
   };
 
+  // Desktop corner button. Each Appearance switch gates only its own control
+  // (ENG-3201): both on opens Display settings, one on flips just that one.
+  const displayToggle = (() => {
+    switch (displayToggleMode(settings)) {
+      case 'menu':
+        return {
+          label: 'Display settings',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setThemeModalOpen(true),
+        };
+      case 'theme':
+        return {
+          label: 'Toggle dark/light mode',
+          icon: theme === 'dark' ? Ico.sun(15) : Ico.moon(15),
+          onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
+        };
+      case 'style':
+        return {
+          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          icon: Ico.gamepad(15),
+          onClick: () => setSkin(nextToggledSkin(skin)),
+        };
+      default:
+        return null;
+    }
+  })();
+
   // The app chrome — sidebar, content column, modals. Still holds the
   // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
   // via context.
@@ -4651,8 +4702,8 @@ function AppCore() {
         isMobile — MobileShell replaces it with a mobile drawer below 640.
       */}
       {/* Narrow-band popout backdrop — dims content behind the slid-in
-          sidebar. Same 320ms curve as the drawer so the two read as one
-          motion (the old overlay used mismatched 280/380ms durations). */}
+          sidebar. Same --dur-layout timing as the drawer so the two read as
+          one motion. */}
       {sidebarPopout && !isMobile && (
         <div
           onClick={() => setNavPopoutOpen(false)}
@@ -4672,7 +4723,7 @@ function AppCore() {
             WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
-            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+            transition: 'opacity var(--dur-layout) var(--ease-out)',
           }}
         />
       )}
@@ -4680,21 +4731,15 @@ function AppCore() {
       {/* Code has one deliberate entry point while it is opt-in: Settings.
           Keeping this corner control exclusively about appearance prevents a
           hidden product from leaking into ordinary Cowork. */}
-      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+      {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+          <Tooltip content={displayToggle.label}>
             <button
-              onClick={() => {
-                if (settings.show8bitToggle === false) {
-                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                } else {
-                  setThemeModalOpen(true);
-                }
-              }}
-              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              onClick={displayToggle.onClick}
+              aria-label={displayToggle.label}
               className="floating-toggle"
             >
-              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              {displayToggle.icon}
             </button>
           </Tooltip>
         </div>
@@ -4704,11 +4749,11 @@ function AppCore() {
       <div
         style={sidebarPopout ? {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
-          // 320ms curve as the scrim above. Docked (display:contents)
+          // timing as the scrim above. Docked (display:contents)
           // otherwise — a wide desktop viewport with Coding Mode off.
           position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
           transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          transition: 'transform var(--dur-layout) var(--ease-out)',
           willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
@@ -5024,7 +5069,7 @@ function AppCore() {
           <ProjectsView
             projects={projects}
             selectedProject={selectedProjectForView}
-            loading={projectDetailResolving}
+            loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5141,6 +5186,7 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
+            loading={!artifactsLoaded}
             projects={projects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
@@ -5295,7 +5341,7 @@ function AppCore() {
                       color: 'var(--ink-3)',
                       fontFamily: 'var(--font-body)', fontSize: 12.5,
                       cursor: 'pointer', flexShrink: 0,
-                      transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                      transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease, border-color var(--dur-hover) ease',
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
@@ -5341,6 +5387,7 @@ function AppCore() {
         onClose={() => setSearchOpen(false)}
         onSearch={searchCowork}
         onSelect={handleSearchSelect}
+        recents={searchOpen ? searchRecents(tasks, projects) : undefined}
       />
 
       <ConnectorPicker
@@ -5481,7 +5528,7 @@ function AppCore() {
                   color: 'var(--ink)',
                   fontFamily: 'var(--font-body)', fontSize: 13.5,
                   cursor: 'pointer', textAlign: 'left',
-                  transition: 'background 120ms ease',
+                  transition: 'background var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}

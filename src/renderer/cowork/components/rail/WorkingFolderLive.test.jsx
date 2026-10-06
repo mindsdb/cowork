@@ -460,3 +460,129 @@ describe('artifacts rail authorship marker', () => {
     expect(rowOf('Weekly Report').className).toContain(THREE);
   });
 });
+
+describe('artifacts rail grouping by conversation', () => {
+  const CHAT = 'conv-1';
+  const art = (title, originConversationId, i = 0) => draft({
+    id: `${i}`.padStart(32, '0'),
+    title,
+    path: `/proj/.anton/artifacts/${title.replace(/\s+/g, '-')}/report.md`,
+    originConversationId,
+  });
+  // Artifact rows are the role="button" divs whose native title is the path;
+  // the name is the row's `.truncate` span.
+  const titles = () => screen.getAllByRole('button')
+    .filter((el) => el.getAttribute('title')?.startsWith('/proj/'))
+    .map((el) => el.querySelector('.truncate').textContent);
+  const renderList = async (list, conversationId = CHAT) => {
+    fetchArtifacts.mockResolvedValue(list);
+    const utils = render(
+      <WorkingFolderLive project={PROJECT} isStreaming={false} conversationId={conversationId} />,
+    );
+    await screen.findByText(list[0].title);
+    return utils;
+  };
+
+  it('lists this chat\'s artifacts first, separated from the rest of the project', async () => {
+    await renderList([
+      art('Other A', 'conv-2', 1),
+      art('Mine A', CHAT, 2),
+      art('Legacy', '', 3),
+      art('Mine B', CHAT, 4),
+    ]);
+
+    expect(titles()).toEqual(['Mine A', 'Mine B', 'Other A', 'Legacy']);
+    const separator = screen.getByRole('separator');
+    expect(separator.previousElementSibling).toHaveTextContent('Mine B');
+    expect(separator.nextElementSibling).toHaveTextContent('Other A');
+    expect(separator).toHaveAttribute('aria-label', 'Other artifacts in this project');
+  });
+
+  it('draws no separator when only one group has rows', async () => {
+    await renderList([art('Mine A', CHAT, 1)]);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('draws no separator when no row is from this chat', async () => {
+    await renderList([art('Other A', 'conv-2', 1), art('Other B', '', 2)]);
+    expect(titles()).toEqual(['Other A', 'Other B']);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('draws no separator and keeps server order outside a chat', async () => {
+    await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)], null);
+    expect(titles()).toEqual(['Other A', 'Mine A']);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('keeps an older artifact of this chat that the 12 newest others would push out', async () => {
+    const others = Array.from({ length: 12 }, (_, i) => art(`Other ${i}`, 'conv-2', i + 1));
+    await renderList([...others, art('Mine Old', CHAT, 99)]);
+    expect(titles()[0]).toBe('Mine Old');
+    expect(titles()).toHaveLength(13);
+  });
+
+  it('regroups on a chat switch within the project without refetching', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+    expect(titles()).toEqual(['Mine A', 'Other A']);
+    const calls = fetchArtifacts.mock.calls.length;
+
+    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+    expect(titles()).toEqual(['Other A', 'Mine A']);
+    expect(fetchArtifacts.mock.calls.length).toBe(calls);
+  });
+
+  it('keeps an open row menu on its artifact when the chat regroups the rows', async () => {
+    // happy-dom has no layout: place each element 20px below the previous row.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rowRect() {
+      const row = this.closest('[role="button"][title]');
+      const top = row ? [...row.parentElement.children].indexOf(row) * 20 : 0;
+      return { top, bottom: top + 20, left: 0, right: 100, width: 100, height: 20, x: 0, y: top, toJSON() {} };
+    });
+    try {
+      const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+      fireEvent.click(screen.getAllByLabelText('More actions')[1]);
+      const topBefore = screen.getByRole('menu').style.top;
+
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+
+      expect(screen.getByRole('menu').style.top).not.toBe(topBefore);
+      fireEvent.click(screen.getByText('Delete'));
+      expect(screen.getByText('Delete "Other A"?')).toBeInTheDocument();
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('closes an open row menu once its row leaves the list', async () => {
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1)]);
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+
+    fetchArtifacts.mockResolvedValue([]);
+    rerender(<WorkingFolderLive project={{ id: 'proj-2', name: 'other', path: '/proj2' }} isStreaming={false} conversationId={CHAT} />);
+
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
+  // Moving to a chat of another project changes `project` and `conversationId`
+  // in one commit. The rows effect then still sees the old project's rows, so
+  // the project-switch effect must run after it and win.
+  it('resets the marker column when switching to a chat of another project', async () => {
+    const FOUR = 'grid-cols-[14px_12px_minmax(0,1fr)_auto]';
+    const THREE = 'grid-cols-[14px_minmax(0,1fr)_auto]';
+    const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };
+    const colleague = art('Colleague', 'conv-9', 1);
+    colleague.capabilities = { role: 'reviewer', canEdit: false };
+    const { rerender } = await renderList([colleague]);
+    expect(screen.getByText('Colleague').closest('[role="button"]').className).toContain(FOUR);
+
+    const mine = draft({ title: 'Mine B', path: '/proj2/.anton/artifacts/mine-b/report.md', originConversationId: 'conv-2' });
+    fetchArtifacts.mockResolvedValue([mine]);
+    rerender(<WorkingFolderLive project={OTHER_PROJECT} isStreaming={false} conversationId="conv-2" />);
+    await screen.findByText('Mine B');
+
+    expect(screen.getByText('Mine B').closest('[role="button"]').className).toContain(THREE);
+  });
+});

@@ -4,6 +4,8 @@ import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
+import Badge from '../components/ui/Badge';
+import Checkbox from '../components/ui/Checkbox';
 import { Collapsible } from '../components/ui/Collapsible';
 import { Field } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
@@ -392,11 +394,10 @@ export function ProjectSettingsModal({
               />
 
               {project?.playbook && (
-                <details className="code-project-legacy-setup">
-                  <summary>
-                    <span><strong>Project-only Team Setup</strong><small>{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>
-                    <i>{Ico.chevDown(11)}</i>
-                  </summary>
+                <Collapsible
+                  className="code-project-legacy-setup"
+                  title={<span className="code-project-legacy-setup__title"><span>Project-only Team Setup</span><small className="text-xs text-ink-4">{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>}
+                >
                   <div className="code-team-setup__connected">
                   <div className="code-team-setup__summary">
                     <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
@@ -404,7 +405,7 @@ export function ProjectSettingsModal({
                       <strong>{repositoryLabel(project.playbook.repository)}</strong>
                       <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
                     </div>
-                    {playbookStatus?.update_available && <em>Update available</em>}
+                    {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
                   </div>
                   <div className="code-playbook-actions">
                     <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
@@ -416,8 +417,7 @@ export function ProjectSettingsModal({
                   </div>
 
                   {playbookStatus?.update_available && (
-                    <details className="code-playbook-update">
-                      <summary>Review update <span>{Ico.chevDown(11)}</span></summary>
+                    <Collapsible className="code-playbook-update" title="Review update">
                       <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
                       <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                         setPlaybookBusy(true); setError('');
@@ -425,20 +425,19 @@ export function ProjectSettingsModal({
                         catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
                         finally { setPlaybookBusy(false); }
                       }}>Apply update</Button>
-                    </details>
+                    </Collapsible>
                   )}
 
                   {!!playbookStatus?.items.length && (
-                    <details className="code-playbook-items">
-                      <summary>
-                        <span>Included guidance</span>
-                        <small>{playbookStatus.items.filter((item) => item.enabled).length} of {playbookStatus.items.length}</small>
-                        <i>{Ico.chevDown(11)}</i>
-                      </summary>
+                    <Collapsible
+                      className="code-playbook-items"
+                      title="Included guidance"
+                      meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
+                    >
                       <div>
                         {playbookStatus.items.map((item) => (
                           <label key={item.path}>
-                            <input type="checkbox" checked={item.enabled} disabled={playbookBusy} onChange={async () => {
+                            <Checkbox size="sm" aria-label={item.name} checked={item.enabled} disabled={playbookBusy} onCheckedChange={async () => {
                               const enabled = playbookStatus.items
                                 .filter((candidate) => candidate.path === item.path ? !item.enabled : candidate.enabled)
                                 .map((candidate) => candidate.path);
@@ -447,15 +446,14 @@ export function ProjectSettingsModal({
                               catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
                               finally { setPlaybookBusy(false); }
                             }} />
-                            <span><strong>{item.name}</strong><small>{item.kind}</small></span>
+                            <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
                           </label>
                         ))}
                       </div>
-                    </details>
+                    </Collapsible>
                   )}
 
-                  <details className="code-team-setup__details">
-                    <summary>Details <span>{Ico.chevDown(11)}</span></summary>
+                  <Collapsible className="code-team-setup__details" title="Details">
                     <dl>
                       <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
                       <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
@@ -464,10 +462,10 @@ export function ProjectSettingsModal({
                       <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
                       {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
                     </div>
-                  </details>
-                  {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}
+                  </Collapsible>
+                  {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
                   </div>
-                </details>
+                </Collapsible>
               )}
             </section>
 

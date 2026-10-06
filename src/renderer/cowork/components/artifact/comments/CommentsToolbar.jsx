@@ -44,7 +44,7 @@ function ToolButton({ label, on = false, dim = false, onClick, children }) {
         <span
           className={[
             'w-[24px] h-[24px] rounded-full flex items-center justify-center',
-            'transition-[background,color,transform] duration-150',
+            'transition-[background,color,transform] duration-hover',
             'group-active/tb:scale-90',
             on
               ? 'bg-ink text-surface'
@@ -86,7 +86,7 @@ export function CommentsToolbar({
         WebkitBackdropFilter: 'blur(5.6px)',
         boxShadow: SHADOW_TOOLBAR,
         fontFamily: 'var(--font-body)',
-        animation: 'cw-act-bar-in .4s cubic-bezier(.16,1,.3,1)',
+        animation: 'cw-act-bar-in var(--dur-layout) var(--ease-out)',
       }}
     >
       <ToolButton

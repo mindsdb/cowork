@@ -65,7 +65,26 @@ describe('CodeSidebarSessions', () => {
       />,
     );
 
-    expect(screen.getByText('Archived')).toBeInTheDocument();
+    const archivedToggle = screen.getByRole('button', { name: /Archived/ });
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /Task old, Completed/ })).toBeNull();
+
+    fireEvent.click(archivedToggle);
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
+  });
+
+  it('opens the archived group when the selected task is archived', () => {
+    const sessions = [
+      session('active', 'completed', '2026-08-21T09:00:00Z'),
+      { ...session('old', 'completed', '2026-08-20T09:00:00Z'), archived: true },
+    ];
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined) };
+    const view = render(<CodeSidebarSessions {...props} selectedId={null} />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'false');
+
+    view.rerender(<CodeSidebarSessions {...props} selectedId="old" />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
   });
 

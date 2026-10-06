@@ -39,8 +39,8 @@ import Ico from '../Icons';
 // `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
 // utilities) so the easing keyword is the literal CSS `ease-out`, not
 // Tailwind's differently-curved `ease-out` utility value.
-const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
-const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_BACKDROP = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_POPUP     = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
 const FONT_BODY    = 'var(--font-body)';
 
@@ -59,11 +59,14 @@ const SIZES = {
 //
 //   60   sidepanels, inline overlays inside main UI
 //   80   default content modals (picker, schedule, artifact viewer)
+//   500  palette — Cmd+K search; above the sidebar drawer (101) and chat
+//        overlays (200) it can be opened over, below the title bar
 //   1000 title bar
 //   1100 legal / onboarding overlays
 //   1200 system modals — How-to, anything that must sit on top
 const LAYERS = {
   default: 80,
+  palette: 500,
   system:  1200,
 };
 
@@ -96,6 +99,7 @@ export function Modal({
   // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
   // and Esc dismissal a hand-rolled full-screen <div> would drop.
   fullBleed = false,
+  // 'center' | 'left' (pinned near leftOffset) | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
   children,
@@ -137,7 +141,9 @@ export function Modal({
         <Dialog.Viewport
           style={{
             position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            display: 'flex', alignItems: placement === 'top' ? 'flex-start' : 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            // `top`: command-palette anchoring, so the box grows downward as results arrive.
+            ...(placement === 'top' ? { paddingTop: 'min(14vh, 120px)' } : {}),
             ...(placement === 'left' ? {
               paddingLeft: `max(8px, min(${leftOffset}px, calc(100vw - ${typeof width === 'number' ? `${width}px` : width || sz.width} - 8px)))`,
             } : {}),
@@ -231,7 +237,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             width: 28, height: 28, borderRadius: 6,
             display: 'inline-grid', placeItems: 'center',
             flexShrink: 0,
-            transition: 'color 120ms ease, background 120ms ease',
+            transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease',
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.color = 'var(--ink)';

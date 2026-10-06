@@ -213,7 +213,7 @@ export function ArtifactViewerBody({
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
-            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
           }}
         />
       )}

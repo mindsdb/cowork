@@ -23,10 +23,12 @@ declare const Ico: {
   externalLink: IconRenderer;
   folder: IconRenderer;
   globe: IconRenderer;
+  grid: IconRenderer;
   image: IconRenderer;
   key: IconRenderer;
   lock: IconRenderer;
   mindsdb: IconRenderer;
+  more: IconRenderer;
   moreVert: IconRenderer;
   openFolder: IconRenderer;
   panelExpandLeft: IconRenderer;
