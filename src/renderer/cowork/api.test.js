@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, listConversationFolders, addConversationFolder, removeConversationFolder, listConversationFolderFiles } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -87,6 +87,43 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('conversation working folders', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the four folder routes with the ids encoded', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ folders: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listConversationFolders('chat 1');
+    await addConversationFolder('chat 1', '/Users/x/docs');
+    await removeConversationFolder('chat 1', 'f/1');
+    await listConversationFolderFiles('chat 1', 'f/1');
+
+    const calls = fetchMock.mock.calls.map(([url, init]) => [
+      String(url).replace('http://127.0.0.1:26866/api/v1', ''),
+      init?.method || 'GET',
+      init?.body,
+    ]);
+    expect(calls).toEqual([
+      ['/conversations/chat%201/folders', 'GET', undefined],
+      ['/conversations/chat%201/folders', 'POST', JSON.stringify({ path: '/Users/x/docs' })],
+      ['/conversations/chat%201/folders/f%2F1', 'DELETE', undefined],
+      ['/conversations/chat%201/folders/f%2F1/files', 'GET', undefined],
+    ]);
+  });
+
+  it('throws the server refusal text so the card can show it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(
+      { detail: "Choose a folder that does not hold Cowork's own data" }, false, 400,
+    )));
+
+    await expect(addConversationFolder('chat-1', '/Users/x/.cowork')).rejects.toMatchObject({
+      message: "Choose a folder that does not hold Cowork's own data",
+      status: 400,
+    });
   });
 });
 
