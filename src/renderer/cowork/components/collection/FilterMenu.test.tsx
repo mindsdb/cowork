@@ -36,6 +36,20 @@ describe('FilterMenu', () => {
     expect(onStatus).toHaveBeenCalledWith('failed');
   });
 
+  it('keeps a long facet list scrollable inside the viewport', async () => {
+    const user = userEvent.setup();
+    const options = Array.from({ length: 30 }, (_, i) => ({ value: `p${i}`, label: `Project ${i}` }));
+    render(<FilterMenu filters={[{ id: 'project', label: 'Project', value: 'p0', allValue: 'p0', options, onChange: vi.fn() }]} />);
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    screen.getByRole('menuitem', { name: /^Project/ }).focus();
+    await user.keyboard('{ArrowRight}');
+    const list = (await screen.findByRole('menuitemradio', { name: 'Project 29' })).closest('[role="menu"]');
+    // Layout is untestable in happy-dom; Chromium confirms these keep the last
+    // option reachable by mouse wheel in a 768px-high window.
+    expect(list?.className).toContain('max-h-[var(--available-height,_320px)]');
+    expect(list?.className).toContain('overflow-y-auto');
+  });
+
   it('flips a toggle and keeps the menu open for the next pick', async () => {
     const user = userEvent.setup();
     const { list, onArchived } = filters();

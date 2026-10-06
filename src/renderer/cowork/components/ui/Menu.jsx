@@ -60,6 +60,10 @@ import { Tooltip } from './Tooltip';
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
+  // A long menu (the Filter menu's project list) scrolls within the space
+  // Base UI measures below its anchor instead of running off-screen, as
+  // Select's popup does.
+  'max-h-[var(--available-height,_320px)] overflow-y-auto overscroll-contain',
   'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
 );
 
