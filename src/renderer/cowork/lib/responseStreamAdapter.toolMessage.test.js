@@ -28,7 +28,6 @@ describe('responseStreamAdapter — tool message', () => {
       status: 'completed',
       startedAt: 20,
       completedAt: 20,
-      _toolUseId: 'ga',
       data: { markdown: '## Goal\nA clock.' },
     });
   });
@@ -56,7 +55,7 @@ describe('responseStreamAdapter — tool message', () => {
     expect(cell.status).toBe('in_progress');
     expect(cell.output ?? null).toBeNull();
     const msg = state.steps.find((s) => s.badge === 'Message');
-    expect(msg).toMatchObject({ data: { markdown: '## Brief' }, _toolUseId: null });
+    expect(msg).toMatchObject({ data: { markdown: '## Brief' } });
     expect(state.bodyText).toBe('');
   });
 

@@ -8,7 +8,7 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { forwardRef, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
@@ -521,6 +521,25 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
 // carries the in-flight header (orb slot, live thought, working label) —
 // `liveSegmentIndex` puts it above a pending card and below an answered one.
 // Every other segment is a finished, collapsed block.
+// Step ids repeat across turns (`step-1` in every turn); prefixed with the
+// turn's key they are unique across the conversation.
+const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+
+// A tool's message to the user, rendered like an agent message. Memoised: the
+// live turn re-renders on every progress line, the message never changes.
+const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) {
+  return (
+    <MarkdownContent
+      text={markdown}
+      id={id}
+      complete
+      conversationId={conversationId}
+      isAssistant
+      enableForms={false}
+    />
+  );
+});
+
 function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive }),
@@ -542,13 +561,10 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
       out.push(
         // Same spacing as a question card: the message is not part of a block.
         <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
-          <MarkdownContent
-            text={seg.step.data?.markdown || ''}
-            id={`${idPrefix}::${seg.step.id}`}
-            complete
+          <ToolMessage
+            markdown={seg.step.data?.markdown || ''}
+            id={prefixId(idPrefix, seg.step.id)}
             conversationId={conversationId}
-            isAssistant
-            enableForms={false}
           />
         </div>,
       );
@@ -2009,7 +2025,6 @@ export default function ChatView({
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
-  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
   const railMsgKey = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {

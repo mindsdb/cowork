@@ -579,11 +579,6 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         startedAt: eventTs,
         completedAt: eventTs,
         data: { markdown },
-        output: null,
-        result: null,
-        _isScratchpad: false,
-        _isToolCall: false,
-        _toolUseId: toolUseId,
       }],
     };
   }

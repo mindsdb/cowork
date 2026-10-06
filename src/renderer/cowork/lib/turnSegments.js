@@ -52,23 +52,19 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
-    if (isMessage(step)) {
-      pushSteps(current);
-      segments.push({ kind: 'message', key: step.id, step });
-      current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
-      continue;
-    }
-    if (!isQuestion(step)) {
+    if (!isQuestion(step) && !isMessage(step)) {
       current.steps.push(step);
       continue;
     }
     pushSteps(current);
-    segments.push({
-      kind: 'question',
-      key: step.id,
-      step,
-      expired: !step.data?.answer && !(conversationLive && step.id === lastUnansweredId),
-    });
+    segments.push(isMessage(step)
+      ? { kind: 'message', key: step.id, step }
+      : {
+        kind: 'question',
+        key: step.id,
+        step,
+        expired: !step.data?.answer && !(conversationLive && step.id === lastUnansweredId),
+      });
     current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
   }
   pushSteps(current);
