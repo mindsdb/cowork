@@ -1602,4 +1602,26 @@ describe('Stop on the conversation on screen', () => {
     await send(user, betaComposer, 'next turn');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalled());
   });
+
+  it('leaves the running indicators of another streaming conversation', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha emits nothing after the Stop, so its placeholder is the only thing
+    // that can keep its Stop button up: Beta's Stop must not have stripped it.
+    await openByTitle(user, 'Alpha task');
+    await screen.findByText('alpha turn');
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
+    expect(alpha.abort).not.toHaveBeenCalled();
+  });
 });

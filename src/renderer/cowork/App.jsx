@@ -1204,8 +1204,8 @@ function AppCore() {
     }
 
     setTasks((prev) => prev.map((t) => {
+      if (t.id !== cidToCancel) return t;
       const streaming = (t.messages || []).some((m) => m.role === '_streaming');
-      if (!streaming && t.id !== cidToCancel) return t;
       if (!streaming) return t;
       return {
         ...t,
