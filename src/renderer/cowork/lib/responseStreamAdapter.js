@@ -562,8 +562,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
 
   // A tool's message to the user (generate_artifact's brief when the agent
   // acts first). Rendered as an agent message between the steps, so it is a
-  // step of its own and never body text. Checked before the scratchpad
-  // branches: an id-less fallback there would patch it into a cell.
+  // step of its own and never body text.
   if (role === 'thought.tool_call.message') {
     const markdown = typeof event.content === 'string' ? event.content : '';
     if (!markdown.trim()) return state;

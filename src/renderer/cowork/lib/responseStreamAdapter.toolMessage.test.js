@@ -45,15 +45,18 @@ describe('responseStreamAdapter — tool message', () => {
     expect(reduceStream(before, message('   '))).toBe(before);
   });
 
-  it('never patches a scratchpad cell and never touches the answer text', () => {
+  it('never patches a running scratchpad cell, even without a tool_use_id', () => {
+    // Id-less scratchpad events patch the last open cell; a message must not.
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.result', tool_use_id: 'a', content: '{"stdout":"ok"}' },
-      message('## Brief'),
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start' },
+      { ...message('## Brief'), tool_use_id: undefined },
     ]);
     const cell = state.steps.find((s) => s._isScratchpad);
-    expect(cell.output).toBe('ok');
+    expect(cell.status).toBe('in_progress');
+    expect(cell.output ?? null).toBeNull();
+    const msg = state.steps.find((s) => s.badge === 'Message');
+    expect(msg).toMatchObject({ data: { markdown: '## Brief' }, _toolUseId: null });
     expect(state.bodyText).toBe('');
   });
 
