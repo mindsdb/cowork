@@ -1604,7 +1604,16 @@ function AppCore() {
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
     setSessionPinned: setCodingSessionPinned,
+    renameSession: renameCodingSession,
+    setSessionArchived: setCodingSessionArchived,
+    deleteSession: deleteCodingSession,
   } = useCodeWorkspace(openCode);
+  const codeTaskActions = useMemo(() => ({
+    onSetPinned: setCodingSessionPinned,
+    onRename: renameCodingSession,
+    onSetArchived: setCodingSessionArchived,
+    onDelete: deleteCodingSession,
+  }), [setCodingSessionPinned, renameCodingSession, setCodingSessionArchived, deleteCodingSession]);
   const disableCodeWorkspace = useCallback(() => {
     setWorkspaceMode('cowork');
     setCodeWorkspaceMounted(false);
@@ -4912,6 +4921,9 @@ function AppCore() {
           onNewTask={newTask}
           onSelectCodingSession={selectCodingSession}
           onSetCodingSessionPinned={setCodingSessionPinned}
+          onRenameCodingSession={renameCodingSession}
+          onSetCodingSessionArchived={setCodingSessionArchived}
+          onDeleteCodingSession={deleteCodingSession}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
           onOpenCodingTasks={() => openCodingTasks()}
@@ -5397,6 +5409,7 @@ function AppCore() {
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
               onAttentionSelect={selectCodingSession}
+              taskActions={codeTaskActions}
             />
           </div>
         )}

@@ -105,7 +105,7 @@ export function RuntimeControlsModal({
     try {
       await onApply(draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task controls.');
+      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
     }
   };
 
@@ -113,7 +113,7 @@ export function RuntimeControlsModal({
     <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
       <ModalHeader
         id="code-controls-title"
-        title="Task controls"
+        title="Task settings"
         subtitle="These settings apply to future turns in this coding task."
         onClose={busy ? undefined : onClose}
       />

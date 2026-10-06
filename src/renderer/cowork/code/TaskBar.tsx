@@ -27,13 +27,7 @@ export function TaskBar({
   onTogglePreview,
   onRunProjectAction,
   onOpenControls,
-  onOpenExtensions,
-  onRename,
   onFork,
-  onCompact,
-  onStatus,
-  onArchive,
-  onDelete,
 }: {
   session: CodingSession;
   git: GitState | null;
@@ -52,13 +46,7 @@ export function TaskBar({
   onTogglePreview: () => void;
   onRunProjectAction: (action: ProjectActionSummary) => void;
   onOpenControls: () => void;
-  onOpenExtensions: () => void;
-  onRename: () => void;
   onFork: () => void;
-  onCompact: () => void;
-  onStatus: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
 }) {
   const status = codingSessionStatus(session);
   const { additions, deletions } = diffStats(files);
@@ -81,6 +69,30 @@ export function TaskBar({
     : scopedWorkspaceNames.length
       ? scopedWorkspaceNames.join(', ')
       : `${selectedResourceCount} selected ${selectedResourceCount === 1 ? 'folder' : 'folders'}`;
+
+  // Only what acts on this open task lives here; rename, archive and delete sit
+  // on the task's sidebar row, and agent commands such as /compact in the composer.
+  const workspaceActions = [
+    ...(can('open_workspace') ? [{
+      label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
+      icon: Ico.openFolder(14),
+      onClick: () => void openCodePath(session.workspace_path),
+      title: worktreeLabel,
+    }] : []),
+    ...(can('fork') ? [{
+      label: 'Fork task',
+      icon: Ico.code(14),
+      disabled: !taskIdle,
+      onClick: onFork,
+    }] : []),
+  ];
+  const taskActions = [
+    ...workspaceActions,
+    ...(can('task_controls') ? [
+      ...(workspaceActions.length ? [{ divider: true }] : []),
+      { label: 'Task settings', icon: Ico.settings(14), onClick: onOpenControls },
+    ] : []),
+  ];
 
   return (
     <header className="code-taskbar">
@@ -234,65 +246,10 @@ export function TaskBar({
             )}
           </Button>}
         </div>
-        <Menu
+        {!!taskActions.length && <Menu
           trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
-          items={[
-            ...(can('open_workspace') ? [{
-              label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
-              icon: Ico.openFolder(14),
-              onClick: () => void openCodePath(session.workspace_path),
-              title: worktreeLabel,
-            }] : []),
-            {
-              label: 'Rename task',
-              icon: Ico.edit(14),
-              onClick: onRename,
-            },
-            ...(can('fork') ? [{
-              label: 'Fork task',
-              icon: Ico.code(14),
-              disabled: !taskIdle,
-              onClick: onFork,
-            }] : []),
-            { divider: true },
-            ...(can('task_controls') ? [{
-              label: 'Task controls',
-              icon: Ico.settings(14),
-              onClick: onOpenControls,
-            }] : []),
-            ...(can('extensions') ? [{
-              label: 'Skills and extensions',
-              icon: Ico.settings(14),
-              onClick: onOpenExtensions,
-            }] : []),
-            ...(can('slash_commands') ? [{
-              label: 'Compact context',
-              icon: Ico.refresh(14),
-              disabled: !taskIdle,
-              onClick: onCompact,
-            },
-            {
-              label: 'Show task status',
-              icon: Ico.code(14),
-              onClick: onStatus,
-            }] : []),
-            { divider: true },
-            {
-              label: session.archived ? 'Restore coding task' : 'Archive coding task',
-              icon: Ico.folder(14),
-              disabled: !taskIdle,
-              onClick: onArchive,
-            },
-            {
-              label: 'Delete coding task',
-              icon: Ico.trash(14),
-              danger: true,
-              disabled: !taskIdle,
-              title: taskIdle ? undefined : 'Stop the active turn before deleting this task.',
-              onClick: onDelete,
-            },
-          ]}
-        />
+          items={taskActions}
+        />}
       </div>
     </header>
   );
