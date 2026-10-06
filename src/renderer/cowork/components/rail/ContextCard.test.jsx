@@ -782,4 +782,37 @@ describe('ContextCard — working folders section', () => {
 
     expect(screen.queryByText(/Working folders/)).toBeNull();
   });
+
+  it("never paints one chat's folders into the next after a switch mid-add", async () => {
+    hostState.isElectron = true;
+    hostState.isWeb = false;
+    let finishAdd;
+    apiMock.addConversationFolder.mockImplementation(() => new Promise((resolve) => { finishAdd = resolve; }));
+    apiMock.listConversationFolders.mockImplementation(async (chat) => ({
+      folders: chat === 'chat-a'
+        ? [{ id: 'a1', path: '/Users/me/a-docs', name: 'a-docs', available: true }]
+        : [{ id: 'b1', path: '/Users/me/b-docs', name: 'b-docs', available: true }],
+    }));
+    const pick = vi.spyOn((await import('../../../platform/host')).host, 'pickCodeFolder')
+      .mockResolvedValue({ ok: true, path: '/Users/me/a-new' });
+    let view;
+    await act(async () => {
+      view = render(<ContextCard project={{ name: 'general' }} conversationId="chat-a" />);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add a folder to this chat' }));
+    });
+    await act(async () => {
+      view.rerender(<ContextCard project={{ name: 'general' }} conversationId="chat-b" />);
+    });
+    await act(async () => {
+      finishAdd({ id: 'a2' });
+    });
+
+    expect(screen.getByText('b-docs')).toBeTruthy();
+    expect(screen.queryByText('a-docs')).toBeNull();
+    pick.mockRestore();
+  });
 });
+

@@ -153,4 +153,33 @@ describe('ChatFoldersSection', () => {
     fireEvent.click(toggle);
     expect(api.listConversationFolderFiles).not.toHaveBeenCalled();
   });
+
+  it('keeps an open card open and refreshes it when a turn moves the refresh key', async () => {
+    let view;
+    await act(async () => {
+      view = render(<ChatFoldersSection conversationId="chat-1" refreshKey="idle:0:0" />);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show files in reports' }));
+    });
+    await screen.findAllByTestId('folder-file-row');
+    api.listConversationFolderFiles.mockResolvedValue({
+      files: [
+        { path: 'q3/summary.csv', name: 'summary.csv', is_dir: false },
+        { path: 'q3/notes.md', name: 'notes.md', is_dir: false },
+      ],
+    });
+
+    await act(async () => {
+      view.rerender(<ChatFoldersSection conversationId="chat-1" refreshKey="streaming:1:2" />);
+    });
+
+    expect(screen.getByRole('button', { name: 'Hide files in reports' })).toBeTruthy();
+    expect(screen.queryByText('Add a folder for the agent to work in.')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('folder-file-row').map((r) => r.textContent))
+        .toEqual(['q3/summary.csv', 'q3/notes.md']);
+    });
+  });
 });
+

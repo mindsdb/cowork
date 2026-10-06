@@ -1,7 +1,8 @@
 // "Working folders" section of the chat's Context card. Local folders the
 // user added to this chat; the agent may read and write in them. Desktop
-// only: the caller renders it for a saved chat outside org mode. File rows
-// are display-only, because no route serves a working-folder file's content.
+// only: the caller renders it for a saved chat outside org mode, keyed by the
+// chat id so a switch starts a fresh instance. File rows are display-only,
+// because no route serves a working-folder file's content.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -114,9 +115,11 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
   const [filesByFolder, setFilesByFolder] = useState({});
   const [pendingRemove, setPendingRemove] = useState(null);
   // Every load claims a ticket; a response applies only while its ticket is
-  // the latest, so a slow read for a previous chat never paints over this one.
+  // the latest, so a slow read never paints over a newer one.
   const listTicket = useRef(0);
   const fileTickets = useRef({});
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
 
   const reload = useCallback(() => {
     const ticket = ++listTicket.current;
@@ -133,20 +136,16 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
       });
   }, [conversationId]);
 
-  useEffect(() => {
-    setFolders([]);
-    setExpanded({});
-    setFilesByFolder({});
-    setActionError('');
-    fileTickets.current = {};
-    reload();
-    return () => { listTicket.current += 1; };
-  }, [reload, refreshKey]);
-
-  const loadFiles = useCallback((folderId) => {
+  /*
+    `loadFiles` with `quiet` keeps the rows on screen while it refreshes, for
+    the turn-driven refreshes below; a first expand shows the loading line.
+  */
+  const loadFiles = useCallback((folderId, { quiet = false } = {}) => {
     const ticket = (fileTickets.current[folderId] || 0) + 1;
     fileTickets.current[folderId] = ticket;
-    setFilesByFolder((prev) => ({ ...prev, [folderId]: { loading: true, files: [] } }));
+    if (!quiet) {
+      setFilesByFolder((prev) => ({ ...prev, [folderId]: { loading: true, files: [] } }));
+    }
     listConversationFolderFiles(conversationId, folderId)
       .then((data) => {
         if (fileTickets.current[folderId] !== ticket) return;
@@ -163,6 +162,16 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
         }));
       });
   }, [conversationId]);
+
+  // `refreshKey` moves as each turn starts and ends, while the agent may be
+  // writing into these folders: re-list in place, never collapse or clear.
+  useEffect(() => {
+    reload();
+    Object.keys(expandedRef.current)
+      .filter((id) => expandedRef.current[id])
+      .forEach((id) => loadFiles(id, { quiet: true }));
+    return () => { listTicket.current += 1; };
+  }, [reload, loadFiles, refreshKey]);
 
   const toggle = (folder) => {
     const next = !expanded[folder.id];

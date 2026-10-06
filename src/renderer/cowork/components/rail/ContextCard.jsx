@@ -967,7 +967,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       )}
 
       {canUseWorkingFolders && (
-        <ChatFoldersSection conversationId={conversationId} refreshKey={refreshKey} />
+        <ChatFoldersSection key={conversationId} conversationId={conversationId} refreshKey={refreshKey} />
       )}
 
       {ordered.map((section) => {
