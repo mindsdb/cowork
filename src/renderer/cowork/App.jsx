@@ -1285,6 +1285,8 @@ function AppCore() {
     } catch { /* placeholders already stripped */ }
   }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream]);
 
+  /** @param {string[]} taskIds @param {string|null} cid @param {string} message
+   *  @param {import('./api').StreamFailure} event */
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
     // A dead turn must not leave a stale pending question behind — that
@@ -1304,13 +1306,15 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
-    /* A refusal before the stream carries an HTTP status, and no
-       response.created gave its turn an id. The server saved nothing, so a
-       reload has no persisted ending to find. Skipping it shows the error at
-       once, instead of after up to three rounds of history requests to a
-       server that just refused. */
-    const refusedBeforeStream = typeof event?.http_status === 'number' && !event?.user_message_id;
-    const loaded = cid && !refusedBeforeStream
+    /* Two failures skip the history reload, so the error shows at once
+       instead of after up to three rounds of two history requests:
+       - A refusal before the stream (it carries an HTTP status). The server
+         saved nothing, so there is no persisted ending to find.
+       - A busy server (server_busy), before the stream or inside it. The
+         server found no free database connection, so it saved nothing new,
+         and each history request would wait on the same exhausted pool. */
+    const skipReload = typeof event?.http_status === 'number' || event?.code === 'server_busy';
+    const loaded = cid && !skipReload
       ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
       : null;
     // A successful history GET can still contain only the pending question, or

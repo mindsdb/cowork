@@ -214,8 +214,8 @@ describe('streamNewSession idle timeout', () => {
 
   it('sends Stop for the conversation only when this stream started a turn there', async () => {
     /* A Stop names the whole conversation. A stream that idles out before its
-       own response.created holds no turn, so its Stop could only end someone
-       else's answer: in a shared conversation, another tester's. */
+       own response.created may hold no turn of its own, so its Stop could end
+       someone else's answer: in a shared conversation, another tester's. */
     const enc = new TextEncoder();
     const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"user-1"}\n\n';
     const cancels = [];

@@ -600,8 +600,10 @@ describe('server_busy failure card', () => {
   it('names a busy server, not a rate limit, and shows the server sentence', () => {
     render(<ChatView task={taskWith(failedTurn('server_busy', BODY))} />);
     expect(screen.getByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByText('Server')).toBeInTheDocument();
     expect(screen.getByText(BODY)).toBeInTheDocument();
     expect(screen.queryByText('Too many requests too quickly')).toBeNull();
+    expect(screen.queryByText('Rate limit')).toBeNull();
   });
 
   it('gates Retry until the Retry-After instant, then resends the question', () => {

@@ -151,6 +151,50 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     expect(result.event?.code).toBe('stalled');
   });
 
+  it('ends a stalled tail locally, without stopping the turn it watches', async () => {
+    /* A tail replays whatever turn is running in the conversation, here
+       another tester's. A Stop names the whole conversation, so sending one
+       would end that tester's answer. */
+    const enc = new TextEncoder();
+    const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"someone-else"}\n\n';
+    const cancels = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancels.push(JSON.parse(options.body));
+        return { ok: true, status: 200, json: async () => ({ cancelled: true }) };
+      }
+      const { signal } = options;
+      const silent = silentBody(() => signal).getReader();
+      let sentCreated = false;
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (sentCreated) return silent.read();
+              sentCreated = true;
+              return Promise.resolve({ done: false, value: enc.encode(CREATED) });
+            },
+          }),
+        },
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event).toEqual({ code: 'stalled', user_message_id: 'someone-else' });
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancels).toEqual([]);
+  });
+
   it('reports a reconnect_error code when the reader fails for a reason other than the idle timeout', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,

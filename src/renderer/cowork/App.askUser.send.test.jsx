@@ -781,10 +781,9 @@ describe('a question the server refuses', () => {
     expect(spies.fetchSession).not.toHaveBeenCalled();
   });
 
-  it('gives a busy failure inside the stream the same gated card', async () => {
+  it('shows a busy failure inside the stream at once, as the same gated card, without reloading the conversation', async () => {
     const user = userEvent.setup();
-    const composer = await openTask(user);
-    spies.useActualStreams = true;
+    const composer = await openWithStalledReload(user);
     const enc = new TextEncoder();
     const frames = [
       { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' },
@@ -810,6 +809,7 @@ describe('a question the server refuses', () => {
 
     expect(await screen.findByText('The server is busy')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
   });
 });
 
