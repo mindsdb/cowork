@@ -153,6 +153,8 @@ import {
   renameConversation,
   moveTaskToProject,
   cancelScratchpad,
+  deleteConversationTurn,
+  fetchInFlightList,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -1685,5 +1687,361 @@ describe('Stop on the conversation on screen', () => {
     await screen.findByText('alpha turn');
     expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
     expect(alpha.abort).not.toHaveBeenCalled();
+  });
+});
+
+const BETA = 'beta from home';
+const GAMMA = 'gamma from home';
+const ECHO = 'echo from home';
+
+/** The sidebar row for `title`. A task started from Home is titled with its
+ *  own text, which its user bubble repeats, so the lookup stays in the sidebar. */
+function sidebarRow(title) {
+  return within(document.querySelector('aside')).findByRole('button', { name: title });
+}
+
+/** Whether the sidebar marks `title` as running. */
+async function showsActive(title) {
+  return within(await sidebarRow(title)).queryByLabelText('Active') !== null;
+}
+
+/** Opens a conversation from its sidebar row and resolves with its composer. */
+async function openFromSidebar(user, title) {
+  await user.click(await sidebarRow(title));
+  return waitFor(() => {
+    const ta = document.querySelector('textarea');
+    if (!ta) throw new Error('composer not mounted');
+    return ta;
+  });
+}
+
+/** Opens a scratchpad cell named `name` on `handle`'s turn. */
+async function openPad(handle, name) {
+  await emitOn(handle, {
+    type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: `tc-${name}`,
+  });
+  await emitOn(handle, {
+    type: 'response.in_progress',
+    thought_role: 'thought.scratchpad.end',
+    tool_use_id: `tc-${name}`,
+    content: JSON.stringify({ name, one_line_description: 'run', code: 'x=1' }),
+  });
+}
+
+/**
+ * Starts a task from Home with `text`, adopts the server id `sid` so no two
+ * Home tasks share a `tmp-` id, and streams the first words of its answer.
+ * The new task takes the shared slot and is left on screen.
+ */
+async function startFromHome(user, text, sid) {
+  await user.click(screen.getByRole('button', { name: /new task/i }));
+  const homeComposer = await waitFor(() => {
+    const ta = document.querySelector('textarea');
+    if (!ta) throw new Error('composer not mounted');
+    return ta;
+  });
+  const before = new Set(streams);
+  await send(user, homeComposer, text);
+  const handle = await waitFor(() => {
+    const h = streams.find((x) => x.kind === 'new' && !before.has(x));
+    if (!h) throw new Error('new-session stream not started');
+    return h;
+  });
+  await emitOn(handle, { type: 'response.created', conversation_id: sid });
+  await emitOn(handle, { type: 'response.output_text.delta', delta: `${text} answer` });
+  return handle;
+}
+
+/** Alpha streams its own reply with a cell open, then Beta starts from Home
+ *  with a cell of its own and takes the shared slot. */
+async function startAlphaThenBetaFromHome(user) {
+  const composer = await openTask(user);
+  await send(user, composer, 'alpha turn');
+  const alpha = await waitForStream();
+  await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+  await openPad(alpha, 'pad-a');
+
+  const beta = await startFromHome(user, BETA, 'conv-home-b');
+  await openPad(beta, 'pad-b');
+  return { alpha, beta };
+}
+
+/** Goes back to Alpha with `alphaProbe` answering Alpha's in-flight check, and
+ *  resolves once Alpha shows `line` and that check has been asked. */
+async function returnToAlpha(user, alphaProbe, line = 'alpha turn') {
+  spies.fetchInFlightStatus.mockClear();
+  spies.fetchInFlightStatus.mockImplementation(async (cid) => (
+    cid === 'conv-a' ? alphaProbe() : { in_flight: false }
+  ));
+  await openByTitle(user, 'Alpha task');
+  await screen.findByText(line);
+  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-a'));
+}
+
+const probePending = () => new Promise(() => {});
+// The real fetchInFlightStatus answers "not in flight" for any failure.
+const probeFailed = () => ({ in_flight: false });
+const probeRunning = () => ({ in_flight: true });
+
+/** A run the server lists as running that this window never streamed, such
+ *  as a scheduled task: Alpha's transcript holds only the prompt. */
+function listAlphaAsServerRun() {
+  fetchInFlightList.mockImplementation(async () => [{ conversation_id: 'conv-a' }]);
+  spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-a'
+    ? {
+        status: 'ok',
+        task: {
+          id: 'conv-a',
+          title: 'Alpha task',
+          messages: [{ role: 'user', content: 'scheduled prompt' }],
+          status: 'idle',
+          projectName: 'general',
+        },
+      }
+    : { status: 'unavailable', code: 0 }));
+}
+
+/** Confirms the "Delete this exchange?" dialog for the only deletable turn on screen. */
+async function deleteTheRunningTurn(user) {
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+}
+
+describe('Stop in one task while a task started from Home runs', () => {
+  const originalAlert = window.alert;
+
+  beforeEach(() => {
+    cancelScratchpad.mockClear();
+    deleteConversationTurn.mockClear();
+    // The post-delete re-sync reads this file's unavailable session and warns
+    // through a bare alert(), which this environment does not define.
+    window.alert = vi.fn();
+  });
+  afterEach(() => {
+    window.alert = originalAlert;
+    fetchInFlightList.mockImplementation(async () => []);
+  });
+
+  it.each([
+    ['before Alpha\'s in-flight check answers', probePending],
+    ['after Alpha\'s in-flight check fails', probeFailed],
+  ])('cancels only Alpha and Alpha\'s cell %s', async (_when, alphaProbe) => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, alphaProbe);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels only Alpha when Alpha\'s in-flight check re-attaches it', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeRunning);
+    const tailA = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'tail');
+      if (!h) throw new Error('Alpha not re-attached yet');
+      return h;
+    });
+    await emitOn(tailA, { type: 'response.output_text.delta', delta: ' more' });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves Beta\'s running dot and question card in place', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    await emitOn(beta, ASK_EVENT);
+    // Alpha re-attaches, so the target is Alpha even before the fix: only the
+    // clean-up after the cancel can touch Beta here.
+    await returnToAlpha(user, probeRunning);
+    await waitFor(() => expect(streams.some((x) => x.kind === 'tail')).toBe(true));
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+    expect(await showsActive(BETA)).toBe(true);
+
+    await openFromSidebar(user, BETA);
+    await user.click(await screen.findByRole('button', { name: /postgres/i }));
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-home-b', 'ask:1', expect.anything());
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('cancels Alpha, not the newest running task, after a third task\'s turn ends', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    // Beta finishing clears the shared task id that Gamma holds.
+    await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
+    await returnToAlpha(user, probeFailed);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(gamma.abort).not.toHaveBeenCalled();
+    expect(await showsActive(GAMMA)).toBe(true);
+  });
+
+  it('cancels Alpha, not Beta, after a third task is stopped', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(gamma.abort).toHaveBeenCalled());
+    await returnToAlpha(user, probeFailed);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-home-c'], ['conv-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels only a server-listed run that has no stream in this window', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    await openPad(beta, 'pad-b');
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('never cancels a cell Alpha did not open, even while Alpha holds the slot', async () => {
+    const user = userEvent.setup();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    // Gamma finishing frees the shared slot while Beta keeps running.
+    await act(async () => { gamma.opts.onDone('conv-home-c'); await Promise.resolve(); });
+
+    const composer = await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream(gamma);
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await openPad(beta, 'pad-b');
+    // A `cancelled` failure drops Alpha's record but leaves Alpha holding the
+    // slot with its live row up, so Alpha's Stop has no cell of its own.
+    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('holds a running task\'s queued follow-up until that task\'s turn ends', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('alpha follow-up');
+  });
+
+  it('queues a message typed into a running task after another task\'s Stop freed the slot', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+
+    const alphaComposer = await openByTitle(user, 'Alpha task');
+    await send(user, alphaComposer, 'typed while running');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+  });
+
+  it('cancels Alpha before deleting Alpha\'s running turn', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels a server-listed run before deleting its running turn', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('keeps Alpha running and names no other task when Alpha\'s cancel fails', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    spies.cancelResponse.mockResolvedValueOnce({ status: 'error', conversation_id: 'conv-a' });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
+    expect(alpha.abort).not.toHaveBeenCalled();
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
   });
 });
