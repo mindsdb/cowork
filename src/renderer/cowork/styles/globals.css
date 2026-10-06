@@ -1630,9 +1630,10 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 /* ─── Card system (ENG-791) ─────────────────────────────────────────────
    One card look for the whole app. Compound modifiers (matching the existing
    .card.flat / .card.compact convention) let the <Card> primitive build a
-   class string like "card interactive selected cozy". The single hover/active
-   animation is ELEVATION ONLY — lift + soft shadow, neutral border. Accent is
-   reserved for the selected state, never hover.
+   class string like "card interactive selected cozy". The single hover cue is
+   a SURFACE TINT — no lift, no shadow change, neutral border — the same cue
+   list rows use, so cards and rows read as one system. Accent is reserved
+   for the selected state, never hover.
 
    Semantic aliases over the themed primitives. Declared on `body` (NOT :root)
    so the inner var()s resolve against body's per-theme --surface/--line/--sh-*
@@ -1645,11 +1646,10 @@ body {
   --card-pad-x:         16px;          /* canonical interactive list/grid pad */
   --card-surface:       var(--surface);
   --card-border:        var(--line);
-  --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
-  --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
-  --card-lift:          -1px;
+  --card-surface-hover: var(--surface-2);
+  --card-shadow-rest:   var(--sh-1);
   --card-transition:    border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
-                        transform var(--dur-hover) ease, background-color var(--dur-hover) ease;
+                        background-color var(--dur-hover) ease;
 }
 
 .card {
@@ -1669,10 +1669,9 @@ body {
 /* When the card element is a <button>, neutralize the UA button styling. */
 button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 
-/* Interactive — the single hover/active animation. */
+/* Interactive — the single hover cue: tint the surface. */
 .card.interactive { cursor: pointer; transition: var(--card-transition); }
-.card.interactive:hover  { box-shadow: var(--card-shadow-hover); transform: translateY(var(--card-lift)); }
-.card.interactive:active { box-shadow: var(--card-shadow-rest); transform: translateY(0); }
+.card.interactive:hover  { background: var(--card-surface-hover); }
 .card.interactive:focus-visible { outline: none; box-shadow: var(--ring), var(--card-shadow-rest); }
 
 /* Selected/active — accent is the selection cue; persists under hover. */
@@ -1695,8 +1694,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 }
 .card.dashed.interactive { color: var(--ink-3); }   /* quiet CTA label at rest */
 .card.dashed.interactive:hover {   /* drop-target CTA keeps an accent cue */
-  transform: none;
-  box-shadow: none;
+  background: transparent;
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1716,11 +1714,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
-
-@media (prefers-reduced-motion: reduce) {
-  .card.interactive:hover,
-  .card.interactive:active { transform: none; }
-}
 
 /* Bubble — floating glassy container; slightly translucent so the
    gravity-field shows behind. Radius slightly tighter than .card. */
@@ -3598,12 +3591,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   align-items: center;
   gap: 12px;
   max-width: 600px;
-}
-/* A compact hairline row: hover tints the surface instead of lifting it. */
-.card.chat-artifact-card.interactive:hover {
-  box-shadow: none;
-  transform: none;
-  background: var(--surface-2);
 }
 .chat-artifact-card__actions { min-width: 0; }
 /* Below this the actions and a readable filename stop fitting on one line.

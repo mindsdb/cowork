@@ -455,7 +455,6 @@ export default function CodeView({
         ) : connectorsOpen && !draftSuspended ? null : projectsOpen ? (
           <CodeProjectsView
             projects={projects.projects}
-            selectedId={projects.selectedId}
             loading={projects.loading}
             error={projects.error}
             onOpen={onOpenTasks}
