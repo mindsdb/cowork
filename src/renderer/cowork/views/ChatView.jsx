@@ -974,6 +974,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       >
         <ActionBar
           size="sm"
+          align="start"
           className="flex-wrap"
           leading={!deleted && primaryAction && primaryReason
             ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
