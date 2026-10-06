@@ -32,6 +32,8 @@ import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
+import { useOrgMode } from '../../../lib/orgMode';
+import { ChatFoldersSection } from './ChatFoldersSection';
 
 /*
   Ticket guard for the async loads that paint shared state. Every start claims
@@ -554,6 +556,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
+  // Working folders are local paths on this machine: desktop only, and the
+  // server refuses them in org mode, so they are hidden rather than refused.
+  const orgMode = useOrgMode();
+  const canUseWorkingFolders = sessionRelevant && host.isElectron && !orgMode;
 
   // `useEffect` runs after paint — switching tasks would briefly show the
   // previous task's rows with "Loading attachments…". This runs first
@@ -958,6 +964,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               );
             })}
         </div>
+      )}
+
+      {canUseWorkingFolders && (
+        <ChatFoldersSection conversationId={conversationId} refreshKey={refreshKey} />
       )}
 
       {ordered.map((section) => {
