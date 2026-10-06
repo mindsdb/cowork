@@ -78,6 +78,7 @@ export function CodeProjectsView({
                     description={resources.map((resource) => resource.name).join(', ') || undefined}
                     onActivate={() => onOpen(project.id)}
                     activateLabel={`View tasks in ${project.name}`}
+                    revealActions
                     meta={<>
                       <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
                       <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
