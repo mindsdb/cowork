@@ -188,7 +188,7 @@ export default function ScheduledView({
           counts={
             <>
               {(search || '').trim().length > 0
-                ? `Showing ${visible.length} of ${scheduled.length}`
+                ? `${visible.length} of ${scheduled.length} scheduled tasks`
                 : `${scheduled.length} scheduled ${scheduled.length === 1 ? 'task' : 'tasks'}`}
               {totalMissed > 0 && (
                 <>

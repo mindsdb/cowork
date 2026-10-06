@@ -3,10 +3,14 @@ import { useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
-import { CollectionState, FilterRow, ListGroup, ListItem, PageHeader, SearchInput } from '../components/collection';
+import { CollectionState, FilterRow, ListGroup, ListItem, PageHeader, SearchInput, SortPill } from '../components/collection';
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
 
+const SORT_OPTIONS = [
+  { id: 'updated', label: 'Recently updated' },
+  { id: 'name', label: 'Name' },
+];
 
 export function CodeProjectsView({
   projects,
@@ -26,12 +30,15 @@ export function CodeProjectsView({
   onEdit: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('updated');
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return projects
       .filter((project) => !normalized || project.name.toLowerCase().includes(normalized) || projectResources(project).some((resource) => resource.name.toLowerCase().includes(normalized)))
-      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
-  }, [projects, query]);
+      .sort((left, right) => (sort === 'name'
+        ? left.name.localeCompare(right.name)
+        : Date.parse(right.updated_at) - Date.parse(left.updated_at)));
+  }, [projects, query, sort]);
 
   return (
     <main className="code-projects-view">
@@ -40,7 +47,10 @@ export function CodeProjectsView({
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
         actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>}
       />
-      <FilterRow search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />} />
+      <FilterRow
+        search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
+        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+      />
 
       <div className="mx-8">
         {error ? <Alert variant="danger">{error}</Alert> : (

@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
+import { openFilterFacet, orderOf, pickFilter, pickOption } from '../../../../tests/helpers/pickOption';
 
 import TasksView from './TasksView';
 
@@ -74,30 +74,30 @@ describe('TasksView', () => {
 
     await user.type(search, 'beta');
     expect(orderOf(TITLES)).toEqual(['Beta notes']);
-    expect(screen.getByText('Showing 1 of 5')).toBeInTheDocument();
+    expect(screen.getByText('1 of 5 tasks')).toBeInTheDocument();
 
     await user.clear(search);
     await user.type(search, 'metrics');
     expect(orderOf(TITLES)).toEqual(['Daily digest', 'Alpha report']);
-    expect(screen.getByText('Showing 2 of 5')).toBeInTheDocument();
+    expect(screen.getByText('2 of 5 tasks')).toBeInTheDocument();
   });
 
   it('filters by project, offering only projects that have tasks', async () => {
     const { user } = setup({ projects: [...PROJECTS, { name: 'empty', display_name: 'Empty' }] });
-    await user.click(screen.getByRole('combobox', { name: /^Project/ }));
-    expect(await screen.findByRole('option', { name: 'All projects' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Empty' })).not.toBeInTheDocument();
-    await user.keyboard('{Escape}');
+    await openFilterFacet(user, 'Project');
+    expect(screen.getByRole('menuitemradio', { name: 'All projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: 'Empty' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}{Escape}');
 
-    await pickOption(user, /^Project/, 'Ops');
+    await pickFilter(user, 'Project', 'Ops');
     expect(orderOf(TITLES)).toEqual(['Beta notes']);
-    expect(screen.getByText('Showing 1 of 5')).toBeInTheDocument();
+    expect(screen.getByText('1 of 5 tasks')).toBeInTheDocument();
 
     // A schedule group belongs to its schedule's project.
-    await pickOption(user, /^Project/, 'Metrics');
+    await pickFilter(user, 'Project', 'Metrics');
     expect(orderOf(TITLES)).toEqual(['Daily digest', 'Alpha report']);
 
-    await pickOption(user, /^Project/, 'All projects');
+    await pickFilter(user, 'Project', 'All projects');
     expect(screen.getByText('5 tasks')).toBeInTheDocument();
   });
 
@@ -140,7 +140,7 @@ describe('TasksView', () => {
     const { user } = setup();
     await user.type(screen.getByLabelText('Search tasks'), 'zzz');
     expect(screen.getByText('No tasks match these filters.')).toBeInTheDocument();
-    expect(screen.getByText('Showing 0 of 5')).toBeInTheDocument();
+    expect(screen.getByText('0 of 5 tasks')).toBeInTheDocument();
   });
 
   it('shows an empty state and no toolbar when there are no tasks', () => {

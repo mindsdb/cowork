@@ -1,10 +1,11 @@
-// Sort control for collection toolbars: a thin adapter over
-// `<Select variant="pill">` that keeps the kit's `{ id, label }` option shape
-// and `onChange(id)` callback. Each view supplies its own `options` because the
-// sort keys vary (Projects: recent/name/most-active; Artifacts: newest/name;
-// Scheduled: next-run/name). Filters use `<Select variant="pill">` directly.
+// Sort control for collection toolbars: a quiet `<Select>` with sort arrows,
+// so it never reads as a filter. Keeps the kit's `{ id, label }` option shape
+// and `onChange(id)` callback; each view supplies its own `options` because
+// the sort keys vary (Projects: recent/name/most-active; Artifacts:
+// newest/name; Scheduled: next-run/name). Filters go in <FilterMenu>.
 
 import { useMemo } from 'react';
+import { ArrowUpDown } from 'lucide-react';
 import Select from '../ui/Select';
 
 export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
@@ -13,13 +14,14 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
   const selected = options.some((o) => o.id === value) ? value : options[0]?.id;
   return (
     <Select
-      variant="pill"
-      label={label}
+      variant="quiet"
+      ariaLabel={label}
+      leading={<ArrowUpDown size={13} strokeWidth={1.5} />}
       value={selected}
       onValueChange={onChange}
       options={items}
       placeholder="—"
-      menuMinWidth={160}
+      menuMinWidth={180}
     />
   );
 }

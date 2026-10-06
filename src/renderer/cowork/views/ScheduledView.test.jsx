@@ -92,7 +92,7 @@ describe('ScheduledView — toolbar', () => {
     const search = screen.getByLabelText('Search scheduled tasks');
     await user.type(search, 'logs');
     expect(orderOf(TITLES)).toEqual(['Alpha sweep']);
-    expect(screen.getByText(/Showing 1 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 3 scheduled tasks/)).toBeInTheDocument();
     await user.clear(search);
     await user.type(search, 'metrics');
     expect(orderOf(TITLES)).toEqual(['Weekly metrics']);

@@ -8,12 +8,12 @@ import { SortPill } from './SortPill';
 const OPTIONS = [{ id: 'recent', label: 'Recent' }, { id: 'name', label: 'Name' }];
 
 describe('SortPill', () => {
-  it('reads "Sort: <current>" and reports the picked option id', async () => {
+  it('reads the current sort and reports the picked option id', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<SortPill value="recent" onChange={onChange} options={OPTIONS} />);
     const pill = screen.getByRole('combobox', { name: 'Sort' });
-    expect(pill).toHaveTextContent('Sort:Recent');
+    expect(pill).toHaveTextContent('Recent');
     await user.click(pill);
     await user.click(screen.getByRole('option', { name: 'Name' }));
     expect(onChange).toHaveBeenCalledWith('name');
@@ -21,7 +21,7 @@ describe('SortPill', () => {
 
   it('shows the first option for an unknown value and takes a custom label', () => {
     render(<SortPill value="gone" onChange={() => {}} options={OPTIONS} label="Order" />);
-    expect(screen.getByRole('combobox', { name: 'Order' })).toHaveTextContent('Order:Recent');
+    expect(screen.getByRole('combobox', { name: 'Order' })).toHaveTextContent('Recent');
   });
 });
 

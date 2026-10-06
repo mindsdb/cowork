@@ -50,7 +50,7 @@ const SORT_OPTIONS = [
 function ConnectionsCounts({ search, total, filtered }) {
   const filterActive = (search || '').trim().length > 0;
   const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
+    ? `${filtered} of ${total} connections`
     : `${total} ${total === 1 ? 'connection' : 'connections'}`;
   return <>{countText}</>;
 }

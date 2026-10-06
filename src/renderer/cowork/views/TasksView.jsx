@@ -12,13 +12,15 @@
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Badge, Button, Select, Tooltip } from '../components/ui';
+import { Badge, Button, Tooltip } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
   FilterRow,
   SearchInput,
   SortPill,
+  FilterMenu,
+  FilterChips,
   useCollectionShortcut,
   CollectionState,
   HoverActions,
@@ -315,6 +317,11 @@ export default function TasksView({
     return opts;
   }, [projects, projectsWithTasks]);
 
+  const filters = [{
+    id: 'project', label: 'Project', value: projectFilter, allValue: 'all',
+    options: projectFilterOptions, onChange: setProjectFilter,
+  }];
+
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
@@ -333,23 +340,13 @@ export default function TasksView({
               placeholder="Search tasks"
             />
           }
-          sort={
-            <>
-              <SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />
-              <Select
-                variant="pill"
-                label="Project"
-                value={projectFilter}
-                onValueChange={setProjectFilter}
-                options={projectFilterOptions}
-                menuMinWidth={160}
-              />
-            </>
-          }
+          filter={<FilterMenu filters={filters} />}
+          chips={<FilterChips filters={filters} onClear={() => setProjectFilter('all')} />}
+          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
           counts={
             <>
               {(search || '').trim().length > 0 || projectFilter !== 'all'
-                ? `Showing ${visible.length} of ${tasks.length}`
+                ? `${visible.length} of ${tasks.length} tasks`
                 : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`}
             </>
           }

@@ -23,6 +23,13 @@ export function SearchInput(props: {
   shortcut?: string;
 }): ReactNode;
 
+export function SortPill(props: {
+  value: string;
+  onChange: (id: string) => void;
+  options: { id: string; label: string }[];
+  label?: string;
+}): ReactNode;
+
 export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | null>, enabled?: boolean): void;
 export { CardGrid, ItemCard } from './ItemCard';
 export { ListGroup, ListItem, NewRow, ListNotice } from './ListGroup';
@@ -35,5 +42,5 @@ export type { StatusTone } from './StatusDot';
 export { CollectionState } from './CollectionState';
 export { ViewToggle, useCollectionView } from './ViewToggle';
 export { NewTile } from './NewTile';
-export { FilterMenu, FilterChips, SortMenu } from './FilterMenu';
+export { FilterMenu, FilterChips } from './FilterMenu';
 export type { Filter, FilterOption } from './FilterMenu';

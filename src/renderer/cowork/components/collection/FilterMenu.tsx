@@ -13,10 +13,8 @@
 // active when on. Chips and the button's count read the same list, so they
 // never disagree.
 
-import type { ReactNode } from 'react';
-import { ArrowUpDown, Check, ListFilter, X } from 'lucide-react';
+import { Check, ListFilter, X } from 'lucide-react';
 import Menu from '../ui/Menu';
-import Select from '../ui/Select';
 import { cn } from '../../lib/cn';
 
 export interface FilterOption { value: string; label: string; title?: string }
@@ -111,24 +109,5 @@ export function FilterChips({ filters, onClear }: { filters: Filter[]; onClear: 
         </button>
       )}
     </div>
-  );
-}
-
-/** Sort as a quiet control, so it never reads as another filter. */
-export function SortMenu({ value, onChange, options }: {
-  value: string;
-  onChange: (value: string) => void;
-  options: FilterOption[];
-}): ReactNode {
-  return (
-    <Select
-      variant="quiet"
-      ariaLabel="Sort"
-      leading={<ArrowUpDown size={13} strokeWidth={1.5} />}
-      value={value}
-      onValueChange={onChange}
-      options={options}
-      menuMinWidth={180}
-    />
   );
 }
