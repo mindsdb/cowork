@@ -14,6 +14,7 @@
 // never disagree.
 
 import { Check, ListFilter, X } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import Menu from '../ui/Menu';
 import { cn } from '../../lib/cn';
 
@@ -26,9 +27,9 @@ export type Filter =
 const isActive = (f: Filter) => (f.toggle ? f.value : f.value !== f.allValue);
 const valueLabel = (f: Filter) => (f.toggle ? f.label : f.options.find((o) => o.value === f.value)?.label ?? f.value);
 
-const CHECK = <Check size={13} strokeWidth={2} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={14} />;
 // Unchecked items keep the check's width so labels line up.
-const NO_CHECK = <span className="inline-block w-[13px]" aria-hidden="true" />;
+const NO_CHECK = <span className="inline-block w-[14px]" aria-hidden="true" />;
 
 export function FilterMenu({ filters }: { filters: Filter[] }) {
   const active = filters.filter(isActive).length;
@@ -70,7 +71,7 @@ export function FilterMenu({ filters }: { filters: Filter[] }) {
             'bg-surface-2 hover:bg-surface-3 focus-visible:[box-shadow:var(--ring)] focus-visible:outline-none',
           )}
         >
-          <ListFilter size={14} strokeWidth={1.5} aria-hidden="true" className="text-ink-3" />
+          <Icon of={ListFilter} size={14} className="text-ink-3" />
           Filter
           {active > 0 && (
             <span className="min-w-[17px] rounded-full bg-[var(--accent-bg)] px-[5px] text-center text-[10.5px] font-semibold leading-[17px] text-accent">
@@ -99,7 +100,7 @@ export function FilterChips({ filters, onClear }: { filters: Filter[]; onClear: 
             onClick={() => (f.toggle ? f.onChange(false) : f.onChange(f.allValue))}
             className="inline-flex h-full cursor-pointer items-center border-y-0 border-r-0 border-l border-solid border-line bg-transparent px-1.5 text-ink-4 hover:bg-surface-2 hover:text-ink focus-visible:[box-shadow:var(--ring)] focus-visible:outline-none"
           >
-            <X size={12} strokeWidth={1.75} aria-hidden="true" />
+            <Icon of={X} size={12} />
           </button>
         </span>
       ))}

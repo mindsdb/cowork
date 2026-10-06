@@ -64,7 +64,7 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
               <IconButton ref={triggerRef} aria-label={`Preview errors, ${errors.length}`}>
                 {/* The glyph carries its own color: IconButton's hover
                     handlers rewrite the button's, which would turn it grey. */}
-                <span className="inline-flex text-danger">{Ico.warning(17)}</span>
+                <span className="inline-flex text-danger">{Ico.warning(16)}</span>
               </IconButton>
             )}
           />

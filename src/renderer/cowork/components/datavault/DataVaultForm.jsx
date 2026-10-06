@@ -1010,7 +1010,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                     className="inline-flex transition-transform duration-layout group-data-[panel-open]:rotate-180"
                     aria-hidden
                   >
-                    {Ico.chevDown(13)}
+                    {Ico.chevDown(14)}
                   </span>
                 </span>
               )}

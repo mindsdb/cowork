@@ -186,7 +186,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex w-[22px] h-[22px] items-center justify-center text-ink-3 rounded-[5px] cursor-pointer hover:bg-surface-2 hover:text-ink [transition:opacity_var(--dur-hover)_ease,background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
             style={{ opacity: showKebab ? 1 : 0, pointerEvents: showKebab ? 'auto' : 'none' }}
           >
-            {Ico.moreVert(13)}
+            {Ico.moreVert(14)}
           </span>
         </span>
       </button>
@@ -534,7 +534,7 @@ export default function Sidebar({
                         'filter var(--dur-layout) var(--ease-out)',
                     }}
                   >
-                    {collapsed ? Ico.sidebarExpandRight(15) : Ico.sidebarCollapseLeft(15)}
+                    {collapsed ? Ico.sidebarExpandRight(16) : Ico.sidebarCollapseLeft(16)}
                   </button>
                 </Tooltip>
               );
@@ -545,7 +545,7 @@ export default function Sidebar({
                 onClick={onOpenSearch}
                 aria-label="Search"
               >
-                {Ico.search(15)}
+                {Ico.search(16)}
               </button>
             </Tooltip>
           </div>
@@ -616,10 +616,10 @@ export default function Sidebar({
             product look like the same action. */}
         {!codeRoute && (
           <div className="nav-list px-2.5 flex flex-col gap-px">
-            <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-            <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+            <NavItem icon={Ico.folder(16)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
+            <NavItem icon={Ico.clock(16)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
             <NavItem
-              icon={Ico.sparkle(15)}
+              icon={Ico.sparkle(16)}
               label="Live Artifacts"
               elementRef={artifactsNavRef}
               onClick={() => {
@@ -639,7 +639,7 @@ export default function Sidebar({
                 data source is connected; the badge then reads as a
                 live "you have N connections" indicator. */}
             <NavItem
-              icon={Ico.link(15)}
+              icon={Ico.link(16)}
               label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
               onClick={() => onNavigate('customize')}
               active={activeRoute === 'customize'}
@@ -657,25 +657,25 @@ export default function Sidebar({
           <>
             <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
               <NavItem
-                icon={Ico.folder(15)}
+                icon={Ico.folder(16)}
                 label="Projects"
                 onClick={onOpenCodingProjects}
                 active={activeCodeRoute === 'projects'}
               />
               <NavItem
-                icon={Ico.list(15)}
+                icon={Ico.list(16)}
                 label="All tasks"
                 onClick={onOpenCodingTasks}
                 active={activeCodeRoute === 'tasks'}
               />
               <NavItem
-                icon={Ico.link(15)}
+                icon={Ico.link(16)}
                 label="Connectors"
                 onClick={onOpenCodingConnectors}
                 active={activeCodeRoute === 'connectors'}
               />
               <NavItem
-                icon={Ico.cube(15)}
+                icon={Ico.cube(16)}
                 label="Skills"
                 onClick={onOpenCodingSkills}
                 active={activeCodeRoute === 'skills'}
@@ -698,8 +698,8 @@ export default function Sidebar({
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
         <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+          <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
@@ -971,7 +971,7 @@ export default function Sidebar({
                     onClick={() => onNavigate('settings:backend')}
                     aria-label="Settings"
                   >
-                    {Ico.settings(13)}
+                    {Ico.settings(14)}
                   </button>
                 </Tooltip>
               </>
@@ -998,7 +998,7 @@ export default function Sidebar({
                     onClick={() => onNavigate('settings')}
                     aria-label="Open Settings"
                   >
-                    {Ico.settings(15)}
+                    {Ico.settings(16)}
                   </button>
                 </Tooltip>
               </>
@@ -1009,7 +1009,7 @@ export default function Sidebar({
                 onClick={() => onNavigate('settings')}
                 aria-label="Settings"
               >
-                <span className="inline-flex shrink-0">{Ico.settings(13)}</span>
+                <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
                 <span>Settings</span>
               </button>
             )}

@@ -351,7 +351,7 @@ export function CodeConnectorsView({
                         icon={Ico.more(14)}
                         disabled={providerBusy}
                         size="sm"
-                        items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(13), danger: true, onClick: () => setDisconnecting(connection) }]}
+                        items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(14), danger: true, onClick: () => setDisconnecting(connection) }]}
                       />
                     </>}
                   />

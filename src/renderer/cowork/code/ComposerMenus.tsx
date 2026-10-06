@@ -39,7 +39,7 @@ export function PromptQueue({
                 aria-label={`Steer with queued instruction ${index + 1}`}
                 onClick={() => void onSteer(instruction.id)}
               >
-                {Ico.arrowUpLeft(11)} Steer
+                {Ico.arrowUpLeft(12)} Steer
               </Button>
             )}
             <Button
@@ -50,7 +50,7 @@ export function PromptQueue({
               aria-label={`Remove queued instruction ${index + 1}`}
               onClick={() => void onRemove(instruction.id)}
             >
-              {Ico.trash(11)}
+              {Ico.trash(12)}
             </Button>
           </div>
         </div>

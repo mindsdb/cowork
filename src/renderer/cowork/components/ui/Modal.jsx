@@ -248,7 +248,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             e.currentTarget.style.background = 'transparent';
           }}
         >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
+          {Ico.close ? Ico.close(14) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
         </button>
       )}
     </div>

@@ -209,7 +209,7 @@ export function CodeCommandPalette({
           value={query}
           onChange={onQueryChange}
           size="sm"
-          leading={Ico.search(13)}
+          leading={Ico.search(14)}
           placeholder="Search skills and commands"
           aria-label="Search skills and commands"
         />

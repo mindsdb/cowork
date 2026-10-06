@@ -241,10 +241,10 @@ export function ProjectResourcesEditor({
           })}
           {allowMultiple && <div className="code-project-list__actions">
             <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-              {Ico.folder(13)} {adding ? 'Adding…' : 'Add folder'}
+              {Ico.folder(14)} {adding ? 'Adding…' : 'Add folder'}
             </Button>
             <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
-              {Ico.plus(13)} Add repository
+              {Ico.plus(14)} Add repository
             </Button>
           </div>}
         </div>

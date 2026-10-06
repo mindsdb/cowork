@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import { Button } from '../ui';
 import { cn } from '../../lib/cn';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
@@ -70,7 +71,7 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
       <div className="flex items-center gap-2.5 border-x-0 border-b-0 border-t border-solid border-line pt-2.5">
         <span className={cn('flex min-w-0 flex-1 items-center gap-2 text-xs', needsReconnect ? 'text-warning' : 'text-ink-3')}>
           {needsReconnect
-            ? <TriangleAlert size={12} className="shrink-0" aria-hidden="true" />
+            ? <Icon of={TriangleAlert} size={12} className="shrink-0" />
             : <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', connected ? 'bg-[var(--success)]' : 'bg-ink-4')} />}
           <span className="truncate">{statusLabel}</span>
         </span>

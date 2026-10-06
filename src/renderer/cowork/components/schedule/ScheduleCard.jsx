@@ -94,7 +94,7 @@ function scheduleSlots({
     actions: (
       <>
         <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
-          {busy ? <Spinner /> : Ico.send(13)}
+          {busy ? <Spinner /> : Ico.send(14)}
           {row ? 'Run' : 'Run now'}
         </Button>
         <OverflowMenu

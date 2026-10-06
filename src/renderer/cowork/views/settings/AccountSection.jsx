@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { host } from '../../../platform/host';
@@ -106,10 +107,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       {/* Feature grid */}
       <div className="grid grid-cols-2 gap-y-2.5 gap-x-5 w-full">
         {[
-          { icon: <ArrowLeftRight size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
-          { icon: <Server size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-          { icon: <Cloud size={16} strokeWidth={1.5} aria-hidden="true" />, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
-          { icon: <Sparkle size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
+          { icon: <Icon of={ArrowLeftRight} size={16} />, label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
+          { icon: <Icon of={Server} size={16} />, label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
+          { icon: <Icon of={Cloud} size={16} />, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+          { icon: <Icon of={Sparkle} size={16} />, label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
         ].map(({ icon, label, desc, soon }) => (
           <div key={label} className="flex gap-2.5 items-start">
             <span className="text-[16px] leading-none text-accent mt-0.5 shrink-0 inline-flex items-center">{icon}</span>
@@ -137,7 +138,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
 
       {/* CTA */}
       <Button variant="primary" onClick={onSsoSignIn}>
-        <LogIn size={14} strokeWidth={1.5} aria-hidden="true" />
+        <Icon of={LogIn} size={14} />
         Sign in / Sign up to MindsHub
       </Button>
     </div>
@@ -188,7 +189,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
             <div className="flex justify-end">
               <Tooltip content="Sign out and clear stored credentials">
                 <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut}>
-                  <LogOut size={13} strokeWidth={1.5} aria-hidden="true" />
+                  <Icon of={LogOut} size={14} />
                   {loggingOut ? 'Signing out…' : 'Sign out'}
                 </Button>
               </Tooltip>

@@ -318,7 +318,7 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
             aria-label="Clear value"
             className={FIELD_ICON_BTN}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       )}
@@ -480,7 +480,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
               aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
               className={canCopy ? btnClass : btnClassDisabled}
             >
-              {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
+              {copyState === 'copied' ? Ico.check(14) : Ico.copy(14)}
             </button>
           </Tooltip>
           {(copyState === 'copied' || copyState === 'failed') && (
@@ -508,7 +508,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-pressed={show}
             className={show ? btnClassActive : btnClass}
           >
-            {show ? Ico.eyeOff(13) : Ico.eye(13)}
+            {show ? Ico.eyeOff(14) : Ico.eye(14)}
           </button>
         </Tooltip>
         <Tooltip content="Clear this key (commits on Save settings)">
@@ -519,7 +519,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-label="Clear key"
             className={hasValue ? btnClass : btnClassDisabled}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       </div>
@@ -704,7 +704,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
           && !serverOnline
           && item.id !== 'backend'
           && item.id !== 'codingAgent';
-        const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        const icon = Ico[item.icon] ? Ico[item.icon](14) : null;
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
@@ -1249,7 +1249,7 @@ export default function SettingsView({
   const testButtonLabel = testing
     ? 'Testing…'
     : tested
-      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(13)}</span>Tested</>)
+      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(14)}</span>Tested</>)
       : 'Test';
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
@@ -1264,8 +1264,8 @@ export default function SettingsView({
         className="flex-1 text-[13px] font-medium text-ink-3 inline-flex items-center gap-1.5"
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
@@ -1470,7 +1470,7 @@ export default function SettingsView({
                         )}
                         {status === 'fail' && friendlyError && (
                           <div className="text-[11.5px] text-danger flex items-start gap-1.5">
-                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(11) : '!'}</span>
+                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(12) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
                         )}
@@ -1495,7 +1495,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => removeProvider(p.type)}
                             aria-label="Remove this provider"
-                          >{Ico.trash(13)}</Button>
+                          >{Ico.trash(14)}</Button>
                         </Tooltip>
                       )}
                       {!showKeyInput && (
@@ -1505,7 +1505,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
                             aria-label="Edit API key"
-                          >{Ico.edit(13)}</Button>
+                          >{Ico.edit(14)}</Button>
                         </Tooltip>
                       )}
                     </div>
@@ -1528,7 +1528,7 @@ export default function SettingsView({
                       pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                       cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                     }}
-                  >{Ico.plus(13)} Add provider</Button>
+                  >{Ico.plus(14)} Add provider</Button>
                 </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
@@ -1558,7 +1558,7 @@ export default function SettingsView({
                       onClick={() => setAddPickerOpen(false)}
                       aria-label="Close provider picker"
                       className="ml-1"
-                    >{Ico.close(13)}</Button>
+                    >{Ico.close(14)}</Button>
                   </Tooltip>
                 </div>
               </div>
@@ -2060,7 +2060,7 @@ export default function SettingsView({
     }
     return (
       <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
-        {Ico.check(11)} Saved
+        {Ico.check(12)} Saved
       </span>
     );
   }
@@ -2112,7 +2112,7 @@ export default function SettingsView({
             options={SKINS.map((s) => ({
               value: s.id,
               label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](13)} {s.label}</span>)
+                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
                 : s.label,
               'aria-label': `${s.label} style`,
               title: s.title,
@@ -2127,13 +2127,13 @@ export default function SettingsView({
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(13)} Light</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>),
                 'aria-label': 'Light theme',
                 title: 'Use the light theme.',
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(13)} Dark</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>),
                 'aria-label': 'Dark theme',
                 title: 'Use the dark theme.',
               },
@@ -2294,7 +2294,7 @@ export default function SettingsView({
                 variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
               >
-                {Ico.trash(13)}
+                {Ico.trash(14)}
                 Remove
               </Button>
             )}
@@ -2438,7 +2438,7 @@ export default function SettingsView({
             aria-label={inDetail ? 'Back to settings' : 'Close settings'}
             onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
-            {Ico.chevLeft(22)}
+            {Ico.chevLeft(20)}
           </button>
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? activeItem.label : 'Settings'}
@@ -2460,7 +2460,7 @@ export default function SettingsView({
                   && !serverOnline
                   && item.id !== 'backend'
                   && item.id !== 'codingAgent';
-                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                const icon = Ico[item.icon] ? Ico[item.icon](16) : null;
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (

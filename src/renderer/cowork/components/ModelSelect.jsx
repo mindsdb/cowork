@@ -89,6 +89,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { ChevronRight, Check } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -119,8 +120,8 @@ const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 // levels — where an instant close would just look like the footer vanished.
 const FOOTER_EXIT_MS = 260;
 
-const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_RIGHT = <Icon of={ChevronRight} size={12} />;
+const CHECK = <Icon of={Check} size={12} />;
 
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;

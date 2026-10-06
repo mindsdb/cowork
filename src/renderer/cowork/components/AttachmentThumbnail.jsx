@@ -90,7 +90,7 @@ export function AttachmentThumbnail({
 
   let inner;
   if (failed) {
-    inner = <span style={{ display: 'inline-flex', padding: cover ? 0 : 14 }}>{Ico.image(cover ? 16 : 22)}</span>;
+    inner = <span style={{ display: 'inline-flex', padding: cover ? 0 : 14 }}>{Ico.image(cover ? 16 : 20)}</span>;
   } else if (src) {
     inner = (
       <img

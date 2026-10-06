@@ -229,7 +229,7 @@ export function ReviewPanel({
             {files.length === 0 && (
               <EmptyState
                 size="sm"
-                icon={Ico.code(18)}
+                icon={Ico.code(20)}
                 title={directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}
                 description={directFolderWithoutDiff
                   ? 'Direct folders do not have a Git baseline, so Cowork cannot build an inline diff.'
@@ -267,7 +267,7 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(13)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(14)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
               {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.source_path)}>Open original</Button>}
             </div>
             {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}

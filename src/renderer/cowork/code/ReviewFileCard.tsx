@@ -28,7 +28,7 @@ export function ReviewFileCard({
         <span className="code-diff-file__path">{file.path}</span>
         <span className="code-diff-add">+{file.additions}</span>
         <span className="code-diff-del">−{file.deletions}</span>
-        <span className="code-diff-file__chevron">{Ico.chevDown(11)}</span>
+        <span className="code-diff-file__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {file.patch ? (
         <DiffPatchView patch={file.patch} onSelectionChange={setSelection} />

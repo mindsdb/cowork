@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, RotateCw } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 
 import { getCodeControlPlaneOrigin } from '../../../platform/host';
 import { isLoopbackOrigin } from '../../code/controlPlane';
@@ -149,13 +150,13 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
                       setCopied(ok);
                     }}
                   >
-                    <Copy size={13} strokeWidth={1.5} />
+                    <Icon of={Copy} size={14} />
                   </Button>
                 </div>
                 {copied && command && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
                 {!loading && expiresIn === 0 && (
                   <Button size="sm" variant="subtle" className="mt-2" onClick={() => void createCode()}>
-                    <RotateCw size={12} /> New code
+                    <Icon of={RotateCw} size={12} /> New code
                   </Button>
                 )}
               </>

@@ -341,7 +341,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
           style={{ height: 'auto', minHeight: 26, padding: '4px 10px' }}
           onClick={() => onSelect(file)}
         >
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(14)}</span>
           <span className="flex-1 whitespace-normal">{labelCategory(file.category)}</span>
         </button>
       ))}
@@ -559,7 +559,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(14)}</span>
           <div className="flex-1 min-w-0">
             <div className="text-[13.5px] font-[650] text-strong">{artifact.title}</div>
             <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>

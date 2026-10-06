@@ -205,7 +205,7 @@ function useProjectSlots({
           className={ACTION_TRIGGER}
         >
           {/* A pinned project's pin keeps the accent, hover included. */}
-          <span className={cn('inline-flex', pinned && 'text-accent')}>{Ico.pin(13)}</span>
+          <span className={cn('inline-flex', pinned && 'text-accent')}>{Ico.pin(14)}</span>
         </Button>
       </Tooltip>
       {!isReserved && (
@@ -223,7 +223,7 @@ function useProjectSlots({
             aria-label="Project menu"
             className={ACTION_TRIGGER}
           >
-            {Ico.moreVert(15)}
+            {Ico.moreVert(16)}
           </Button>
         </Tooltip>
       )}

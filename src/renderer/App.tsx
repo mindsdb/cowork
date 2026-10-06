@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { Icon, type IconSize } from './cowork/components/ui/Icon';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import CoworkApp from './CoworkApp';
@@ -52,12 +53,12 @@ function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
 }
 
-function SunIcon({ size = 15 }: { size?: number }) {
-  return <Sun size={size} strokeWidth={1.5} aria-hidden="true" />;
+function SunIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Sun} size={size} />;
 }
 
-function MoonIcon({ size = 15 }: { size?: number }) {
-  return <Moon size={size} strokeWidth={1.5} aria-hidden="true" />;
+function MoonIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Moon} size={size} />;
 }
 
 export default function App() {
@@ -382,7 +383,7 @@ export default function App() {
             className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
-            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            {theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
           </button>
         </Tooltip>
       )}

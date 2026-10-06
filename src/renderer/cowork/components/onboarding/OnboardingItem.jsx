@@ -12,7 +12,7 @@ function Checkbox({ done }) {
         background: done ? 'var(--accent)' : 'transparent',
       }}
     >
-      {done && Ico.check(11)}
+      {done && Ico.check(12)}
     </span>
   );
 }

@@ -100,7 +100,7 @@ function AddSkillSourceModal({
             const result = await host.pickCodeFolder();
             if (result.ok && result.path) { setRepository(result.path); setError(''); }
             else if (!result.cancelled) setError(result.reason || 'Could not choose that folder.');
-          }}>{Ico.folder(13)} Choose</Button></div></label>
+          }}>{Ico.folder(14)} Choose</Button></div></label>
           <div className="code-skill-source-form__pair">
             <label><span>Name <small>Optional</small></span><Input value={name} onChange={setName} placeholder="Engineering standards" /></label>
             <label><span>Branch</span><Input value={branch} onChange={setBranch} placeholder="main" /></label>
@@ -211,12 +211,12 @@ function SkillSourceModal({
       <ModalFooter>
         {source?.enabled_project_count ? (
           <span className="code-skill-source-usage">
-            {Ico.folder(13)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
+            {Ico.folder(14)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
           </span>
         ) : <Button variant="danger" onClick={() => void onRemove()} disabled={busy}>Remove source</Button>}
         <span className="flex-1" />
         <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>Open repository</Button>
-        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(13)} Check for updates</Button>
+        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(14)} Check for updates</Button>
         {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>Update source</Button>}
       </ModalFooter>
     </Modal>
@@ -336,8 +336,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         title="Skills"
         subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
         actions={<div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
-          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
+          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(14)} Add team source</Button>
+          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(14)} Add personal skill</Button>
         </div>}
       />
       <FilterRow

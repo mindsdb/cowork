@@ -191,7 +191,7 @@ export default function SkillCard({ skill, projectName }) {
               color: 'var(--accent)', background: 'var(--surface-2)', border: '1px solid var(--line)',
             }}
           >
-            {Ico.cube(24)}
+            {Ico.cube(20)}
           </div>
 
           <div style={{ minWidth: 0 }}>

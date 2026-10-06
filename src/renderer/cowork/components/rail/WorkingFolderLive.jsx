@@ -507,7 +507,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                           'bg-transparent border-0 cursor-pointer p-0',
                         )}
                       >
-                        {Ico.moreVert(13)}
+                        {Ico.moreVert(14)}
                       </button>
                     </Tooltip>
                   </span>
@@ -586,7 +586,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                     if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
                   }}
                 >
-                  <span className="inline-flex text-[var(--frost-700)]">{Ico.download(13)}</span>
+                  <span className="inline-flex text-[var(--frost-700)]">{Ico.download(14)}</span>
                   <span>Download</span>
                 </button>
               )}
@@ -607,7 +607,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                     }}
                     style={{ color: 'var(--danger)' }}
                   >
-                    <span className="inline-flex text-danger">{Ico.trash(13)}</span>
+                    <span className="inline-flex text-danger">{Ico.trash(14)}</span>
                     <span>Delete</span>
                   </button>
                 </>

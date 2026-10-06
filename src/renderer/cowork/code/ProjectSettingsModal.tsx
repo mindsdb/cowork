@@ -374,7 +374,7 @@ export function ProjectSettingsModal({
             panelClassName="code-project-advanced__panel"
             title={(
               <span className="code-project-advanced__title">
-                <span className="code-project-advanced__icon" aria-hidden="true">{Ico.slider(15)}</span>
+                <span className="code-project-advanced__icon" aria-hidden="true">{Ico.slider(16)}</span>
                 <span>
                   <strong>Advanced</strong>
                   <small>{advancedSummary}</small>

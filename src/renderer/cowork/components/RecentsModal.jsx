@@ -41,7 +41,7 @@ function Row({ task, onSelect, onDelete }) {
             aria-label="Delete this task"
             className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_var(--dur-hover)_ease]"
           >
-            {Ico.trash(13)}
+            {Ico.trash(14)}
           </button>
         </Tooltip>
       ) : (
