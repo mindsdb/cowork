@@ -888,7 +888,8 @@ export default function SettingsView({
   useEffect(() => { settingsRef.current = settings; });
 
   // Keys edited since the last successful save; closing the view reverts
-  // them to the saved snapshot (see unsavedEditReverts).
+  // them to the saved snapshot (see unsavedEditReverts). Writes that apply a
+  // server response go through setSettingProp so they are never reverted.
   const editedKeysRef = useRef(new Set());
   const setSetting = (key, value) => {
     editedKeysRef.current.add(key);
@@ -1110,11 +1111,11 @@ export default function SettingsView({
       const current = settingsRef.current?.providerStatus || {};
       const next = { ...current, ...result.providerStatus };
       const changed = Object.keys(result.providerStatus).some((k) => current[k] !== result.providerStatus[k]);
-      if (changed) setSetting('providerStatus', next);
+      if (changed) setSettingProp('providerStatus', next);
     }
     if (result && result.providerStatusDetails) {
       const currentDetails = settingsRef.current?.providerStatusDetails || {};
-      setSetting('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
+      setSettingProp('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
     }
     /* Reasons are replaced per type, not merged: every type this result
        reports a status for loses its held reason first, then takes the new
@@ -1135,7 +1136,7 @@ export default function SettingsView({
       if (sent && typeof sent === 'object') {
         for (const type of reported) nextReasons[type] = sent[type] || null;
       }
-      setSetting('providerStatusReasons', nextReasons);
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     return result;
   };
@@ -1224,6 +1225,9 @@ export default function SettingsView({
     setTested(false);
     try {
       await onSave(withResolvedRoles(clampBudgets(settings)));
+      // The server has the values now, so closing must not revert them, even
+      // if validation or a provider test below fails or is still running.
+      editedKeysRef.current.clear();
       const result = await validateSettings();
       setValidation(result);
       if (shouldTestLlm) {
@@ -1244,7 +1248,6 @@ export default function SettingsView({
       // pre-save copy and stale by now).
       const { providerStatus: _ps2, providerStatusDetails: _psd2, providerStatusReasons: _psr2, ...savedForDirty } = settingsRef.current || {};
       setLastSavedJson(JSON.stringify(savedForDirty));
-      editedKeysRef.current.clear();
       setSaved(true);
       setTimeout(() => setTested(false), 2400);
     } catch (err) {
@@ -1839,7 +1842,7 @@ export default function SettingsView({
                                       // when this lands; a reordered list jumps under the cursor.
                                       const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSetting(key, value);
+                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
                                       openState.refreshedAt = performance.now();
                                     }).catch(() => { }).finally(() => {
                                       setModelRefreshing((m) => ({ ...m, [role]: false }));

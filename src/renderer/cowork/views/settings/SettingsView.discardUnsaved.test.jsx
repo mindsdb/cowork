@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+const spies = vi.hoisted(() => ({
+  validateSettings: vi.fn(async () => ({ ok: true })),
+  fetchRecommendedModels: vi.fn(async () => ({})),
+}));
 
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
-  validateSettings: vi.fn(async () => ({ ok: true })),
+  validateSettings: spies.validateSettings,
+  fetchRecommendedModels: spies.fetchRecommendedModels,
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
@@ -35,8 +42,8 @@ import SettingsView, { unsavedEditReverts } from './SettingsView';
 
 const SERVER = { maxToolRounds: '50', maxContinuations: '5', maxTurnTokens: '1250000' };
 
-function Harness({ onSave, latest }) {
-  const [settings, setSettings] = useState(SERVER);
+function Harness({ onSave, latest, initial = SERVER }) {
+  const [settings, setSettings] = useState(initial);
   const [open, setOpen] = useState(true);
   latest.current = settings;
   return (
@@ -71,6 +78,11 @@ const reopen = () => {
 };
 
 describe('SettingsView — closing discards unsaved edits (ENG-3200)', () => {
+  beforeEach(() => {
+    spies.validateSettings.mockReset().mockImplementation(async () => ({ ok: true }));
+    spies.fetchRecommendedModels.mockReset().mockImplementation(async () => ({}));
+  });
+
   it('reverts an edit the server rejected when the view closes', async () => {
     const latest = { current: null };
     const onSave = vi.fn(async () => {
@@ -103,6 +115,43 @@ describe('SettingsView — closing discards unsaved edits (ENG-3200)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /^Saved$/ })).toBeInTheDocument());
     reopen();
     expect(latest.current.maxContinuations).toBe('9');
+  });
+
+  it('keeps a persisted edit when validation after the save fails', async () => {
+    const latest = { current: null };
+    spies.validateSettings.mockRejectedValue(new Error('validation unavailable'));
+    const onSave = vi.fn(async () => ({}));
+    render(<Harness onSave={onSave} latest={latest} />);
+    editBudget();
+    clickSave();
+    await screen.findByText(/validation unavailable/);
+    expect(onSave).toHaveBeenCalled();
+
+    reopen();
+
+    expect(latest.current.maxContinuations).toBe('9');
+  });
+
+  it('keeps model metadata the picker refreshed from the server', async () => {
+    const latest = { current: null };
+    spies.fetchRecommendedModels.mockResolvedValue({ modelEnabled: { sonnet: true, opus: true } });
+    const initial = {
+      modelMode: 'default',
+      providers: [{ type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://mdb.ai' }],
+      providerStatus: { 'minds-cloud': 'ok' },
+      providerTypeLabels: { 'minds-cloud': 'MindsHub' },
+      planningModel: 'sonnet',
+      codingModel: 'sonnet',
+      recommendedModels: { 'minds-cloud': ['sonnet', 'opus'] },
+      modelEnabled: { sonnet: true, opus: false },
+    };
+    render(<Harness onSave={vi.fn()} latest={latest} initial={initial} />);
+    await userEvent.setup().click(screen.getByTitle(/Pick the model used for planning/));
+    await waitFor(() => expect(latest.current.modelEnabled.opus).toBe(true));
+
+    reopen();
+
+    expect(latest.current.modelEnabled.opus).toBe(true);
   });
 });
 
