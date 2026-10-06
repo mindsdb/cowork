@@ -1241,14 +1241,14 @@ function AppCore() {
       activeStreamingTaskIdRef.current = null;
     }
 
-    // When the stopped conversation held the shared slot, Stop frees it with no
-    // onDone/onError behind it — the
-    // reaped record above silences the aborted run's cancelled callback — so
-    // a message queued against a *different* task would strand forever at
-    // "N queued · waiting for Anton" with no future turn to release it. Sweep
-    // the siblings now (the cancelled task's own queue was just deleted). Via
-    // the ref because a memoized handleStopStream would close over a stale
-    // drain (same reason reconnect uses it).
+    // When the stopped conversation held the shared slot, Stop frees it with
+    // no onDone/onError behind it — the reaped record above silences the
+    // aborted run's cancelled callback — so a message queued against a
+    // *different* task would strand forever at "N queued · waiting for Anton"
+    // with no future turn to release it. Sweep the siblings now (the cancelled
+    // task's own queue was just deleted). Via the ref because a memoized
+    // handleStopStream would close over a stale drain (same reason reconnect
+    // uses it).
     drainNextQueuedMessageRef.current?.();
 
     if (silent) return;
@@ -4376,7 +4376,8 @@ function AppCore() {
       // deleted, stop the stream first so the SSE connection doesn't
       // keep producing events for a turn that no longer exists. The
       // silent flag skips the post-cancel session refetch.
-      // The registry, not the shared slot: another conversation may hold that.
+      // The registry first, since another conversation may hold the shared
+      // slot; the slot check still covers a send reserved before it registers.
       if (liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId) {
         try { await handleStopStream({ taskId, silent: true }); } catch {}
       }
