@@ -563,7 +563,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             query={search}
             onClear={() => setSearch('')}
             skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
-            skeletonClassName="pt-5 px-8 pb-[60px]"
+            skeletonClassName="px-8 pb-[60px]"
             skeletonGridClassName="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
             empty={{
               icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
@@ -572,7 +572,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             }}
           >
             {effectiveView === 'list' ? (
-              <div className="pt-4 px-8 pb-[60px]">
+              <div className="px-8 pb-[60px]">
                 <div className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
                   {['Name', 'Description', 'Project', 'Author', 'Updated'].map((h) => (
                     <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
@@ -604,7 +604,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 })}
               </div>
             ) : (
-              <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+              <div className="px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
                 {sorted.map((skill) => (
                   <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
                 ))}

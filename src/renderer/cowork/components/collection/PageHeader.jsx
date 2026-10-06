@@ -68,7 +68,7 @@ export function PageHeader({
   }
 
   return (
-    <div className="flex flex-col gap-[18px] pr-8 pb-5 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
+    <div className="flex flex-col gap-[18px] pr-8 pb-6 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
       {/* Wraps the actions below the title once the title column would drop
           under 18rem, so narrow windows stack instead of crushing the title. */}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">

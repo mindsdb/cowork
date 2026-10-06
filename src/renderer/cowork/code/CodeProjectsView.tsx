@@ -42,7 +42,7 @@ export function CodeProjectsView({
       />
       <FilterRow search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />} />
 
-      <div className="mx-8 mt-5">
+      <div className="mx-8">
         {error ? <Alert variant="danger">{error}</Alert> : (
           <CollectionState
             loading={loading}

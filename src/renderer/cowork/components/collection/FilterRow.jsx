@@ -1,19 +1,23 @@
 // Standard filter / toolbar row for collection screens. Lays out:
 //
 //   [search] [sort] ……spacer…… [right] [view]
-//   [counts]
+//   (32px)
+//   [counts]   ← caption for the list below
+//   (8px)
 //
 // Each slot accepts a ReactNode. The rule for what goes in them:
 // search = <SearchInput>, sort and filters = <SortPill> / <Select
 // variant="pill">, view = <ToggleGroup>.
 //
-// `counts` is also a ReactNode (not a string) so views can mix
-// values + accents however they like — e.g. Projects highlights
-// the pinned count with `var(--accent)`.
+// The row owns the space down to the page body, so bodies start flush
+// below it and every page has the same gap. `counts` sits at the bottom
+// of that gap as the list's caption, not under the controls. It is a
+// ReactNode so views can mix values and accents (Projects highlights the
+// pinned count with `var(--accent)`).
 
 export function FilterRow({ search, sort, view, counts, right }) {
   return (
-    <div className="flex flex-col gap-1.5 px-8">
+    <div className="flex flex-col px-8 pb-2">
       <div className="flex flex-wrap items-center gap-2.5">
         {search}
         {sort}
@@ -21,10 +25,10 @@ export function FilterRow({ search, sort, view, counts, right }) {
         {right}
         {view}
       </div>
-      {counts && (
-        <div className="font-mono text-[11px] tracking-[0.04em] text-ink-4">
-          {counts}
-        </div>
+      {counts ? (
+        <div className="mt-8 font-body text-xs text-ink-4">{counts}</div>
+      ) : (
+        <div className="h-6" aria-hidden="true" />
       )}
     </div>
   );

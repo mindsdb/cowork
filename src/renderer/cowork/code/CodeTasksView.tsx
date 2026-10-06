@@ -128,7 +128,7 @@ export function CodeTasksView({
         </>}
         counts={!loading && !error ? `${filtered.length} ${filtered.length === 1 ? 'task' : 'tasks'} · Most recently updated first` : undefined}
       />
-      <div className="mx-8 mt-5 grid gap-4">
+      <div className="mx-8 grid gap-4">
         {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
         {/* A failed load shows the error alone, never an empty state. */}
         {!(error && !sessions.length) && <CollectionState

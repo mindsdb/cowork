@@ -133,8 +133,8 @@ function NewProjectButton({ onClick }) {
 
 // Page padding of the card grid and the row group, shared with their
 // loading skeletons so loading does not shift the layout.
-const GRID_CLASS = 'mt-[18px] px-8 pb-[60px] pt-1.5';
-const LIST_CLASS = 'mx-8 mb-[60px] mt-6';
+const GRID_CLASS = 'px-8 pb-[60px]';
+const LIST_CLASS = 'mx-8 mb-[60px]';
 
 // Sort options for the projects collection. Kept here (and not in
 // the kit) because the choices are page-specific.
