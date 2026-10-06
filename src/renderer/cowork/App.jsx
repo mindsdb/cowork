@@ -541,6 +541,16 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  const [appearancePreview, setAppearancePreview] = useState({});
+  const appearanceSettings = { ...settings, ...appearancePreview };
+  const previewAppearance = useCallback((key, value) => {
+    setAppearancePreview((prev) => {
+      if (key === null) return {};
+      if (value !== undefined) return { ...prev, [key]: value };
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const agentLabel = getAgentLabel(settings);
 
@@ -1424,8 +1434,8 @@ function AppCore() {
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
-    applyNavTitleColor(settings.navTitleColor);
-  }, [settings.navTitleColor]);
+    applyNavTitleColor(appearanceSettings.navTitleColor);
+  }, [appearanceSettings.navTitleColor]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -1433,10 +1443,10 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = settings.showDots !== false;
+    const visible = appearanceSettings.showDots !== false;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
-  }, [settings.showDots]);
+  }, [appearanceSettings.showDots]);
 
   // Cowork and Code are peer workspaces, not routes within one another.
   // Keeping this separate from the Cowork route means each surface remains
@@ -1808,22 +1818,17 @@ function AppCore() {
     });
   }, []);
 
-  const saveSettings = useCallback(async (patch = settings) => {
+  const saveSettings = useCallback(async (patch) => {
     const result = await updateSettings(patch);
-    setSettings((prev) => ({
-      ...prev,
-      configReady: result.configReady ?? prev.configReady,
-      configError: result.configError ?? prev.configError,
-    }));
-    const h = await fetchHealth();
-    setHealth(h);
-    setServerOnline(h.status === 'ok');
-    const latest = await fetchSettings();
-    if (latest && typeof latest === 'object') {
-      setSettings((prev) => ({ ...prev, ...latest }));
-    }
+    // Only acknowledged writes or a successful canonical read enter App state.
+    // Drafts and failed-read fallback values never become committed settings.
+    setSettings((prev) => ({ ...prev, ...(result.settings || result.committedPatch) }));
+    fetchHealth().then((h) => {
+      setHealth(h);
+      setServerOnline(h.status === 'ok');
+    });
     return result;
-  }, [settings]);
+  }, []);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
@@ -4613,16 +4618,16 @@ function AppCore() {
         window.dispatchEvent(new CustomEvent('anton:open-new-project'));
       }, 60);
     },
-    navTitle: settings.navTitle || null,
-    navLogo: settings.navLogo || null,
+    navTitle: appearanceSettings.navTitle || null,
+    navLogo: appearanceSettings.navLogo || null,
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
     // hunting for a second spot.
     theme,
-    showThemeToggle: settings.showThemeToggle !== false,
+    showThemeToggle: appearanceSettings.showThemeToggle !== false,
     onToggleTheme: () => {
-      if (settings.show8bitToggle === false) {
+      if (appearanceSettings.show8bitToggle === false) {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       } else {
         setThemeModalOpen(true);
@@ -4680,18 +4685,18 @@ function AppCore() {
       {/* Code has one deliberate entry point while it is opt-in: Settings.
           Keeping this corner control exclusively about appearance prevents a
           hidden product from leaking into ordinary Cowork. */}
-      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+      {!isMobile && (appearanceSettings.showThemeToggle !== false || appearanceSettings.show8bitToggle !== false) && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+          <Tooltip content={appearanceSettings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
             <button
               onClick={() => {
-                if (settings.show8bitToggle === false) {
+                if (appearanceSettings.show8bitToggle === false) {
                   setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
                 } else {
                   setThemeModalOpen(true);
                 }
               }}
-              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              aria-label={appearanceSettings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
               className="floating-toggle"
             >
               {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
@@ -4773,9 +4778,9 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={settings.showCounters !== false}
-          navTitle={settings.navTitle || null}
-          navLogo={settings.navLogo || null}
+          showCounters={appearanceSettings.showCounters !== false}
+          navTitle={appearanceSettings.navTitle || null}
+          navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -4845,7 +4850,7 @@ function AppCore() {
         >
         {route === 'home' && (
           <HomeView
-            greeting={settings.greeting}
+            greeting={appearanceSettings.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
             onSelectTask={selectTask}
@@ -5254,6 +5259,7 @@ function AppCore() {
               mobile
               onClose={() => setSettingsOpen(false)}
               settings={settings} setSetting={setSetting} onSave={saveSettings}
+              onAppearancePreview={previewAppearance}
               theme={theme} onThemeChange={setTheme}
               skin={skin} onSkinChange={setSkin}
               customTheme={customTheme} onCustomThemeChange={setCustomTheme}
@@ -5306,6 +5312,7 @@ function AppCore() {
             <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <SettingsView
                 settings={settings} setSetting={setSetting} onSave={saveSettings}
+                onAppearancePreview={previewAppearance}
                 theme={theme} onThemeChange={setTheme}
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}

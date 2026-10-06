@@ -113,6 +113,8 @@ export default defineConfig({
           name: 'renderer-compiled',
           environment: 'happy-dom',
           include: [
+            'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.discardUnsaved.test.jsx',
             'src/renderer/cowork/code/useCodingCatalog.test.tsx',
             'src/renderer/cowork/code/CodeComposer.test.tsx',
             'src/renderer/cowork/code/CodeView.test.tsx',

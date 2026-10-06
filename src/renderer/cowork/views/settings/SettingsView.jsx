@@ -30,44 +30,7 @@ import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
-
-// Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
-// freshly auto-saved key, without touching any other field — critical so an
-// Appearance auto-save never marks a genuinely-unsaved Provider/Model edit
-// (tracked in the same snapshot, via the shared page-wide Save button) as
-// saved just because it happened to be present at the same time. Returns
-// the input unchanged if it's null or unparseable (defensive: the caller
-// should never hit that path, but a snapshot must never be corrupted).
-export function patchSavedJson(prevJson, key, value) {
-  if (prevJson == null) return prevJson;
-  try {
-    const parsed = JSON.parse(prevJson);
-    parsed[key] = value;
-    return JSON.stringify(parsed);
-  } catch {
-    return prevJson;
-  }
-}
-
-// Exported for tests. The setSetting calls that put each edited key back at
-// its `lastSavedJson` value. Edits write straight into App-level `settings`,
-// which outlives this view, so without a revert an unsaved or server-rejected
-// edit survives close/reopen and the remount snapshots it as "Saved"
-// (ENG-3200). Only keys the user edited are reverted: server-driven updates
-// that landed while the view was open must stand. Keys absent from the
-// snapshot are skipped (status maps are excluded from it on purpose).
-export function unsavedEditReverts(savedJson, current, editedKeys) {
-  if (savedJson == null || !current) return [];
-  let saved;
-  try { saved = JSON.parse(savedJson); } catch { return []; }
-  const reverts = [];
-  for (const key of editedKeys) {
-    if (!(key in saved)) continue;
-    if (JSON.stringify(current[key]) === JSON.stringify(saved[key])) continue;
-    reverts.push([key, saved[key]]);
-  }
-  return reverts;
-}
+import { useSettingsDraft } from './useSettingsDraft';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -755,7 +718,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
 }
 
 export default function SettingsView({
-  settings, setSetting: setSettingProp, onSave,
+  settings: committedSettings, setSetting: setSettingProp, onSave, onAppearancePreview,
   theme, onThemeChange,
   skin, onSkinChange, customTheme, onCustomThemeChange,
   agentLabel,
@@ -784,6 +747,14 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const draft = useSettingsDraft(committedSettings);
+  const { settings, setSetting, dirty: settingsDirty } = draft;
+  const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -797,6 +768,7 @@ export default function SettingsView({
   const hubUsage = hubUsageCtx?.usage || null;
   const isBillingOwner = !!hubUsage?.isBillingOwner;
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
@@ -849,24 +821,6 @@ export default function SettingsView({
   // Starts empty — providers flip to key-edit mode when the user clicks Edit.
   // Cleared automatically after a successful save+test so the pill re-appears.
   const [editingProviders, setEditingProviders] = useState(new Set());
-  // Snapshot of the last-saved settings JSON. While `settings` matches
-  // this snapshot the Save button reads "Saved" — flips back to "Save
-  // settings" the moment the user changes anything.
-  const [lastSavedJson, setLastSavedJson] = useState(null);
-  // Exclude transient test-result fields from the dirty check — they're not
-  // user-editable settings and flip during Save itself, causing the button to
-  // re-enable immediately after a successful save+test cycle.
-  const { providerStatus: _ps, providerStatusDetails: _psd, providerStatusReasons: _psr, ...settingsForDirty } = settings;
-  const currentJson = JSON.stringify(settingsForDirty);
-  const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
-  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
-  // use it to revert an emptied field to the last COMMITTED value — the
-  // snapshot is the only place that value survives once drafts land in
-  // `settings` (see BudgetNumberField).
-  const lastSavedSettings = useMemo(() => {
-    if (lastSavedJson == null) return null;
-    try { return JSON.parse(lastSavedJson); } catch { return null; }
-  }, [lastSavedJson]);
   // Capability probe for the Advanced Settings budgets: cowork-server's
   // list_settings returns a row for EVERY UserSettings field, so a server
   // with the budget settings always sends both keys and an older one never
@@ -881,43 +835,20 @@ export default function SettingsView({
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
-  // Ref-mirror of `settings` so the post-Save snapshot can read the
-  // freshly-refetched value (the closure's `settings` is stale after
-  // the await but the ref tracks every render).
+  // Async provider tests merge their status into the latest displayed values.
+  // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; });
 
-  // Keys edited since the last successful save; closing the view reverts
-  // them to the saved snapshot (see unsavedEditReverts). Writes that apply a
-  // server response go through setSettingProp so they are never reverted.
-  const editedKeysRef = useRef(new Set());
-  const setSetting = (key, value) => {
-    editedKeysRef.current.add(key);
-    setSettingProp(key, value);
-  };
-  const lastSavedJsonRef = useRef(lastSavedJson);
-  useEffect(() => { lastSavedJsonRef.current = lastSavedJson; });
-  useEffect(() => () => {
-    const reverts = unsavedEditReverts(lastSavedJsonRef.current, settingsRef.current, editedKeysRef.current);
-    reverts.forEach(([key, value]) => setSettingProp(key, value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // First load: snapshot once `settings` is populated so the resting
-  // state is "Saved" until the user touches anything.
-  useEffect(() => {
-    if (lastSavedJson === null && settings && Object.keys(settings).length > 0) {
-      setLastSavedJson(currentJson);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentJson]);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
 
   // Providers state — surfaced from the server, edited inline, committed
   // on Save settings. The save handler routes through the providers path
   // when `providers` is included on the patch.
-  const providers = Array.isArray(settings.providers) ? settings.providers : [];
+  const configuredProviders = Array.isArray(settings.providers) ? settings.providers : [];
+  const providers = configuredProviders.some((p) => p.type === 'minds-cloud')
+    ? configuredProviders : [makeEmptyProvider('minds-cloud'), ...configuredProviders];
   const modelMode = settings.modelMode === 'custom' ? 'custom' : 'default';
   const overrides = settings.modelOverrides || {};
   const recommendedModels = settings.recommendedModels || {};
@@ -1022,15 +953,6 @@ export default function SettingsView({
   const missingCustomNames = providers.some(
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
-
-  // MindsHub is the permanent baseline — always show its row so the
-  // user has a path to a working provider without having to add one.
-  useEffect(() => {
-    if (!providers.some((p) => p.type === 'minds-cloud')) {
-      updateProviders([makeEmptyProvider('minds-cloud'), ...providers]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers.length, providers.some((p) => p.type === 'minds-cloud')]);
 
   const updateProviderField = (type, key, value) => {
     setLlmDirty(true);
@@ -1216,47 +1138,53 @@ export default function SettingsView({
   };
 
   const save = async () => {
-    // Save runs a validation pass so the banner reflects whether the
-    // new config is usable. Provider tests only fire when the LLM
-    // settings actually changed since the last Save — no point hitting
-    // the network when the user just toggled the dot grid.
     const shouldTestLlm = llmDirty || anyProviderFailed;
+    const submitted = draft.capture();
+    const normalized = withResolvedRoles(clampBudgets(settings));
+    const patch = clampBudgets(submitted.patch);
+    // Role resolution can add tombstones/provider changes to the user's patch.
+    // Keep unrelated committed settings and appearance previews out of the write.
+    for (const [key, value] of Object.entries(normalized)) {
+      if (JSON.stringify(value) !== JSON.stringify(settings[key])) patch[key] = value;
+    }
     setTesting(true);
     setTested(false);
+    setSaveError(null);
+    let result;
     try {
-      await onSave(withResolvedRoles(clampBudgets(settings)));
-      // The server has the values now, so closing must not revert them, even
-      // if validation or a provider test below fails or is still running.
-      editedKeysRef.current.clear();
-      const result = await validateSettings();
-      setValidation(result);
-      if (shouldTestLlm) {
-        // Use settingsRef.current.providers (post-save, fresh) instead of the
-        // stale closure so newly-added providers with masked keys ('***') are
-        // included — the backend resolves '***' from storage. Running this
-        // after validateSettings (not concurrently) ensures the snapshot below
-        // captures the final 'ok'/'fail' state, not the transient 'testing' state.
-        const freshProviders = settingsRef.current?.providers || [];
-        await runProviderTests(freshProviders.filter(providerConfigured));
+      result = await onSave(patch);
+      if (!mountedRef.current) return;
+      draft.acknowledge(submitted.entries);
+      setSaved(true);
+      if (Object.keys(draft.capture().patch).length === 0) {
         setLlmDirty(false);
         setEditingProviders(new Set());
       }
+    } catch (err) {
+      setSaveError(err.message || 'Settings could not be saved.');
+      setSaved(false);
+      setTesting(false);
+      return;
+    }
+
+    // Persistence and verification have separate outcomes. A failed check
+    // cannot turn an accepted write into a rejected save or restore a draft.
+    try {
+      const validationResult = await validateSettings();
+      setValidation(validationResult);
+      if (shouldTestLlm) {
+        const freshProviders = result?.settings?.providers || normalized.providers || providers;
+        await runProviderTests(freshProviders.filter(providerConfigured));
+      }
       setTested(true);
-      // Snapshot the now-current settings so the Save button flips to
-      // "Saved" until the user makes another edit. settingsRef tracks
-      // the latest re-rendered value (the closure's `settings` is the
-      // pre-save copy and stale by now).
-      const { providerStatus: _ps2, providerStatusDetails: _psd2, providerStatusReasons: _psr2, ...savedForDirty } = settingsRef.current || {};
-      setLastSavedJson(JSON.stringify(savedForDirty));
-      setSaved(true);
       setTimeout(() => setTested(false), 2400);
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
-        configError: err.message || 'Settings could not be saved.',
+        configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
       });
-      setSaved(false);
+      setTested(true);
     } finally {
       setTesting(false);
     }
@@ -1306,7 +1234,7 @@ export default function SettingsView({
         {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
         {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
         <span>
-          {testing ? 'Testing configuration…'
+          {saveError ? saveError : testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
               : saved ? 'Settings saved.'
                 : configError ? configError
@@ -2033,7 +1961,9 @@ export default function SettingsView({
   const AUTO_SAVE_FADE_MS = 500;  // opacity transition duration (matches the inline style below)
 
   const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
-    setSetting(key, value);
+    if (!mountedRef.current) return;
+    const submitted = setSetting(key, value, { autoSave: true });
+    onAppearancePreview?.(key, value);
     clearTimeout(autoSaveTimersRef.current[key]);
     clearTimeout(autoSaveFadeTimersRef.current[key]);
     clearTimeout(autoSaveRemoveTimersRef.current[key]);
@@ -2042,14 +1972,10 @@ export default function SettingsView({
       setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
       try {
         await onSave({ [key]: value });
-        // Narrow the "last saved" snapshot to just this field so the
-        // shared page-wide Save button (used by Providers/Model settings
-        // elsewhere in this view) doesn't mistake an auto-saved Appearance
-        // change for a pending manual one — or, worse, mark a genuinely
-        // unsaved Provider edit as "Saved" just because Appearance also
-        // changed at the same time.
-        setLastSavedJson((prev) => patchSavedJson(prev, key, value));
-        editedKeysRef.current.delete(key);
+        if (!mountedRef.current) return;
+        const cleared = draft.acknowledge({ [key]: submitted });
+        if (!cleared.includes(key)) return;
+        onAppearancePreview?.(key, undefined);
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
         // Hold at full opacity, then fade out, then unmount — a plain status
         // message, not a button, and it disappears on its own.
@@ -2065,6 +1991,7 @@ export default function SettingsView({
           }, AUTO_SAVE_FADE_MS);
         }, AUTO_SAVE_HOLD_MS);
       } catch (err) {
+        if (!mountedRef.current || !draft.isCurrent(key, submitted)) return;
         // Errors don't auto-fade — they stay until the next attempt so a
         // failed save can't go unnoticed.
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
@@ -2080,6 +2007,7 @@ export default function SettingsView({
   };
 
   useEffect(() => () => {
+    onAppearancePreview?.(null);
     Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
     Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
     Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);

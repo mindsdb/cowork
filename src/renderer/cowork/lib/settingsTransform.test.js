@@ -4,6 +4,7 @@ import {
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
+  committedSettingsPatch,
   effectiveRoleModel,
   effectiveRoleProvider,
   recommendedModelOptions,
@@ -1045,5 +1046,28 @@ describe('routerRoleSubtitle (ENG-1851)', () => {
       .toMatch(/off until a model is picked here/);
     expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
       .toMatch(/off: no model is available/);
+  });
+});
+
+
+describe('committedSettingsPatch', () => {
+  it('includes only accepted writable keys and masks credential copies', () => {
+    const patch = {
+      anthropicApiKey: 'new-secret',
+      providers: [{ type: 'anthropic', apiKey: 'new-secret', baseUrl: 'https://provider.example' }],
+      maxContinuations: '9',
+      modelEnabled: { opus: true },
+    };
+    expect(committedSettingsPatch(patch, ['anthropic_api_key', 'providers_json'])).toEqual({
+      anthropicApiKey: '***',
+      providers: [{ type: 'anthropic', apiKey: '***', baseUrl: 'https://provider.example' }],
+    });
+  });
+
+  it('preserves credential removal and model tombstones', () => {
+    expect(committedSettingsPatch({ anthropicApiKey: '', planningModel: null },
+      ['anthropic_api_key', 'planning_model'])).toEqual({
+      anthropicApiKey: '', planningModel: null, defaultModel: null,
+    });
   });
 });
