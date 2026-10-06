@@ -2332,7 +2332,7 @@ export default function ChatView({
                   // current crumb, so it's a CrumbCurrent sibling in every
                   // way but its interactivity (click opens the task menu,
                   // dbl-click edits), hence not the component itself.
-                  className="flex-1 min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
+                  className="flex-1 min-w-0 font-sans font-medium text-[13px] tracking-normal text-ink-2 bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <span
@@ -2354,7 +2354,7 @@ export default function ChatView({
                       setSettingsOpen((v) => !v);
                     }
                   }}
-                  className="font-display font-semibold text-[13px] tracking-normal text-ink overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:anywhere] min-w-0 flex-initial cursor-pointer"
+                  className="font-sans font-medium text-[13px] tracking-normal text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:anywhere] min-w-0 flex-initial cursor-pointer"
                 >{task.title}</span>
               )}
               {task.pinned && !titleEditing && (
@@ -3328,7 +3328,7 @@ export default function ChatView({
         className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           railFloats
             ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-transparent min-w-0 border-0 border-l border-solid border-line pt-[18px] px-5 gap-[22px] transition-opacity duration-layout ease-[ease]'
+            : 'bg-surface min-w-0 border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 gap-7 transition-opacity duration-layout ease-[ease]'
         }`}
         style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
