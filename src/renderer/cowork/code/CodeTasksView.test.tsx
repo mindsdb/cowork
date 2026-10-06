@@ -30,7 +30,7 @@ const sessions = [
 function setup(overrides: Partial<React.ComponentProps<typeof CodeTasksView>> = {}) {
   const props = {
     sessions, projects, loading: false, error: '', onOpen: vi.fn(), onOpenProject: vi.fn(), onNewTask: vi.fn(),
-    onEditProject: vi.fn(), onBack: vi.fn(), onRetry: vi.fn(), ...overrides,
+    onEditProject: vi.fn(), onDeleteProject: vi.fn(), onBack: vi.fn(), onRetry: vi.fn(), ...overrides,
   };
   return { ...render(<CodeTasksView {...props} />), props, user: userEvent.setup() };
 }
@@ -54,8 +54,12 @@ describe('CodeTasksView', () => {
     await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: 'New task' }));
     expect(props.onNewTask).toHaveBeenCalledWith('p1');
-    await user.click(screen.getByRole('button', { name: 'Edit MindsHub' }));
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
     expect(props.onEditProject).toHaveBeenCalledWith('p1');
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
+    expect(props.onDeleteProject).toHaveBeenCalledWith('p1');
     await user.click(screen.getByRole('button', { name: 'Projects' }));
     expect(props.onBack).toHaveBeenCalledOnce();
   });

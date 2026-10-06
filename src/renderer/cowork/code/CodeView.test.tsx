@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession, EngineCapability } from './api';
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
+  projectsRemove: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
@@ -106,7 +108,7 @@ vi.mock('./useCodeProjects', () => ({
       permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
     }],
     selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
-    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: mocks.projectsRemove,
   }),
 }));
 vi.mock('./CodeConnectorsView', () => ({
@@ -326,12 +328,25 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
   });
 
+  it('deletes a project from its page and returns to Projects', async () => {
+    const user = userEvent.setup();
+    const onOpenProjects = vi.fn();
+    renderCode({ tasksOpen: true, tasksProjectId: 'project-1', onOpenProjects });
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(onOpenProjects).toHaveBeenCalledOnce());
+    expect(mocks.projectsRemove).toHaveBeenCalledWith('project-1');
+  });
+
   it.each([
     { tasksOpen: false, tasksProjectId: 'project-1' },
     { tasksOpen: true, tasksProjectId: null },
   ])('closes project settings when task-list navigation changes to %j', async (destination) => {
     const { props, rerender } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Web app' }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
     expect(screen.getByText('Project settings modal')).toBeInTheDocument();
     rerender(<CodeView {...props} {...destination} />);
     expect(screen.queryByText('Project settings modal')).not.toBeInTheDocument();

@@ -6,8 +6,10 @@ import {
 } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import Menu from '../components/ui/Menu';
 import { projectResources, type CodeProject, type CodingSession } from './api';
 import { codingSessionStatus, relativeTime } from './presentation';
+import { projectActions } from './projectActions';
 import './code-tasks.css';
 
 const STATUS_OPTIONS = [
@@ -31,7 +33,7 @@ const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> =
 
 export function CodeTasksView({
   sessions, projects, projectId = null, active = true, loading, error,
-  onOpen, onOpenProject, onNewTask, onEditProject, onBack, onRetry,
+  onOpen, onOpenProject, onNewTask, onEditProject, onDeleteProject, onBack, onRetry,
 }: {
   sessions: CodingSession[];
   projects: CodeProject[];
@@ -43,6 +45,7 @@ export function CodeTasksView({
   onOpenProject: (id: string) => void;
   onNewTask: (projectId: string | null) => void;
   onEditProject: (id: string) => void;
+  onDeleteProject: (id: string) => void;
   onBack: () => void;
   onRetry: () => void;
 }) {
@@ -129,7 +132,10 @@ export function CodeTasksView({
         title={projectId ? projectNames.get(projectId) || 'Unavailable project' : 'All tasks'}
         subtitle={projectId ? 'Coding tasks in this project.' : undefined}
         actions={<div className="code-tasks-view__actions">
-          {project && <Button icon variant="subtle" aria-label={`Edit ${project.name}`} onClick={() => onEditProject(project.id)}>{Ico.settings(16)}</Button>}
+          {project && <Menu
+            trigger={<Button icon variant="subtle" aria-label={`${project.name} actions`}>{Ico.moreVert(16)}</Button>}
+            items={projectActions(project.id, onEditProject, onDeleteProject)}
+          />}
           <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(14)} New task</Button>
         </div>}
       /></div>

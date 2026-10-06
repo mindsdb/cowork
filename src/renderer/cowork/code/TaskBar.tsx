@@ -28,7 +28,6 @@ export function TaskBar({
   onRunProjectAction,
   onOpenControls,
   onOpenExtensions,
-  onOpenProject = () => {},
   onRename,
   onFork,
   onCompact,
@@ -54,7 +53,6 @@ export function TaskBar({
   onRunProjectAction: (action: ProjectActionSummary) => void;
   onOpenControls: () => void;
   onOpenExtensions: () => void;
-  onOpenProject?: () => void;
   onRename: () => void;
   onFork: () => void;
   onCompact: () => void;
@@ -261,11 +259,6 @@ export function TaskBar({
               label: 'Task controls',
               icon: Ico.settings(14),
               onClick: onOpenControls,
-            }] : []),
-            ...(session.project_id ? [{
-              label: 'Project settings',
-              icon: Ico.folder(14),
-              onClick: onOpenProject,
             }] : []),
             ...(can('extensions') ? [{
               label: 'Skills and extensions',
