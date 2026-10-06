@@ -252,8 +252,10 @@ body, body[data-theme="light"] {
 /* ─── Motion tokens ──────────────────────────────────────────────────────
    Every transition and animation duration in the app reads one of these,
    in Cowork and Code Mode alike. Hovers, presses, tooltips and popover
-   exits are instant. Popovers and modals fade in briefly so a new surface
-   reads as arriving rather than cutting in. Layout motion (height,
+   exits are instant. A glow halo is the one hover cue that blooms: a soft
+   shadow that cuts in at 0ms reads as a flicker, so it takes --dur-glow
+   while the fill and border under it still snap. Popovers and modals fade
+   in briefly so a new surface reads as arriving rather than cutting in. Layout motion (height,
    drawers, panel and content entrances) keeps a short glide. Ambient
    loops (spinners, pulses, shimmers) keep their own cadence. Keep these
    on :root, never in the themed body blocks: a body declaration would
@@ -261,6 +263,7 @@ body, body[data-theme="light"] {
 :root {
   --dur-press:       0ms;     /* button :active nudge */
   --dur-hover:       0ms;     /* color, background, border, shadow, small reveals */
+  --dur-glow:        120ms;   /* soft halo (box/text shadow) on hover and focus */
   --dur-popover-in:  80ms;    /* menu, select, combobox and toast open */
   --dur-popover-out: 0ms;     /* popover close, toast exit */
   --dur-modal:       150ms;   /* modal backdrop and popup fade */
@@ -277,6 +280,7 @@ body, body[data-theme="light"] {
    is instant. Ambient loops are halted separately below. */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --dur-glow: 0ms;
     --dur-popover-in: 0ms;
     --dur-modal: 0ms;
     --dur-layout: 0ms;
@@ -1182,7 +1186,8 @@ button.meta-pill:active { background: var(--ghost-press); }
   transition:
     background-color var(--dur-hover) ease,
     border-color var(--dur-hover) ease,
-    box-shadow var(--dur-hover) ease,
+    box-shadow var(--dur-glow) ease,
+    text-shadow var(--dur-glow) ease,
     transform var(--dur-press) ease,
     color var(--dur-hover) ease;
 }
@@ -1277,7 +1282,7 @@ body[data-theme="dark"] .btn.default:active {
   user-select: none;
   transition:
     background-color var(--dur-hover) ease, border-color var(--dur-hover) ease,
-    box-shadow var(--dur-hover) ease, transform var(--dur-press) ease, color var(--dur-hover) ease;
+    box-shadow var(--dur-glow) ease, transform var(--dur-press) ease, color var(--dur-hover) ease;
 }
 .btn.primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
@@ -2189,7 +2194,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   border-radius: var(--r);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-hover);
+  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-glow);
 }
 .chrome-btn--small:hover {
   color: var(--ink);
@@ -2248,7 +2253,7 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--ink-2);
   cursor: pointer;
   box-shadow: var(--sh-1);
-  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-hover);
+  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-glow);
 }
 .floating-toggle:hover {
   color: var(--ink);
