@@ -1610,6 +1610,38 @@ describe('Stop on the conversation on screen', () => {
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalled());
   });
 
+  it('does not cancel the cell of the conversation holding the slot', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailB, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-b', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    // A cancelled end drops Alpha's record but leaves its placeholder, so Stop
+    // has no record of its own and must not borrow the slot holder's cell.
+    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+    await openByTitle(user, 'Alpha task');
+    await screen.findByText('alpha turn');
+    cancelScratchpad.mockClear();
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(cancelScratchpad).not.toHaveBeenCalledWith('pad-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
   it('stops the stream of a turn deleted while another conversation holds the slot', async () => {
     const user = userEvent.setup();
     const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
