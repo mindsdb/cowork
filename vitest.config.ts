@@ -113,6 +113,10 @@ export default defineConfig({
           name: 'renderer-compiled',
           environment: 'happy-dom',
           include: [
+            // App/Settings regressions import these compiled consumers too. Run
+            // their dedicated cases so coverage includes both execution forms.
+            'src/renderer/cowork/hooks/useLogout.test.js',
+            'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
             'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
