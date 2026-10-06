@@ -3622,7 +3622,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     "tile text actions"
     "loc  loc  tools";
   align-items: center;
-  max-width: 600px;
 }
 /* Head spacing lives on the cells, not a grid gap, so the footer cells meet
    with no seam of card surface between them. */
