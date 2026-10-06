@@ -1357,7 +1357,13 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
 // from a broken card (ENG-1537 review).
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
-function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = false }) {
+/* `kind` and `title` default to the rate limit's. A busy server (`server_busy`)
+   passes its own: the same wait-then-retry gate, but a cause the user's own
+   requests didn't create. */
+function RateLimitedCard({
+  time, agentLabel, body, retryAt, onRetry, deleting = false,
+  kind = 'Rate limit', title = 'Too many requests too quickly',
+}) {
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1399,8 +1405,8 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Rate limit"
-      title="Too many requests too quickly"
+      kind={kind}
+      title={title}
       body={body}
       buttons={buttons}
     />
@@ -2679,6 +2685,27 @@ export default function ChatView({
                     />
                   );
                 }
+                /* No database connection freed in time on cowork-server
+                   (`server_busy`), refused before the stream with a 503 or
+                   ended inside it with response.failed. Waiting is the fix, so
+                   it shares the rate limit's Retry gate, counted down to the
+                   server's Retry-After, under its own title. */
+                if (m.code === 'server_busy') {
+                  const busyRetryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server is busy"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={busyRetryText ? () => onSend?.(busyRetryText) : undefined}
+                    />
+                  );
+                }
                 // `anton_error` and anything unmapped: a deliberately generic
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
@@ -2693,6 +2720,9 @@ export default function ChatView({
                 // the user what to do, so a raw id there would be noise, not
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
+                /* A second question refused with a 409 (`turn_in_progress`)
+                   lands here too: the server's sentence tells the user to wait
+                   for the running answer, and nothing resends it for them. */
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">

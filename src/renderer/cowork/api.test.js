@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -675,6 +675,93 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
+/* A question refused before the stream starts: cowork-server answers 503 when
+   no database connection frees in time, and 409 when the conversation already
+   has a running turn. The failure has to keep the status, the body's code and
+   Retry-After, so the chat can show the busy card's countdown, and the body's
+   sentence in whatever shape it arrives. Real Response objects, because the
+   body can only be read once. */
+describe('streamNewSession: a refusal before the stream', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body, headers = {}) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    {
+      status,
+      headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json', ...headers },
+    },
+  ));
+
+  const failure = () => new Promise((resolve) => {
+    streamNewSession('hi', {
+      onDone: () => resolve(null),
+      onError: (message, event) => resolve({ message, event }),
+    });
+  });
+
+  it("keeps a busy refusal's status, code and delay-seconds Retry-After", async () => {
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    const before = Date.now();
+    const { message, event } = await failure();
+    const after = Date.now();
+
+    expect(message).toBe(BUSY);
+    expect(event).toMatchObject({ code: 'server_busy', http_status: 503, retry_after: 5 });
+    const retryAt = Date.parse(event.retry_at);
+    expect(retryAt).toBeGreaterThanOrEqual(before + 5000);
+    expect(retryAt).toBeLessThanOrEqual(after + 5000);
+  });
+
+  it('reads an HTTP-date Retry-After as the instant itself', async () => {
+    // An HTTP-date has whole seconds only.
+    const at = new Date(Math.ceil(Date.now() / 1000) * 1000 + 30_000);
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': at.toUTCString() }));
+
+    const before = Date.now();
+    const { event } = await failure();
+    const after = Date.now();
+
+    expect(event.retry_at).toBe(at.toISOString());
+    expect(event.retry_after).toBeGreaterThanOrEqual(Math.ceil((at.getTime() - after) / 1000));
+    expect(event.retry_after).toBeLessThanOrEqual(Math.ceil((at.getTime() - before) / 1000));
+  });
+
+  it("keeps a second question's 409 and its sentence, with no wait to count down", async () => {
+    vi.stubGlobal('fetch', refuse(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe(SECOND);
+    expect(event).toEqual({ code: 'turn_in_progress', http_status: 409, retry_after: null, retry_at: null });
+  });
+
+  it("shows an object detail's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', refuse(403, {
+      detail: { code: 'permission_denied', message: 'Your current role does not allow this action.' },
+    }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Your current role does not allow this action.');
+    expect(event).toMatchObject({ code: 'permission_denied', http_status: 403 });
+  });
+
+  it('shows a plain-text error body instead of the status-line fallback', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Internal Server Error');
+    expect(event).toMatchObject({ code: 'stream_error', http_status: 500 });
+  });
+});
+
 // The connection can close cleanly (no thrown error) with no
 // response.completed/failed — that used to fire onDone, rendering a
 // partial answer as finished.
@@ -766,6 +853,25 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
 
     expect(health.status).toBe('offline');
     expect(setAntonInstallId).not.toHaveBeenCalled();
+  });
+});
+
+/* Every send waits on this check first. With no bound, a server that holds
+   the request open leaves Send busy with no message, for every tester at once. */
+describe('fetchHealth gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('reports offline after SHORT_REQUEST_TIMEOUT_MS instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    const fetchMock = _abortAwareFetch(10 * 60_000, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
   });
 });
 
