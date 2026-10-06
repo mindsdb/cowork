@@ -373,7 +373,7 @@ export default function TasksView({
           className: 'mx-8 my-10',
         }}
       >
-        <ListGroup className="mx-8 mt-2 mb-8">
+        <ListGroup className="mx-8 mb-8">
           {visible.map((row) => {
             if (row.kind === 'task') {
               return (

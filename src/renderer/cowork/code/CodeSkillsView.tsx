@@ -345,8 +345,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         />}
       />
 
-      {error && <div className="mx-8 mt-5"><Alert variant="danger">{error}</Alert></div>}
-      <div className="mx-8 mt-5 grid gap-6">
+      {error && <div className="mx-8 mb-4"><Alert variant="danger">{error}</Alert></div>}
+      <div className="mx-8 grid gap-6">
         <CollectionState
           loading={loading}
           skeleton="rows"

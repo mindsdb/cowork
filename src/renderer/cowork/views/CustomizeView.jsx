@@ -636,7 +636,7 @@ export default function CustomizeView({
           style: { flex: 1 },
         }}
       >
-        <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 px-8 pb-[60px]">
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}

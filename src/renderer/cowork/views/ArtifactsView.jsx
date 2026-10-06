@@ -969,7 +969,7 @@ export default function ArtifactsView({
         query={search}
         onClear={() => setSearch('')}
         skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
-        skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        skeletonClassName="px-8 pb-[60px]"
         skeletonGridClassName="artifacts-grid"
         empty={{
           icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
@@ -986,7 +986,7 @@ export default function ArtifactsView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
+          <div className="artifacts-grid px-8 pb-[60px]">
             {/* Grid layout (display + responsive columns + gap) lives in CSS
                 (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
                 mobile — pure CSS media queries, no JS resize listener. */}

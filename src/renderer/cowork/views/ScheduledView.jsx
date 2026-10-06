@@ -231,9 +231,9 @@ export default function ScheduledView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <CardGrid className="px-8 pt-2 pb-8">{visible.map((task) => itemFor(ScheduleCard, task))}</CardGrid>
+          <CardGrid className="px-8 pb-8">{visible.map((task) => itemFor(ScheduleCard, task))}</CardGrid>
         ) : (
-          <ListGroup className="mx-8 mt-2 mb-8">{visible.map((task) => itemFor(ScheduleRow, task))}</ListGroup>
+          <ListGroup className="mx-8 mb-8">{visible.map((task) => itemFor(ScheduleRow, task))}</ListGroup>
         )}
       </CollectionState>
 
