@@ -464,7 +464,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
+      <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
       {canOpenProject ? (
         <HoverActions reveal className="min-w-0 shrink">
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
@@ -523,7 +523,7 @@ function ArtifactActions({ onOpen, menuItems }) {
         items={menuItems}
         label="Artifact menu"
         title="More actions"
-        icon={Ico.moreVert(15)}
+        icon={Ico.moreVert(16)}
         size="sm"
         zIndex={60}
       />
