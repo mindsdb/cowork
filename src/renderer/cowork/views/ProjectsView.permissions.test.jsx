@@ -105,17 +105,18 @@ describe('ProjectsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Delete/ })).not.toHaveAttribute('data-disabled');
   });
 
-  it('reveals list-view project actions when reached by keyboard', async () => {
+  it('keeps list-view project actions visible and reachable by keyboard', async () => {
     const user = userEvent.setup();
     localStorage.setItem('anton:projects-view', 'list');
     render(<ProjectsView projects={[lockedProject]} />);
 
-    // The kit's action cluster hides at rest and reveals with CSS when focus
-    // is inside the row. happy-dom computes no Tailwind, so the reveal is
-    // pinned by its classes, and the keyboard path by real Tab presses.
+    // The pin and menu are the row's only controls, so they sit in flow at
+    // rest rather than behind a hover reveal. happy-dom computes no Tailwind,
+    // so visibility is pinned by class, and the keyboard path by real Tabs.
     const menu = screen.getByRole('button', { name: 'Project menu' });
     const cluster = actionCluster(menu);
-    expect(cluster).toHaveClass('opacity-0', 'group-focus-within/item:opacity-100');
+    expect(cluster).not.toHaveClass('opacity-0');
+    expect(cluster).not.toHaveClass('absolute');
 
     screen.getByRole('button', { name: lockedProject.name }).focus();
     await user.tab();

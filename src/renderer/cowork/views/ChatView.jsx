@@ -656,7 +656,7 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -897,7 +897,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
     ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
     : null;
-  // A disabled button takes no hover, so its reason is said beside it.
   const primaryDisabled = !orgMode && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
@@ -920,16 +919,16 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       as="div"
       interactive={canActivate}
       flat
-      padding="snug"
+      padding="none"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="chat-artifact-card"
+      className="railed chat-artifact-card"
     >
       <div
         className={cn(
-          'grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-ink-3',
+          'chat-artifact-card__tile grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent-bg text-accent',
           deleted && 'opacity-70',
         )}
       >
@@ -939,7 +938,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="chat-artifact-card__text flex min-w-0 flex-col gap-0.5">
         {/* The title is a keyboard stop of its own: it opens what the card
             opens, and carries the reason in `title` when there is nowhere to
             go. Preflight is off, so the native button chrome is reset here. */}
@@ -948,19 +947,18 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        {/* One meta line, kind · path, so the row stays two lines tall. */}
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
           <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
-          {previewText && (
-            <>
-              <span aria-hidden="true" className="text-ink-4">·</span>
-              <span title={previewText} className="min-w-0 truncate text-ink-4">{previewText}</span>
-            </>
-          )}
         </span>
+        {/* A disabled button takes no hover, so its reason is said here, in
+            the text column: beside the button it would widen the actions
+            track and squeeze the title to nothing. */}
+        {!deleted && primaryAction && primaryReason && (
+          <span className="font-body text-xs text-ink-4">{primaryReason}</span>
+        )}
       </div>
       {/* The card is role="button" with a whole-surface click and Enter/Space
           handler. Actions, and the overflow menu whose events React bubbles
@@ -974,23 +972,40 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       >
         <ActionBar
           size="sm"
+          align="start"
           className="flex-wrap"
-          leading={!deleted && primaryAction && primaryReason
-            ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
-            : null}
-          secondary={sharedLinkAction || downloadAction}
           primary={!deleted && primaryAction
             ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
             : null}
-          overflow={[sharedLinkAction && downloadAction]}
         />
       </div>
-      {status && (
+      {/* The footer is the artifact's location bar: the path at rest, and the
+          result of an action for the moment it is on screen. One or the
+          other, so a long message never crushes the path beside it. */}
+      {status ? (
         <span
-          className={cn('chat-artifact-card__status font-body text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
+      ) : (
+        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+          {Ico.folder(12)}
+          <span className="min-w-0 truncate">{previewText}</span>
+        </span>
+      )}
+      {(sharedLinkAction || downloadAction) && (
+        <div
+          className="card__rail chat-artifact-card__tools"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+        >
+          <ActionBar
+            size="xs"
+            secondary={sharedLinkAction || downloadAction}
+            overflow={[sharedLinkAction && downloadAction]}
+          />
+        </div>
       )}
     </Card>
     </>

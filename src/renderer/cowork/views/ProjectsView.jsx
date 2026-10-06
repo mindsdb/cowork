@@ -752,7 +752,9 @@ export default function ProjectsView({
     isMenuOpen: menuFor?.project?.name === p.name,
     onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
     onRenameCancel: handleRenameCancel,
-    alwaysShowActions: isMobile,
+    // Pin and menu are the row's only controls; nothing is gained by hiding
+    // them until the pointer arrives.
+    alwaysShowActions: true,
   });
 
   if (detailProject) {

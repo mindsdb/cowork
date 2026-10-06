@@ -50,7 +50,6 @@ describe('CodeProjectsView', () => {
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={onOpen}
@@ -72,7 +71,6 @@ describe('CodeProjectsView', () => {
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={vi.fn()}

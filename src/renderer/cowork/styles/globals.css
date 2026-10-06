@@ -252,8 +252,12 @@ body, body[data-theme="light"] {
 /* ─── Motion tokens ──────────────────────────────────────────────────────
    Every transition and animation duration in the app reads one of these,
    in Cowork and Code Mode alike. Hovers, presses, tooltips and popover
-   exits are instant. Popovers and modals fade in briefly so a new surface
-   reads as arriving rather than cutting in. Layout motion (height,
+   exits are instant. A glow halo is the one hover cue that blooms: a soft
+   shadow that cuts in at 0ms reads as a flicker, so it takes --dur-glow.
+   Every property that changes in the same hover as a glow (its fill,
+   border, ink) takes --dur-glow too, so the control moves as one piece
+   instead of a border that snaps under a halo that follows. Popovers and modals fade
+   in briefly so a new surface reads as arriving rather than cutting in. Layout motion (height,
    drawers, panel and content entrances) keeps a short glide. Ambient
    loops (spinners, pulses, shimmers) keep their own cadence. Keep these
    on :root, never in the themed body blocks: a body declaration would
@@ -261,6 +265,7 @@ body, body[data-theme="light"] {
 :root {
   --dur-press:       0ms;     /* button :active nudge */
   --dur-hover:       0ms;     /* color, background, border, shadow, small reveals */
+  --dur-glow:        120ms;   /* a hover that includes a soft halo, as one piece */
   --dur-popover-in:  80ms;    /* menu, select, combobox and toast open */
   --dur-popover-out: 0ms;     /* popover close, toast exit */
   --dur-modal:       150ms;   /* modal backdrop and popup fade */
@@ -277,6 +282,7 @@ body, body[data-theme="light"] {
    is instant. Ambient loops are halted separately below. */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --dur-glow: 0ms;
     --dur-popover-in: 0ms;
     --dur-modal: 0ms;
     --dur-layout: 0ms;
@@ -1180,11 +1186,12 @@ button.meta-pill:active { background: var(--ghost-press); }
   cursor: pointer;
   user-select: none;
   transition:
-    background-color var(--dur-hover) ease,
-    border-color var(--dur-hover) ease,
-    box-shadow var(--dur-hover) ease,
+    background-color var(--dur-glow) ease,
+    border-color var(--dur-glow) ease,
+    box-shadow var(--dur-glow) ease,
+    text-shadow var(--dur-glow) ease,
     transform var(--dur-press) ease,
-    color var(--dur-hover) ease;
+    color var(--dur-glow) ease;
 }
 .btn:hover {
   background: var(--bg-h);
@@ -1276,8 +1283,8 @@ body[data-theme="dark"] .btn.default:active {
   cursor: pointer;
   user-select: none;
   transition:
-    background-color var(--dur-hover) ease, border-color var(--dur-hover) ease,
-    box-shadow var(--dur-hover) ease, transform var(--dur-press) ease, color var(--dur-hover) ease;
+    background-color var(--dur-glow) ease, border-color var(--dur-glow) ease,
+    box-shadow var(--dur-glow) ease, transform var(--dur-press) ease, color var(--dur-glow) ease;
 }
 .btn.primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
@@ -1630,9 +1637,10 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 /* ─── Card system (ENG-791) ─────────────────────────────────────────────
    One card look for the whole app. Compound modifiers (matching the existing
    .card.flat / .card.compact convention) let the <Card> primitive build a
-   class string like "card interactive selected cozy". The single hover/active
-   animation is ELEVATION ONLY — lift + soft shadow, neutral border. Accent is
-   reserved for the selected state, never hover.
+   class string like "card interactive selected cozy". The single hover cue is
+   a SURFACE TINT — no lift, no shadow change, neutral border — the same cue
+   list rows use, so cards and rows read as one system. Accent is reserved
+   for the selected state, never hover.
 
    Semantic aliases over the themed primitives. Declared on `body` (NOT :root)
    so the inner var()s resolve against body's per-theme --surface/--line/--sh-*
@@ -1645,11 +1653,10 @@ body {
   --card-pad-x:         16px;          /* canonical interactive list/grid pad */
   --card-surface:       var(--surface);
   --card-border:        var(--line);
-  --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
-  --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
-  --card-lift:          -1px;
+  --card-surface-hover: var(--surface-2);
+  --card-shadow-rest:   var(--sh-1);
   --card-transition:    border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
-                        transform var(--dur-hover) ease, background-color var(--dur-hover) ease;
+                        background-color var(--dur-hover) ease;
 }
 
 .card {
@@ -1669,10 +1676,9 @@ body {
 /* When the card element is a <button>, neutralize the UA button styling. */
 button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 
-/* Interactive — the single hover/active animation. */
+/* Interactive — the single hover cue: tint the surface. */
 .card.interactive { cursor: pointer; transition: var(--card-transition); }
-.card.interactive:hover  { box-shadow: var(--card-shadow-hover); transform: translateY(var(--card-lift)); }
-.card.interactive:active { box-shadow: var(--card-shadow-rest); transform: translateY(0); }
+.card.interactive:hover  { background: var(--card-surface-hover); }
 .card.interactive:focus-visible { outline: none; box-shadow: var(--ring), var(--card-shadow-rest); }
 
 /* Selected/active — accent is the selection cue; persists under hover. */
@@ -1695,8 +1701,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 }
 .card.dashed.interactive { color: var(--ink-3); }   /* quiet CTA label at rest */
 .card.dashed.interactive:hover {   /* drop-target CTA keeps an accent cue */
-  transform: none;
-  box-shadow: none;
+  background: transparent;
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1717,9 +1722,29 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
 
-@media (prefers-reduced-motion: reduce) {
-  .card.interactive:hover,
-  .card.interactive:active { transform: none; }
+/* Railed — a card with a footer strip (`.card__rail`): the artifact and skill
+   cards. The surface tint would swallow the rail, so hover firms the edge,
+   deepens the shadow and warms the rail instead, together on the glow curve
+   because a glowing primary button usually sits in the head. */
+.card.railed { padding: 0; overflow: hidden; box-shadow: var(--card-shadow-rest); }
+.card.railed.interactive { transition: border-color var(--dur-glow) ease, box-shadow var(--dur-glow) ease; }
+.card.railed.interactive:hover {
+  background: var(--card-surface);
+  border-color: var(--line-2);
+  box-shadow: var(--sh-2);
+}
+/* The hover rule outranks the shared focus rule, so a focused card would
+   lose its ring the moment the pointer crossed it. Keep the ring over
+   either shadow. */
+.card.railed.interactive:focus-visible { box-shadow: var(--ring), var(--card-shadow-rest); }
+.card.railed.interactive:focus-visible:hover { box-shadow: var(--ring), var(--sh-2); }
+.card__rail {
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  transition: background-color var(--dur-glow) ease;
+}
+.card.railed.interactive:hover .card__rail {
+  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface-2));
 }
 
 /* Bubble — floating glassy container; slightly translucent so the
@@ -2196,7 +2221,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   border-radius: var(--r);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-hover);
+  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
 }
 .chrome-btn--small:hover {
   color: var(--ink);
@@ -2255,11 +2280,11 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--ink-2);
   cursor: pointer;
   box-shadow: var(--sh-1);
-  transition: background var(--dur-hover), color var(--dur-hover), transform var(--dur-hover), box-shadow var(--dur-hover);
+  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
 }
 .floating-toggle:hover {
   color: var(--ink);
-  transform: translateY(-1px);
+  background: var(--ghost-hover);
 }
 body[data-theme="dark"] .floating-toggle:hover {
   color: var(--accent);
@@ -3583,7 +3608,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    minimum the rest of the mobile shell uses. */
 @media (hover: none), (pointer: coarse) {
   .chat-card-shell .btn,
-  .chat-artifact-card__actions .btn { min-height: 44px; }
+  .chat-artifact-card__actions .btn,
+  .chat-artifact-card__tools .btn { min-height: 44px; }
 }
 
 /* ─── Inline artifact card in the transcript ─────────────────────────────
@@ -3592,37 +3618,67 @@ body[data-theme="dark"] .mshell__drawer-title {
    a phone — so a viewport breakpoint would leave the action row overflowing
    on exactly the desktop case it was reported on. */
 .chat-transcript-col { container: chat-col / inline-size; }
-.chat-artifact-card {
+/* A small window onto the artifact, on the railed card treatment: the head
+   cells carry their own inset, and the footer cells are the rail. */
+.card.chat-artifact-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "tile text actions"
+    "loc  loc  tools";
   align-items: center;
-  gap: 12px;
-  max-width: 600px;
 }
-/* A compact hairline row: hover tints the surface instead of lifting it. */
-.card.chat-artifact-card.interactive:hover {
-  box-shadow: none;
-  transform: none;
-  background: var(--surface-2);
+/* Head spacing lives on the cells, not a grid gap, so the footer cells meet
+   with no seam of card surface between them. */
+.chat-artifact-card__tile    { grid-area: tile;    margin: 12px 12px 10px; }
+.chat-artifact-card__text    { grid-area: text;    margin: 12px 12px 10px 0; }
+.chat-artifact-card__actions { grid-area: actions; margin: 12px 12px 10px 0; min-width: 0; }
+/* Footer — the path as a location bar, with the secondary actions at its end.
+   Each cell is a `.card__rail` so the strip reads as one. */
+.chat-artifact-card__loc,
+.chat-artifact-card__status,
+.chat-artifact-card__tools {
+  min-height: 34px;
+  box-sizing: border-box;
 }
-.chat-artifact-card__actions { min-width: 0; }
-/* Below this the actions and a readable filename stop fitting on one line.
-   The actions take their own full-width row rather than crushing the title. */
-@container chat-col (max-width: 560px) {
-  .chat-artifact-card { grid-template-columns: auto minmax(0, 1fr); }
-  .chat-artifact-card__actions { grid-column: 1 / -1; }
-}
-/* The action status gets a row of its own rather than a slot in the button
-   row. Sharing that row made a long message crush the filename track beside
-   it, and any rule that reacted to the message instead would restructure the
-   card for the second or two it is on screen. */
+.chat-artifact-card__loc,
 .chat-artifact-card__status {
-  grid-column: 1 / -1;
-  justify-self: end;
+  grid-area: loc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  padding: 0 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.chat-artifact-card__loc svg { flex: none; color: var(--ink-4); }
+/* No secondary actions: the bar runs the full width. */
+.chat-artifact-card__loc:last-child,
+.chat-artifact-card__status:last-child { grid-column: 1 / -1; }
+.chat-artifact-card__tools {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px 0 0;
+  min-width: 0;
+}
+/* The title truncates before the primary action moves. Only below this does
+   the head stop holding a readable title beside the button, and it drops
+   under the title in the text column, so the tile column stays a column
+   instead of leaving a hole beside a right-aligned button. */
+@container chat-col (max-width: 400px) {
+  .card.chat-artifact-card {
+    grid-template-areas:
+      "tile text    text"
+      "tile actions actions"
+      "loc  loc     tools";
+    align-items: start;
+  }
+  .chat-artifact-card__text    { margin-bottom: 0; }
+  .chat-artifact-card__actions { margin: 8px 12px 10px 0; }
 }
 
 /* ─── Chat-view accent damping ───────────────────────────────────────────────

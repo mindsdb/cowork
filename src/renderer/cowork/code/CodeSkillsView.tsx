@@ -296,7 +296,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   };
 
   const openSource = (source: SkillLibrarySource) => { setSourceActionError(''); setSourceDetail(source); };
-  const groupTitle = (label: string) => <h2 className="m-0 text-xs font-semibold text-ink">{label}</h2>;
+  const groupTitle = (label: string) => <h2>{label}</h2>;
   const rows = (items: SkillLibraryItem[]) => items.map((item) => (
     <ListItem
       key={item.id}
@@ -381,8 +381,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
                 onClick={() => openSource(source)}
               >
                 <span className="inline-flex text-ink-4">{Ico.link(14)}</span>
-                <strong className="text-xs font-semibold group-hover/src:text-accent">{source.name}</strong>
-                <small className="truncate font-mono text-2xs text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
+                <strong className="group-hover/src:text-accent">{source.name}</strong>
+                <small className="truncate font-mono text-xs font-normal text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
               </button>}
               meta={source.error || source.update_available ? undefined : `${source.item_count} item${source.item_count === 1 ? '' : 's'}`}
               actions={source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Needs attention</Button>

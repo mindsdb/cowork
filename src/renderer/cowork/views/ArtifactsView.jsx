@@ -292,7 +292,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       as="div"
       interactive
       padding="none"
-      className="cw-artifact-card flex flex-col overflow-hidden"
+      className="railed cw-artifact-card flex flex-col"
       {...hoverProps}
       onActivate={() => (canPreview ? onOpenViewer(artifact) : openBest())}
     >
@@ -350,7 +350,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       </div>
 
       {/* Footer — project origin + last-updated, divided from the body. */}
-      <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
+      <div className="card__rail flex items-center gap-2 py-[9px] px-4">
         <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
         {canOpenProject ? (
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>

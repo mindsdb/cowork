@@ -14,7 +14,6 @@ const SORT_OPTIONS = [
 
 export function CodeProjectsView({
   projects,
-  selectedId,
   loading,
   error,
   onOpen,
@@ -22,7 +21,6 @@ export function CodeProjectsView({
   onEdit,
 }: {
   projects: CodeProject[];
-  selectedId: string | null;
   loading: boolean;
   error: string;
   onOpen: (id: string) => void;
@@ -80,7 +78,7 @@ export function CodeProjectsView({
                     description={resources.map((resource) => resource.name).join(', ') || undefined}
                     onActivate={() => onOpen(project.id)}
                     activateLabel={`View tasks in ${project.name}`}
-                    selected={selectedId === project.id}
+                    revealActions
                     meta={<>
                       <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
                       <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
