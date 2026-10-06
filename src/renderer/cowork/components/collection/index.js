@@ -23,3 +23,4 @@ export { StatusDot }            from './StatusDot';
 export { CollectionState }      from './CollectionState';
 export { ViewToggle, useCollectionView } from './ViewToggle';
 export { NewTile }              from './NewTile';
+export { FilterMenu, FilterChips, SortMenu } from './FilterMenu';

@@ -15,6 +15,8 @@ export interface MenuItem {
   separator?: boolean;
   submenu?: MenuItem[];
   heading?: ReactNode;
+  /** Spread onto the item, e.g. `{ role: 'menuitemradio', 'aria-checked': true }`. */
+  aria?: Record<string, unknown>;
 }
 
 export interface MenuProps {

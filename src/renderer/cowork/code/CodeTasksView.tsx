@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
-  CollectionState, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, StatusDot, useCollectionShortcut,
-  type StatusTone,
+  CollectionState, FilterChips, FilterMenu, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, SortMenu,
+  StatusDot, useCollectionShortcut, type Filter, type StatusTone,
 } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
-import Select from '../components/ui/Select';
 import { projectResources, type CodeProject, type CodingSession } from './api';
 import { codingSessionStatus, relativeTime } from './presentation';
 import './code-tasks.css';
@@ -18,6 +17,12 @@ const STATUS_OPTIONS = [
   { value: 'success', label: 'Completed' },
   { value: 'danger', label: 'Failed' },
   { value: 'neutral', label: 'Ready or stopped' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'updated', label: 'Recently updated' },
+  { value: 'created', label: 'Recently created' },
+  { value: 'title', label: 'Title' },
 ];
 
 const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> = {
@@ -44,7 +49,8 @@ export function CodeTasksView({
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [archiveFilter, setArchiveFilter] = useState('current');
+  const [archived, setArchived] = useState(false);
+  const [sort, setSort] = useState('updated');
   const inputRef = useRef<HTMLInputElement>(null);
   useCollectionShortcut(inputRef, active);
 
@@ -89,7 +95,7 @@ export function CodeTasksView({
       // Queued work is in progress even though its status dot is neutral.
       const group = tone === 'neutral' && task.run_status === 'queued' ? 'accent' : tone;
       return (
-      (archiveFilter === 'archived' ? task.archived : !task.archived)
+      !!task.archived === archived
       && (scope === 'all' || (scope === 'none' ? !task.project_id : task.project_id === scope))
       && (statusFilter === 'all' || (statusFilter === 'attention'
         ? ['warning', 'danger'].includes(group)
@@ -97,11 +103,24 @@ export function CodeTasksView({
       && (!search || [task.title, task.project_id ? projectNames.get(task.project_id) : '', task.repository_root, task.source_path]
         .some(value => value?.toLowerCase().includes(search)))
       );
-    }).sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
-  }, [sessions, scope, archiveFilter, statusFilter, query, projectNames]);
+    }).sort((left, right) => (sort === 'title'
+      ? (left.title || '').localeCompare(right.title || '')
+      : Date.parse(sort === 'created' ? right.created_at : right.updated_at) - Date.parse(sort === 'created' ? left.created_at : left.updated_at)));
+  }, [sessions, scope, archived, statusFilter, query, projectNames, sort]);
   // Search and filters narrow this; zero here is "nothing yet", not "no match".
-  const total = useMemo(() => sessions.filter(task => (archiveFilter === 'archived' ? task.archived : !task.archived)
-    && (!projectId || task.project_id === projectId)).length, [sessions, archiveFilter, projectId]);
+  const total = useMemo(() => sessions.filter(task => !!task.archived === archived
+    && (!projectId || task.project_id === projectId)).length, [sessions, archived, projectId]);
+
+  const clearFilters = () => { setProjectFilter('all'); setStatusFilter('all'); setArchived(false); };
+  const filters: Filter[] = [
+    // A project's own page is already scoped, so it has no project facet.
+    ...(projectId ? [] : [{
+      id: 'project', label: 'Project', value: projectFilter, allValue: 'all', onChange: setProjectFilter,
+      options: [{ value: 'all', label: 'All projects' }, { value: 'none', label: 'No project' }, ...projectOptions],
+    }]),
+    { id: 'status', label: 'Status', value: statusFilter, allValue: 'all', onChange: setStatusFilter, options: STATUS_OPTIONS },
+    { id: 'archived', label: 'Archived', toggle: true, value: archived, onChange: setArchived },
+  ];
 
   return (
     <main className="code-tasks-view">
@@ -116,17 +135,12 @@ export function CodeTasksView({
       /></div>
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
-        sort={<>
-          {!projectId && <Select className="code-tasks-view__project-filter" variant="pill" label="Project" ariaLabel="Filter by project" value={projectFilter} onValueChange={setProjectFilter} options={[
-            { value: 'all', label: 'All projects' }, { value: 'none', label: 'No project' },
-            ...projectOptions,
-          ]} />}
-          <Select variant="pill" label="Status" ariaLabel="Filter by status" value={statusFilter} onValueChange={setStatusFilter} options={STATUS_OPTIONS} />
-          <Select variant="pill" label="Show" ariaLabel="Task history" value={archiveFilter} onValueChange={setArchiveFilter} options={[
-            { value: 'current', label: 'Unarchived' }, { value: 'archived', label: 'Archived' },
-          ]} />
-        </>}
-        counts={!loading && !error ? `${filtered.length} ${filtered.length === 1 ? 'task' : 'tasks'} · Most recently updated first` : undefined}
+        filter={<FilterMenu filters={filters} />}
+        chips={<FilterChips filters={filters} onClear={clearFilters} />}
+        right={<SortMenu value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        counts={!loading && !error ? (filtered.length === total
+          ? `${total} ${total === 1 ? 'task' : 'tasks'}`
+          : `${filtered.length} of ${total} tasks`) : undefined}
       />
       <div className="mx-8 grid gap-4">
         {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
@@ -140,7 +154,7 @@ export function CodeTasksView({
           noMatchTitle="No matching tasks"
           clearLabel="Clear filters"
           onClear={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}
-          empty={archiveFilter === 'archived'
+          empty={archived
             ? { title: 'No archived tasks', description: 'Tasks you archive will appear here.' }
             : { icon: Ico.code(20), title: 'No tasks yet', description: 'Start a task to begin working on your code.' }}
         >

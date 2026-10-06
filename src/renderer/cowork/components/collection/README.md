@@ -9,7 +9,8 @@ single shell owns a page.
 | Part of the page | Use |
 |---|---|
 | Header | `PageHeader` |
-| Toolbar | `FilterRow`. Search is `SearchInput`, filters and sort are `Select variant="pill"` (or `SortPill`), and the view switch is `ViewToggle`. |
+| Toolbar | `FilterRow`. Left changes what's shown: `SearchInput`, then one `FilterMenu` holding every facet, with its `FilterChips` in `chips`. Right changes how it's shown: `SortMenu`, then `ViewToggle`. A page with no facets has no Filter. (Pages not yet moved still use `SortPill` and `Select variant="pill"`.) |
+| Count | `FilterRow`'s `counts`: the list's caption, "3 tasks" or "1 of 3 tasks" when filtered. |
 | ⌘K focuses search | `useCollectionShortcut(searchRef)` |
 | Grid or list preference | `useCollectionView(storageKey, { defaultView })`. It stores an explicit choice and gives phones the page default. |
 | Loading, empty, no match | `CollectionState` wraps the body |

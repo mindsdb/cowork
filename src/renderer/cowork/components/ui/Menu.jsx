@@ -60,6 +60,10 @@ import { Tooltip } from './Tooltip';
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
+  // A long menu (the Filter menu's project list) scrolls within the space
+  // Base UI measures below its anchor instead of running off-screen, as
+  // Select's popup does.
+  'max-h-[var(--available-height,_320px)] overflow-y-auto overscroll-contain',
   'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
 );
 
@@ -126,6 +130,7 @@ function renderItems(items, z, onActivate) {
               <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
             )}
             <span className="flex-1 min-w-0 truncate">{it.label}</span>
+            {it.hint && <span className="max-w-[12rem] truncate text-[12px] text-ink-4">{it.hint}</span>}
             <span className="inline-flex shrink-0 text-ink-4">{CHEVRON_RIGHT}</span>
           </BaseMenu.SubmenuTrigger>
           <BaseMenu.Portal>
