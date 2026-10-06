@@ -3599,10 +3599,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-color: var(--line-2);
 }
 .chat-artifact-card__actions { min-width: 0; }
-/* Below this the actions and a readable filename stop fitting on one line.
-   They drop under the title, in the text column, so the thumbnail column
-   stays a column instead of leaving a hole beside a right-aligned button. */
-@container chat-col (max-width: 560px) {
+/* The title and path truncate before the actions move: the path is a
+   reference, the button is the point. Only below this does the row stop
+   holding a readable title beside the actions, and they drop under the
+   title in the text column, so the thumbnail column stays a column instead
+   of leaving a hole beside a right-aligned button. */
+@container chat-col (max-width: 400px) {
   .chat-artifact-card { grid-template-columns: auto minmax(0, 1fr); }
   .chat-artifact-card__actions { grid-column: 2 / -1; }
 }
