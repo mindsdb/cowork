@@ -711,6 +711,8 @@ function AppCore() {
   // above cannot own teardown: Stop has to reach the controller belonging to
   // the conversation it stops, not whichever one claimed them last.
   const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
+  // Conversations a Stop is ending, from its cancel request until it drops their queue.
+  const stoppingRef = useRef(new Set());
 
   // A second stream on the SAME conversation replaces the first, which has to
   // be aborted: left attached it keeps replaying into a turn nobody reads and
@@ -1162,6 +1164,14 @@ function AppCore() {
     // stream claimed them last, which with concurrent streams is another one.
     const cidToCancel = opts?.taskId ?? null;
     if (!cidToCancel) return;
+    /*
+     * Mark the conversation as stopping until its queue is dropped below, so no
+     * drain sends that queue meanwhile: the turn's cancelled frame can arrive
+     * before the cancel request answers, and its onDone drains. A second Stop
+     * for the same conversation while this one runs has nothing to add.
+     */
+    if (stoppingRef.current.has(cidToCancel)) return;
+    stoppingRef.current.add(cidToCancel);
 
     /*
      * Ask the server to cancel *before* any local teardown. On `error` the
@@ -1175,6 +1185,7 @@ function AppCore() {
      */
     const cancelResult = await cancelResponse(cidToCancel);
     if (!silent && cancelResult?.status === 'error') {
+      stoppingRef.current.delete(cidToCancel);
       toastManagerRef.current?.add({
         type: 'danger',
         title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
@@ -1190,22 +1201,24 @@ function AppCore() {
      * is no cell to cancel, even when this conversation holds the slot.
      */
     const stopped = abortStream(cidToCancel);
-    const holdsSharedSlot = activeStreamingTaskIdRef.current === cidToCancel;
 
     const padName = stopped?.pad ?? null;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
 
-    // The controller clears by identity, not by task id: a finished sibling
-    // nulls the shared task id but leaves a controller it does not own.
+    /*
+     * With a record, the shared controller clears by identity, not by task id:
+     * a finished sibling nulls the shared task id but leaves a controller it
+     * does not own. Without a record, it clears only when this conversation
+     * holds the slot and no live stream owns the controller.
+     */
     const ctrl = activeStreamCtrlRef.current;
-    const ctrlOwnedElsewhere = ctrl
-      && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
-    if (ctrl && (stopped ? ctrl === stopped.ctrl : holdsSharedSlot)) {
-      if (!stopped && !ctrlOwnedElsewhere) {
-        try { ctrl.abort(); } catch { /* already closed */ }
-      }
+    if (stopped && ctrl === stopped.ctrl) {
+      activeStreamCtrlRef.current = null;
+    } else if (!stopped && ctrl && activeStreamingTaskIdRef.current === cidToCancel
+      && ![...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl)) {
+      try { ctrl.abort(); } catch { /* already closed */ }
       activeStreamCtrlRef.current = null;
     }
 
@@ -1240,20 +1253,23 @@ function AppCore() {
     const prunedQueue = { ...messageQueueRef.current };
     delete prunedQueue[cidToCancel];
     messageQueueRef.current = prunedQueue;
+    stoppingRef.current.delete(cidToCancel);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     if (activeStreamingTaskIdRef.current === cidToCancel) {
       activeStreamingTaskIdRef.current = null;
     }
 
-    // When the stopped conversation held the shared slot, Stop frees it with
-    // no onDone/onError behind it — the reaped record above silences the
-    // aborted run's cancelled callback — so a message queued against a
-    // *different* task would strand forever at "N queued · waiting for Anton"
-    // with no future turn to release it. Sweep the siblings now (the cancelled
-    // task's own queue was just deleted). Via the ref because a memoized
-    // handleStopStream would close over a stale drain (same reason reconnect
-    // uses it).
+    /*
+     * When the stopped conversation held the shared slot, Stop may free it with
+     * no onDone/onError behind it (the reaped record silences the aborted run's
+     * terminal once Stop gets here first), so a message queued against a
+     * *different* task would strand at "N queued · waiting for Anton" with no
+     * future turn to release it. Sweep the siblings now; the drain itself skips
+     * a held slot and any conversation still running. Via the ref because a
+     * memoized handleStopStream would close over a stale drain (same reason
+     * reconnect uses it).
+     */
     drainNextQueuedMessageRef.current?.();
 
     if (silent) return;
@@ -3163,8 +3179,11 @@ function AppCore() {
     setRoute('task');
 
     let resolvedId = taskId;
-    // Server mints the canonical id on `response.created` for tmp- tasks.
-    // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
+    /*
+     * Server mints the canonical id on `response.created` for tmp- tasks.
+     * adoptServerId renames the task, which is the id Stop cancels, and
+     * moves activeStreamingTaskIdRef and the stream record with it.
+     */
     const adoptServerId = (sid) => {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
@@ -3815,13 +3834,14 @@ function AppCore() {
     /*
      * A conversation with a live stream is still running its own turn, which a
      * follow-up would replace (registerStream aborts it). Its own terminal drops
-     * the record before it drains, so its follow-up goes out then.
+     * the record before it drains, so its follow-up goes out then. One being
+     * stopped is skipped too, because Stop drops its queue.
      */
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set(liveStreamsRef.current.keys()),
+      new Set([...liveStreamsRef.current.keys(), ...stoppingRef.current]),
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4386,12 +4406,13 @@ function AppCore() {
        * If this conversation's turn is still running, stop it first so the
        * SSE connection doesn't keep producing events for a turn that no
        * longer exists, and so a turn running on the server ends with it. The
-       * silent flag skips the post-cancel session refetch. Running means any
-       * of: a live stream here (the registry, since another conversation may
-       * hold the shared slot); a send reserved before it registers (the slot);
-       * a turn the server lists as running with no stream here, such as a
-       * scheduled run (the in-flight set); or a live row on screen, the same
-       * signal that shows Stop.
+       * silent flag skips the post-cancel session refetch, and tears down even
+       * when the cancel fails. Running means any of: a live stream here (the
+       * registry, since another conversation may hold the shared slot); this
+       * conversation holding the slot with no stream registered yet, which
+       * Stop frees; a turn the server lists as running with no stream here,
+       * such as a scheduled run (the in-flight set); or a live row on screen,
+       * the same signal that shows Stop.
        */
       const deletingTask = tasksRef.current.find((t) => t.id === taskId);
       const running = liveStreamsRef.current.has(taskId)

@@ -1531,7 +1531,8 @@ describe('a Stop on one conversation', () => {
 /**
  * Alpha streams its own reply, then Beta re-attaches a tail and claims the
  * shared slot. Back on Alpha nothing re-claims it, because Alpha's in-flight
- * probe does not list it yet. Resolves with Alpha's transcript on screen.
+ * probe answers not-in-flight, as a failed probe does. Resolves with Alpha's
+ * transcript on screen.
  */
 async function streamAlphaWhileBetaHoldsTheSlot(user) {
   spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
@@ -1632,8 +1633,9 @@ describe('Stop on the conversation on screen', () => {
       content: JSON.stringify({ name: 'pad-b', one_line_description: 'run', code: 'x=1' }),
     });
 
-    // A response.failed with code `cancelled` drops Alpha's record but leaves its
-    // placeholder, so Stop has no record of its own to take a cell from.
+    // A synthetic way to drop Alpha's record but keep its placeholder (the
+    // server reports a cancel as response.cancelled, not this code), so Stop
+    // has no record of its own to take a cell from.
     await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
     await openByTitle(user, 'Alpha task');
     await screen.findByText('alpha turn');
@@ -1662,6 +1664,9 @@ describe('Stop on the conversation on screen', () => {
       expect(alpha.abort).toHaveBeenCalled();
       expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
       expect(tailB.abort).not.toHaveBeenCalled();
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalledWith('conv-a', 0));
+      expect(spies.cancelResponse.mock.invocationCallOrder[0])
+        .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder.at(-1));
     } finally {
       window.alert = originalAlert;
     }
@@ -1932,20 +1937,24 @@ describe('Stop in one task while a task started from Home runs', () => {
 
   it('never cancels a cell Alpha did not open, even while Alpha holds the slot', async () => {
     const user = userEvent.setup();
+    listAlphaAsServerRun();
     await openTask(user);
     const beta = await startFromHome(user, BETA, 'conv-home-b');
     const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
     // Gamma finishing frees the shared slot while Beta keeps running.
     await act(async () => { gamma.opts.onDone('conv-home-c'); await Promise.resolve(); });
-
-    const composer = await openByTitle(user, 'Alpha task');
-    await send(user, composer, 'alpha turn');
-    const alpha = await waitForStream(gamma);
-    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
     await openPad(beta, 'pad-b');
-    // A `cancelled` failure drops Alpha's record but leaves Alpha holding the
-    // slot with its live row up, so Alpha's Stop has no cell of its own.
-    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+
+    // A file sent into the server-listed run reserves the slot for Alpha and
+    // waits on its upload, so Alpha holds the slot with no stream of its own.
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+    await attach(user, 'alpha-notes.txt');
+    await send(user, document.querySelector('textarea'), 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalled());
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
@@ -1953,6 +1962,51 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
     expect(cancelScratchpad).not.toHaveBeenCalled();
     expect(beta.abort).not.toHaveBeenCalled();
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+  });
+
+  it('frees a slot Alpha held with a controller no stream owns', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    // A synthetic way to drop Alpha's record but keep Alpha holding the slot
+    // with its live row up: the server reports a cancel as response.cancelled,
+    // not this code. Stop is the only thing left that can free the slot.
+    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+    expect(alpha.abort).toHaveBeenCalled();
+
+    await send(user, document.querySelector('textarea'), 'alpha again');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+  });
+
+  it('drops the stopped task\'s own follow-up when its cancelled frame lands first', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    // cowork-server seals the stopped turn before it answers the cancel, so the
+    // stream's response.cancelled (an onDone) can run while Stop still waits.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
   });
 
   it('holds a running task\'s queued follow-up until that task\'s turn ends', async () => {
