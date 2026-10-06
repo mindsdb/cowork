@@ -126,6 +126,7 @@ function renderItems(items, z, onActivate) {
               <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
             )}
             <span className="flex-1 min-w-0 truncate">{it.label}</span>
+            {it.hint && <span className="max-w-[12rem] truncate text-[12px] text-ink-4">{it.hint}</span>}
             <span className="inline-flex shrink-0 text-ink-4">{CHEVRON_RIGHT}</span>
           </BaseMenu.SubmenuTrigger>
           <BaseMenu.Portal>

@@ -12,7 +12,7 @@ export function PageHeader(props: {
   actions?: ReactNode;
 }): ReactNode;
 
-export function FilterRow(props: { search?: ReactNode; sort?: ReactNode; view?: ReactNode; counts?: ReactNode; right?: ReactNode }): ReactNode;
+export function FilterRow(props: { search?: ReactNode; filter?: ReactNode; sort?: ReactNode; view?: ReactNode; counts?: ReactNode; right?: ReactNode; chips?: ReactNode }): ReactNode;
 
 export function SearchInput(props: {
   value: string;
@@ -35,3 +35,5 @@ export type { StatusTone } from './StatusDot';
 export { CollectionState } from './CollectionState';
 export { ViewToggle, useCollectionView } from './ViewToggle';
 export { NewTile } from './NewTile';
+export { FilterMenu, FilterChips, SortMenu } from './FilterMenu';
+export type { Filter, FilterOption } from './FilterMenu';

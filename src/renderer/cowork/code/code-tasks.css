@@ -2,7 +2,6 @@
 .code-tasks-view__back { padding: 16px 32px 0; }
 .code-tasks-view__header h1 { overflow-wrap: anywhere; }
 .code-tasks-view__actions { display: flex; align-items: center; gap: 8px; }
-.code-tasks-view__project-filter { max-width: min(260px, 100%); }
 @container (max-width: 640px) {
   .code-tasks-view__header--project > div > div { flex-direction: column; gap: 12px; }
 }

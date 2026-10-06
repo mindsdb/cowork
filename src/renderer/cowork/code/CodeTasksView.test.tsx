@@ -35,9 +35,23 @@ function setup(overrides: Partial<React.ComponentProps<typeof CodeTasksView>> = 
 }
 // Task titles in list order: each row's opening button.
 const titles = () => Array.from(document.querySelectorAll('[data-item-activator]'), el => el.textContent);
-async function select(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
-  await user.click(screen.getByRole('combobox', { name: label }));
-  await user.click(screen.getByRole('option', { name: option }));
+type User = ReturnType<typeof userEvent.setup>;
+// Opens the Filter menu at a facet's options. By keyboard: happy-dom drops
+// pointer clicks inside Base UI submenus, which work in a real browser.
+async function openFacet(user: User, facet: string) {
+  await user.click(screen.getByRole('button', { name: /^Filter/ }));
+  screen.getByRole('menuitem', { name: new RegExp(`^${facet}`) }).focus();
+  await user.keyboard('{ArrowRight}');
+  await screen.findAllByRole('menuitemradio');
+}
+async function filterBy(user: User, facet: string, option: string) {
+  await openFacet(user, facet);
+  const options = screen.getAllByRole('menuitemradio');
+  const target = options.findIndex(item => item.textContent === option);
+  if (target < 0) throw new Error(`No ${facet} option "${option}"`);
+  const from = options.findIndex(item => item === document.activeElement);
+  for (let i = from; i < target; i++) await user.keyboard('{ArrowDown}');
+  await user.keyboard('{Enter}');
 }
 
 describe('CodeTasksView', () => {
@@ -53,7 +67,9 @@ describe('CodeTasksView', () => {
     const { user, props } = setup({ projectId: 'p1' });
     expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
     expect(screen.queryByText('Approval needed')).not.toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Filter by project' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(screen.queryByRole('menuitem', { name: 'Project' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: 'New task' }));
     expect(props.onNewTask).toHaveBeenCalledWith('p1');
     await user.click(screen.getByRole('button', { name: 'Edit MindsHub' }));
@@ -66,8 +82,8 @@ describe('CodeTasksView', () => {
     const { user, props } = setup({ projects: projects.map((item, index) => ({
       ...item, resources: [{ kind: 'local_folder', id: 'source', name: 'Source', path: index ? '/work/mobile' : '/work/web', computer_id: 'local', commands: [] }],
     })) });
-    await select(user, 'Filter by project', 'MindsHub — /work/mobile');
-    expect(screen.getByRole('combobox', { name: 'Filter by project' })).toHaveTextContent('MindsHub — /work/mobile');
+    await filterBy(user, 'Project', 'MindsHub — /work/mobile');
+    expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('MindsHub — /work/mobile');
     expect(screen.getByRole('button', { name: 'Approval needed' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Older task' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'New task' }));
@@ -79,9 +95,9 @@ describe('CodeTasksView', () => {
       ...projects.map(item => ({ ...item, resources: [{ kind: 'local_folder' as const, id: 'source', name: 'Source', path: '/work/shared', computer_id: 'local', commands: [] }] })),
       project('p3', 'Empty'), project('p4', 'Empty'), project('p5', 'Unique'),
     ] });
-    await user.click(screen.getByRole('combobox', { name: 'Filter by project' }));
+    await openFacet(user, 'Project');
     for (const label of ['MindsHub — /work/shared (p1)', 'MindsHub — /work/shared (p2)', 'Empty — p3', 'Empty — p4', 'Unique']) {
-      expect(screen.getByRole('option', { name: label })).toBeInTheDocument();
+      expect(screen.getByRole('menuitemradio', { name: label })).toBeInTheDocument();
     }
   });
 
@@ -90,14 +106,14 @@ describe('CodeTasksView', () => {
       task('One', { project_id: 'p1', project_name: 'Archived project', repository_root: '/work/one' }),
       task('Two', { project_id: 'p2', project_name: 'Archived project', source_path: '/work/two' }),
     ] });
-    await select(user, 'Filter by project', 'Archived project — /work/two');
+    await filterBy(user, 'Project', 'Archived project — /work/two');
     expect(screen.getByRole('button', { name: 'Two' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New task' })).toBeDisabled();
   });
 
   it('combines search and status filters and clears them', async () => {
     const { user } = setup();
-    await select(user, 'Filter by status', 'Needs attention');
+    await filterBy(user, 'Status', 'Needs attention');
     expect(titles()).toEqual(['Approval needed']);
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'not found');
     expect(screen.getByText('No matching tasks')).toBeInTheDocument();
@@ -110,7 +126,7 @@ describe('CodeTasksView', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'mindshub');
     expect(titles()).toEqual(['Approval needed', 'Older task']);
     await user.clear(screen.getByRole('textbox', { name: 'Search tasks' }));
-    await select(user, 'Filter by project', 'No project');
+    await filterBy(user, 'Project', 'No project');
     expect(titles()).toEqual(['Folder task']);
     await user.click(screen.getByRole('button', { name: 'New task' }));
     expect(props.onNewTask).toHaveBeenCalledWith(null);
@@ -118,7 +134,9 @@ describe('CodeTasksView', () => {
 
   it('shows archived tasks without silently unarchiving them', async () => {
     const { user, props } = setup({ projectId: 'p1' });
-    await select(user, 'Task history', 'Archived');
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Archived' }));
+    await user.keyboard('{Escape}');
     expect(screen.queryByText('Older task')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Archived task' }));
     expect(props.onOpen).toHaveBeenCalledWith('Archived task');
@@ -158,7 +176,7 @@ describe('CodeTasksView', () => {
   it('includes failed and plan-review tasks in Needs attention and stays live as tasks change', async () => {
     const updated = task('Plan', { task_mode: 'plan' });
     const { user, props, rerender } = setup({ sessions: [updated, task('Broken', { status: 'failed' }), task('Done')] });
-    await select(user, 'Filter by status', 'Needs attention');
+    await filterBy(user, 'Status', 'Needs attention');
     expect(screen.getByText('Review plan')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Code tasks' })).getByText('Failed')).toBeInTheDocument();
     expect(screen.queryByText('Done')).not.toBeInTheDocument();
@@ -180,12 +198,29 @@ describe('CodeTasksView', () => {
       task('Offline build', { status: 'ready', run_status: 'queued', computer_status: 'offline' }),
       task('Ready build', { status: 'ready' }),
     ] });
-    await select(user, 'Filter by status', 'In progress');
+    await filterBy(user, 'Status', 'In progress');
     expect(screen.getByRole('button', { name: 'Queued build' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Offline build' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ready build' })).not.toBeInTheDocument();
-    await select(user, 'Filter by status', 'Needs attention');
+    await filterBy(user, 'Status', 'Needs attention');
     expect(screen.getByRole('button', { name: 'Offline build' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Queued build' })).not.toBeInTheDocument();
+  });
+  it('shows active filters as chips that remove themselves and counts what is left', async () => {
+    const { user } = setup();
+    await filterBy(user, 'Status', 'Needs attention');
+    expect(screen.getByRole('button', { name: 'Filter, 1 active' })).toBeInTheDocument();
+    expect(screen.getByText('1 of 3 tasks')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove Status filter' }));
+    expect(titles()).toHaveLength(3);
+    expect(screen.getByText('3 tasks')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument();
+  });
+
+  it('sorts by title from the quiet sort control', async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole('combobox', { name: 'Sort' }));
+    await user.click(screen.getByRole('option', { name: 'Title' }));
+    expect(titles()).toEqual(['Approval needed', 'Folder task', 'Older task']);
   });
 });
