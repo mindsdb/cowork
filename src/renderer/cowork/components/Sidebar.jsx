@@ -1021,18 +1021,6 @@ export default function Sidebar({
             )}
         </div>
 
-        {/* Which app this is (ENG-2172). Web and desktop look the same but
-            keep separate work, so the name sits quietly under the account
-            row on every screen, with the reason on hover. It stays in every
-            footer state, the status pill included. */}
-        <div className="anton-sidebar__surface px-5 pb-2 -mt-1 flex">
-          <Tooltip content={surface.detail} side="top">
-            <span className="text-[11px] text-ink-4 font-[family-name:var(--font-body)] cursor-default select-none">
-              {surface.label}
-            </span>
-          </Tooltip>
-        </div>
-
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>
 
