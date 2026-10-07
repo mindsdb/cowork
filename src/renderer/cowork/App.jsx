@@ -714,7 +714,8 @@ function AppCore() {
   /*
    * Conversations a Stop is ending, from its cancel request until that Stop
    * has finished. Each maps to a promise that settles true once that Stop has
-   * torn the turn down, or false when its cancel failed and the turn runs on.
+   * finished, history reload included, or false when its cancel failed and
+   * the turn runs on.
    */
   const stoppingRef = useRef(new Map()); // cid -> Promise<boolean>
   /*
@@ -1196,8 +1197,11 @@ function AppCore() {
     if (!cidToCancel) return;
     /*
      * One Stop per conversation at a time. A second click has nothing to add.
-     * A delete waits for the Stop in progress, and stops the turn itself only
-     * when that Stop's cancel failed and left the turn running.
+     * A delete waits for the Stop in progress to finish, history reload
+     * included: that reload read the conversation before the delete, so landing
+     * after the delete's resync it would bring the deleted exchange back. The
+     * delete stops the turn itself only when that Stop's cancel failed and left
+     * the turn running.
      */
     const pending = stoppingRef.current.get(cidToCancel);
     if (pending) {
@@ -1311,8 +1315,6 @@ function AppCore() {
      * it would still see (and could re-pick) the dropped messages.
      */
     messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
-    // The turn is torn down, so a delete waiting on this Stop can go ahead.
-    settleStopping(true);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     releaseSlotClaim(cidToCancel);

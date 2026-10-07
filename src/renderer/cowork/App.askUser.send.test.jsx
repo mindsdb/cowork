@@ -2128,6 +2128,34 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(beta.abort).not.toHaveBeenCalled();
   });
 
+  it('deletes Alpha\'s turn only after a Stop on Alpha has finished its history reload', async () => {
+    const user = userEvent.setup();
+    const { alpha } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // Hold the Stop's history reload. It read the conversation before the
+    // delete, so landing after the delete's resync would restore the exchange.
+    let answerReload;
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { answerReload = resolve; }));
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(answerReload).toBeDefined());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(deleteConversationTurn).not.toHaveBeenCalled();
+
+    await act(async () => { answerReload({ messages: [] }); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+  });
+
   it('holds a message sent during a delete of Alpha\'s turn until the delete is done', async () => {
     const user = userEvent.setup();
     const { beta } = await startAlphaThenBetaFromHome(user);
