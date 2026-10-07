@@ -270,3 +270,32 @@ describe('knownRowIds', () => {
     expect(knownRowIds(undefined)).toEqual(new Set());
   });
 });
+
+describe('mergeMessagePage: id-less rows and what the snapshot means', () => {
+  const errCard = { role: 'error', content: 'boom' };
+
+  it('keeps a card that follows a turn the fetch could not know', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), errCard];
+    expect(mergeMessagePage(existing, [m('u1'), m('a1')], new Set(['u1', 'a1']))).toEqual(existing);
+  });
+
+  it('drops a card that follows rows the fetch knew and the page no longer has', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), m('a2'), errCard];
+    expect(mergeMessagePage(existing, [m('u1'), m('a1')], new Set(['u1', 'a1', 'u2', 'a2'])))
+      .toEqual([m('u1'), m('a1')]);
+  });
+
+  it('keeps one card when the page already holds the turn and its card', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), errCard];
+    const page = [m('u1'), m('a1'), m('u2'), errCard];
+    const merged = mergeMessagePage(existing, page, new Set(['u1', 'a1']));
+    expect(merged.filter((r) => r.role === 'error')).toHaveLength(1);
+  });
+
+  it('treats no snapshot as today\'s rule and an empty one as knowing nothing', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), m('a2')];
+    const page = [m('u1'), m('a1')];
+    expect(mergeMessagePage(existing, page, undefined)).toEqual(page);
+    expect(mergeMessagePage(existing, page, new Set())).toEqual(existing);
+  });
+});

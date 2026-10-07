@@ -595,9 +595,15 @@ function AppCore() {
   // requests whose results the `local.length > 0` guard then discards.
   const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  // The row ids a conversation holds before a fetch, or undefined (no
+  // snapshot, today's merge rule) when it is not held under that id.
+  const knownIdsOf = (id) => {
+    const task = tasksRef.current.find((t) => t.id === id);
+    return task ? knownRowIds(task.messages) : undefined;
+  };
   // The `/c/:id` loader asks this before its fetch; see openConversation's merge.
   useEffect(() => {
-    setKnownRowIdsProvider((id) => knownRowIds(tasksRef.current.find((t) => t.id === id)?.messages));
+    setKnownRowIdsProvider(knownIdsOf);
     return () => setKnownRowIdsProvider(null);
   }, []);
   // IDs of tasks deleted this session. Used to filter them out of
@@ -997,7 +1003,7 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
-            const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === cid)?.messages);
+            const knownIds = knownIdsOf(cid);
             fetchSession(cid).then((fresh) => {
               if (!fresh || !Array.isArray(fresh.messages)) return;
               const reconciled = applySessionMessages(cid, fresh.messages);
@@ -1430,7 +1436,7 @@ function AppCore() {
     }
 
     try {
-      const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === cidToCancel)?.messages);
+      const knownIds = knownIdsOf(cidToCancel);
       const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
         skipLocalSidecar: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
       });
@@ -1487,7 +1493,7 @@ function AppCore() {
       recoveryCountRef.current.set(id, recoveryNumber[id]);
       streamsAtStart[id] = streamCountRef.current.get(id) ?? 0;
     });
-    const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === (cid ?? ids[0]))?.messages);
+    const knownIds = knownIdsOf(cid);
     let loaded = null;
     try {
       loaded = cid

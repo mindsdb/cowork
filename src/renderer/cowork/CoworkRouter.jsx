@@ -43,12 +43,14 @@ export function clearOptimisticConversation(id) {
   if (id) optimisticIds.delete(id);
 }
 
-// Reports the row ids a conversation holds locally. The loader calls it right
-// before its fetch, so the result says what that fetch could already know and
-// a late page cannot hide rows that arrived since. Set by App; module-level for
-// the same reason as `optimisticIds`.
+// Called before the loader's fetch, so the snapshot predates the page and a
+// late page cannot hide rows that arrived since.
 let knownRowIdsProvider = null;
 
+/**
+ * Sets the function the `/c/:id` loader asks for a conversation's local row
+ * ids (a Set, or undefined when it has none). App registers it; null clears it.
+ */
 export function setKnownRowIdsProvider(provider) {
   knownRowIdsProvider = provider;
 }
