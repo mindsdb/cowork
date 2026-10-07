@@ -603,6 +603,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         || (live.isActive && hasBoundary);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
+      // When collapsed, ThinkingBlock appends the model-wait status after it.
       // While a question waits, it is the question's label, as before this
       // split (the AskUser step was the last in-progress step).
       const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
@@ -2664,6 +2665,55 @@ export default function ChatView({
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The model call sent nothing until its deadline
+                 * (`model_timeout`), so the server ended the turn. The provider
+                 * is the likely cause, not the request: a retry often works,
+                 * and if it keeps happening another model is the way out. */
+                if (m.code === 'model_timeout') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The model didn't respond"
+                      body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
+                      buttons={[
+                        ...(resend
+                          ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                          : []),
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                      ]}
+                    />
+                  );
+                }
+                /* The UI heard nothing from the turn for its idle window
+                 * (`stalled`). The tab ends only its own reader and sends no
+                 * cancel, so the turn may still be running on the server. A
+                 * saved `stalled` record, from an older client's tagged
+                 * cancel, renders the same card after a reload. Try again
+                 * waits until the conversation has no live turn, as the copy
+                 * asks. */
+                if (m.code === 'stalled') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  const turnMayBeRunning = isStreaming || !!inFlightSet?.has(task.id);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The response stalled"
+                      body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
+                      buttons={resend && !turnMayBeRunning
                         ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />

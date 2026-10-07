@@ -1048,12 +1048,17 @@ export async function cancelScratchpad(name) {
 //   'error' — network error / 5xx: the request never reached the server, so the
 //             cancel flag was NOT written and the turn may still be running (and
 //             still spending tokens). Callers must NOT report this as success.
-export async function cancelResponse(conversationId) {
+//
+// `reason` says why the turn is being cancelled; the server saves a 'stalled'
+// cancel as a stall instead of a Stop, and an older server ignores the field.
+// No caller in this app sets it: Stop sends none, and an idle stall ends only
+// this tab's reader and sends no cancel at all.
+export async function cancelResponse(conversationId, { reason } = {}) {
   if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
     const res = await req('/responses/cancel', {
       method: 'POST',
-      body: JSON.stringify({ conversation_id: conversationId }),
+      body: JSON.stringify({ conversation_id: conversationId, ...(reason ? { reason } : {}) }),
       timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };

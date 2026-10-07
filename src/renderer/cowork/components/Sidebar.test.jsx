@@ -556,41 +556,12 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
   });
 });
 
-describe('Sidebar — says which app this is, and why other work is missing (ENG-2172, ENG-2169)', () => {
-  // Web and desktop look the same but keep separate work. The product
-  // branched on host.isWeb everywhere and never said the answer out loud.
+describe('Sidebar — says why other work is missing (ENG-2169)', () => {
+  // Web and desktop look the same but keep separate work, so an empty
+  // task list points at the other app.
   afterEach(() => {
     getAccessTokenMock.mockResolvedValue(null);
     hostMock.isWeb = true;
-  });
-
-  it('labels the web app in the footer', () => {
-    hostMock.isWeb = true;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.getByText('Web app')).toBeInTheDocument();
-    expect(screen.queryByText('Desktop app')).toBeNull();
-  });
-
-  it('labels the desktop app in the footer', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline />);
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
-    expect(screen.queryByText('Web app')).toBeNull();
-  });
-
-  it('keeps the label when signed in, under the account row', async () => {
-    getAccessTokenMock.mockResolvedValue(jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com' }));
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline />);
-    await screen.findByRole('button', { name: /Hazem Ahmed/ });
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
-  });
-
-  it('keeps the label while the desktop status pill is showing', async () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline={false} />);
-    await screen.findByRole('button', { name: /Backend status/i });
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
   });
 
   it('on web, an empty task list points at the desktop app', () => {

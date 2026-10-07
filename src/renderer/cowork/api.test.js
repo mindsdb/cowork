@@ -537,6 +537,15 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
   });
 
+  it.each(['model_timeout', 'stalled'])('keeps a %s failure as an error row with its code', async (code) => {
+    stubEndpoints(failedTurn(code, 'The turn ended.'));
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err).toBeTruthy();
+    expect(err.code).toBe(code);
+  });
+
   it('carries the request id onto a generic error row', async () => {
     stubEndpoints([
       { role: 'user', content: 'hi' },
@@ -1173,6 +1182,30 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+
+  /* Stop sends no reason, so the server keeps saving it as a Stop. A caller
+   * that passes a reason gets it in the body; the idle stall sends no cancel. */
+  const cancelBody = async (...args) => {
+    const fetchMock = vi.fn(async () => jsonRes({ cancelled: true, conversation_id: 'conv-a' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await cancelResponse(...args);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/responses\/cancel$/);
+    expect(options.method).toBe('POST');
+    return JSON.parse(options.body);
+  };
+
+  it('sends only the conversation id when no reason is given, as Stop does', async () => {
+    expect(await cancelBody('conv-a')).toEqual({ conversation_id: 'conv-a' });
+    expect(await cancelBody('conv-a', {})).toEqual({ conversation_id: 'conv-a' });
+  });
+
+  it('adds the reason to the body when one is given', async () => {
+    expect(await cancelBody('conv-a', { reason: 'stalled' })).toEqual({
+      conversation_id: 'conv-a', reason: 'stalled',
+    });
   });
 });
 
