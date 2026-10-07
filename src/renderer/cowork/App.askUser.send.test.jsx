@@ -7,6 +7,8 @@ const spies = vi.hoisted(() => ({
   submitAnswer: vi.fn(async () => ({ accepted: true })),
   streamMessage: vi.fn(),
   useActualStreams: false,
+  useActualHealth: false,
+  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
   // Default matches the real fn under this file's denied-network env (an
@@ -28,7 +30,9 @@ vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+    fetchHealth: (...args) => spies.useActualHealth
+      ? actual.fetchHealth(...args)
+      : spies.fetchHealth(...args),
     fetchSessions: vi.fn(async () => [
       { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
       { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
@@ -153,6 +157,7 @@ import {
   renameConversation,
   moveTaskToProject,
   cancelScratchpad,
+  SHORT_REQUEST_TIMEOUT_MS,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -236,6 +241,9 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.useActualStreams = false;
+  spies.useActualHealth = false;
+  spies.fetchHealth.mockReset();
+  spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: true }));
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
@@ -723,6 +731,40 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+});
+
+describe('health preflight falls back to cached readiness', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each([false, true])('keeps cached config_ready=%s when the real health request times out', async (ready) => {
+    spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: ready }));
+    const composer = await openTask(userEvent.setup());
+    // Finish boot before replacing only the send preflight with the real API.
+    await act(async () => {});
+    spies.useActualHealth = true;
+    const healthFetch = vi.fn(async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(
+        new DOMException('The request timed out', 'AbortError'),
+      ), { once: true });
+    }));
+    vi.stubGlobal('fetch', healthFetch);
+    vi.useFakeTimers();
+
+    fireEvent.change(composer, { target: { value: 'use the cached readiness' } });
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(healthFetch).toHaveBeenCalledTimes(1);
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS); });
+    vi.useRealTimers();
+
+    if (ready) {
+      await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    } else {
+      expect(spies.streamMessage).not.toHaveBeenCalled();
+      expect(await screen.findByText('Connect a provider to start chatting')).toBeInTheDocument();
+    }
   });
 });
 

@@ -191,6 +191,8 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
 
     expect(result.kind).toBe('error');
     expect(result.event).toEqual({ code: 'stalled', user_message_id: 'someone-else' });
+    expect(result.message).toContain('may still be running');
+    expect(result.message).not.toContain('was ended');
     await delay(20); // room for a fire-and-forget cancel to reach fetch
     expect(cancels).toEqual([]);
   });

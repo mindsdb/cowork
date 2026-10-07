@@ -581,6 +581,7 @@ export function allocateConversationId() {
 // a dead connection open) aborts rather than hangs forever. Shared with
 // tailInFlight; timed against producer frames, not raw keepalive bytes.
 const STREAM_IDLE_TIMEOUT_MS = 300_000;
+const STALLED_STREAM_MESSAGE = 'The connection stalled. The answer may still be running. Wait for it to finish before sending again.';
 
 // Server-side ask_user deadline, for a frame that doesn't state its own.
 const ASK_USER_DEFAULT_TIMEOUT_S = 300;
@@ -753,14 +754,12 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
          first to tell it apart from a caller-initiated cancel (Stop button,
          new send, navigation). */
       if (idledOut) {
-        /* Stop the server's turn only when this stream got its own
-           response.created. A cancel names the whole conversation, and a
-           stream without one may hold no turn of its own: cancelling would
-           stop whichever answer is running there, which can be another
-           tester's. If this tab's own turn stalls before response.created,
-           the server's idle watchdog ends it instead. */
-        if (userMessageId) cancelResponse(cid);
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        /* End this reader locally. Even after our response.created, its turn
+           may have finished behind a stalled connection and a newer turn may
+           now own the conversation. The cancel API names only a conversation,
+           so it cannot safely cancel the turn this reader remembers. The
+           server's idle watchdog ends a producer that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         // Distinct code from tailInFlight's reconnect_error: this is a dropped
         // connection on the initial send, not a reconnect attempt.
@@ -928,7 +927,7 @@ export function tailInFlight(conversationId, {
            is running in the conversation, which can be another tester's, and
            a cancel would stop it for everyone. The server's idle watchdog
            ends a turn that stays stuck. */
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         reportError(err.message, { code: 'reconnect_error' });
       }

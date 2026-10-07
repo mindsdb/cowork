@@ -2980,8 +2980,11 @@ function AppCore() {
     try {
       const fresh = await fetchHealth();
       if (fresh && typeof fresh === 'object') {
-        setHealth(fresh);
         setServerOnline(fresh.status === 'ok');
+        // fetchHealth resolves offline on a timeout or network failure. It
+        // has no readiness answer, so preserve the last config we received.
+        if (fresh.status === 'offline') return health?.config_ready !== false;
+        setHealth(fresh);
         return fresh.config_ready !== false;
       }
     } catch {

@@ -212,10 +212,10 @@ describe('streamNewSession idle timeout', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('sends Stop for the conversation only when this stream started a turn there', async () => {
-    /* A Stop names the whole conversation. A stream that idles out before its
-       own response.created may hold no turn of its own, so its Stop could end
-       someone else's answer: in a shared conversation, another tester's. */
+  it('ends an idle reader locally even after it received its own response.created', async () => {
+    /* The old turn can finish behind a stalled reader and another tester can
+       start its successor. A conversation-wide Stop would cancel that newer
+       turn, despite the reader remembering its own old message id. */
     const enc = new TextEncoder();
     const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"user-1"}\n\n';
     const cancels = [];
@@ -245,21 +245,24 @@ describe('streamNewSession idle timeout', () => {
     const stallOf = () => new Promise((resolve) => {
       streamMessage('conv-1', 'hi', {
         idleTimeoutMs: 20,
-        onError: (message, event) => resolve(event),
-        onDone: () => resolve({ code: 'done' }),
+        onError: (message, event) => resolve({ message, event }),
+        onDone: () => resolve({ event: { code: 'done' } }),
       });
     });
 
     // No response.created: a keepalive-only stream, holding no turn of its own.
-    expect((await stallOf()).code).toBe('stalled');
+    expect((await stallOf()).event.code).toBe('stalled');
     await delay(20); // room for a fire-and-forget cancel to reach fetch
     expect(cancels).toEqual([]);
 
-    // Its own response.created, then silence: its own turn is wedged, so stop it.
+    // Its own response.created is not proof it still owns the current turn.
     createdFirst = true;
-    expect((await stallOf()).code).toBe('stalled');
+    const result = await stallOf();
+    expect(result.event).toEqual({ code: 'stalled', user_message_id: 'user-1' });
+    expect(result.message).toContain('may still be running');
+    expect(result.message).not.toContain('was ended');
     await delay(20);
-    expect(cancels).toEqual([{ conversation_id: 'conv-1' }]);
+    expect(cancels).toEqual([]);
   });
 
   it('does not fire a stall error on a caller-initiated abort', async () => {
