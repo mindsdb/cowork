@@ -780,4 +780,53 @@ describe('a late empty reopen result after a turn completed meanwhile', () => {
     expect(screen.getByText('New question')).toBeInTheDocument();
     expect(screen.getByText('New answer')).toBeInTheDocument();
   });
+
+  it('still clears a question that had no id when the delete was taken', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+    // The first question was never stamped, so the cut cannot name it.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', id: 'u2', content: 'Second question' },
+        { role: 'assistant', id: 'a2', content: 'Second answer' },
+      ] }),
+    });
+    await openTask(user);
+    await screen.findByText('Second answer');
+
+    // The delete times out; the resync brings that question back with its id.
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', id: 'u2', content: 'Second question' },
+        { role: 'assistant', id: 'a2', content: 'Second answer' },
+      ] }),
+    });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+
+    // The delete had committed: reopening reads an empty conversation.
+    spies.fetchSessionResult.mockImplementation(async (id) => ({
+      status: 'ok',
+      task: id === 'conv-a'
+        ? baseTask({ messages: [], hasMoreMessages: false, messagesCursor: null })
+        : baseTask({ id, title: 'Beta task' }),
+    }));
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+
+    await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
+    expect(screen.queryByText('Second answer')).toBeNull();
+  });
 });

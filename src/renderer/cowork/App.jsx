@@ -4621,8 +4621,9 @@ function AppCore() {
    * Re-reads the conversation from the server after a delete, so the list on
    * screen is one the server has vouched for. Returns null when the server
    * could not be asked; the list then stays unvouched for. Otherwise returns
-   * `{ committed }`: true when the page shows `cut` gone (cutConfirmedGone), in
-   * which case its notices and sidecar entries are dropped in the same update.
+   * `{ committed, pageIds }`: committed when the page shows `cut` gone
+   * (cutConfirmedGone), in which case its notices and sidecar entries are
+   * dropped in the same update; pageIds are the ids the page holds.
    */
   const resyncConversationAfterDelete = async (taskId, cut = null) => {
     try {
@@ -4653,7 +4654,7 @@ function AppCore() {
         };
         return committed ? forgetTurnIds(next, cut.ids) : next;
       }));
-      return { committed };
+      return { committed, pageIds: fresh.messages.map((m) => m?.id).filter(Boolean) };
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[resyncConversationAfterDelete] refetch failed', e);
@@ -4999,7 +5000,12 @@ function AppCore() {
       // An unanswered delete the resync already shows done needs no follow-up.
       const unconfirmed = failure && !refused && !resync?.committed;
       if (!resynced || unconfirmed) {
-        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: checkedCut }));
+        // With nothing before it, the cut covers every row the server still
+        // holds, including ones that had no id when the cut was taken.
+        const pendingCut = checkedCut.beforeId == null && resync?.pageIds
+          ? { ...checkedCut, ids: [...new Set([...checkedCut.ids, ...resync.pageIds])] }
+          : checkedCut;
+        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: pendingCut }));
       }
       if (!resynced) {
         // The quiet version of this is the one that loses data: the exchange
