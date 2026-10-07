@@ -239,6 +239,9 @@ export default function Sidebar({
   onNewTask,
   onSelectCodingSession,
   onSetCodingSessionPinned,
+  onRenameCodingSession,
+  onSetCodingSessionArchived,
+  onDeleteCodingSession,
   onNewCodingTask,
   onOpenCodingProjects,
   onOpenCodingTasks,
@@ -686,6 +689,9 @@ export default function Sidebar({
               selectedId={activeCodingSessionId}
               onSelect={onSelectCodingSession}
               onSetPinned={onSetCodingSessionPinned}
+              onRename={onRenameCodingSession}
+              onSetArchived={onSetCodingSessionArchived}
+              onDelete={onDeleteCodingSession}
             />
           </>
         ) : (

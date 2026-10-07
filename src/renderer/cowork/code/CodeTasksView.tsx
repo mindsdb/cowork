@@ -10,6 +10,7 @@ import Menu from '../components/ui/Menu';
 import { projectResources, type CodeProject, type CodingSession } from './api';
 import { codingSessionStatus, relativeTime } from './presentation';
 import { projectActions } from './projectActions';
+import { useCodeTaskMenu, type CodeTaskListActions } from './useCodeTaskMenu';
 import './code-tasks.css';
 
 const STATUS_OPTIONS = [
@@ -33,7 +34,7 @@ const TONE: Record<ReturnType<typeof codingSessionStatus>['tone'], StatusTone> =
 
 export function CodeTasksView({
   sessions, projects, projectId = null, active = true, loading, error,
-  onOpen, onOpenProject, onNewTask, onEditProject, onDeleteProject, onBack, onRetry,
+  onOpen, onOpenProject, onNewTask, onEditProject, onDeleteProject, onBack, onRetry, taskActions,
 }: {
   sessions: CodingSession[];
   projects: CodeProject[];
@@ -48,6 +49,7 @@ export function CodeTasksView({
   onDeleteProject: (id: string) => void;
   onBack: () => void;
   onRetry: () => void;
+  taskActions?: CodeTaskListActions;
 }) {
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
@@ -55,6 +57,19 @@ export function CodeTasksView({
   const [archived, setArchived] = useState(false);
   const [sort, setSort] = useState('updated');
   const inputRef = useRef<HTMLInputElement>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const taskMenu = useCodeTaskMenu({
+    onTogglePinned: (task) => {
+      const pinned = !task.pinned;
+      setActionError(null);
+      taskActions?.onSetPinned(task.id, pinned)
+        .catch(() => setActionError(`Couldn't ${pinned ? 'pin' : 'unpin'} this task.`));
+    },
+    onRename: (id, title) => taskActions!.onRename(id, title),
+    onSetArchived: (id, archive) => taskActions!.onSetArchived(id, archive),
+    onDelete: (id) => taskActions!.onDelete(id),
+    onError: setActionError,
+  });
   useCollectionShortcut(inputRef, active);
 
   const projectNames = useMemo(() => {
@@ -149,6 +164,7 @@ export function CodeTasksView({
           : `${filtered.length} of ${total} tasks`) : undefined}
       />
       <div className="mx-8 grid gap-4">
+        {actionError && <Alert variant="danger">{actionError}</Alert>}
         {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
         {/* A failed load shows the error alone, never an empty state. */}
         {!(error && !sessions.length) && <CollectionState
@@ -173,6 +189,11 @@ export function CodeTasksView({
                 title={task.title || 'Untitled task'}
                 onActivate={() => onOpen(task.id)}
                 activateLabel={task.title || 'Untitled task'}
+                revealActions
+                actions={taskActions && <Menu
+                  trigger={<Button icon variant="subtle" size="sm" aria-label={`Actions for ${task.title || 'untitled task'}`}>{Ico.moreVert(14)}</Button>}
+                  items={taskMenu.items(task)}
+                />}
                 meta={<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   {!projectId && (name
                     ? <HoverActions reveal className="min-w-0 max-w-[12rem] shrink max-sm:max-w-[8rem]">
@@ -188,6 +209,7 @@ export function CodeTasksView({
           </ListGroup>
         </CollectionState>}
       </div>
+      {taskMenu.dialogs}
     </main>
   );
 }

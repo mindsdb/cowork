@@ -79,13 +79,14 @@
   transition: color var(--dur-hover) ease;
 }
 .code-sidebar-session:focus-visible { outline: 0; box-shadow: inset var(--ring); }
-.code-sidebar-session__pin { position: absolute; top: 50%; right: 4px; opacity: 0; transform: translateY(-50%); }
-/* The pin takes the right slot on hover/focus; the time or status fades out under it. */
-.code-sidebar-session-row:hover .code-sidebar-session__pin,
-.code-sidebar-session-row:focus-within .code-sidebar-session__pin { opacity: 1; }
+.code-sidebar-session__menu { position: absolute; top: 50%; right: 4px; opacity: 0; transform: translateY(-50%); }
+/* The row menu takes the right slot on hover/focus, and stays while open; the time or status fades out under it. */
+.code-sidebar-session-row:hover .code-sidebar-session__menu,
+.code-sidebar-session-row:focus-within .code-sidebar-session__menu,
+.code-sidebar-session__menu[data-popup-open] { opacity: 1; }
 .code-sidebar-session-row:hover .code-sidebar-session__aside,
-.code-sidebar-session-row:focus-within .code-sidebar-session__aside { opacity: 0; }
-.code-sidebar-session__pin[aria-pressed='true'] { color: var(--accent); }
+.code-sidebar-session-row:focus-within .code-sidebar-session__aside,
+.code-sidebar-session-row:has(.code-sidebar-session__menu[data-popup-open]) .code-sidebar-session__aside { opacity: 0; }
 .code-sidebar-session__title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
 .code-sidebar-session__aside { flex: none; max-width: 45%; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; color: var(--ink-4); font-size: 11px; font-variant-numeric: tabular-nums; transition: opacity var(--dur-hover) ease; }
 .code-sidebar-session__aside.is-warning { color: var(--warning); }
