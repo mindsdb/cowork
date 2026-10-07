@@ -741,6 +741,91 @@ describe('worker_unresponsive failure card', () => {
   });
 });
 
+/* The two ways a quiet turn ends. `model_timeout`: the server ended a model
+ * call that sent nothing until its deadline. `stalled`: the UI heard nothing
+ * for its idle window, and the server saves the same code when that cancel
+ * lands. Each gets a Try again card, live and after a reload, never the
+ * generic alert a stopped or unknown failure gets. */
+const reloadedFailure = (code, error) => hydrateMessagesFromServerEvents([
+  { role: 'user', content: 'draw me a chart' },
+  {
+    role: 'assistant', content: '', events: [{
+      type: 'response.failed', code, error, request_id: 'corr-1',
+    }],
+  },
+]);
+
+describe.each([
+  {
+    code: 'model_timeout',
+    // What the server passes through: anton's own message, naming the deadline.
+    message: 'The model sent no output for 10 minutes, so the call was stopped.',
+    title: "The model didn't respond",
+    body: /The model stopped sending anything, so this turn was ended\. Try again\. If it keeps happening, pick another model in Settings\./,
+  },
+  {
+    code: 'stalled',
+    message: 'The response stalled and was ended. Please try sending again.',
+    title: 'The response stalled',
+    body: /Cowork stopped hearing from the agent, so this turn was ended\. Try sending it again\./,
+  },
+])('$code failure card', ({ code, message, title, body }) => {
+  it('names what happened and retries the failed message', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<ChatView task={taskWith(failedTurn(code, message))} onSend={onSend} />);
+
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(body)).toBeInTheDocument();
+    // Fixed copy: the server's message never reaches the card.
+    expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('renders the same card after a reload, from the saved failure event', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<ChatView task={taskWith(reloadedFailure(code, message))} onSend={onSend} />);
+
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView task={taskWith([{ role: 'error', content: message, code }])} onSend={vi.fn()} />,
+    );
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
+describe('model_timeout failure card', () => {
+  /* Its copy sends the user to Settings for another model, so it carries the
+   * way there, with or without a message to retry. */
+  it.each([
+    ['with a message to retry', (m) => failedTurn('model_timeout', m)],
+    ['with nothing to retry', (m) => [{ role: 'error', content: m, code: 'model_timeout' }]],
+  ])('offers Open Settings %s', async (_label, messages) => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(messages("The model didn't respond, so this turn was ended. Please try again."))}
+        onSend={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+});
+
 describe('anton_error / unmapped failure fallback', () => {
   it('renders as a danger alert, not answer prose', () => {
     render(
@@ -813,6 +898,10 @@ const WIRE_CODES = [
   'content_too_large',
   // ENG-2126 — the worker never answered, so the turn never ran.
   'worker_unresponsive',
+  // A model call sent nothing until its deadline, so the server ended the turn.
+  'model_timeout',
+  // The UI's idle cut ended the turn; the server saves it when the cancel lands.
+  'stalled',
   // Free MindsHub Air paused for everyone by auth's daily spend fuse.
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.

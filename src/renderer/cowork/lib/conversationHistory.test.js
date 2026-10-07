@@ -352,6 +352,43 @@ describe('hydrateMessagesFromServerEvents', () => {
     ]);
     expect(out.some((m) => m.role === 'provider_required')).toBe(true);
   });
+
+  /* A stall and a Stop both keep the partial answer. The server saves a stall
+   * with a `stalled` failure event and a Stop with no terminal event, so only
+   * the stall reloads with an error row. */
+  it('reloads a saved stall as a stalled error row after the partial answer', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' } },
+          { type: 'response.output_text.delta', delta: 'Partial answer' },
+          { type: 'response.failed', code: 'stalled', error: 'The response stalled and was ended. Please try sending again.', request_id: 'corr-1' },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'error']);
+    expect(out[1].content).toBe('Partial answer');
+    expect(out[2]).toMatchObject({ code: 'stalled', requestId: 'corr-1' });
+  });
+
+  it('reloads a Stop as the partial answer with no error row', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' } },
+          { type: 'response.output_text.delta', delta: 'Partial answer' },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(out[1].content).toBe('Partial answer');
+  });
 });
 
 describe('applySessionMessages', () => {

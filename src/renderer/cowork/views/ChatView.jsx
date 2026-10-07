@@ -604,6 +604,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         || (live.isActive && hasBoundary);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
+      // When collapsed, ThinkingBlock appends the model-wait status after it.
       // While a question waits, it is the question's label, as before this
       // split (the AskUser step was the last in-progress step).
       const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
@@ -2748,6 +2749,51 @@ export default function ChatView({
                       kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The model call sent nothing until its deadline
+                 * (`model_timeout`), so the server ended the turn. The provider
+                 * is the likely cause, not the request: a retry often works,
+                 * and if it keeps happening another model is the way out. */
+                if (m.code === 'model_timeout') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The model didn't respond"
+                      body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
+                      buttons={[
+                        ...(retryText
+                          ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                          : []),
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                      ]}
+                    />
+                  );
+                }
+                /* The UI heard nothing from the turn for its idle window and
+                 * ended it (`stalled`). The live tab sets this code itself, and
+                 * the server saves it when the stall's cancel lands, so the
+                 * same card shows after a reload instead of a stopped answer. */
+                if (m.code === 'stalled') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The response stalled"
+                      body="Cowork stopped hearing from the agent, so this turn was ended. Try sending it again."
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}

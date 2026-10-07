@@ -757,7 +757,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       // as an AbortError too, so check idledOut first to tell it apart from
       // a caller-initiated cancel (Stop button, new send, navigation).
       if (idledOut) {
-        cancelResponse(cid);
+        cancelResponse(cid, { reason: 'stalled' });
         reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         // Distinct code from tailInFlight's reconnect_error: this is a dropped
@@ -926,7 +926,7 @@ export function tailInFlight(conversationId, {
         // in-flight poll would re-select it and reopen a fresh tail, looping this
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
-        cancelResponse(conversationId);
+        cancelResponse(conversationId, { reason: 'stalled' });
         reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         reportError(err.message, { code: 'reconnect_error' });
@@ -1043,12 +1043,16 @@ export async function cancelScratchpad(name) {
 //   'error' — network error / 5xx: the request never reached the server, so the
 //             cancel flag was NOT written and the turn may still be running (and
 //             still spending tokens). Callers must NOT report this as success.
-export async function cancelResponse(conversationId) {
+//
+// `reason` says why the turn is being cancelled. Only the idle-stall sites set
+// it ('stalled'), so the server saves the turn as a stall instead of a Stop.
+// Stop sends none, and an older server ignores the field.
+export async function cancelResponse(conversationId, { reason } = {}) {
   if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
     const res = await req('/responses/cancel', {
       method: 'POST',
-      body: JSON.stringify({ conversation_id: conversationId }),
+      body: JSON.stringify({ conversation_id: conversationId, ...(reason ? { reason } : {}) }),
       timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };

@@ -6,6 +6,9 @@
 //
 // Header states:
 //   active + collapsed  →  [orb] <current step label>            (shimmer)
+//   active + collapsed, →  [orb] <current step label> · Waiting for the model (1m 0s)
+//   model call silent      (the suffix is muted; it is the server's model-wait
+//                          status, never the model's own reasoning text)
 //   active + expanded   →  [orb] Working for 6s                  (live timer;
 //                          the current step sits at the END of the list below)
 //   finished            →  Worked for 3m 9s  ⌄                   (chevron always visible)
@@ -67,6 +70,7 @@ export function ThinkingBlock({
     [steps]
   );
   const hasLiveThought = isActive && Boolean(currentThought?.text);
+  const modelWaitText = currentThought?.kind === 'model_wait' ? currentThought.text : '';
 
   const [isExpanded, setIsExpanded] = useState(
     () => isActive && (hasInspectableSteps || Boolean(currentThought?.text))
@@ -130,7 +134,12 @@ export function ThinkingBlock({
               label={
                 isExpanded
                   ? <WorkingLabel startedAt={startedAt} />
-                  : (currentLabel || 'Thinking…')
+                  : (
+                    <>
+                      {currentLabel || 'Thinking…'}
+                      {modelWaitText && <span className="text-ink-4"> · {modelWaitText}</span>}
+                    </>
+                  )
               }
             />
           ) : (

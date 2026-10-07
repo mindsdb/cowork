@@ -49,10 +49,12 @@ export function initialStreamState() {
     /** Live "train of thought" text that isn't part of the final answer
      *  (extended-thinking / reasoning deltas). A single ephemeral burst —
      *  NOT a step, so it never accumulates into the persisted steps list.
-     *  `{ text, startedAt, _isPreamble? } | null`. `_isPreamble` marks
+     *  `{ text, startedAt, _isPreamble?, kind? } | null`. `_isPreamble` marks
      *  reclassified narration so the next real reasoning delta replaces
-     *  it instead of appending. Cleared whenever body text starts
-     *  streaming or the turn finishes. */
+     *  it instead of appending. `kind: 'model_wait'` marks the server's
+     *  still-working status while a model call is silent; any other
+     *  event clears it, an ask_user question included. Cleared whenever
+     *  body text starts streaming or the turn finishes. */
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
@@ -285,6 +287,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   const eventTs = (typeof event.at_ms === 'number' && Number.isFinite(event.at_ms))
     ? event.at_ms
     : now();
+
+  /* A model-wait line says only that a silent model call is still open. Any
+   * other event is newer news, so it drops the line before it is handled: a
+   * tool or scratchpad frame leaves no stale status behind, a question shows
+   * without a model-wait line over it, and a reasoning delta starts a fresh
+   * burst instead of appending to the status. */
+  if (state.currentThought?.kind === 'model_wait'
+    && !(type === 'response.in_progress'
+      && event.thought_role === 'thought.progress'
+      && event.phase === 'model_wait')) {
+    state = { ...state, currentThought: null };
+  }
 
   // ── Lifecycle ─────────────────────────────────────────────────────
   if (type === 'response.created') {
@@ -876,6 +890,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // A fresh burst, not an append: this interrupts whatever the model was
       // narrating, and the next real reasoning delta should replace it.
       return { ...state, currentThought: { text, startedAt: eventTs } };
+    }
+
+    /* The server's keep-alive while a model call sends nothing (the model is
+     * thinking, or writing a tool call's arguments). The frame is not saved
+     * with the turn, so it is never a step: it only replaces the live line,
+     * which also shows in the collapsed header. Each tick carries the call's
+     * elapsed time in its message, so it replaces rather than appends. */
+    if (phase === 'model_wait') {
+      return {
+        ...state,
+        currentThought: { text: event.message || 'Waiting for the model', startedAt: eventTs, kind: 'model_wait' },
+      };
     }
 
     // Cell finished — flip the trailing in-progress scratchpad to
