@@ -1925,8 +1925,22 @@ export default function ChatView({
   // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
   // the FIRST match, which can be the wrong message's step. Prefixing
   // makes the pool unique and keeps focus correlation tight.
-  const messageKey = (m, i) =>
-    `m:${m?.id || `idx-${i}`}`;
+  // A row without an id keys off the nearest id-bearing row before it, so
+  // prepending an older page leaves its key, and its local state, alone.
+  const rowKeys = [];
+  let keyAnchorId = null;
+  let idlessSinceAnchor = 0;
+  visibleMessages.forEach((m, i) => {
+    if (m?.id) {
+      keyAnchorId = m.id;
+      idlessSinceAnchor = 0;
+      rowKeys.push(`m:${m.id}`);
+      return;
+    }
+    idlessSinceAnchor += 1;
+    rowKeys.push(keyAnchorId ? `after:${keyAnchorId}:${m?.role}:${idlessSinceAnchor}` : `m:idx-${i}`);
+  });
+  const messageKey = (m, i) => rowKeys[i] ?? `m:${m?.id || `idx-${i}`}`;
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
