@@ -1940,7 +1940,7 @@ export default function ChatView({
     idlessSinceAnchor += 1;
     rowKeys.push(keyAnchorId ? `after:${keyAnchorId}:${m?.role}:${idlessSinceAnchor}` : `m:idx-${i}`);
   });
-  const messageKey = (m, i) => rowKeys[i] ?? `m:${m?.id || `idx-${i}`}`;
+  const messageKey = (_m, i) => rowKeys[i];
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
