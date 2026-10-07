@@ -1,11 +1,13 @@
 import {
   autoUpdater,
+  CancellationToken,
   type AppUpdater,
   type ProgressInfo,
   type UpdateInfo,
 } from 'electron-updater';
 import {
   transitionShellUpdate,
+  type ShellInstallSource,
   type ShellUpdateChannel,
   type ShellUpdateEvent,
   type ShellUpdatePhase,
@@ -13,6 +15,25 @@ import {
   type ShellUpdateTrigger,
 } from './shell-update-state';
 import { compareUpdaterSemVer } from '../shared/version';
+
+/** A check that has not answered in this long is abandoned so the next
+ *  scheduled check can run. electron-updater's feed request carries a 60s
+ *  socket idle timeout (builder-util-runtime httpExecutor), so a check cannot
+ *  hang forever: it settles with an `error`. What this guards is a check that
+ *  settled WITHOUT emitting the event that moves the phase on, which would
+ *  otherwise block every later CHECK_REQUESTED for the rest of the process.
+ *  The limit sits well above the library's own timeout so the two never race. */
+export const CHECK_STALL_MS = 10 * 60 * 1000;
+/** A download with no progress event in this long is abandoned the same way,
+ *  and the in-flight download is cancelled in the updater (see
+ *  `ShellUpdaterAdapter.cancelDownload`). The next check finds the update again
+ *  and starts a fresh download. */
+export const DOWNLOAD_STALL_MS = 30 * 60 * 1000;
+/** An `installing` phase that neither quit the app nor reported an error
+ *  within this limit is abandoned as recoverable `install-stalled`, so the
+ *  banner offers Retry instead of a disabled pill until relaunch. The boot
+ *  install reaches this phase with no user action, so it needs a way out. */
+export const INSTALL_STALL_MS = 60 * 1000;
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -23,6 +44,12 @@ export interface ShellUpdaterAdapter {
   onError(listener: (error: Error) => void): void;
   checkForUpdates(): Promise<unknown>;
   downloadUpdate(): Promise<unknown>;
+  /** Cancel the download `downloadUpdate()` started, settling its promise.
+   *  electron-updater deduplicates: `downloadUpdate()` returns the SAME promise
+   *  until the running download settles, so abandoning a stalled download at
+   *  the controller alone would leave the next download call reusing the hung
+   *  one. Cancelling settles it (CancellationError) and frees that slot. */
+  cancelDownload?(): void;
   quitAndInstall(): void;
 }
 
@@ -57,6 +84,8 @@ export interface ShellAutoUpdaterOptions {
   /** Fired once per failure, on the transition into `failed`. Side-effecting
    *  (logging + telemetry) lives in the caller so this module stays pure. */
   onFailure?: (report: ShellUpdateFailureReport) => void;
+  /** Clock for the stall guard; tests inject a fake one. */
+  now?: () => number;
 }
 
 export interface ShellAutoUpdater {
@@ -64,7 +93,7 @@ export interface ShellAutoUpdater {
   subscribe(listener: (snapshot: ShellUpdateSnapshot) => void): () => void;
   check(trigger: ShellUpdateTrigger): Promise<void>;
   download(): Promise<void>;
-  quitAndInstall(): boolean;
+  quitAndInstall(source?: ShellInstallSource): boolean;
   disable(reason: string): void;
 }
 
@@ -136,6 +165,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger };
   let checkToken: UpdateFlight | null = null;
   let downloadToken: UpdateFlight | null = null;
+  const now = options.now ?? Date.now;
+  /** When the snapshot last changed. The stall guard in check() reads it: a
+   *  phase that has not moved for its limit is abandoned. */
+  let lastChangeAt = now();
   // The failure code currently being reported, or null when there is no open
   // failure episode. Latches telemetry to one event per episode across retries —
   // see fail() and clearFailureLatch().
@@ -155,11 +188,16 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     const next = transitionShellUpdate(snapshot, event);
     if (next === snapshot) return false;
     snapshot = next;
+    lastChangeAt = now();
     publish();
     return true;
   };
 
-  const fail = (error: unknown, flight?: UpdateFlight | null) => {
+  const fail = (
+    error: unknown,
+    flight?: UpdateFlight | null,
+    preclassified?: { code: string; recoverable: boolean },
+  ) => {
     // Duplicate delivery of one fault: the first report settles the flight, the
     // rest are dropped. Without this, a failed refresh reported twice would
     // clear `refreshing` on the first pass and then — no longer recognisable as
@@ -169,7 +207,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       flight.settled = true;
     }
     const normalized = error instanceof Error ? error : new Error(String(error));
-    const classified = classifyError(normalized);
+    const classified = preclassified ?? classifyError(normalized);
     // Capture where we were BEFORE the transition — that's the phase that failed,
     // and it tells a check failure from a download/install one.
     const failedAt = snapshot;
@@ -217,6 +255,59 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // the next failure — even with the same code — reports as a new one.
   const clearFailureLatch = () => { failureEpisode = null; };
 
+  // Abandon a check or download that has made no progress within its stall
+  // limit, so the phase leaves `checking`/`downloading` and a new check can
+  // start. Without this, a `checkForUpdates()` or `downloadUpdate()` that never
+  // settles — or settles without emitting the event that moves the phase on —
+  // would hold the phase where CHECK_REQUESTED is refused, and every later
+  // scheduled check would be a no-op until relaunch, leaving the shell old.
+  // Keyed on the snapshot, not the flight: a promise that resolved early has
+  // already cleared its token. An abandoned promise may still settle later;
+  // `settled` makes that a no-op, and the token comparison in each flight's
+  // `finally` keeps it from clearing a newer flight.
+  //
+  // A check still genuinely in flight is not duplicated: electron-updater
+  // returns its one pending check promise to every caller until it settles, so
+  // the fresh check() below simply adopts that promise, and the library's own
+  // request timeout settles it (CHECK_STALL_MS sits far above that timeout).
+  const releaseStalled = () => {
+    const idleFor = now() - lastChangeAt;
+    if (snapshot.phase === 'ready-to-install' && snapshot.refreshing) {
+      if (idleFor < CHECK_STALL_MS) return;
+      if (checkToken) checkToken.settled = true;
+      dispatch({ type: 'REFRESH_SETTLED' });
+    } else if (snapshot.phase === 'checking') {
+      if (idleFor < CHECK_STALL_MS) return;
+      fail(new Error(`shell update check made no progress for ${CHECK_STALL_MS}ms`), checkToken, {
+        code: 'check-stalled',
+        recoverable: true,
+      });
+    } else if (snapshot.phase === 'installing') {
+      if (idleFor < INSTALL_STALL_MS) return;
+      fail(new Error(`shell update install made no progress for ${INSTALL_STALL_MS}ms`), null, {
+        code: 'install-stalled',
+        recoverable: true,
+      });
+    } else if (snapshot.phase === 'downloading') {
+      if (idleFor < DOWNLOAD_STALL_MS) return;
+      // Settle the updater's own download first, or its deduplication hands
+      // the very same hung promise back to the next download() call.
+      options.adapter.cancelDownload?.();
+      fail(new Error(`shell update download made no progress for ${DOWNLOAD_STALL_MS}ms`), downloadToken, {
+        code: 'download-stalled',
+        recoverable: true,
+      });
+    } else {
+      return;
+    }
+    if (checkToken) checkToken.settled = true;
+    if (downloadToken) downloadToken.settled = true;
+    checkToken = null;
+    checkFlight = null;
+    downloadToken = null;
+    downloadFlight = null;
+  };
+
   const download = async () => {
     if (downloadFlight) return downloadFlight;
     if (snapshot.phase === 'available') dispatch({ type: 'DOWNLOAD_REQUESTED' });
@@ -228,8 +319,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       .then(() => undefined)
       .catch(error => fail(error, flight))
       .finally(() => {
-        downloadFlight = null;
-        if (downloadToken === flight) downloadToken = null;
+        if (downloadToken === flight) {
+          downloadToken = null;
+          downloadFlight = null;
+        }
       });
     return downloadFlight;
   };
@@ -283,7 +376,14 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // download fault the check swallows this way is not lost: downloadUpdate()
   // rejects too, and that rejection carries the download's own flight. An error
   // with no flight open (an internal retry, say) still fails normally.
-  options.adapter.onError(error => fail(error, checkToken ?? downloadToken));
+  options.adapter.onError(error => {
+    // A late error with no flight open while an install is armed can only
+    // come from an operation the stall guard already abandoned (a refresh,
+    // say). The artifact on disk is untouched, so failing the armed install
+    // would take a working Restart away for nothing; drop it.
+    if (!checkToken && !downloadToken && snapshot.phase === 'ready-to-install') return;
+    fail(error, checkToken ?? downloadToken);
+  });
 
   return {
     getSnapshot: () => snapshot,
@@ -295,6 +395,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     },
 
     async check(trigger) {
+      releaseStalled();
       if (checkFlight) return checkFlight;
       if (!dispatch({ type: 'CHECK_REQUESTED', trigger })) return;
       const flight: UpdateFlight = {
@@ -307,16 +408,18 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
         .then(() => undefined)
         .catch(error => fail(error, flight))
         .finally(() => {
-          checkFlight = null;
-          if (checkToken === flight) checkToken = null;
+          if (checkToken === flight) {
+            checkToken = null;
+            checkFlight = null;
+          }
         });
       return checkFlight;
     },
 
     download,
 
-    quitAndInstall() {
-      if (!dispatch({ type: 'INSTALL_REQUESTED' })) return false;
+    quitAndInstall(source = 'user') {
+      if (!dispatch({ type: 'INSTALL_REQUESTED', source })) return false;
       try {
         options.adapter.quitAndInstall();
         return true;
@@ -332,8 +435,27 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   };
 }
 
-/** Adapt electron-updater's EventEmitter API without leaking it into tests. */
-export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
+/** The cancellation handle the adapter mints for each download. */
+export interface DownloadCancellation {
+  cancel(): void;
+}
+
+/** Adapt electron-updater's EventEmitter API without leaking it into tests.
+ *
+ *  `createToken` exists for tests; production mints electron-updater's own
+ *  CancellationToken. */
+export function adaptElectronUpdater(
+  updater: AppUpdater,
+  createToken: () => DownloadCancellation = () => new CancellationToken(),
+): ShellUpdaterAdapter {
+  // electron-updater's check emits `update-available` BEFORE it creates the
+  // token it returns in the check result (AppUpdater.doCheckForUpdates), and
+  // the controller starts the automatic download from that event. So the
+  // result's token arrives after the transfer has begun and cannot govern it.
+  // Mint a token here for every download and hand it to downloadUpdate(): a
+  // bare downloadUpdate() uses a private token nobody can reach, and
+  // cancelling the token is what settles the deduplicated download promise.
+  let activeDownloadToken: DownloadCancellation | null = null;
   return {
     onChecking: listener => { updater.on('checking-for-update', listener); },
     onUpdateAvailable: listener => {
@@ -350,7 +472,19 @@ export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
     },
     onError: listener => { updater.on('error', listener); },
     checkForUpdates: () => updater.checkForUpdates(),
-    downloadUpdate: () => updater.downloadUpdate(),
+    downloadUpdate: () => {
+      const token = createToken();
+      activeDownloadToken = token;
+      return updater
+        .downloadUpdate(token as Parameters<AppUpdater['downloadUpdate']>[0])
+        .finally(() => {
+          if (activeDownloadToken === token) activeDownloadToken = null;
+        });
+    },
+    cancelDownload: () => {
+      activeDownloadToken?.cancel();
+      activeDownloadToken = null;
+    },
     quitAndInstall: () => updater.quitAndInstall(),
   };
 }

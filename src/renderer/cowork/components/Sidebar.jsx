@@ -906,7 +906,7 @@ export default function Sidebar({
           }
 
           // One clickable pill; an in-flight download/install renders it disabled.
-          return (
+          const pill = (
             <button
               type="button"
               onClick={updateBanner.action ? () => onUpdateAction?.(updateBanner.action) : undefined}
@@ -916,6 +916,10 @@ export default function Sidebar({
               {dot}{label}{action}
             </button>
           );
+          // A `hint` says how the update lands without a click (ENG-2764).
+          return updateBanner.hint
+            ? <Tooltip content={updateBanner.hint}>{pill}</Tooltip>
+            : pill;
         })()}
 
         {/* The MindsHub workspace this session is scoped to, docked with the

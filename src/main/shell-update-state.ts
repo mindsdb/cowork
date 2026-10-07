@@ -12,6 +12,9 @@ export type ShellUpdatePhase =
 export type ShellUpdateChannel = 'prod' | 'stable' | 'preview';
 export type ShellUpdateMode = 'auto' | 'manual';
 export type ShellUpdateTrigger = 'boot' | 'periodic' | 'manual' | 'retry';
+/** Who asked for the install: a Restart click, or the launch-time install of
+ *  a stranded download (ENG-2764). Telemetry tells the two apart by it. */
+export type ShellInstallSource = 'user' | 'boot';
 
 export interface ShellUpdateProgress {
   transferred: number;
@@ -41,7 +44,14 @@ export interface ShellUpdateSnapshot {
   refreshTrigger?: ShellUpdateTrigger;
   /** Whether the previous download was applied. Never cleared: the boot check
    *  replaces `complete`/`failed` before a renderer may be listening. */
-  lastInstall?: { applied: boolean; version: string; expected: string };
+  lastInstall?: { applied: boolean; version: string; expected: string; source?: ShellInstallSource };
+  /** Set at INSTALL_REQUESTED; cleared by the next check. */
+  installSource?: ShellInstallSource;
+  /** True once this process has transferred bytes for the current target.
+   *  electron-updater replays a cached download without emitting progress, so
+   *  unset at ready-to-install means an earlier launch downloaded it (ENG-2764).
+   *  Cleared by a new check. */
+  bytesTransferred?: boolean;
 }
 
 export type ShellUpdateEvent =
@@ -53,7 +63,7 @@ export type ShellUpdateEvent =
   | { type: 'DOWNLOAD_REQUESTED' }
   | { type: 'DOWNLOAD_PROGRESS'; progress: ShellUpdateProgress }
   | { type: 'DOWNLOAD_COMPLETE'; targetVersion: string }
-  | { type: 'INSTALL_REQUESTED' }
+  | { type: 'INSTALL_REQUESTED'; source?: ShellInstallSource }
   | { type: 'RECONCILED'; currentVersion: string; installed: boolean }
   | { type: 'FAILED'; code: string; message?: string; recoverable: boolean }
   | { type: 'DISABLED'; reason: string };
@@ -63,12 +73,14 @@ function clearTransient(snapshot: ShellUpdateSnapshot): ShellUpdateSnapshot {
     trigger: _trigger,
     targetVersion: _targetVersion,
     progress: _progress,
+    bytesTransferred: _bytesTransferred,
     recoverable: _recoverable,
     errorCode: _errorCode,
     errorMessage: _errorMessage,
     disabledReason: _disabledReason,
     refreshing: _refreshing,
     refreshTrigger: _refreshTrigger,
+    installSource: _installSource,
     ...stable
   } = snapshot;
   return stable;
@@ -153,7 +165,7 @@ export function transitionShellUpdate(
 
     case 'DOWNLOAD_PROGRESS':
       if (snapshot.phase !== 'downloading') return snapshot;
-      return { ...snapshot, progress: event.progress };
+      return { ...snapshot, progress: event.progress, bytesTransferred: true };
 
     case 'DOWNLOAD_COMPLETE':
       if (snapshot.phase !== 'downloading') return snapshot;
@@ -172,6 +184,8 @@ export function transitionShellUpdate(
       // Only the caller knows which version is newer, so this event is trusted:
       // it is dispatched solely for a strictly newer build than the pending one.
       if (snapshot.phase !== 'ready-to-install') return snapshot;
+      // `bytesTransferred` carries over: a stale `true` only skips a boot
+      // install, while a stale `false` could relaunch on a fresh download.
       return {
         ...snapshot,
         phase: 'downloading',
@@ -184,7 +198,13 @@ export function transitionShellUpdate(
 
     case 'INSTALL_REQUESTED':
       if (snapshot.phase !== 'ready-to-install') return snapshot;
-      return { ...snapshot, phase: 'installing', refreshing: undefined, refreshTrigger: undefined };
+      return {
+        ...snapshot,
+        phase: 'installing',
+        installSource: event.source ?? 'user',
+        refreshing: undefined,
+        refreshTrigger: undefined,
+      };
 
     case 'RECONCILED':
       if (!event.installed) {

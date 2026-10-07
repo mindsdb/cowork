@@ -35,6 +35,18 @@ export const SHELL_AUTO_BANNER_PHASES = [
  *  then failed — must not outrank a valid OTA "Restart", so it does not own the
  *  top slot. It is still rendered at the BOTTOM of deriveUpdateBanner's ladder,
  *  so its Retry/Download affordance survives a failed retry check. */
+/** Shell failure codes that describe a check which produced no answer — the
+ *  updater stalled, and no update was found or lost. They exist so the next
+ *  scheduled check can run; there is nothing for the user to retry, so they
+ *  raise no banner. */
+export const CHECK_ONLY_FAILURE_CODES = ['check-stalled'] as const;
+
+function isSilentCheckFailure(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): boolean {
+  return shellAuto.phase === 'failed'
+    && !shellAuto.targetVersion
+    && (CHECK_ONLY_FAILURE_CODES as readonly string[]).includes(shellAuto.errorCode ?? '');
+}
+
 export function shellAutoOwnsBanner(
   shellAuto: NonNullable<UpdateBannerInput['shellAuto']>,
 ): boolean {
@@ -57,7 +69,11 @@ export interface UpdateBannerInput {
     /** The update this snapshot is heading to. Present once an update is found;
      *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
     targetVersion?: string;
+    /** Classified failure code; a check-only code suppresses the banner. */
+    errorCode?: string;
     progress?: { percent?: number | null } | null;
+    /** `auto` installs a downloaded update on quit; `manual` never does. */
+    mode?: string;
   } | null;
   /** Prod-only manual installer notice, already filtered for per-version
    *  dismissal by the caller (a dismissed notice must arrive here as null). */
@@ -82,6 +98,9 @@ export interface UpdateBanner {
   disabled: boolean;
   /** Only the manual installer notice can be dismissed (per-version). */
   dismissible: boolean;
+  /** Tooltip naming how the update lands if the pill is never clicked
+   *  (ENG-2764). Absent when clicking is the only way. */
+  hint?: string;
   version?: string;
   /** Manual notice only: the installer is a Debian package, so the copy names
    *  the install command instead of telling the user to open it. */
@@ -100,7 +119,14 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
     case 'installing':
       return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
     case 'ready-to-install':
-      return { kind: 'shell-auto', tone: 'ready', title: 'App update ready', actionLabel: 'Restart', action: 'shell-auto', disabled: false, dismissible: false, version };
+      // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
+      // is the only way to install.
+      return {
+        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version,
+        hint: shellAuto.mode === 'auto'
+          ? `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
+          : undefined,
+      };
     case 'failed':
       // Recoverable → retry via the auto-updater; terminal → manual installer
       // link. The single `shell-auto` handler routes both.
@@ -154,6 +180,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       disabled: false,
       dismissible: false,
       version: otaVersion,
+      hint: `Reloads the app to finish updating${otaVersion ? ` to ${otaVersion}` : ''}. It also applies on its own the next time you open the app.`,
     };
   }
   if (otaPhase === 'error') {
@@ -172,7 +199,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
   // Bottom of the ladder: a shell failure with no known target (a failed retry
   // check that cleared the target, or a check-only outage). It never outranks
   // OTA/manual above, but is shown here so Retry/Download survives.
-  if (shellAuto?.phase === 'failed') {
+  if (shellAuto?.phase === 'failed' && !isSilentCheckFailure(shellAuto)) {
     return shellAutoBanner(shellAuto);
   }
 

@@ -440,15 +440,25 @@ describe('trackShellUpdatePhase', () => {
   it('reports the relaunch verdict once, and not again as a failed phase', async () => {
     const fetchMock = mockFetch();
     const { trackShellUpdatePhase } = await importAnalytics();
-    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1' };
+    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1', source: 'boot' };
 
     trackShellUpdatePhase(snapshot({ phase: 'failed', errorCode: 'install-not-applied', recoverable: true, targetVersion: '2.260930.1', lastInstall }));
     trackShellUpdatePhase(snapshot({ phase: 'idle', lastInstall }));
 
     await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
     expect(sent(fetchMock)[0]).toMatchObject({
-      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied',
+      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied', install_source: 'boot',
     });
+  });
+
+  it('tells a boot install apart from a Restart click', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'installing', targetVersion: '2.260930.1', installSource: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({ phase: 'installing', install_source: 'boot' });
   });
 
   it('is a no-op off Electron', async () => {
