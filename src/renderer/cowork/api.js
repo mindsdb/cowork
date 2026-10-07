@@ -64,11 +64,12 @@ export async function authFetch(url, options = {}) {
 
 // Opt-in bound for a plain JSON request, so a dead server (a proxy holding
 // the socket open with nothing behind it) can't hang a caller forever. Only
-// callers on the "server may be dead" path opt in (Stop's cancelResponse,
-// the history reload after Stop/error) — everything else stays unbounded,
-// since some endpoints have their own longer server-side budget (e.g.
-// connector validation allows 15s). Streaming calls use authFetch directly
-// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+// callers on the "server may be dead" path opt in (Stop's cancelResponse and
+// cancelScratchpad, the history reload after Stop/error) — everything else
+// stays unbounded, since some endpoints have their own longer server-side
+// budget (e.g. connector validation allows 15s). Streaming calls use authFetch
+// directly and manage their own longer-lived idle timeout (see _streamResponse,
+// tailInFlight and streamDataVaultSubmission).
 export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
 function _timeoutSignal(existingSignal, timeoutMs) {
@@ -941,9 +942,11 @@ export async function revealProjectInFinder(projectPath) {
 export async function cancelScratchpad(name) {
   if (!name) return null;
   try {
+    // Stop awaits this before it drops the stopped turn's queue and live row.
     return await req('/scratchpad/cancel', {
       method: 'POST',
       body: JSON.stringify({ name }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
   } catch {
     // 404 = pad already gone, treat as success.
@@ -1946,11 +1949,24 @@ export async function discoverPostHogProjects({ personalApiKey, host, customHost
 // Field VALUES never round-trip through the response.
 export function streamDataVaultSubmission({
   formId, conversationId, formSpec, values, skipped, name, method,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  /*
+   * Same idle timer as _streamResponse. Without it a submission that never
+   * answers keeps its conversation's stream record forever, and every message
+   * sent to that conversation waits behind it.
+   */
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const res = await authFetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1985,6 +2001,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          bumpIdle();
 
           onEvent?.(msg);
 
@@ -2027,7 +2044,11 @@ export function streamDataVaultSubmission({
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // Our own idle abort surfaces as an AbortError too, so check it first.
+      if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
+      else if (err.name !== 'AbortError') onError?.(err.message);
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;

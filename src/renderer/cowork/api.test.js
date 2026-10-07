@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -959,6 +959,22 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+describe('cancelScratchpad', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('gives up instead of hanging forever on a connection that never settles', async () => {
+    // Stop awaits this before it drops the stopped turn's queue and live row,
+    // so a hung request left that conversation marked as stopping for good.
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(60_000, { ok: true }));
+
+    const resultPromise = cancelScratchpad('pad-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'gone', name: 'pad-a' });
   });
 });
 
