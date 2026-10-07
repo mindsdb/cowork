@@ -746,6 +746,32 @@ describe('interrupted stream recovery', () => {
     expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['fails', null],
+    ['returns only an earlier turn', { messages: [
+      { id: 'user-previous', role: 'user', content: 'previous question' },
+      { id: 'assistant-previous', role: 'assistant', content: 'old answer', _turnComplete: true },
+    ] }],
+  ])('keeps the failed turn deletable by its persisted reply id when the reload %s', async (_kind, reload) => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue(reload);
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+    });
+
+    const answer = (await screen.findByText('Partial answer kept')).closest('.answer-turn');
+    expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
   it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

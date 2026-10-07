@@ -1380,7 +1380,9 @@ function AppCore() {
       const msgs = markActivityDone(removeThinkingPlaceholder(t.messages.flatMap((m) => {
         if (m.role !== '_streaming') return [m];
         if (!m.content && !m.steps?.length) return [];
-        return [{ ...m, role: 'assistant', streamStatus: 'error' }];
+        // A server-declared failure names the row it persisted; without that
+        // id neither row of this turn would offer Delete.
+        return [{ ...m, id: m.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);

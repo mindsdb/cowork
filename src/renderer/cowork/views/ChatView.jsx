@@ -2825,11 +2825,9 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  // Anchored on this assistant message's own id.
-                  // Hidden, not just disabled, when there's no id yet — a
-                  // just-completed turn always has one (the id rides the
-                  // completion frame), so this only ever applies to the
-                  // sliver of time before that lands.
+                  // Anchored on this assistant message's own id; hidden, not
+                  // disabled, without one. A partial kept after a transport
+                  // failure whose recovery also failed has none until reload.
                   onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
