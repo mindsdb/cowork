@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
-import { Button } from '../../components/ui';
+import { Alert, Button } from '../../components/ui';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
+import { MIN_SUPPORTED_SHELL, SUPPORTED_SHELL_WINDOW_DAYS } from '../../../../shared/shell-support';
 import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
@@ -62,8 +63,25 @@ export default function UpdatesSection({
   // shell notice later in the session starts fresh instead of showing stale
   // "downloading…" copy for a version that was never fetched.
   const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
+  // ENG-1047 — is the installed shell inside the supported desktop window? The
+  // verdict comes from the same rule as the launch notice (getShellSupport →
+  // assessShellSupport), so the two surfaces cannot disagree. Null until it
+  // resolves, and on web or whenever a version the rule needs cannot be read,
+  // in which case the row shows no verdict at all.
+  const [shellSupport, setShellSupport] = useState(null);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    // An OTA renderer can run on a host module that predates getShellSupport
+    // only in tests (host.ts ships inside this bundle), but the probe is cheap
+    // and matches how every other optional surface here fails closed.
+    Promise.resolve()
+      .then(() => host.getShellSupport())
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict ?? null); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, []);
   // Backend (server + agent) versions come from /health, which is only
   // reachable when the backend is up. Re-read whenever the section mounts and
   // the backend is online, so versions populate after a cold open or a
@@ -112,7 +130,8 @@ export default function UpdatesSection({
         >
           {(() => {
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
-            // App shell = installed Electron shell (changes only on reinstall).
+            // App shell = installed Electron shell (changes only when the shell
+            // relaunches into a new build — auto-update or reinstall).
             const shellVer = versionInfo.app || baked;
             // The running renderer's own baked version is authoritative for the
             // UI version — it's compiled into whichever bundle actually loaded
@@ -124,12 +143,14 @@ export default function UpdatesSection({
               : versionInfo.source === 'web' ? 'web' : 'bundled';
             // Unified "content" headline = release week of the newest of the
             // hot-updated components (UI + server + agent). App shell is
-            // excluded — it updates via reinstall and is shown on its own line.
+            // excluded — it only changes on a relaunch, so it is shown on its
+            // own line, with the supported-window verdict beside it (ENG-1047).
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
             const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
+            const shellTooOld = shellSupport?.status === 'too-old';
             const rows = [
-              ['App shell', shellVer || '—'],
+              ['App shell', shellTooOld ? `${shellVer} (too old)` : (shellVer || '—')],
               ...(buildLabel ? [['Build', buildLabel]] : []),
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
               ['Server', serverVersion || '—'],
@@ -155,9 +176,23 @@ export default function UpdatesSection({
                   )}
                 </div>
                 {isElectron && (
-                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px]">
-                    <span className="mr-1">App shell</span>{shellVer || '—'}
+                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px] flex items-baseline gap-2 flex-wrap">
+                    <span><span className="mr-1">App shell</span>{shellVer || '—'}</span>
+                    {shellTooOld && (
+                      <span
+                        title={`Supported: ${MIN_SUPPORTED_SHELL} or newer, and within ${SUPPORTED_SHELL_WINDOW_DAYS} days of the latest app (${shellSupport.latestShellVersion}).`}
+                        className="text-warning text-[11.5px] font-semibold font-[family-name:var(--font-sans)]"
+                      >
+                        ⚠ too old
+                      </span>
+                    )}
                   </span>
+                )}
+                {shellTooOld && (
+                  <Alert variant="warning" icon={Ico.warning ? Ico.warning(16) : undefined} data-testid="shell-too-old">
+                    This app is too old for this version of Cowork. Some features are hidden until the
+                    app updates to {shellSupport.latestShellVersion}. Use Software updates below.
+                  </Alert>
                 )}
                 <button
                   type="button"

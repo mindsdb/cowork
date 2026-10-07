@@ -201,8 +201,9 @@ describe('MindsHub organizations', () => {
 });
 
 describe('mindshubFinalize() across shell versions', () => {
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a newer renderer against an older shell is routine. An
+  // Renderer bundles update over the air while `src/main/**` only arrives when
+  // the shell relaunches into a new build, so a newer renderer against an older
+  // shell is routine (ENG-1047 bounds how much older, see getShellSupport). An
   // older shell's `mindshubFinalize` takes only `organizationId` and silently
   // drops a second argument, which is how an explicit pick would reach main
   // without the flag that protects it (ENG-2199).
@@ -975,5 +976,106 @@ describe('web settings access — loopback-gated /raw (ENG-817)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
     const host = await importHost();
     await expect(host.saveSettings('ANTON_X=1')).rejects.toThrow();
+  });
+});
+
+describe('getShellSupport() — the supported desktop window (ENG-1047)', () => {
+  // The UI bundle hot-updates while the shell waits for a relaunch, so this
+  // check runs in the renderer and reads the installed shell over the bridge
+  // and the newest published shell from the live manifest. It must show
+  // nothing on web, on stable/preview, and whenever a version it needs cannot
+  // be read — only a prod shell below the window gets a verdict of `too-old`.
+  const manifest = (shellVersion: unknown) =>
+    vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
+
+  it('judges a prod shell below the floor as too old', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({
+      status: 'too-old', reason: 'below-floor', shellVersion: '2.26.9.1.3', latestShellVersion: '2.26.10.4.1',
+    });
+  });
+
+  it('judges the floor shell and the newest shell as supported, whatever the UI version', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      // A legacy shell: no buildKind on the bridge reply.
+      getUIVersion: async () => ({ app: '2.26.9.21.1', ui: '2.26.11.20.1', source: 'ota' }),
+    };
+    let host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'supported' });
+
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.10.4.1', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'supported', daysBehind: 0 });
+  });
+
+  it('never judges a stable or preview shell', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    for (const buildKind of ['stable', 'preview']) {
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUIVersion: async () => ({ app: '2.26.8.1.1-597-g0f28d663', ui: null, source: 'bundled', buildKind }),
+      };
+      const host = await importHost();
+      await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'non-prod' });
+    }
+    // A stable shell too old to report its build kind still carries the
+    // git-describe distance that a shipped prod shell never has.
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.8.1.1-597-g0f28d663', ui: null, source: 'bundled' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'untagged-shell' });
+  });
+
+  it('shows nothing when the installed version does not parse', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      // The package.json fallback a never-stamped build reports (ENG-2988).
+      getUIVersion: async () => ({ app: '2.0.7', ui: null, source: 'bundled' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'unparseable-shell' });
+  });
+
+  it('shows nothing when the manifest cannot be read or has no shellVersion', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    let host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+
+    vi.stubGlobal('fetch', manifest(undefined));
+    host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+  });
+
+  it('is null on web, where there is no shell', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+  });
+
+  it('fetches the manifest once per renderer for both the reinstall notice and the window check', async () => {
+    const fetchMock = manifest('2.26.10.4.1');
+    vi.stubGlobal('fetch', fetchMock);
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'too-old' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is on the curated `host` object, which App.tsx and Settings call through', async () => {
+    const mod = await importHost();
+    expect(typeof mod.host.getShellSupport).toBe('function');
   });
 });

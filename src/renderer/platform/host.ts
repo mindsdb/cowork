@@ -17,6 +17,7 @@ import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
+import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
@@ -363,7 +364,8 @@ export async function getUIVersion(): Promise<string> {
 }
 
 export interface VersionInfo {
-  /** Installed Electron shell (App) version — changes only on reinstall. */
+  /** Installed Electron shell (App) version — changes only when the shell
+   *  relaunches into a new build (auto-update or reinstall), never over OTA. */
   app: string;
   /** OTA-activated UI bundle version, or null when running the bundled UI. */
   ui: string | null;
@@ -677,27 +679,79 @@ export async function getShellUpdate(): Promise<ShellUpdate | null> {
   return null;
 }
 
-// Renderer-side shell-update check for old shells (ENG-1103). Fetches the
-// release manifest directly (the CSP in index.html allows the manifest host)
-// and reports a reinstall only when the published shell is strictly newer by
-// CalVer than the installed app version — failing closed on any fetch error,
-// missing/absent shellVersion, or a non-CalVer version (e.g. a dev/SemVer
-// build). No installer URL is returned: computing the exact per-platform link
-// needs the build kind, which an old shell doesn't expose, so the Download
-// action falls back to the downloads site.
+// The newest published prod shell, read straight from the release manifest
+// (the CSP in index.html allows the manifest host). Shared by the ENG-1103
+// reinstall notice and the ENG-1047 supported-window check, so one launch
+// fetches the manifest once: a successful read is cached for the renderer's
+// lifetime, a failed one is not. Fails closed to null on any fetch error or a
+// manifest without a usable `shellVersion`.
+let publishedShellVersion: Promise<string | null> | null = null;
+
+function fetchPublishedShellVersion(): Promise<string | null> {
+  if (publishedShellVersion) return publishedShellVersion;
+  const attempt = (async (): Promise<string | null> => {
+    try {
+      const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const latest = data?.shellVersion ?? data?.shell_version
+        ?? (data?.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
+      return typeof latest === 'string' && latest ? latest : null;
+    } catch {
+      return null;
+    }
+  })();
+  publishedShellVersion = attempt.then((v) => {
+    if (v === null) publishedShellVersion = null;
+    return v;
+  });
+  return publishedShellVersion;
+}
+
+// Renderer-side shell-update check for old shells (ENG-1103). Reports a
+// reinstall only when the published shell is strictly newer by CalVer than the
+// installed app version — failing closed on any fetch error, missing/absent
+// shellVersion, or a non-CalVer version (e.g. a dev/SemVer build). No installer
+// URL is returned: computing the exact per-platform link needs the build kind,
+// which an old shell doesn't expose, so the Download action falls back to the
+// downloads site.
 async function shellUpdateFromManifest(): Promise<ShellUpdate | null> {
   try {
-    const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const latest = data?.shellVersion ?? data?.shell_version
-      ?? (data?.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
-    if (typeof latest !== 'string' || !latest) return null;
+    const latest = await fetchPublishedShellVersion();
+    if (!latest) return null;
     const { app: installed } = await getVersionInfo();
     const l = parseCalVer(latest);
     const i = parseCalVer(installed);
     if (!l || !i || compareCalVer(l, i) <= 0) return null;
     return { version: latest, currentVersion: installed };
+  } catch {
+    return null;
+  }
+}
+
+// Is the installed shell inside the supported desktop window (ENG-1047)?
+//
+// Runs in the UI bundle on purpose: it is the only code that reaches shells
+// already installed, which keep only the manifest fields they know and never
+// learn a new floor any other way. Reads the installed shell version over the
+// bridge and the newest published shell from the live manifest, then applies
+// the pure rule in src/shared/shell-support.ts. Null — show nothing — on web,
+// when a version it needs cannot be read, or on any error. Stable and preview
+// shells never load OTA bundles, so a `not-applicable` verdict for them is
+// belt and braces (see assessShellSupport).
+export async function getShellSupport(): Promise<ShellSupportVerdict | null> {
+  if (!isElectron) return null;
+  try {
+    const info = await getVersionInfo();
+    if (info.source === 'web') return null;
+    const latest = await fetchPublishedShellVersion();
+    if (!latest) return null;
+    return assessShellSupport({
+      shellVersion: info.app,
+      latestShellVersion: latest,
+      source: info.source,
+      buildKind: info.buildKind,
+    });
   } catch {
     return null;
   }
@@ -1273,9 +1327,10 @@ export async function mindshubFinalize(
 /**
  * Whether this shell can be told that a person chose the organization.
  *
- * Renderer bundles update over the air while `src/main/**` only arrives in a
- * new installer, so a newer renderer runs against an older main process as a
- * matter of course. That shell drops the `chosenByUser` argument, and its
+ * Renderer bundles update over the air while `src/main/**` only arrives when
+ * the shell relaunches into a new build, so a newer renderer runs against an
+ * older main process as a matter of course (the supported window for that gap
+ * is in docs/update-behavior.md). That shell drops the `chosenByUser` argument, and its
  * entitlement fallback then overrides the pick — the exact defect ENG-2199
  * fixes. Asking the question beats making a promise the shell cannot keep, so
  * the onboarding picker is not offered when this is false.
@@ -1623,6 +1678,7 @@ export const host = {
   applyUpdate,
   checkForUpdates,
   getShellUpdate,
+  getShellSupport,
   getShellAutoUpdate,
   onShellAutoUpdate,
   checkShellAutoUpdate,

@@ -63,8 +63,11 @@ visible refresh of the window.
 ## Shell (installer) update notice (ENG-849)
 
 The Electron **shell** (`src/main`, preload, the runtime, native deps) is *not*
-covered by OTA — it updates only when the user downloads and reinstalls a new
-installer. So the app can't apply a shell update; it can only *notice* one:
+covered by OTA — it changes only when the app relaunches into a new build,
+either through the background auto-update below (ENG-850) or a hand-installed
+installer. The notice in this section is the fallback for shells that cannot
+update themselves (auto-update disabled or terminally failed, Linux, and shells
+from before 2.26.8.24.1). It can only *notice* an update, never apply one:
 
 - The boot/periodic poll compares the installed shell CalVer against
   `shellVersion` in `latest.json`. If a newer shell exists it pushes a
@@ -194,6 +197,67 @@ A stranded update and a failed install look the same afterwards, so the attempt
 is recorded in `shell-update-target.json` before it is made. The marker persists
 until the target installs or a newer target replaces it, and the install is
 skipped if the marker cannot be written.
+
+## Supported desktop window (ENG-1047)
+
+The three parts run on three clocks, and the shell's is the slowest: after each
+release the boot check applies the new UI and sidecar at once, while the new
+shell only starts downloading and installs on the next quit. So on an existing
+install every new UI first runs on the previous shell, and an app that sat
+unlaunched for weeks runs a brand-new UI on a weeks-old shell until its user
+restarts. The UI copes by probing bridge methods and falling back silently,
+which is how a 5-week-old shell came to hide Code mode and the onboarding
+organization picker on 6 October 2026 without a word. This section names how
+far back that gap may reach.
+
+**The window.** A prod shell is supported when both hold:
+
+- it is **`2.26.9.21.1` or newer** — the hard floor. That shell introduced
+  per-account data roots (ENG-548) and the post-update auth probe (ENG-2852);
+  older shells show one account's data to whoever signs in, and it already
+  carries every bridge member today's UI reads;
+- it is **at most 14 days older than the newest published prod shell**, the
+  `shellVersion` in `latest.json`. Measured against the shell, never the UI:
+  UI-only publishes ship without a new shell, so a rule measured against the UI
+  would call the newest shell too old after a pause in shell releases. Prod
+  shells shipped 11 times in the 33 days to 4 October 2026, never more than 6
+  days apart, so 14 days spans at least two releases.
+
+The newest published prod shell is always inside the window. Web, stable and
+preview builds are never judged: web has no shell, and stable/preview always run
+their bundled UI, so their shell and UI cannot drift apart.
+
+**Where it lives.** Both values are constants in
+[src/shared/shell-support.ts](../src/shared/shell-support.ts)
+(`MIN_SUPPORTED_SHELL`, `SUPPORTED_SHELL_WINDOW_DAYS`), applied by the pure
+`assessShellSupport()`. They are the ENG-1047 proposal, pending the product
+decision recorded on that ticket. **Who moves them:** the engineer shipping a
+UI or cowork-server change that an older shell cannot run raises the floor in
+the same PR, with this section and cowork-server's `README.md` updated to match.
+The window should move only when a shell below it would break, not on a
+schedule.
+
+**No server ceiling.** Shells keep taking every new cowork-server release, as
+they do today. cowork-server keeps its desktop-facing contract working for
+every shell in the window (`tests/test_desktop_contract.py` there is the
+guard), and server-side compatibility fixes keep reaching shells below it.
+
+**What a user below the window sees.** The check runs in the UI bundle, because
+that is the only code that reaches shells already installed. On the first
+screen after launch — onboarding or the chat app — a warning names the installed
+shell version and offers one action: **Restart to update** when the auto-updater
+has the new shell downloaded, **Download update** when it has found one, and
+**Download the latest app** (opens `https://mindshub.ai/download`) on shells that
+cannot update themselves. Dismissing it lasts for that launch only. Settings →
+Updates marks the App shell row "⚠ too old" and says so in a warning under the
+version block. When the UI cannot read or parse a version the rule needs — the
+installed shell version, or the manifest's `shellVersion` — it shows nothing and
+the app works as before.
+
+Not covered here, by design: a shell too old to load OTA bundles at all (before
+2.26.7.20.1) never runs this code, so only cowork-server reaches it; a
+minimum-shell field in the manifest that the shell itself enforces would reach
+only shells built after it ships and is a follow-up once the window has settled.
 
 ## Build kinds
 
@@ -333,6 +397,7 @@ cannot contradict a pending shell update.
 | **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches before the app is shown. A failed attempt falls back to the banner. |
 | **Shell only** (auto-update eligible) | Never named on the loading screen. The pill/card walk "available → downloading (%) → ready-to-install". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
+| **Shell below the supported window** (`prod`, see above) | On the first screen after launch, a warning names the installed shell and offers one action — Restart / Download through the auto-updater, or the download page on shells that cannot update themselves. Dismissible per launch; Settings → Updates marks the App shell "⚠ too old". |
 | **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
 
 Notes:
@@ -349,7 +414,8 @@ Notes:
   into one unified CalVer and flags "⚠ out of sync" when they drift more than
   `SKEW_WARN_DAYS` apart — so a server-only update that lands before its matching
   UI can briefly show that warning until the next UI bundle catches up. The app
-  shell is shown on its own line (it changes only on reinstall/relaunch).
+  shell is shown on its own line (it changes only on a relaunch), with the
+  supported-window verdict beside it.
 - A **failed** UI/server apply keeps the banner as a "Try again" retry instead
   of silently vanishing until the next poll.
 
