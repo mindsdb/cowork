@@ -8,7 +8,8 @@ import { fetchBrowseStatus, provisionBrowser } from '../../api';
 // browser: set it up once, then turn it on so the agent can use it. The
 // toggle saves with the rest of the form; setup is immediate.
 export function browserStatusLine(status, loadError) {
-  if (loadError) return 'Could not reach MindsHub to check your browser.';
+  // Show MindsHub's own reason: "couldn't reach" alone is undiagnosable.
+  if (loadError) return `Couldn't check your browser: ${String(loadError).replace(/\.$/, '')}.`;
   if (!status) return 'Checking your browser…';
   if (!status.provisioned) return 'Not set up yet.';
   if (status.status === 'running') return 'Ready.';

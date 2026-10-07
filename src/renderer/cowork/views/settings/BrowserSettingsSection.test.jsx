@@ -16,7 +16,7 @@ describe('browserStatusLine', () => {
     expect(browserStatusLine({ provisioned: true, status: 'running' }, '')).toBe('Ready.');
     expect(browserStatusLine({ provisioned: true, status: 'booting' }, '')).toMatch(/Starting up/);
     expect(browserStatusLine({ provisioned: true, status: 'stopped' }, '')).toMatch(/Asleep/);
-    expect(browserStatusLine(null, 'boom')).toMatch(/Could not reach MindsHub/);
+    expect(browserStatusLine(null, 'MindsHub refused this request.')).toBe("Couldn't check your browser: MindsHub refused this request.");
   });
 });
 
