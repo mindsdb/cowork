@@ -517,6 +517,16 @@ describe('deleting a turn shows it as in flight', () => {
       expect(screen.queryByText('msg: user: second question')).toBeNull();
       expect(screen.queryByText('notice after: u1')).toBeNull();
       expect(screen.queryByText('notice after: u2')).toBeNull();
+
+      // Settled, so once there are turns again a delete is not spent on a refresh.
+      spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: { id: task.id, messages: exchange } });
+      spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange });
+      await openTask(user, otherTask);
+      await openTask(user, task);
+      alertSpy.mockClear();
+      await user.click(await screen.findByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
     });
 
     it('settles a late commit when the conversation is reopened', async () => {
