@@ -4524,9 +4524,8 @@ function AppCore() {
       // Older page: prepend directly, no id-based merge needed — the
       // cursor guarantees no overlap with what's already loaded, unlike
       // mergeMessagePage's job of reconciling a re-fetched TAIL.
-      // That holds only for the history the page was requested against. A
-      // delete resync can replace it while the fetch is out, and the page
-      // then duplicates rows and rewinds the cursor, so it is dropped.
+      // Only for the history it was requested against: a delete resync that
+      // replaced it meanwhile would get duplicated rows and a rewound cursor.
       setTasks((prev) => prev.map((t) => {
         if (t.id !== taskId) return t;
         const oldestId = (t.messages || []).find((m) => m?.id != null)?.id ?? null;
@@ -4628,9 +4627,8 @@ function AppCore() {
   const performDeleteTurn = async (taskId, clickedId) => {
     if (!taskId || !clickedId) return;
     const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
-    // The click may have been on a user row whose reply finished while the
-    // dialog was open. `messageId` is the turn as this client shows it, so it
-    // drives the dimming and the by-id cleanup.
+    // The clicked user row may have been answered while the dialog was open.
+    // `messageId` is the turn as this client shows it: dimming and cleanup use it.
     const localMessages = tasksRef.current.find((t) => t.id === taskId)?.messages || [];
     const messageId = resolveTurnAnchor(localMessages, clickedId);
     // Raised before the stop-stream branch, not after it: cancelling a live
@@ -4665,7 +4663,7 @@ function AppCore() {
             serverAnchorId = resolveTurnAnchor(res.task.messages, messageId);
           }
         } catch (e) {
-          // eslint-disable-next-line no-console
+          // eslint-disable-next-line no-console -- the delete goes ahead with the local anchor
           console.error('[performDeleteTurn] anchor re-read failed', e);
         }
       }

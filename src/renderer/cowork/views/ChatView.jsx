@@ -1992,9 +1992,8 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.messages.length, isStreaming]);
 
-  // Content can grow without the message count changing (an image loading, a
-  // block expanding). The prepend delta is measured from this snapshot, so it
-  // follows that growth; it never scrolls.
+  // Content can grow while the message count stays put, and the prepend delta
+  // is measured from this snapshot, so it tracks that growth. It never scrolls.
   useEffect(() => {
     const col = scrollRef.current?.querySelector('.chat-transcript-col');
     if (!col) return undefined;
