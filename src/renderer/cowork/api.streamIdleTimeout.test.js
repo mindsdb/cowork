@@ -14,7 +14,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { streamNewSession, streamDataVaultSubmission } from './api';
+import { streamNewSession, streamMessage, streamDataVaultSubmission } from './api';
 
 // The main stream had no idle timeout — only the reconnect tail did — so a
 // dead proxy connection left the turn hung with Stop still live. Mirrors
@@ -210,6 +210,59 @@ describe('streamNewSession idle timeout', () => {
     await delay(30);
     expect(ctrl.signal.aborted).toBe(false);
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('ends an idle reader locally even after it received its own response.created', async () => {
+    /* The old turn can finish behind a stalled reader and another tester can
+       start its successor. A conversation-wide Stop would cancel that newer
+       turn, despite the reader remembering its own old message id. */
+    const enc = new TextEncoder();
+    const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"user-1"}\n\n';
+    const cancels = [];
+    let createdFirst = false;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancels.push(JSON.parse(options.body));
+        return { ok: true, status: 200, json: async () => ({ cancelled: true }) };
+      }
+      const { signal } = options;
+      let sentCreated = !createdFirst;
+      const silent = silentBody(() => signal).getReader();
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (sentCreated) return silent.read();
+              sentCreated = true;
+              return Promise.resolve({ done: false, value: enc.encode(CREATED) });
+            },
+          }),
+        },
+      };
+    }));
+    const stallOf = () => new Promise((resolve) => {
+      streamMessage('conv-1', 'hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ message, event }),
+        onDone: () => resolve({ event: { code: 'done' } }),
+      });
+    });
+
+    // No response.created: a keepalive-only stream, holding no turn of its own.
+    expect((await stallOf()).event.code).toBe('stalled');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancels).toEqual([]);
+
+    // Its own response.created is not proof it still owns the current turn.
+    createdFirst = true;
+    const result = await stallOf();
+    expect(result.event).toEqual({ code: 'stalled', user_message_id: 'user-1' });
+    expect(result.message).toContain('may still be running');
+    expect(result.message).not.toContain('was ended');
+    await delay(20);
+    expect(cancels).toEqual([]);
   });
 
   it('does not fire a stall error on a caller-initiated abort', async () => {
@@ -412,8 +465,9 @@ describe('streamDataVaultSubmission idle timeout', () => {
   });
 });
 
-/* The stall's cancel says why it was sent, so the server saves the turn as a
- * stall instead of a Stop, and a reload shows the stall card. */
+/* An idle stall ends only this tab's reader and sends no cancel, tagged or
+ * not: the cancel names only a conversation, so it could stop a newer or
+ * another tester's turn. The tab still reports the stalled code for its card. */
 describe('streamNewSession idle-stall cancel', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -463,7 +517,7 @@ describe('streamNewSession idle-stall cancel', () => {
     expect(cancelBodies).toEqual([]);
   });
 
-  it('asks the server to cancel the turn with reason stalled', async () => {
+  it('reports the stalled code and sends no cancel, with or without a reason', async () => {
     let signal;
     const cancelBodies = [];
     vi.stubGlobal('fetch', vi.fn(async (url, options) => {
@@ -495,7 +549,8 @@ describe('streamNewSession idle-stall cancel', () => {
     });
 
     expect(result.event?.code).toBe('stalled');
-    await vi.waitFor(() => expect(cancelBodies).toHaveLength(1));
-    expect(cancelBodies[0]).toEqual({ conversation_id: 'conv-1', reason: 'stalled' });
+    expect(result.message).toContain('may still be running');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancelBodies).toEqual([]);
   });
 });

@@ -6,6 +6,7 @@
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
+import { readRefusalBody, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
@@ -30,6 +31,22 @@ const API_ORIGIN = host.getApiOrigin();
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
+/* Settles with `promise`, or rejects with the abort reason, as fetch does,
+   once `signal` aborts first. A request's own deadline or Stop then also
+   covers the wait for its access token, which a stalled Keycloak refresh can
+   hold. */
+function _untilAborted(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 // Thin wrapper around fetch() for server calls.
 //
 // Web: attach the Keycloak access token as `Authorization: Bearer` so the
@@ -43,7 +60,7 @@ const ROOT_BASE = `${API_ORIGIN}`;
 // Keycloak token, so nothing is attached here.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
-    const token = await host.getAccessToken();
+    const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
       options = {
         ...options,
@@ -62,14 +79,15 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
-// the socket open with nothing behind it) can't hang a caller forever. Only
-// callers on the "server may be dead" path opt in (Stop's cancelResponse and
-// cancelScratchpad, the history reload after Stop/error) — everything else
-// stays unbounded, since some endpoints have their own longer server-side
-// budget (e.g. connector validation allows 15s). Streaming calls use authFetch
-// directly and manage their own longer-lived idle timeout (see _streamResponse,
-// tailInFlight and streamDataVaultSubmission).
+/* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+   the socket open with nothing behind it) can't hang a caller forever. Only
+   callers on the "server may be dead" path opt in (Stop's cancelResponse and
+   cancelScratchpad, the history reload after Stop/error, the health check
+   every send waits on). Everything else stays unbounded, since some endpoints
+   have their own longer server-side budget (e.g. connector validation allows
+   15s). Streaming calls use authFetch directly and manage their own
+   longer-lived idle timeout (see _streamResponse, tailInFlight and
+   streamDataVaultSubmission). */
 export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
 function _timeoutSignal(existingSignal, timeoutMs) {
@@ -87,21 +105,9 @@ async function req(path, { timeoutMs, ...options } = {}) {
       signal,
       headers: { 'Content-Type': 'application/json', ...options.headers },
     });
-    if (!res.ok) {
-      let detail = '';
-      try {
-        const data = await res.json();
-        const raw = data?.detail;
-        detail = Array.isArray(raw)
-          ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-          : (raw || data?.message || '');
-      } catch {
-        detail = await res.text().catch(() => '');
-      }
-      const err = new Error(detail || `API ${path} returned ${res.status}`);
-      err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
-      throw err;
-    }
+    /* responseError carries err.status, so callers can branch on the HTTP
+       code (e.g. 404 fallbacks). */
+    if (!res.ok) throw await responseError(res, `API ${path} returned ${res.status}`);
     if (res.status === 204) return { ok: true };
     return await res.json();
   } finally {
@@ -166,15 +172,66 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
   return promise;
 }
 
+/**
+ * A refused request, with what its body and headers said about it.
+ * @typedef {Error & {
+ *   status: number,
+ *   code: string|null,
+ *   retry_after: number|null,
+ *   retry_at: string|null,
+ * }} RefusalError
+ */
+
+/**
+ * What a stream's onError gets beside its message. A response.failed frame
+ * arrives whole, so any other field the server sends rides along too.
+ * @typedef {object} StreamFailure
+ * @property {string} [code] Why the turn ended: a wire code such as
+ *   server_busy, or api.js's own stalled, interrupted, stream_error or
+ *   reconnect_error.
+ * @property {string} [type] `response.failed` when the server ended the turn.
+ * @property {string} [user_message_id] The question's id, from this stream's
+ *   response.created.
+ * @property {number} [http_status] The status of a question refused before
+ *   the stream. Present only on such a refusal.
+ * @property {number|null} [retry_after] Seconds the server asked to wait.
+ * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
+ *   ISO 8601 instant.
+ * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [request_id] The server's id for the failed request.
+ * @property {boolean} [reconnectable] The credential is MindsHub's, so
+ *   signing in again fixes it.
+ * @property {string} [provider_label] The model provider's display name.
+ * @property {string} [model] The model the failed turn asked for.
+ */
+
+/**
+ * Builds the Error a refused request throws. The message is the body's
+ * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * let a caller tell a busy server from a turn already running, and wait as
+ * long as the server asked. The body is read once, as text, and parsed from
+ * there: reading it as JSON first would consume it, and a body that isn't JSON
+ * would then have no text left to show.
+ *
+ * @param {Response} res
+ * @param {string} fallback
+ * @returns {Promise<RefusalError>}
+ */
 async function responseError(res, fallback) {
-  let detail = '';
+  let text = '';
   try {
-    const data = await res.json();
-    detail = data?.detail || data?.message || '';
+    text = await res.text();
   } catch {
-    detail = await res.text().catch(() => '');
+    /* An unreadable body leaves the fallback. */
   }
-  return new Error(detail || fallback);
+  const { message, code } = readRefusalBody(text);
+  const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
+  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  err.status = res.status;
+  err.code = code;
+  err.retry_after = retry_after;
+  err.retry_at = retry_at;
+  return err;
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
@@ -186,7 +243,10 @@ async function responseError(res, fallback) {
 // `setAntonInstallId` self-gates to desktop.
 export async function fetchHealth() {
   try {
-    const health = await rootReq('/api/v1/health');
+    /* Bounded, because every send waits on this check first: a server that
+       holds the request open would otherwise leave Send busy with no message.
+       A timeout reads as offline, the same answer as any other failure. */
+    const health = await rootReq('/api/v1/health', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
     // Isolated: analytics must never decide whether the server looks healthy.
     // This sits inside fetchHealth's try, so an exception here would fall to the
     // catch below and report `status: 'offline'` — making an analytics failure
@@ -526,6 +586,7 @@ export function allocateConversationId() {
 // a dead connection open) aborts rather than hangs forever. Shared with
 // tailInFlight; timed against producer frames, not raw keepalive bytes.
 const STREAM_IDLE_TIMEOUT_MS = 300_000;
+const STALLED_STREAM_MESSAGE = 'The connection stalled. The answer may still be running. Wait for it to finish before sending again.';
 
 // Server-side ask_user deadline, for a frame that doesn't state its own.
 const ASK_USER_DEFAULT_TIMEOUT_S = 300;
@@ -548,6 +609,7 @@ function idleWindowAfter(msg, idleTimeoutMs) {
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -602,7 +664,19 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw await responseError(res, `Response stream failed (${res.status})`);
+      if (!res.ok) {
+        /* Refused before the stream, so no turn started. Keep what the server
+           said: its status, its code, such as server_busy or
+           turn_in_progress, and when to try again. */
+        const refusal = await responseError(res, `Response stream failed (${res.status})`);
+        reportError(refusal.message, {
+          code: refusal.code || 'stream_error',
+          http_status: refusal.status,
+          retry_after: refusal.retry_after,
+          retry_at: refusal.retry_at,
+        });
+        return;
+      }
 
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -681,12 +755,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       // that's a drop mid-read, this is a clean close with no terminal.
       reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
-      // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
-      // as an AbortError too, so check idledOut first to tell it apart from
-      // a caller-initiated cancel (Stop button, new send, navigation).
+      /* Our own idle abort surfaces as an AbortError too, so check idledOut
+         first to tell it apart from a caller-initiated cancel (Stop button,
+         new send, navigation). */
       if (idledOut) {
-        cancelResponse(cid, { reason: 'stalled' });
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        /* End this reader locally. Even after our response.created, its turn
+           may have finished behind a stalled connection and a newer turn may
+           now own the conversation. The cancel API names only a conversation,
+           so it cannot safely cancel the turn this reader remembers. The
+           server's idle watchdog ends a producer that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         // Distinct code from tailInFlight's reconnect_error: this is a dropped
         // connection on the initial send, not a reconnect attempt.
@@ -746,6 +824,7 @@ export function tailInFlight(conversationId, {
 } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -849,13 +928,11 @@ export function tailInFlight(conversationId, {
       // caller-initiated abort (a new send or navigation) it must release the
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
-        // Tell the server to actually drop the wedged turn. Aborting the tail
-        // only tears down our consumer; the producer keeps running and the next
-        // in-flight poll would re-select it and reopen a fresh tail, looping this
-        // message. cancelResponse is idempotent and swallows errors, so
-        // fire-and-forget is safe.
-        cancelResponse(conversationId, { reason: 'stalled' });
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        /* End only this tab's view of the turn. A tail watches whatever turn
+           is running in the conversation, which can be another tester's, and
+           a cancel would stop it for everyone. The server's idle watchdog
+           ends a turn that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         reportError(err.message, { code: 'reconnect_error' });
       }
@@ -972,9 +1049,10 @@ export async function cancelScratchpad(name) {
 //             cancel flag was NOT written and the turn may still be running (and
 //             still spending tokens). Callers must NOT report this as success.
 //
-// `reason` says why the turn is being cancelled. Only the idle-stall sites set
-// it ('stalled'), so the server saves the turn as a stall instead of a Stop.
-// Stop sends none, and an older server ignores the field.
+// `reason` says why the turn is being cancelled; the server saves a 'stalled'
+// cancel as a stall instead of a Stop, and an older server ignores the field.
+// No caller in this app sets it: Stop sends none, and an idle stall ends only
+// this tab's reader and sends no cancel at all.
 export async function cancelResponse(conversationId, { reason } = {}) {
   if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
@@ -1030,11 +1108,7 @@ export async function unpublishArtifact(path) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone' };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Unpublish failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Unpublish failed (${res.status})`);
   return res.json();
 }
 
@@ -1054,11 +1128,7 @@ export async function deleteArtifact(artifact) {
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
       )}`;
   const res = await authFetch(BASE + url, { method: 'DELETE' });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return { status: 'deleted' };
 }
 
@@ -1079,11 +1149,7 @@ export async function deleteProject(projectOrName) {
   });
   if (res.status === 404) return { status: 'gone', name };
   if (res.status === 204) return { status: 'deleted', name };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -1179,11 +1245,7 @@ export async function writeProjectFile(projectName, path, content) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || '' }),
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Write failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Write failed (${res.status})`);
   return res.json();
 }
 
@@ -1197,11 +1259,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
 }
 
@@ -1211,11 +1269,7 @@ export async function deleteProjectFile(projectName, path) {
     method: 'DELETE',
   });
   if (res.status === 404) return { status: 'gone', path };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -2383,15 +2437,9 @@ export async function deleteConversationTurn(id, turnIndex) {
       },
     );
     if (res.status === 404) return { status: 'gone', id, turnIndex };
-    if (!res.ok) {
-      let detail = '';
-      try { detail = (await res.json())?.detail || ''; } catch {}
-      const err = new Error(detail || `Delete turn failed (${res.status})`);
-      // Carried like req() does: the caller has to tell a refusal apart from a
-      // gateway giving up on a delete the server may still be running.
-      err.status = res.status;
-      throw err;
-    }
+    /* responseError carries err.status: the caller has to tell a refusal apart
+       from a gateway giving up on a delete the server may still be running. */
+    if (!res.ok) throw await responseError(res, `Delete turn failed (${res.status})`);
     // Awaited inside the bound: a server that sends headers and then stalls the
     // body is the same hang the timeout exists for.
     return await res.json();
@@ -2424,11 +2472,7 @@ export async function deleteConversation(id) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone', id };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   if (res.status === 204) return { ok: true };
   return res.json();
 }

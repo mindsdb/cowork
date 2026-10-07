@@ -7,6 +7,8 @@ const spies = vi.hoisted(() => ({
   submitAnswer: vi.fn(async () => ({ accepted: true })),
   streamMessage: vi.fn(),
   useActualStreams: false,
+  useActualHealth: false,
+  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
   // Default matches the real fn under this file's denied-network env (an
@@ -28,7 +30,9 @@ vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+    fetchHealth: (...args) => spies.useActualHealth
+      ? actual.fetchHealth(...args)
+      : spies.fetchHealth(...args),
     fetchSessions: vi.fn(async () => [
       { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
       { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
@@ -142,17 +146,19 @@ vi.mock('./lib/analytics', () => ({
   trackTurnFailed: vi.fn(),
 }));
 
-import App from './App';
+import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
+  fetchSettings,
   createProject,
   uploadAttachments,
   renameConversation,
   moveTaskToProject,
   cancelScratchpad,
+  SHORT_REQUEST_TIMEOUT_MS,
   deleteConversationTurn,
   fetchInFlightList,
 } from './api';
@@ -161,6 +167,7 @@ import {
   clearForm as clearDataVaultForm,
 } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
+import { MINDSHUB_AIR_MODEL_ID } from './lib/modelCatalog';
 
 const ASK_EVENT = {
   type: 'response.ask_user',
@@ -238,6 +245,9 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.useActualStreams = false;
+  spies.useActualHealth = false;
+  spies.fetchHealth.mockReset();
+  spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: true }));
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   // mockReset, not mockClear: a test that fails before its Stop click would
@@ -728,6 +738,231 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+});
+
+describe('health preflight falls back to cached readiness', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each([false, true])('keeps cached config_ready=%s when the real health request times out', async (ready) => {
+    spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: ready }));
+    const composer = await openTask(userEvent.setup());
+    // Finish boot before replacing only the send preflight with the real API.
+    await act(async () => {});
+    spies.useActualHealth = true;
+    const healthFetch = vi.fn(async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(
+        new DOMException('The request timed out', 'AbortError'),
+      ), { once: true });
+    }));
+    vi.stubGlobal('fetch', healthFetch);
+    vi.useFakeTimers();
+
+    fireEvent.change(composer, { target: { value: 'use the cached readiness' } });
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(healthFetch).toHaveBeenCalledTimes(1);
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS); });
+    vi.useRealTimers();
+
+    if (ready) {
+      await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    } else {
+      expect(spies.streamMessage).not.toHaveBeenCalled();
+      expect(await screen.findByText('Connect a provider to start chatting')).toBeInTheDocument();
+    }
+  });
+});
+
+/* cowork-server refuses a question before the stream with a 503 when no
+   database connection frees in time, and with a 409 when the conversation
+   already has a running turn. Real api.js streams, so the refusal travels the
+   same path a tester's does: response, onError, handleStreamError, ChatView. */
+describe('a question the server refuses', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Answers the question POST with `status` and a JSON body. */
+  const refuseWith = (status, body, headers = {}) => vi.fn(async (url) => {
+    if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+  });
+
+  /** Opens conv-a with real streams and a history reload that never answers,
+   *  as it wouldn't from a server whose pool is exhausted. */
+  async function openWithStalledReload(user) {
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    spies.fetchSession.mockClear();
+    spies.fetchSession.mockImplementation(() => new Promise(() => {}));
+    return composer;
+  }
+
+  it('shows the busy card at once, gated on Retry-After, without reloading the conversation', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByText(BUSY)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  it("shows a second question's 409 sentence at once, with nothing to retry", async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    await send(user, composer, 'a second question');
+
+    const sentence = await screen.findByText(SECOND);
+    expect(sentence.closest('[role="alert"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  /* The 409 says another turn is running here. The conversation stays in the
+     in-flight set, so the poll that no longer lists it refetches the other
+     answer, and the refused question with its sentence stays under it. */
+  it('keeps the conversation in flight after a 409, so the poll that reports it finished refetches its history', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+    await send(user, composer, 'a second question');
+    await screen.findByText(SECOND);
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'the first question' },
+        { role: 'assistant', content: 'The other answer' },
+      ],
+    }));
+    fetchInFlightList.mockResolvedValueOnce([]);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalledWith('conv-a'));
+    const otherAnswer = await screen.findByText('The other answer');
+    const refused = screen.getByText('a second question');
+    expect(screen.getByText(SECOND)).toBeInTheDocument();
+    expect(otherAnswer.compareDocumentPosition(refused) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('carries every trailing refused question past a refetch, and nothing else', () => {
+    const refused = (text) => [
+      { role: 'user', content: text },
+      { role: 'error', content: SECOND, code: 'turn_in_progress' },
+    ];
+    const answered = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }];
+
+    expect(unsavedRefusedQuestions([...answered, ...refused('one'), ...refused('two')]))
+      .toEqual([...refused('one'), ...refused('two')]);
+    expect(unsavedRefusedQuestions([...refused('one'), ...answered])).toEqual([]);
+    expect(unsavedRefusedQuestions([
+      { role: 'user', content: 'q' },
+      { role: 'error', content: 'Something broke', code: 'anton_error' },
+    ])).toEqual([]);
+    expect(unsavedRefusedQuestions(undefined)).toEqual([]);
+  });
+
+  it('shows a busy failure inside the stream at once, as the same gated card, without reloading the conversation', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    const enc = new TextEncoder();
+    const frames = [
+      { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' },
+      {
+        type: 'response.failed',
+        code: 'server_busy',
+        error: BUSY,
+        retry_after: 5,
+        retry_at: new Date(Date.now() + 5_000).toISOString(),
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+      return { ok: true, status: 200, body: new ReadableStream({
+        start(controller) {
+          frames.forEach((frame) => controller.enqueue(enc.encode(`data: ${JSON.stringify(frame)}\n\n`)));
+          controller.close();
+        },
+      }) };
+    }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+});
+
+/* A failure card's resend goes through handleSendInTask with the failed
+   question's own attachments, so its files go to the server again and a file
+   staged in the composer since stays there for the next message. */
+describe("a resend from a failure card carries the failed question's files", () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+    fetchSettings.mockReset();
+    fetchSettings.mockResolvedValue({});
+  });
+
+  /** Sends `text` with `notes.txt`, uploaded as att-1, and fails the turn. */
+  async function failWithFile(user, composer, text, failure) {
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'notes.txt' }]);
+    await attach(user, 'notes.txt');
+    await send(user, composer, text);
+    const handle = await waitForStream();
+    expect(spies.streamMessage.mock.calls[0][2].attachmentIds).toEqual(['att-1']);
+    await act(async () => {
+      handle.opts.onError(failure.message, failure.event);
+      await Promise.resolve();
+    });
+  }
+
+  it("busy card: Try again resends att-1, and leaves a file staged since in the composer", async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: 'Cowork is busy. Try again in about 5 seconds.',
+      event: { code: 'server_busy', retry_at: new Date(Date.now() - 1_000).toISOString() },
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await attach(user, 'later.txt');
+
+    await user.click(retry);
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('chart these sales');
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
+    expect(uploadAttachments).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('later.txt')).toBeInTheDocument();
+  });
+
+  it('Switch to MindsHub Air resends att-1 on Air', async () => {
+    fetchSettings.mockResolvedValue({ recommendedModels: { 'minds-cloud': [MINDSHUB_AIR_MODEL_ID] } });
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: "You don't have enough credits for this model.",
+      event: { code: 'model_access_denied', http_status: 402 },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Switch to MindsHub Air' }));
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][2].model).toBe(MINDSHUB_AIR_MODEL_ID);
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
   });
 });
 
