@@ -724,6 +724,50 @@ describe('interrupted stream recovery', () => {
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
   });
+
+  it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'finished' });
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+
+    expect(await screen.findByText('finished answer')).toBeInTheDocument();
+    expect(screen.getAllByText('finished answer')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
+
+  it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { role: 'error', content: 'The provider rejected the request.' },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'partial' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error', user_message_id: 'user-current',
+      });
+    });
+
+    expect(await screen.findByText('The provider rejected the request.')).toBeInTheDocument();
+    expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
 });
 
 describe('turn failure telemetry', () => {

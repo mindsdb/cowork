@@ -1361,10 +1361,13 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (recovered) {
+        // The stream is over, so its live rows go before the merge, which
+        // otherwise keeps the `_streaming` stub and leaves "Stop" on screen.
+        const settled = t.messages.filter((m) => m.role !== '_streaming' && m.role !== 'activity');
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
-          messages: mergeMessagePage(t.messages, loaded.messages),
+          messages: mergeMessagePage(settled, loaded.messages),
           ...reconcilePaginationState(t, loaded),
           ...(Array.isArray(loaded.disabledConnections)
             ? { disabledConnections: loaded.disabledConnections }
