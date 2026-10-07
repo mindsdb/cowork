@@ -47,19 +47,20 @@ export function usageNoticeBuckets(messages, notices) {
   const rows = Array.isArray(messages) ? messages : [];
   const buckets = Array.from({ length: rows.length + 1 }, () => []);
   for (const n of Array.isArray(notices) ? notices : []) {
-    buckets[_anchorRow(rows, n?.anchorId)].push(n);
+    const row = _anchorRow(rows, n?.anchorId);
+    if (row != null) buckets[row].push(n);
   }
   return buckets;
 }
 
 // The row starting the turn after the notice's own anchor. An unstamped
-// notice, or one whose anchor row isn't in this array (not loaded, or
-// already removed), falls back to the end — right for a crossing that
-// just happened, and the safe default otherwise.
+// notice goes at the end, right for a crossing that just happened. A stamped
+// anchor existed when stamped, so one missing from this array is paginated
+// out or deleted: null, rendered nowhere until a page brings it back.
 function _anchorRow(rows, anchorId) {
   if (anchorId == null) return rows.length;
   const anchorIdx = rows.findIndex((m) => m?.id === anchorId);
-  if (anchorIdx === -1) return rows.length;
+  if (anchorIdx === -1) return null;
   for (let i = anchorIdx + 1; i < rows.length; i++) {
     if (isAnchorTurn(rows[i])) return i;
   }

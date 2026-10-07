@@ -84,8 +84,15 @@ describe('usageNoticeBuckets', () => {
     expect(rowOf(convo, { kind: 'free_low' })).toBe(convo.length);
   });
 
-  it('falls back to the end when the anchor row is not in this array (not loaded, or removed)', () => {
-    expect(rowOf(convo, notice('some-id-not-present'))).toBe(convo.length);
+  it('renders nowhere when its anchor row is not in this array (not loaded, or removed)', () => {
+    // At the end it would read as a warning about the turn just finished.
+    expect(rowOf(convo, notice('some-id-not-present'))).toBe(-1);
+  });
+
+  it('comes back in place once an older page brings its anchor row in', () => {
+    const newestPage = [user('u2', 'c'), assistant('a2', 'd')];
+    expect(rowOf(newestPage, notice('u1'))).toBe(-1);
+    expect(rowOf(convo, notice('u1'))).toBe(2);
   });
 
   it('keeps several crossings from one turn together, in order', () => {

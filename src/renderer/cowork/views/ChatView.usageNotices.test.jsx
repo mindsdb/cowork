@@ -115,4 +115,15 @@ describe('ChatView usage notices', () => {
     render(<ChatView task={task(undefined)} />);
     expect(screen.queryByText('Free monthly tokens used')).toBeNull();
   });
+
+  it('does not show an older turn\'s alert at the bottom when that turn is not loaded', () => {
+    // After a delete resync only the newest page is loaded; the alert belongs
+    // to a turn further back and must not read as one about the latest reply.
+    render(<ChatView task={task([
+      { kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u-older' },
+      { kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
+    ])} />);
+    expect(screen.queryByText('Free Air allowance used up')).toBeNull();
+    expect(screen.getByText('Free Air allowance running low')).toBeInTheDocument();
+  });
 });
