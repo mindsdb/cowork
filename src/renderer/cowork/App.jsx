@@ -4954,7 +4954,7 @@ function AppCore() {
       } else if (failure && refused) {
         alert(`Could not delete this exchange: ${failure?.message || failure}`);
       } else if (gone) {
-        alert('This exchange was already gone on the server, so the conversation has been refreshed.');
+        alert('The server did not delete this exchange as shown, so the conversation has been refreshed. Check it, then delete again if you still need to.');
       }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn

@@ -358,7 +358,42 @@ describe('deleting a turn (id-based, local truncation)', () => {
     // The user is told, rather than left with a list that silently disagrees
     // with the server.
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    expect(alertSpy.mock.calls[0][0]).toMatch(/already gone/i);
+    // A 404 is a refusal, not proof the exchange is gone: here it is still there.
+    expect(alertSpy.mock.calls[0][0]).toMatch(/did not delete this exchange/i);
+    expect(alertSpy.mock.calls[0][0]).not.toMatch(/already gone/i);
+  });
+
+  it('words a refused answered-question anchor the same neutral way', async () => {
+    // The question was answered on the server after the client last read it,
+    // so the server refuses it as an anchor with a 404 and the exchange stays.
+    const user = userEvent.setup();
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', id: 'u2', content: 'Unanswered here' },
+      ] }),
+    });
+    spies.deleteConversationTurn.mockResolvedValue({ status: 'gone', id: 'conv-a', messageId: 'u2' });
+
+    await openTask(user);
+    await screen.findByText('Unanswered here');
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', id: 'u2', content: 'Unanswered here' },
+        { role: 'assistant', id: 'a2', content: 'Answered elsewhere' },
+      ] }),
+    });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[1]);
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u2'));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/did not delete this exchange/i);
+    expect(await screen.findByText('Answered elsewhere')).toBeTruthy();
   });
 
   it('cuts at the anchor alone when the row before it is not that turn\'s question', async () => {
