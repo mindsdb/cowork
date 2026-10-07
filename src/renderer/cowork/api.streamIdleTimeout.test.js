@@ -286,3 +286,47 @@ describe('streamNewSession idle timeout', () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(45);
   });
 });
+
+/* The stall's cancel says why it was sent, so the server saves the turn as a
+ * stall instead of a Stop, and a reload shows the stall card. */
+describe('streamNewSession idle-stall cancel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks the server to cancel the turn with reason stalled', async () => {
+    let signal;
+    const cancelBodies = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.created', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.event?.code).toBe('stalled');
+    await vi.waitFor(() => expect(cancelBodies).toHaveLength(1));
+    expect(cancelBodies[0]).toEqual({ conversation_id: 'conv-1', reason: 'stalled' });
+  });
+});
