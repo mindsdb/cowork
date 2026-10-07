@@ -46,6 +46,9 @@ vi.mock('./views/ChatView', () => ({
       {(task?.messages || []).map((m, i) => (
         <div key={i}>{`msg: ${m.role}: ${m.content}`}</div>
       ))}
+      {(task?.usageNotices || []).map((n, i) => (
+        <div key={`n${i}`}>{`notice after: ${n.anchorId}`}</div>
+      ))}
       {(task?.messages || [])
         .filter((m) => m.role === 'assistant' && m.id)
         .map((m, idx) => (
@@ -408,6 +411,81 @@ describe('deleting a turn shows it as in flight', () => {
     // The list is the server's again, so deleting works normally from here.
     await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+  });
+
+  describe('a timed-out delete the server did commit', () => {
+    const timedOut = () => spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    const withNotices = () => spies.fetchSessions.mockResolvedValue([
+      { ...task, usageNotices: [{ kind: 'free_exhausted', anchorId: 'u1' }, { kind: 'topup_failed', anchorId: 'u2' }] },
+      { ...otherTask },
+      { ...localTask },
+    ]);
+    const firstTurnOnly = { status: 'ok', task: { id: task.id, messages: exchange.slice(0, 2) } };
+
+    it('drops the cut turn\'s notices and treats it as done when the resync shows the turn gone', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+
+      await confirmDelete(user, 1);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: second question')).toBeNull());
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
+      // Nothing is left unconfirmed, so the next delete goes straight to the dialog.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    });
+
+    it('drops the cut turn\'s notices on the later refresh that first shows the turn gone', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+
+      // The server commits after the immediate resync already read the turn.
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+
+      await waitFor(() => expect(screen.queryByText('msg: user: second question')).toBeNull());
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+    });
+
+    it('settles a late commit when the conversation is reopened', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      alertSpy.mockClear();
+
+      spies.fetchSessionResult.mockResolvedValue(firstTurnOnly);
+      spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(0, 2) });
+      await openTask(user, otherTask);
+      await openTask(user, task);
+
+      await waitFor(() => expect(screen.queryByText('notice after: u2')).toBeNull());
+      expect(screen.getByText('notice after: u1')).toBeInTheDocument();
+      // Settled by the reopen, so the next delete is not spent on a refresh.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
   });
 
   it('gates the next delete when the delete answered with a gateway error', async () => {
