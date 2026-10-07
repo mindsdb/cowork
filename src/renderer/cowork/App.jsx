@@ -4494,6 +4494,8 @@ function AppCore() {
     if (!current?.hasMoreMessages || !current?.messagesCursor) return;
     if (loadingOlderMessagesForRef.current.has(taskId)) return;
     if (auto && failedOlderCursorRef.current.get(taskId) === current.messagesCursor) return;
+    const requestedCursor = current.messagesCursor;
+    const requestedOldestId = (current.messages || []).find((m) => m?.id != null)?.id ?? null;
     loadingOlderMessagesForRef.current.add(taskId);
     setLoadingOlderMessagesFor((prev) => new Set(prev).add(taskId));
     try {
@@ -4521,14 +4523,20 @@ function AppCore() {
       // Older page: prepend directly, no id-based merge needed — the
       // cursor guarantees no overlap with what's already loaded, unlike
       // mergeMessagePage's job of reconciling a re-fetched TAIL.
-      setTasks((prev) => prev.map((t) => (t.id === taskId
-        ? {
-            ...t,
-            messages: [...hydrated, ...t.messages],
-            hasMoreMessages: page.hasMoreMessages,
-            messagesCursor: page.messagesCursor,
-          }
-        : t)));
+      // That holds only for the history the page was requested against. A
+      // delete resync can replace it while the fetch is out, and the page
+      // then duplicates rows and rewinds the cursor, so it is dropped.
+      setTasks((prev) => prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const oldestId = (t.messages || []).find((m) => m?.id != null)?.id ?? null;
+        if (t.messagesCursor !== requestedCursor || oldestId !== requestedOldestId) return t;
+        return {
+          ...t,
+          messages: [...hydrated, ...t.messages],
+          hasMoreMessages: page.hasMoreMessages,
+          messagesCursor: page.messagesCursor,
+        };
+      }));
     } finally {
       loadingOlderMessagesForRef.current.delete(taskId);
       setLoadingOlderMessagesFor((prev) => {

@@ -21,6 +21,7 @@ const spies = vi.hoisted(() => ({
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
+  fetchOlderMessages: vi.fn(),
   deleteConversationTurn: vi.fn(),
   streamMessage: vi.fn(),
 }));
@@ -33,6 +34,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessions: (...args) => spies.fetchSessions(...args),
   fetchSession: (...args) => spies.fetchSession(...args),
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
+  fetchOlderMessages: (...args) => spies.fetchOlderMessages(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchArtifacts: vi.fn(async () => []),
@@ -159,6 +161,7 @@ beforeEach(() => {
   ]);
   spies.fetchSession.mockReset().mockResolvedValue({ id: 'conv-a', messages: [], hasMoreMessages: false, messagesCursor: null });
   spies.fetchSessionResult.mockReset();
+  spies.fetchOlderMessages.mockReset();
   spies.deleteConversationTurn.mockReset().mockResolvedValue({});
   spies.streamMessage.mockClear();
 });
@@ -397,5 +400,66 @@ describe('deleting a turn (id-based, local truncation)', () => {
     // The rows the server kept are still here.
     expect(screen.getByText('Connect my database')).toBeTruthy();
     expect(screen.getByText('Here is the form')).toBeTruthy();
+  });
+});
+
+describe('an older page requested before a delete', () => {
+  it('is dropped when the delete resync has already replaced the history it was fetched for', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({
+        hasMoreMessages: true,
+        messagesCursor: 'cursor-2',
+        messages: [
+          { role: 'user', id: 'u2', content: 'Turn two question' },
+          { role: 'assistant', id: 'a2', content: 'Turn two answer' },
+          { role: 'user', id: 'u3', content: 'Turn three question' },
+          { role: 'assistant', id: 'a3', content: 'Turn three answer' },
+        ],
+      }),
+    });
+    let resolveOlder;
+    spies.fetchOlderMessages.mockReturnValue(new Promise((resolve) => { resolveOlder = resolve; }));
+
+    await openTask(user);
+    await screen.findByText('Turn three answer');
+    await user.click(screen.getByText('Load earlier messages'));
+    await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledWith('conv-a', 'cursor-2'));
+
+    // Deleting turn two removes everything from it on, so the newest page is
+    // now turn one, which is also the whole history.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({
+        hasMoreMessages: false,
+        messagesCursor: null,
+        messages: [
+          { role: 'user', id: 'u1', content: 'Turn one question' },
+          { role: 'assistant', id: 'a1', content: 'Turn one answer' },
+        ],
+      }),
+    });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a2'));
+    await waitFor(() => expect(screen.queryByText('Turn two question')).toBeNull());
+    await screen.findByText('Turn one answer');
+
+    await act(async () => {
+      resolveOlder({
+        messages: [
+          { role: 'user', id: 'u1', content: 'Turn one question' },
+          { role: 'assistant', id: 'a1', content: 'Turn one answer' },
+        ],
+        hasMoreMessages: true,
+        messagesCursor: 'cursor-1',
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText('Turn one question')).toHaveLength(1);
+    expect(screen.getAllByText('Turn one answer')).toHaveLength(1);
+    expect(screen.queryByText('Turn two question')).toBeNull();
+    expect(screen.queryByText('Load earlier messages')).toBeNull();
   });
 });
