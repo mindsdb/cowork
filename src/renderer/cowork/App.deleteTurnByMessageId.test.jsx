@@ -463,3 +463,78 @@ describe('an older page requested before a delete', () => {
     expect(screen.queryByText('Load earlier messages')).toBeNull();
   });
 });
+
+describe('deleting a turn that gets a reply while the confirm dialog is open', () => {
+  /** Sends a question, starts its stream, and opens delete on the orphan user row. */
+  async function openDeleteOnStreamingTurn(user) {
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask() });
+    const composer = await openTask(user);
+    await user.click(composer);
+    await user.keyboard('New question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-new' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'Working on it' });
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    return { stream, dialog: await screen.findByRole('dialog') };
+  }
+
+  /** Holds the DELETE open so the in-flight state can be observed. */
+  function holdDelete() {
+    let release;
+    spies.deleteConversationTurn.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    return () => act(async () => { release({}); await Promise.resolve(); });
+  }
+
+  const isDimmed = (text) => screen.getByText(text).closest('[aria-busy="true"]') != null;
+
+  it('sends the reply id when the stream finished before confirming, and keeps the turn dimmed', async () => {
+    const user = userEvent.setup();
+    const { stream, dialog } = await openDeleteOnStreamingTurn(user);
+    await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-new' });
+    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    const release = holdDelete();
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: [] }) });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a-new'));
+    expect(isDimmed('New question')).toBe(true);
+    await release();
+    await waitFor(() => expect(screen.queryByText('New question')).toBeNull());
+  });
+
+  it('sends the persisted partial reply id when confirming cancels the stream, and keeps the turn dimmed', async () => {
+    const user = userEvent.setup();
+    const { dialog } = await openDeleteOnStreamingTurn(user);
+    const release = holdDelete();
+    // First read is the anchor re-read after the cancel, second the resync.
+    spies.fetchSessionResult
+      .mockResolvedValueOnce({ status: 'ok', task: baseTask({ messages: [
+        { role: 'user', id: 'u-new', content: 'New question' },
+        { role: 'assistant', id: 'a-partial', content: 'Working on it' },
+      ] }) })
+      .mockResolvedValue({ status: 'ok', task: baseTask({ messages: [] }) });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a-partial'));
+    expect(isDimmed('New question')).toBe(true);
+    await release();
+    await waitFor(() => expect(screen.queryByText('New question')).toBeNull());
+  });
+
+  it('keeps the user id when the reply that arrived has no persisted id', async () => {
+    const user = userEvent.setup();
+    const { stream, dialog } = await openDeleteOnStreamingTurn(user);
+    // No assistant_message_id: the server persisted no reply row, so the user
+    // row is still an orphan as far as the server is concerned.
+    await emitOn(stream, { type: 'response.completed' });
+    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: [] }) });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u-new'));
+  });
+});

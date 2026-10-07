@@ -97,6 +97,7 @@ import {
 import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
 import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
+import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
@@ -4609,9 +4610,27 @@ function AppCore() {
     return { ...forgetTurnArtifacts(t, messageId), messages: msgs.slice(0, cutFrom) };
   };
 
-  const performDeleteTurn = async (taskId, messageId) => {
-    if (!taskId || !messageId) return;
+  // The turn a user-row anchor names, once that turn may have been answered:
+  // the server refuses an answered user message as an anchor, so its reply's
+  // id is sent instead. Same rule as ChatView's turnAnchorIdAt, which only
+  // differs in returning null for a reply with no id; here the user row stays.
+  const resolveTurnAnchor = (msgs, messageId) => {
+    const idx = msgs.findIndex((m) => m.id === messageId);
+    if (idx === -1 || msgs[idx].role !== 'user' || isOrphanUser(msgs, idx)) return messageId;
+    for (let k = idx + 1; k < msgs.length && msgs[k]?.role !== 'user'; k++) {
+      if (msgs[k]?.role === 'assistant' && msgs[k].id != null) return msgs[k].id;
+    }
+    return messageId;
+  };
+
+  const performDeleteTurn = async (taskId, clickedId) => {
+    if (!taskId || !clickedId) return;
     const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
+    // The click may have been on a user row whose reply finished while the
+    // dialog was open. `messageId` is the turn as this client shows it, so it
+    // drives the dimming and the by-id cleanup.
+    const localMessages = tasksRef.current.find((t) => t.id === taskId)?.messages || [];
+    const messageId = resolveTurnAnchor(localMessages, clickedId);
     // Raised before the stop-stream branch, not after it: cancelling a live
     // stream is itself two network calls, and the turn has to read as in
     // flight for that wait too. The local-only path never sets it.
@@ -4623,18 +4642,35 @@ function AppCore() {
       // deleted, stop the stream first so the SSE connection doesn't
       // keep producing events for a turn that no longer exists. The
       // silent flag skips the post-cancel session refetch.
+      let stoppedStream = false;
       if (activeStreamingTaskIdRef.current === taskId) {
         try { await handleStopStream({ silent: true }); } catch {}
+        stoppedStream = true;
       }
       if (isLocalOnly) {
         // No server-side history yet — drop the local pair only.
         setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
         return;
       }
+      // Cancelling persists the partial reply under an id this client never
+      // received, which makes the user row an answered one the server refuses.
+      // Assumes the cancel has landed by now; true when one replica served both.
+      let serverAnchorId = messageId;
+      if (stoppedStream && messageId === clickedId) {
+        try {
+          const res = await fetchSessionResult(taskId);
+          if (res?.status === 'ok' && Array.isArray(res.task?.messages)) {
+            serverAnchorId = resolveTurnAnchor(res.task.messages, messageId);
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('[performDeleteTurn] anchor re-read failed', e);
+        }
+      }
       let failure = null;
       let result = null;
       try {
-        result = await deleteConversationTurn(taskId, messageId);
+        result = await deleteConversationTurn(taskId, serverAnchorId);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[performDeleteTurn] server delete failed', e);
