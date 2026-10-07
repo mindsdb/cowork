@@ -6,7 +6,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
-import { mergeMessagePage, reconcilePaginationState } from './lib/mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
 import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -991,6 +991,7 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
+            const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === cid)?.messages);
             fetchSession(cid).then((fresh) => {
               if (!fresh || !Array.isArray(fresh.messages)) return;
               const reconciled = applySessionMessages(cid, fresh.messages);
@@ -1000,7 +1001,7 @@ function AppCore() {
                   ...t,
                   // Only the most recent page — merge against what the
                   // task already has instead of replacing wholesale.
-                  messages: mergeMessagePage(t.messages, reconciled),
+                  messages: mergeMessagePage(t.messages, reconciled, knownIds),
                   // Same array the merge just used. Inert today — applySessionMessages
                   // neither adds nor removes an id-bearing row, so both see the
                   // same oldest id — but the two decisions must agree on which
@@ -1423,6 +1424,7 @@ function AppCore() {
     }
 
     try {
+      const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === cidToCancel)?.messages);
       const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
         skipLocalSidecar: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
       });
@@ -1432,7 +1434,7 @@ function AppCore() {
             ? {
                 ...t,
                 status: 'idle',
-                messages: mergeMessagePage(t.messages, loaded.messages),
+                messages: mergeMessagePage(t.messages, loaded.messages, knownIds),
                 ...reconcilePaginationState(t, loaded),
                 ...(Array.isArray(loaded.disabledConnections)
                   ? { disabledConnections: loaded.disabledConnections }
@@ -1479,6 +1481,7 @@ function AppCore() {
       recoveryCountRef.current.set(id, recoveryNumber[id]);
       streamsAtStart[id] = streamCountRef.current.get(id) ?? 0;
     });
+    const knownIds = knownRowIds(tasksRef.current.find((t) => t.id === (cid ?? ids[0]))?.messages);
     let loaded = null;
     try {
       loaded = cid
@@ -1534,7 +1537,7 @@ function AppCore() {
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
-          messages: mergeMessagePage(settled, loaded.messages),
+          messages: mergeMessagePage(settled, loaded.messages, knownIds),
           ...reconcilePaginationState(t, loaded),
           ...(Array.isArray(loaded.disabledConnections)
             ? { disabledConnections: loaded.disabledConnections }
