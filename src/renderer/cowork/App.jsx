@@ -711,8 +711,18 @@ function AppCore() {
   // above cannot own teardown: Stop has to reach the controller belonging to
   // the conversation it stops, not whichever one claimed them last.
   const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
-  // Conversations a Stop is ending, from its cancel request until it drops their queue.
-  const stoppingRef = useRef(new Set());
+  /*
+   * Conversations a Stop is ending, from its cancel request until that Stop
+   * has finished. Each maps to a promise that settles true once that Stop has
+   * torn the turn down, or false when its cancel failed and the turn runs on.
+   */
+  const stoppingRef = useRef(new Map()); // cid -> Promise<boolean>
+  /*
+   * Conversations whose turn delete is in flight. The server deletes the chosen
+   * turn and every turn after it, so a message sent meanwhile waits for the
+   * delete to finish instead of starting a turn the delete may remove.
+   */
+  const deletingRef = useRef(new Set());
 
   // A second stream on the SAME conversation replaces the first, which has to
   // be aborted: left attached it keeps replaying into a turn nobody reads and
@@ -771,6 +781,24 @@ function AppCore() {
     const rec = liveStreamsRef.current.get(cid);
     if (rec) rec.pad = pad;
   }, []);
+
+  /*
+   * Free the shared task id only for a conversation that still holds it.
+   * Another conversation may have claimed the slot since, and wiping its claim
+   * lets reopening it re-attach a second stream that aborts the running one.
+   */
+  const releaseSlotClaim = useCallback((...ids) => {
+    const held = activeStreamingTaskIdRef.current;
+    if (held && ids.includes(held)) activeStreamingTaskIdRef.current = null;
+  }, []);
+
+  /*
+   * A conversation still has a turn here while its stream is registered, a Stop
+   * is ending it, or a delete is removing it.
+   */
+  const hasLiveTurnHere = useCallback((cid) => (
+    liveStreamsRef.current.has(cid) || stoppingRef.current.has(cid) || deletingRef.current.has(cid)
+  ), []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -1160,18 +1188,42 @@ function AppCore() {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-    // The conversation whose Stop was clicked. The shared refs name whichever
-    // stream claimed them last, which with concurrent streams is another one.
+    /*
+     * The conversation whose Stop was clicked. The shared refs name whichever
+     * stream claimed them last, which with concurrent streams is another one.
+     */
     const cidToCancel = opts?.taskId ?? null;
     if (!cidToCancel) return;
     /*
-     * Mark the conversation as stopping until its queue is dropped below, so no
-     * drain sends that queue meanwhile: the turn's cancelled frame can arrive
-     * before the cancel request answers, and its onDone drains. A second Stop
-     * for the same conversation while this one runs has nothing to add.
+     * One Stop per conversation at a time. A second click has nothing to add.
+     * A delete waits for the Stop in progress, and stops the turn itself only
+     * when that Stop's cancel failed and left the turn running.
      */
-    if (stoppingRef.current.has(cidToCancel)) return;
-    stoppingRef.current.add(cidToCancel);
+    const pending = stoppingRef.current.get(cidToCancel);
+    if (pending) {
+      if (!silent) return;
+      if (await pending) return;
+    }
+    /*
+     * Mark the conversation as stopping until this Stop has finished, so no
+     * drain or send starts a turn there meanwhile: the turn's cancelled frame
+     * can arrive before the cancel request answers, and its onDone drains.
+     */
+    let settleStopping;
+    const stopping = new Promise((resolve) => { settleStopping = resolve; });
+    stoppingRef.current.set(cidToCancel, stopping);
+    const endStopping = (ended) => {
+      if (stoppingRef.current.get(cidToCancel) === stopping) stoppingRef.current.delete(cidToCancel);
+      settleStopping(ended);
+    };
+    /*
+     * Read what to tear down before the cancel request. When the turn's
+     * cancelled frame lands first, its onDone drops the stream record, and the
+     * open cell with it. Only the messages queued by now are dropped; one sent
+     * during the wait queues and goes out once this Stop has finished.
+     */
+    const padAtClick = liveStreamsRef.current.get(cidToCancel)?.pad ?? null;
+    const queuedAtClick = new Set((messageQueueRef.current[cidToCancel] || []).map((item) => item.id));
 
     /*
      * Ask the server to cancel *before* any local teardown. On `error` the
@@ -1185,11 +1237,13 @@ function AppCore() {
      */
     const cancelResult = await cancelResponse(cidToCancel);
     if (!silent && cancelResult?.status === 'error') {
-      stoppingRef.current.delete(cidToCancel);
+      endStopping(false);
       toastManagerRef.current?.add({
         type: 'danger',
         title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
       });
+      // The turn's own terminal may have run during the wait and skipped this queue.
+      drainNextQueuedMessageRef.current?.(cidToCancel);
       return;
     }
 
@@ -1202,7 +1256,7 @@ function AppCore() {
      */
     const stopped = abortStream(cidToCancel);
 
-    const padName = stopped?.pad ?? null;
+    const padName = stopped?.pad ?? padAtClick;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
@@ -1236,29 +1290,32 @@ function AppCore() {
     }));
 
     markInFlightDone(cidToCancel);
-    // Stop kills the run, and with it any question that run was waiting
-    // on. Without this the composer stays hijacked: the next send would be
-    // routed into submitAnswer, 404 on the dead run, and the user's text
-    // would be discarded.
+    /*
+     * Stop kills the run, and with it any question that run was waiting
+     * on. Without this the composer stays hijacked: the next send would be
+     * routed into submitAnswer, 404 on the dead run, and the user's text
+     * would be discarded.
+     */
     releaseLiveStepsWithAliases(cidToCancel);
-    setMessageQueue((prev) => {
-      const next = { ...prev };
-      delete next[cidToCancel];
+    const withoutQueuedAtClick = (queues) => {
+      const rest = (queues[cidToCancel] || []).filter((item) => !queuedAtClick.has(item.id));
+      const next = { ...queues };
+      if (rest.length) next[cidToCancel] = rest;
+      else delete next[cidToCancel];
       return next;
-    });
-    // Prune the ref in lockstep: the sibling drain below reads
-    // messageQueueRef synchronously and the state→ref effect hasn't run yet,
-    // so without this it would still see (and could re-pick) the cancelled
-    // task's own queue.
-    const prunedQueue = { ...messageQueueRef.current };
-    delete prunedQueue[cidToCancel];
-    messageQueueRef.current = prunedQueue;
-    stoppingRef.current.delete(cidToCancel);
+    };
+    setMessageQueue(withoutQueuedAtClick);
+    /*
+     * Prune the ref in lockstep: the drain below reads messageQueueRef
+     * synchronously and the state→ref effect hasn't run yet, so without this
+     * it would still see (and could re-pick) the dropped messages.
+     */
+    messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
+    // The turn is torn down, so a delete waiting on this Stop can go ahead.
+    settleStopping(true);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
-    if (activeStreamingTaskIdRef.current === cidToCancel) {
-      activeStreamingTaskIdRef.current = null;
-    }
+    releaseSlotClaim(cidToCancel);
 
     /*
      * When the stopped conversation held the shared slot, Stop may free it with
@@ -1266,13 +1323,22 @@ function AppCore() {
      * terminal once Stop gets here first), so a message queued against a
      * *different* task would strand at "N queued · waiting for Anton" with no
      * future turn to release it. Sweep the siblings now; the drain itself skips
-     * a held slot and any conversation still running. Via the ref because a
-     * memoized handleStopStream would close over a stale drain (same reason
-     * reconnect uses it).
+     * a held slot and any conversation still running, this one included while
+     * it is still marked. Via the ref because a memoized handleStopStream would
+     * close over a stale drain (same reason reconnect uses it).
      */
     drainNextQueuedMessageRef.current?.();
 
-    if (silent) return;
+    /*
+     * A delete drains this conversation itself once its DELETE is done.
+     * Otherwise the mark holds through the reload below, which would wipe the
+     * rows of a turn started meanwhile, and only then does a message sent
+     * during the wait go out.
+     */
+    if (silent) {
+      endStopping(true);
+      return;
+    }
 
     try {
       const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
@@ -1293,7 +1359,9 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream]);
+    endStopping(true);
+    drainNextQueuedMessageRef.current?.(cidToCancel);
+  }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream, releaseSlotClaim]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
@@ -1309,8 +1377,11 @@ function AppCore() {
       code: event?.code,
       isConfigError: isAntonConfigError(message, event),
     }));
-    activeStreamCtrlRef.current = null;
-    activeStreamingTaskIdRef.current = null;
+    /*
+     * Only this turn's own claim on the shared slot goes; each caller has
+     * already cleared the shared controller if its stream held it.
+     */
+    releaseSlotClaim(...ids);
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid
@@ -1388,7 +1459,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
-  }, [markInFlightDone, releaseLiveSteps]);
+  }, [markInFlightDone, releaseLiveSteps, releaseSlotClaim]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -2091,7 +2162,7 @@ function AppCore() {
         releaseStream(taskId, ctrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
-        activeStreamingTaskIdRef.current = null;
+        releaseSlotClaim(taskId);
         markInFlightDone(taskId);
         releaseLiveSteps([taskId]);
         const finalContent = streamState.bodyText;
@@ -2151,6 +2222,7 @@ function AppCore() {
         if (superseded) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         void (async () => {
           await handleStreamError([taskId], taskId, message, event);
           // See onDone — the reconnect slot frees here, so drain too.
@@ -2161,7 +2233,7 @@ function AppCore() {
     activeStreamCtrlRef.current = ctrl;
     registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim]);
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
@@ -3302,7 +3374,7 @@ function AppCore() {
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
-        activeStreamingTaskIdRef.current = null;
+        releaseSlotClaim(resolvedId, taskId, sid);
         const finalId = sid || resolvedId;
         // Turn done → conversation persisted; drop the optimistic flag so a
         // later revisit hydrates fresh instead of replaying this snapshot.
@@ -3371,6 +3443,7 @@ function AppCore() {
         if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
+        if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         void (async () => {
           await handleStreamError([resolvedId, taskId], resolvedId, message, event);
           drainNextQueuedMessage(resolvedId);
@@ -3513,7 +3586,11 @@ function AppCore() {
     //      as after another task's Stop or terminal released it. A send now
     //      would register over that stream and abort it mid-answer; the
     //      stream's own terminal drops the record and drains this queue.
-    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || liveStreamsRef.current.has(id)) {
+    //      Likewise while a Stop on this task is running, which would abort the
+    //      new stream and leave its server turn running, or a turn delete is,
+    //      which may remove the new turn. The message waits, and that Stop or
+    //      delete drains it once it has finished.
+    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
@@ -3615,7 +3692,7 @@ function AppCore() {
       // Attachment resolution failed before we ever started the
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
-      activeStreamingTaskIdRef.current = null;
+      releaseSlotClaim(id);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -3752,7 +3829,7 @@ function AppCore() {
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
-        activeStreamingTaskIdRef.current = null;
+        releaseSlotClaim(resolvedId, id);
         // Turn done → conversation persisted; drop the optimistic flag (set if
         // `id` was a tmp-connect id that adopted a server id).
         clearOptimisticConversation(resolvedId);
@@ -3808,6 +3885,7 @@ function AppCore() {
         if (superseded) return;
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         void (async () => {
           await handleStreamError([resolvedId, id], resolvedId, message, event);
           // See onDone — drain across all tasks once the slot frees.
@@ -3835,13 +3913,14 @@ function AppCore() {
      * A conversation with a live stream is still running its own turn, which a
      * follow-up would replace (registerStream aborts it). Its own terminal drops
      * the record before it drains, so its follow-up goes out then. One being
-     * stopped is skipped too, because Stop drops its queue.
+     * stopped or having a turn deleted is skipped too: Stop drops what was
+     * queued before the click, and Stop or the delete drains the rest itself.
      */
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set([...liveStreamsRef.current.keys(), ...stoppingRef.current]),
+      new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere)),
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4074,7 +4153,7 @@ function AppCore() {
         if (superseded) return;
         if (sid) adoptServerId(sid);
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
-        activeStreamingTaskIdRef.current = null;
+        releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
         clearOptimisticConversation(resolvedId);
@@ -4111,17 +4190,20 @@ function AppCore() {
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(resolvedId);
       },
-      // No `cancelled` bail here, unlike the other three sites: this
-      // transport's onError takes a message only, with no event/code to
-      // inspect. An abort therefore lands as a plain error — but the superseded
-      // check swallows it, because the only things that abort this stream reap
-      // its record first.
+      /*
+       * No `cancelled` bail here, unlike the other three sites: this
+       * transport's onError takes a message only, with no event/code to
+       * inspect. A caller's abort never reaches it, because the transport drops
+       * AbortError. Its own idle abort arrives as a stall message against a
+       * current record, and is handled as an error that frees the slot and
+       * drains.
+       */
       onError(message) {
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
-        activeStreamingTaskIdRef.current = null;
+        releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
@@ -4401,18 +4483,21 @@ function AppCore() {
     if (!isLocalOnly) {
       setDeletingTurns((prev) => ({ ...prev, [taskId]: turnIndex }));
     }
+    deletingRef.current.add(taskId);
     try {
       /*
        * If this conversation's turn is still running, stop it first so the
        * SSE connection doesn't keep producing events for a turn that no
-       * longer exists, and so a turn running on the server ends with it. The
-       * silent flag skips the post-cancel session refetch, and tears down even
-       * when the cancel fails. Running means any of: a live stream here (the
-       * registry, since another conversation may hold the shared slot); this
-       * conversation holding the slot with no stream registered yet, which
-       * Stop frees; a turn the server lists as running with no stream here,
-       * such as a scheduled run (the in-flight set); or a live row on screen,
-       * the same signal that shows Stop.
+       * longer exists, and so a turn running on the server ends with it. That
+       * holds for deleting any exchange, not only the running one: the server
+       * deletes the chosen turn and every turn after it. The silent flag skips
+       * the post-cancel session refetch, waits out a Stop already in progress,
+       * and tears down even when the cancel fails. Running means any of: a
+       * live stream here (the registry, since another conversation may hold
+       * the shared slot); this conversation holding the slot with no stream
+       * registered yet, which Stop frees; a turn the server lists as running
+       * with no stream here, such as a scheduled run (the in-flight set); or a
+       * live row on screen, the same signal that shows Stop.
        */
       const deletingTask = tasksRef.current.find((t) => t.id === taskId);
       const running = liveStreamsRef.current.has(taskId)
@@ -4504,6 +4589,9 @@ function AppCore() {
           return next;
         });
       }
+      // A message sent during the delete waited for it; send it now.
+      deletingRef.current.delete(taskId);
+      drainNextQueuedMessageRef.current?.(taskId);
     }
   };
 

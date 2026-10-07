@@ -240,7 +240,10 @@ beforeEach(() => {
   spies.useActualStreams = false;
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
-  spies.cancelResponse.mockClear();
+  // mockReset, not mockClear: a test that fails before its Stop click would
+  // otherwise leave a queued mockImplementationOnce for the next test's Stop.
+  spies.cancelResponse.mockReset();
+  spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
@@ -1588,6 +1591,27 @@ describe('Stop on the conversation on screen', () => {
     expect(tailB.abort).toHaveBeenCalled();
   });
 
+  it('leaves Beta holding the slot when Alpha\'s cancelled frame lands before its cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+    // cowork-server seals the stopped turn before it answers the cancel, so
+    // Alpha's own terminal runs while Stop still waits.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
   it('frees the slot when the stopped stream holds it after a sibling finished', async () => {
     const user = userEvent.setup();
     spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
@@ -1692,6 +1716,24 @@ describe('Stop on the conversation on screen', () => {
     await screen.findByText('alpha turn');
     expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
     expect(alpha.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a stream that ends while another conversation holds the shared slot', () => {
+  it.each([
+    ['finishes', (alpha) => alpha.opts.onDone()],
+    ['fails', (alpha) => alpha.opts.onError('boom', { code: 'anton_error' })],
+  ])('leaves that conversation\'s claim when it %s, so reopening it attaches no second stream', async (_how, end) => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await act(async () => { end(alpha); await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
   });
 });
 
@@ -1890,7 +1932,7 @@ describe('Stop in one task while a task started from Home runs', () => {
     const user = userEvent.setup();
     const { beta } = await startAlphaThenBetaFromHome(user);
     const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
-    // Beta finishing clears the shared task id that Gamma holds.
+    // Beta finishing leaves Gamma holding the shared slot.
     await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
     await returnToAlpha(user, probeFailed);
 
@@ -1914,6 +1956,7 @@ describe('Stop in one task while a task started from Home runs', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
 
     expect(spies.cancelResponse.mock.calls).toEqual([['conv-home-c'], ['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
     expect(beta.abort).not.toHaveBeenCalled();
     expect(await showsActive(BETA)).toBe(true);
   });
@@ -1933,6 +1976,15 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(cancelScratchpad).not.toHaveBeenCalled();
     expect(beta.abort).not.toHaveBeenCalled();
     expect(await showsActive(BETA)).toBe(true);
+
+    // With no record of its own, Stop leaves Beta's controller in the slot, so
+    // reopening Beta finds it there and attaches no second stream.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-home-b' }));
+    const streamCount = streams.length;
+    await openFromSidebar(user, BETA);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(beta.abort).not.toHaveBeenCalled();
   });
 
   it('never cancels a cell Alpha did not open, even while Alpha holds the slot', async () => {
@@ -1962,9 +2014,208 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
     expect(cancelScratchpad).not.toHaveBeenCalled();
     expect(beta.abort).not.toHaveBeenCalled();
+
+    // The message was sent before Stop and is not part of the stopped run, so
+    // it still goes out once its upload finishes.
     await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0].slice(0, 2)).toEqual(['conv-a', 'with a file']);
   });
 
+  it('holds a running task\'s queued follow-ups until that task\'s turn ends, in order', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    await send(user, composer, 'alpha second follow-up');
+    expect(await screen.findAllByLabelText('Remove from queue')).toHaveLength(2);
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('alpha follow-up');
+  });
+
+  it('queues a message typed into a running task after another task\'s Stop freed the slot', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+
+    const alphaComposer = await openByTitle(user, 'Alpha task');
+    await send(user, alphaComposer, 'typed while running');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+  });
+
+  it('cancels Alpha before deleting Alpha\'s running turn', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(cancelScratchpad.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels a server-listed run before deleting its running turn', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['fails', { status: 'error', conversation_id: 'conv-a' }, [['conv-a'], ['conv-a']]],
+    ['succeeds', { status: 'ok', cancelled: true }, [['conv-a']]],
+  ])('tears Alpha down before deleting its turn when a Stop on Alpha is still waiting and then %s', async (_how, answer, cancels) => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    // The delete waits for the Stop in progress before it sends anything.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(deleteConversationTurn).not.toHaveBeenCalled();
+
+    await act(async () => { answerCancel(answer); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+
+    expect(spies.cancelResponse.mock.calls).toEqual(cancels);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(alpha.abort.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('holds a message sent during a delete of Alpha\'s turn until the delete is done', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    // Beta finishing frees the shared slot, so only the delete can hold the message.
+    await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    let answerDelete;
+    deleteConversationTurn.mockImplementationOnce(() => new Promise((resolve) => { answerDelete = resolve; }));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+    await send(user, document.querySelector('textarea'), 'typed during delete');
+
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+    // The Stop is over, but the DELETE is still out: a message sent now waits too.
+    await send(user, document.querySelector('textarea'), 'typed while deleting');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { answerDelete({}); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'typed during delete']);
+  });
+
+  it('cancels Alpha\'s cell when Alpha\'s cancelled frame lands before its cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    // Alpha's own terminal drops its stream record, and the cell with it,
+    // while Stop still waits on the cancel.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalled());
+
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('sends one cancel when Stop is clicked twice before the cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+
+    const stop = await screen.findByRole('button', { name: /stop/i });
+    await user.click(stop);
+    expect(screen.getByRole('button', { name: /stop/i })).toBe(stop);
+    await user.click(stop);
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('keeps Alpha running and names no other task when Alpha\'s cancel fails', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    spies.cancelResponse.mockResolvedValueOnce({ status: 'error', conversation_id: 'conv-a' });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
+    expect(alpha.abort).not.toHaveBeenCalled();
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+});
+
+describe('Stop racing its own turn\'s end', () => {
   it('frees a slot Alpha held with a controller no stream owns', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
@@ -2009,7 +2260,47 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('holds a running task\'s queued follow-up until that task\'s turn ends', async () => {
+  it('sends a message sent during Alpha\'s Stop once Alpha has stopped, and drops the one queued before', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'queued before stop');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    // Alpha's cancelled frame lands first and frees its record and the slot.
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => {
+      alpha.opts.onDone();
+      return new Promise((resolve) => { answerCancel = resolve; });
+    });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+    await send(user, document.querySelector('textarea'), 'typed while stopping');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    // Hold Stop's history reload: the message waits for it, or the reload
+    // would replace the new turn's rows with the server's copy.
+    let answerReload;
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { answerReload = resolve; }));
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(answerReload).toBeDefined());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { answerReload({ messages: [] }); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'typed while stopping']);
+    const reply = streams[streams.length - 1];
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(reply.abort).not.toHaveBeenCalled();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('typed while stopping')).toBeInTheDocument();
+  });
+
+  it('sends Alpha\'s queued follow-up when Alpha\'s cancelled frame lands and its cancel then fails', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
     await send(user, composer, 'alpha turn');
@@ -2018,84 +2309,15 @@ describe('Stop in one task while a task started from Home runs', () => {
     await send(user, composer, 'alpha follow-up');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
 
-    const echo = await startFromHome(user, ECHO, 'conv-home-e');
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
-    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
-
-    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
-    expect(alpha.abort).not.toHaveBeenCalled();
-
-    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
-    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
-    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
-    expect(spies.streamMessage.mock.calls[1][1]).toBe('alpha follow-up');
-  });
-
-  it('queues a message typed into a running task after another task\'s Stop freed the slot', async () => {
-    const user = userEvent.setup();
-    const composer = await openTask(user);
-    await send(user, composer, 'alpha turn');
-    const alpha = await waitForStream();
-    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
-
-    const echo = await startFromHome(user, ECHO, 'conv-home-e');
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
-    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
-
-    const alphaComposer = await openByTitle(user, 'Alpha task');
-    await send(user, alphaComposer, 'typed while running');
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
-    expect(alpha.abort).not.toHaveBeenCalled();
-  });
-
-  it('cancels Alpha before deleting Alpha\'s running turn', async () => {
-    const user = userEvent.setup();
-    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
-
-    await deleteTheRunningTurn(user);
-
-    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
-    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
-    expect(spies.cancelResponse.mock.invocationCallOrder[0])
-      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
-    expect(alpha.abort).toHaveBeenCalled();
-    expect(beta.abort).not.toHaveBeenCalled();
-    expect(await showsActive(BETA)).toBe(true);
-  });
-
-  it('cancels a server-listed run before deleting its running turn', async () => {
-    const user = userEvent.setup();
-    listAlphaAsServerRun();
-    await openTask(user);
-    const beta = await startFromHome(user, BETA, 'conv-home-b');
-    await returnToAlpha(user, probeFailed, 'scheduled prompt');
-
-    await deleteTheRunningTurn(user);
-
-    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
-    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
-    expect(spies.cancelResponse.mock.invocationCallOrder[0])
-      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
-    expect(beta.abort).not.toHaveBeenCalled();
-  });
-
-  it('keeps Alpha running and names no other task when Alpha\'s cancel fails', async () => {
-    const user = userEvent.setup();
-    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
-    spies.cancelResponse.mockResolvedValueOnce({ status: 'error', conversation_id: 'conv-a' });
-
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'error', conversation_id: 'conv-a' };
+    });
     await user.click(await screen.findByRole('button', { name: /stop/i }));
 
     expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
-    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
-    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
-    expect(alpha.abort).not.toHaveBeenCalled();
-    expect(cancelScratchpad).not.toHaveBeenCalled();
-    expect(beta.abort).not.toHaveBeenCalled();
-    expect(await showsActive(BETA)).toBe(true);
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'alpha follow-up']);
   });
 });
