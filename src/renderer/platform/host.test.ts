@@ -1074,6 +1074,31 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('re-reads the manifest for an explicit check, so a shell published after launch is reported', async () => {
+    // Legacy shells (no getShellUpdate bridge) reach the manifest through
+    // Settings' Check for updates. The launch-time callers share one read, but
+    // an explicit check must not be stuck on it.
+    let shellVersion = '2.26.10.4.1';
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+    await expect(host.getShellSupport()).resolves.toMatchObject({ latestShellVersion: '2.26.10.4.1' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    shellVersion = '2.26.10.7.1';
+    await expect(host.checkForUpdates()).resolves.toMatchObject({
+      shellUpdateAvailable: true, shellVersion: '2.26.10.7.1',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The fresh read becomes the shared one; a later mount-time read reuses it.
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.7.1' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('is on the curated `host` object, which App.tsx and Settings call through', async () => {
     const mod = await importHost();
     expect(typeof mod.host.getShellSupport).toBe('function');

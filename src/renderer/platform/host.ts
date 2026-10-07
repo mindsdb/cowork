@@ -668,14 +668,17 @@ export interface ShellUpdate {
 // renderer-side check: fetch the manifest ourselves and compare shellVersion
 // against the installed app version. New shells never take this path (they have
 // the bridge), so there's no double-notify. Web has no shell → null.
-export async function getShellUpdate(): Promise<ShellUpdate | null> {
+// `fresh` re-reads the manifest instead of reusing the launch-time read. The
+// explicit "Check for updates" passes it, so a shell published after launch is
+// reported on legacy shells too; mount-time callers share the one launch fetch.
+export async function getShellUpdate(options: { fresh?: boolean } = {}): Promise<ShellUpdate | null> {
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
     return s?.available && s.latestVersion
       ? { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined }
       : null;
   }
-  if (isElectron) return shellUpdateFromManifest();
+  if (isElectron) return shellUpdateFromManifest(options.fresh === true);
   return null;
 }
 
@@ -683,12 +686,14 @@ export async function getShellUpdate(): Promise<ShellUpdate | null> {
 // (the CSP in index.html allows the manifest host). Shared by the ENG-1103
 // reinstall notice and the ENG-1047 supported-window check, so one launch
 // fetches the manifest once: a successful read is cached for the renderer's
-// lifetime, a failed one is not. Fails closed to null on any fetch error or a
-// manifest without a usable `shellVersion`.
+// lifetime, a failed one is not. `fresh` starts a new read and makes it the
+// cached one, for an explicit check that must see a shell published after
+// launch. Fails closed to null on any fetch error or a manifest without a
+// usable `shellVersion`.
 let publishedShellVersion: Promise<string | null> | null = null;
 
-function fetchPublishedShellVersion(): Promise<string | null> {
-  if (publishedShellVersion) return publishedShellVersion;
+function fetchPublishedShellVersion(fresh = false): Promise<string | null> {
+  if (publishedShellVersion && !fresh) return publishedShellVersion;
   const attempt = (async (): Promise<string | null> => {
     try {
       const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
@@ -701,11 +706,14 @@ function fetchPublishedShellVersion(): Promise<string | null> {
       return null;
     }
   })();
-  publishedShellVersion = attempt.then((v) => {
-    if (v === null) publishedShellVersion = null;
+  const cached: Promise<string | null> = attempt.then((v) => {
+    // Only drop the cache if this attempt is still the cached one; a fresh
+    // read that failed must not evict a good launch-time read.
+    if (v === null && publishedShellVersion === cached) publishedShellVersion = null;
     return v;
   });
-  return publishedShellVersion;
+  publishedShellVersion = cached;
+  return cached;
 }
 
 // Renderer-side shell-update check for old shells (ENG-1103). Reports a
@@ -715,9 +723,9 @@ function fetchPublishedShellVersion(): Promise<string | null> {
 // URL is returned: computing the exact per-platform link needs the build kind,
 // which an old shell doesn't expose, so the Download action falls back to the
 // downloads site.
-async function shellUpdateFromManifest(): Promise<ShellUpdate | null> {
+async function shellUpdateFromManifest(fresh = false): Promise<ShellUpdate | null> {
   try {
-    const latest = await fetchPublishedShellVersion();
+    const latest = await fetchPublishedShellVersion(fresh);
     if (!latest) return null;
     const { app: installed } = await getVersionInfo();
     const l = parseCalVer(latest);
@@ -865,7 +873,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
       shellUpdateAvailable: false,
       ...(typeof reply?.newVersion === 'string' ? { uiVersion: reply.newVersion } : {}),
     };
-    return mergeShellUpdate(summary, await getShellUpdate());
+    return mergeShellUpdate(summary, await getShellUpdate({ fresh: true }));
   }
   const summary: UpdateCheckSummary = {
     ok: true,
@@ -876,7 +884,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     shellUpdateAvailable: false,
   };
   return isElectron
-    ? mergeShellUpdate(summary, await getShellUpdate())
+    ? mergeShellUpdate(summary, await getShellUpdate({ fresh: true }))
     : summary;
 }
 
