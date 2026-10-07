@@ -143,6 +143,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
+import { deleteConversationTurn } from './api';
 import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
@@ -769,7 +770,16 @@ describe('interrupted stream recovery', () => {
     });
 
     const answer = (await screen.findByText('Partial answer kept')).closest('.answer-turn');
-    expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    // The resync after the delete has no transcript here and warns via alert().
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    try {
+      await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+    } finally {
+      window.alert = originalAlert;
+    }
   });
 
   it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
