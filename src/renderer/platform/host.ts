@@ -734,7 +734,10 @@ export interface ShellAutoUpdateSnapshot {
   trigger?: 'boot' | 'periodic' | 'manual' | 'retry';
   /** Whether the update downloaded before the last relaunch was applied. Absent
    *  on older shells. */
-  lastInstall?: { applied: boolean; version: string; expected: string };
+  lastInstall?: { applied: boolean; version: string; expected: string; source?: 'user' | 'boot' };
+  /** Who asked for the current install: a Restart click or the boot install
+   *  of a stranded download. Absent on older shells. */
+  installSource?: 'user' | 'boot';
 }
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {

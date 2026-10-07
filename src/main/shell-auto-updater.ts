@@ -7,6 +7,7 @@ import {
 } from 'electron-updater';
 import {
   transitionShellUpdate,
+  type ShellInstallSource,
   type ShellUpdateChannel,
   type ShellUpdateEvent,
   type ShellUpdatePhase,
@@ -87,7 +88,7 @@ export interface ShellAutoUpdater {
   subscribe(listener: (snapshot: ShellUpdateSnapshot) => void): () => void;
   check(trigger: ShellUpdateTrigger): Promise<void>;
   download(): Promise<void>;
-  quitAndInstall(): boolean;
+  quitAndInstall(source?: ShellInstallSource): boolean;
   disable(reason: string): void;
 }
 
@@ -399,8 +400,8 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
 
     download,
 
-    quitAndInstall() {
-      if (!dispatch({ type: 'INSTALL_REQUESTED' })) return false;
+    quitAndInstall(source = 'user') {
+      if (!dispatch({ type: 'INSTALL_REQUESTED', source })) return false;
       try {
         options.adapter.quitAndInstall();
         return true;

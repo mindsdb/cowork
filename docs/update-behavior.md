@@ -140,11 +140,14 @@ When enabled, main owns one immutable shell-update snapshot:
 - `shell_update_phase` records each shell auto-update milestone once per app
   run, from the first launch screen onward: `available` (an update was found;
   in auto mode, its download started), `ready-to-install`, `installing` (the
-  user clicked Restart, or launch installed a stranded update),
+  user clicked Restart, or launch installed a stranded update; `install_source`
+  is `user` or `boot`),
   `failed` (with `error_code` and `recoverable`), and
   `relaunched`. `relaunched` is the boot verdict on the previous download:
   `error_code` is `install-not-applied` when the app came back on the old
-  shell. An install on normal quit sends no `installing`; it appears only as
+  shell, and `install_source` is `boot` when a launch-time install produced the
+  verdict. Count `installing` with `install_source=boot` against `relaunched`
+  with the same source to watch the stranded-install rollout. An install on normal quit sends no `installing`; it appears only as
   the next launch's `relaunched`. Checks that find nothing send nothing.
 - `boot_screen_resolved` carries `shell_version` and `build_kind` on every
   launch. Use them for shell adoption, not `app_version`: that is the running

@@ -12,6 +12,7 @@ import {
   type ShellAutoUpdater,
 } from './shell-auto-updater';
 import type {
+  ShellInstallSource,
   ShellUpdateChannel,
   ShellUpdateMode,
   ShellUpdateSnapshot,
@@ -138,7 +139,10 @@ export function reconcileDownloadedTarget(
   if (!evidence) return { phase: 'idle' };
   const comparison = compareUpdaterSemVer(currentVersion, evidence.targetVersion);
   const applied = comparison !== null && comparison >= 0;
-  const lastInstall = { applied, version: currentVersion, expected: evidence.targetVersion };
+  // The marker names the target a boot install tried, so a relaunch can say
+  // which path installed (or failed to install) it.
+  const source: ShellInstallSource = evidence.bootInstallAttemptedTarget === evidence.targetVersion ? 'boot' : 'user';
+  const lastInstall = { applied, version: currentVersion, expected: evidence.targetVersion, source };
   if (applied) return { phase: 'complete', lastInstall };
   return {
     phase: 'failed',
@@ -256,10 +260,10 @@ export async function downloadShellAutoUpdate(): Promise<ShellUpdateSnapshot> {
   return getShellAutoUpdateSnapshot();
 }
 
-export async function installShellAutoUpdate(): Promise<boolean> {
+export async function installShellAutoUpdate(source: ShellInstallSource = 'user'): Promise<boolean> {
   if (!controller) return false;
   return withUpdateMaintenance(() => withServerMaintenance(async () => (
-    controller?.quitAndInstall() ?? false
+    controller?.quitAndInstall(source) ?? false
   )));
 }
 
@@ -319,7 +323,7 @@ async function installStrandedShellUpdate(): Promise<boolean> {
   if (!markBootInstallAttempt(snapshot)) return false;
 
   console.log(`[shell-updater] installing ${snapshot.targetVersion}, downloaded by an earlier launch`);
-  return installShellAutoUpdate().catch(error => {
+  return installShellAutoUpdate('boot').catch(error => {
     console.error('[shell-updater] stranded install failed:', error);
     return false;
   });

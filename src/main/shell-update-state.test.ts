@@ -221,7 +221,8 @@ describe('transitionShellUpdate', () => {
       refreshing: undefined,
     });
     expect(settled).not.toHaveProperty('errorCode');
-    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' }).phase).toBe('installing');
+    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' })).toMatchObject({ phase: 'installing', installSource: 'user' });
+    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED', source: 'boot' }).installSource).toBe('boot');
   });
 
   it('reconciles installation across the relaunch boundary', () => {

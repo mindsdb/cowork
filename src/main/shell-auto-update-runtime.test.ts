@@ -38,6 +38,13 @@ describe('reconcileDownloadedTarget', () => {
     expect(reconcileDownloadedTarget('2.260728.1', evidence).phase).toBe('complete');
   });
 
+  it('names the install source from the boot-attempt marker', () => {
+    expect(reconcileDownloadedTarget('2.260727.2', evidence).lastInstall?.source).toBe('user');
+    const booted = { ...evidence, bootInstallAttemptedTarget: '2.260727.2' };
+    expect(reconcileDownloadedTarget('2.260727.2', booted).lastInstall?.source).toBe('boot');
+    expect(reconcileDownloadedTarget('2.260727.1', booted).lastInstall).toMatchObject({ applied: false, source: 'boot' });
+  });
+
   it('surfaces a recoverable failure when relaunch stayed on the old shell', () => {
     expect(reconcileDownloadedTarget('2.260727.1', evidence)).toMatchObject({
       phase: 'failed',
@@ -49,10 +56,10 @@ describe('reconcileDownloadedTarget', () => {
 
   it('records the relaunch verdict so a later renderer can still report it', () => {
     expect(reconcileDownloadedTarget('2.260727.2', evidence).lastInstall).toEqual({
-      applied: true, version: '2.260727.2', expected: '2.260727.2',
+      applied: true, version: '2.260727.2', expected: '2.260727.2', source: 'user',
     });
     expect(reconcileDownloadedTarget('2.260727.1', evidence).lastInstall).toEqual({
-      applied: false, version: '2.260727.1', expected: '2.260727.2',
+      applied: false, version: '2.260727.1', expected: '2.260727.2', source: 'user',
     });
   });
 
