@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CHECK_STALL_MS,
+  DOWNLOAD_STALL_MS,
   createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
   type ShellUpdaterAdapter,
@@ -478,5 +480,124 @@ describe('createDefaultElectronUpdaterAdapter', () => {
     expect(fakeAutoUpdater.autoDownload).toBe(false);
     expect(fakeAutoUpdater.allowDowngrade).toBe(false);
     expect(fakeAutoUpdater.autoInstallOnAppQuit).toBe(true);
+  });
+});
+
+describe('createShellAutoUpdater — a stalled check or download must not starve later checks', () => {
+  function setupWithClock(mode: 'auto' | 'manual' = 'auto') {
+    const adapter = new FakeAdapter();
+    const failures: ShellUpdateFailureReport[] = [];
+    let clock = 1_000_000;
+    const updater = createShellAutoUpdater({
+      adapter,
+      initialSnapshot: { phase: 'idle', mode, channel: 'prod', currentVersion: '2.0.7' },
+      onFailure: report => failures.push(report),
+      now: () => clock,
+    });
+    return { adapter, failures, updater, advance: (ms: number) => { clock += ms; } };
+  }
+
+  it('releases a check whose promise resolved without any updater event once the stall limit passes', async () => {
+    const { adapter, failures, updater, advance } = setupWithClock();
+    // electron-updater can resolve `checkForUpdates()` and emit nothing; the
+    // phase then sits at `checking`, where a new check is refused.
+    await updater.check('boot');
+    expect(updater.getSnapshot().phase).toBe('checking');
+    await updater.check('periodic');
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
+
+    advance(CHECK_STALL_MS);
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['check-stalled']);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().phase).toBe('idle');
+  });
+
+  it('releases a download whose promise resolved without update-downloaded once the stall limit passes', async () => {
+    const { adapter, failures, updater, advance } = setupWithClock();
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
+    await updater.check('boot');
+    await updater.download();
+    expect(updater.getSnapshot().phase).toBe('downloading');
+
+    advance(DOWNLOAD_STALL_MS);
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['download-stalled']);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().phase).toBe('idle');
+  });
+
+  it('abandons a check that never settles once the stall limit passes', async () => {
+    const { adapter, failures, updater, advance } = setupWithClock();
+    const hung = deferred();
+    adapter.checkForUpdates.mockImplementation(() => hung.promise);
+    void updater.check('boot');
+    expect(updater.getSnapshot().phase).toBe('checking');
+
+    // Short of the limit: the in-flight check is reused, nothing changes.
+    advance(CHECK_STALL_MS - 1);
+    void updater.check('periodic');
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(updater.getSnapshot().phase).toBe('checking');
+
+    // Past it: the stalled flight is failed and a fresh check starts.
+    advance(1);
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['check-stalled']);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().phase).toBe('idle');
+
+    // The hung promise settling later is a no-op for the newer state.
+    hung.resolve();
+    await Promise.resolve();
+    expect(updater.getSnapshot().phase).toBe('idle');
+  });
+
+  it('abandons a download with no progress for the stall limit, but keeps one that is still moving', async () => {
+    const { adapter, failures, updater, advance } = setupWithClock();
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
+    const hung = deferred();
+    adapter.downloadUpdate.mockImplementation(() => hung.promise);
+    await updater.check('boot');
+    expect(updater.getSnapshot().phase).toBe('downloading');
+
+    advance(DOWNLOAD_STALL_MS - 1);
+    adapter.emit('progress', { transferred: 1, total: 10, percent: 10 });
+    advance(DOWNLOAD_STALL_MS - 1);
+    await updater.check('periodic');
+    expect(updater.getSnapshot().phase).toBe('downloading');
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
+
+    advance(1);
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['download-stalled']);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().phase).toBe('idle');
+  });
+
+  it('ends a stalled background refresh without disturbing the pending install', async () => {
+    const { adapter, failures, updater, advance } = setupWithClock();
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
+    adapter.downloadUpdate.mockImplementation(async () => { adapter.emit('downloaded', '2.1.0'); });
+    await updater.check('boot');
+    await updater.download();
+    expect(updater.getSnapshot().phase).toBe('ready-to-install');
+
+    const hung = deferred();
+    adapter.checkForUpdates.mockImplementation(() => hung.promise);
+    void updater.check('periodic');
+    expect(updater.getSnapshot().refreshing).toBe(true);
+
+    advance(CHECK_STALL_MS);
+    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    await updater.check('periodic');
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+    expect(updater.getSnapshot().refreshing).toBeUndefined();
+    expect(failures).toEqual([]);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(3);
   });
 });

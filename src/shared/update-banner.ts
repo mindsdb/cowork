@@ -35,6 +35,18 @@ export const SHELL_AUTO_BANNER_PHASES = [
  *  then failed — must not outrank a valid OTA "Restart", so it does not own the
  *  top slot. It is still rendered at the BOTTOM of deriveUpdateBanner's ladder,
  *  so its Retry/Download affordance survives a failed retry check. */
+/** Shell failure codes that describe a check which produced no answer — the
+ *  updater stalled, and no update was found or lost. They exist so the next
+ *  scheduled check can run; there is nothing for the user to retry, so they
+ *  raise no banner. */
+export const CHECK_ONLY_FAILURE_CODES = ['check-stalled'] as const;
+
+function isSilentCheckFailure(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): boolean {
+  return shellAuto.phase === 'failed'
+    && !shellAuto.targetVersion
+    && (CHECK_ONLY_FAILURE_CODES as readonly string[]).includes(shellAuto.errorCode ?? '');
+}
+
 export function shellAutoOwnsBanner(
   shellAuto: NonNullable<UpdateBannerInput['shellAuto']>,
 ): boolean {
@@ -57,6 +69,8 @@ export interface UpdateBannerInput {
     /** The update this snapshot is heading to. Present once an update is found;
      *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
     targetVersion?: string;
+    /** Classified failure code; a check-only code suppresses the banner. */
+    errorCode?: string;
     progress?: { percent?: number | null } | null;
     /** `auto` installs a downloaded update on quit; `manual` never does. */
     mode?: string;
@@ -185,7 +199,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
   // Bottom of the ladder: a shell failure with no known target (a failed retry
   // check that cleared the target, or a check-only outage). It never outranks
   // OTA/manual above, but is shown here so Retry/Download survives.
-  if (shellAuto?.phase === 'failed') {
+  if (shellAuto?.phase === 'failed' && !isSilentCheckFailure(shellAuto)) {
     return shellAutoBanner(shellAuto);
   }
 

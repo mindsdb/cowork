@@ -155,6 +155,17 @@ describe('deriveUpdateBanner', () => {
       expect(b?.kind).toBe('ota-ready');
     });
 
+    it('a check that produced no answer raises no banner at all, while a rejected check still offers Retry', () => {
+      for (const errorCode of ['check-stalled']) {
+        expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode } })).toBeNull();
+      }
+      // A failed download keeps its target and stays actionable whatever its code.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'download-stalled', targetVersion: 'sh-1' } }))
+        .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' } }))
+        .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
+    });
+
     it('a check-only shell failure does NOT outrank the manual notice either', () => {
       const b = deriveUpdateBanner({ shellManual: { version: 'man-1' }, shellAuto: { phase: 'failed', recoverable: true } });
       expect(b?.kind).toBe('shell-manual');

@@ -14,6 +14,15 @@ import {
 } from './shell-update-state';
 import { compareUpdaterSemVer } from '../shared/version';
 
+/** A check that has not answered in this long is abandoned so the next
+ *  scheduled check can run. electron-updater has no request timeout of its
+ *  own, and a check that never settles would otherwise block every later
+ *  CHECK_REQUESTED for the rest of the process. */
+export const CHECK_STALL_MS = 10 * 60 * 1000;
+/** A download with no progress event in this long is abandoned the same way.
+ *  The next check finds the update again and starts a fresh download. */
+export const DOWNLOAD_STALL_MS = 30 * 60 * 1000;
+
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
   onUpdateAvailable(listener: (version: string) => void): void;
@@ -57,6 +66,8 @@ export interface ShellAutoUpdaterOptions {
   /** Fired once per failure, on the transition into `failed`. Side-effecting
    *  (logging + telemetry) lives in the caller so this module stays pure. */
   onFailure?: (report: ShellUpdateFailureReport) => void;
+  /** Clock for the stall guard; tests inject a fake one. */
+  now?: () => number;
 }
 
 export interface ShellAutoUpdater {
@@ -136,6 +147,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger };
   let checkToken: UpdateFlight | null = null;
   let downloadToken: UpdateFlight | null = null;
+  const now = options.now ?? Date.now;
+  /** When the snapshot last changed. The stall guard in check() reads it: a
+   *  phase that has not moved for its limit is abandoned. */
+  let lastChangeAt = now();
   // The failure code currently being reported, or null when there is no open
   // failure episode. Latches telemetry to one event per episode across retries —
   // see fail() and clearFailureLatch().
@@ -155,11 +170,16 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     const next = transitionShellUpdate(snapshot, event);
     if (next === snapshot) return false;
     snapshot = next;
+    lastChangeAt = now();
     publish();
     return true;
   };
 
-  const fail = (error: unknown, flight?: UpdateFlight | null) => {
+  const fail = (
+    error: unknown,
+    flight?: UpdateFlight | null,
+    preclassified?: { code: string; recoverable: boolean },
+  ) => {
     // Duplicate delivery of one fault: the first report settles the flight, the
     // rest are dropped. Without this, a failed refresh reported twice would
     // clear `refreshing` on the first pass and then — no longer recognisable as
@@ -169,7 +189,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       flight.settled = true;
     }
     const normalized = error instanceof Error ? error : new Error(String(error));
-    const classified = classifyError(normalized);
+    const classified = preclassified ?? classifyError(normalized);
     // Capture where we were BEFORE the transition — that's the phase that failed,
     // and it tells a check failure from a download/install one.
     const failedAt = snapshot;
@@ -217,6 +237,45 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // the next failure — even with the same code — reports as a new one.
   const clearFailureLatch = () => { failureEpisode = null; };
 
+  // Abandon a check or download that has made no progress within its stall
+  // limit, so the phase leaves `checking`/`downloading` and a new check can
+  // start. Without this, a `checkForUpdates()` or `downloadUpdate()` that never
+  // settles — or settles without emitting the event that moves the phase on —
+  // would hold the phase where CHECK_REQUESTED is refused, and every later
+  // scheduled check would be a no-op until relaunch, leaving the shell old.
+  // Keyed on the snapshot, not the flight: a promise that resolved early has
+  // already cleared its token. An abandoned promise may still settle later;
+  // `settled` makes that a no-op, and the token comparison in each flight's
+  // `finally` keeps it from clearing a newer flight.
+  const releaseStalled = () => {
+    const idleFor = now() - lastChangeAt;
+    if (snapshot.phase === 'ready-to-install' && snapshot.refreshing) {
+      if (idleFor < CHECK_STALL_MS) return;
+      if (checkToken) checkToken.settled = true;
+      dispatch({ type: 'REFRESH_SETTLED' });
+    } else if (snapshot.phase === 'checking') {
+      if (idleFor < CHECK_STALL_MS) return;
+      fail(new Error(`shell update check made no progress for ${CHECK_STALL_MS}ms`), checkToken, {
+        code: 'check-stalled',
+        recoverable: true,
+      });
+    } else if (snapshot.phase === 'downloading') {
+      if (idleFor < DOWNLOAD_STALL_MS) return;
+      fail(new Error(`shell update download made no progress for ${DOWNLOAD_STALL_MS}ms`), downloadToken, {
+        code: 'download-stalled',
+        recoverable: true,
+      });
+    } else {
+      return;
+    }
+    if (checkToken) checkToken.settled = true;
+    if (downloadToken) downloadToken.settled = true;
+    checkToken = null;
+    checkFlight = null;
+    downloadToken = null;
+    downloadFlight = null;
+  };
+
   const download = async () => {
     if (downloadFlight) return downloadFlight;
     if (snapshot.phase === 'available') dispatch({ type: 'DOWNLOAD_REQUESTED' });
@@ -228,8 +287,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       .then(() => undefined)
       .catch(error => fail(error, flight))
       .finally(() => {
-        downloadFlight = null;
-        if (downloadToken === flight) downloadToken = null;
+        if (downloadToken === flight) {
+          downloadToken = null;
+          downloadFlight = null;
+        }
       });
     return downloadFlight;
   };
@@ -295,6 +356,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     },
 
     async check(trigger) {
+      releaseStalled();
       if (checkFlight) return checkFlight;
       if (!dispatch({ type: 'CHECK_REQUESTED', trigger })) return;
       const flight: UpdateFlight = {
@@ -307,8 +369,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
         .then(() => undefined)
         .catch(error => fail(error, flight))
         .finally(() => {
-          checkFlight = null;
-          if (checkToken === flight) checkToken = null;
+          if (checkToken === flight) {
+            checkToken = null;
+            checkFlight = null;
+          }
         });
       return checkFlight;
     },

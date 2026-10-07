@@ -112,6 +112,22 @@ When enabled, main owns one immutable shell-update snapshot:
   quit drain above.
 - Signature/checksum failures are terminal for automatic update, while the
   existing manual installer URL remains available.
+- A stalled check or download cannot starve later checks. `CHECK_REQUESTED` is
+  refused while the phase is `checking` or `downloading`, so a
+  `checkForUpdates()` or `downloadUpdate()` that never settles, or settles
+  without emitting the event that moves the phase on, would otherwise block
+  every scheduled check until relaunch and leave the shell old. The next
+  `check()` in `src/main/shell-auto-updater.ts` first abandons a check older
+  than 10 minutes (recoverable `check-stalled`) or a download with no progress
+  event for 30 minutes (`download-stalled`), then proceeds. A stalled refresh
+  behind a pending install just ends, leaving the armed download alone.
+  `check-stalled` raises no banner, since there is nothing for the user to
+  retry; the next scheduled check simply runs. `download-stalled` keeps its
+  target and offers Retry like any download failure. Both codes reach the
+  `ANTONAPP_SHELL_UPDATE_FAILED` telemetry. While a check or download is in
+  flight the periodic timer runs every 30 minutes, as it does with an install
+  pending, so a stalled one is released within 30 minutes of crossing its
+  threshold rather than at the 4-hour tick.
 
 ### Watching a rollout in PostHog
 

@@ -346,13 +346,22 @@ export function startShellAutoUpdatePolling(rendererReady: Promise<void>): Promi
   });
 }
 
+/** How long between scheduled checks for a given phase. Every 30 minutes while
+ *  an install is pending, so the artifact stays fresh, and while a check or
+ *  download is in flight, so the controller's stall guard (which only runs
+ *  from `check()`) releases a stalled one within 30 minutes of its threshold
+ *  rather than at the 4-hour tick. Every 4 hours otherwise. */
+export function periodicCheckIntervalFor(phase: ShellUpdateSnapshot['phase']): number {
+  return phase === 'ready-to-install' || phase === 'checking' || phase === 'downloading'
+    ? PENDING_REFRESH_INTERVAL_MS
+    : CHECK_INTERVAL_MS;
+}
+
 function schedulePeriodicChecks(): void {
   let lastCheckAt = Date.now();
-  // One timer at the shorter cadence, gated on when a check is actually due:
-  // every 30 minutes with an install pending, every 4 hours otherwise.
+  // One timer at the shorter cadence, gated on when a check is actually due.
   const timer = setInterval(() => {
-    const pending = getShellAutoUpdateSnapshot().phase === 'ready-to-install';
-    const due = pending ? PENDING_REFRESH_INTERVAL_MS : CHECK_INTERVAL_MS;
+    const due = periodicCheckIntervalFor(getShellAutoUpdateSnapshot().phase);
     if (Date.now() - lastCheckAt < due) return;
     lastCheckAt = Date.now();
     void checkShellAutoUpdate('periodic').catch(error => {

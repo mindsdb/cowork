@@ -24,7 +24,7 @@ vi.mock('node:fs', async (importActual) => {
 });
 
 import * as fs from 'node:fs';
-import { reconcileDownloadedTarget, writeEvidence } from './shell-auto-update-runtime';
+import { periodicCheckIntervalFor, reconcileDownloadedTarget, writeEvidence } from './shell-auto-update-runtime';
 
 describe('reconcileDownloadedTarget', () => {
   const evidence = {
@@ -92,6 +92,26 @@ describe('writeEvidence', () => {
     } finally {
       write.mockReset();
       warn.mockRestore();
+    }
+  });
+});
+
+describe('periodicCheckIntervalFor', () => {
+  const HALF_HOUR = 30 * 60 * 1000;
+  const FOUR_HOURS = 4 * 60 * 60 * 1000;
+
+  it('checks every 30 minutes while an install is pending or a check/download is in flight', () => {
+    // In flight: the controller's stall guard only runs from check(), so the
+    // shorter cadence is what releases a stalled flight within 30 minutes of
+    // its threshold instead of at the 4-hour tick.
+    for (const phase of ['ready-to-install', 'checking', 'downloading'] as const) {
+      expect(periodicCheckIntervalFor(phase)).toBe(HALF_HOUR);
+    }
+  });
+
+  it('checks every 4 hours otherwise', () => {
+    for (const phase of ['idle', 'available', 'failed', 'complete', 'installing', 'disabled'] as const) {
+      expect(periodicCheckIntervalFor(phase)).toBe(FOUR_HOURS);
     }
   });
 });
