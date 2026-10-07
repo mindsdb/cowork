@@ -133,6 +133,35 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
     expect((await launch({ cached: true })).quitAndInstall).not.toHaveBeenCalled();
   });
 
+  it('credits a Restart click after a failed boot install to the user, not the boot path', async () => {
+    strandTarget();
+    await launch({ cached: true }); // boot install attempted, app stays on the old version
+
+    // Next launch: the marker blocks another boot install, the user clicks Restart.
+    const updater = fakeUpdater({ cached: true });
+    env.adapter = updater.adapter;
+    vi.resetModules();
+    const runtime = await import('./shell-auto-update-runtime');
+    runtime.configureShellAutoUpdate({ enabled: true, getWindow: () => null, getMode: () => 'auto' });
+    await runtime.startShellAutoUpdatePolling(Promise.resolve());
+    await tick(30);
+    expect(updater.quitAndInstall).not.toHaveBeenCalled();
+    expect(await runtime.installShellAutoUpdate()).toBe(true);
+    const evidence = JSON.parse(env.files.get('/userdata/shell-update-target.json') ?? '{}');
+    expect(evidence).toMatchObject({ targetVersion: TARGET, bootInstallAttemptedTarget: TARGET, installSource: 'user' });
+
+    // The relaunch on the new version reports the user's install, with the marker still present.
+    env.version = TARGET;
+    try {
+      vi.resetModules();
+      const relaunched = await import('./shell-auto-update-runtime');
+      const snapshot = relaunched.configureShellAutoUpdate({ enabled: true, getWindow: () => null, getMode: () => 'auto' });
+      expect(snapshot.lastInstall).toMatchObject({ applied: true, expected: TARGET, source: 'user' });
+    } finally {
+      env.version = '2.0.0';
+    }
+  });
+
   it('keeps the marker through a launch that never reaches ready-to-install', async () => {
     strandTarget();
     await launch({ cached: true });

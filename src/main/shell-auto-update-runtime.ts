@@ -39,6 +39,10 @@ interface DownloadedTargetEvidence {
   /** Written before a boot auto-install, so a launch still on the old version
    *  knows that attempt failed and does not retry it (ENG-2764). */
   bootInstallAttemptedTarget?: string;
+  /** Who asked for the most recent install of this target. Kept apart from
+   *  the marker above: the marker stays after a failed boot install to stop a
+   *  retry loop, while a later Restart click must still report as `user`. */
+  installSource?: ShellInstallSource;
 }
 
 type GetWindow = () => BrowserWindow | null;
@@ -72,6 +76,8 @@ function readEvidence(): DownloadedTargetEvidence | null {
       || typeof parsed.downloadedAt !== 'string'
       || (parsed.bootInstallAttemptedTarget !== undefined
         && typeof parsed.bootInstallAttemptedTarget !== 'string')
+      || (parsed.installSource !== undefined
+        && parsed.installSource !== 'user' && parsed.installSource !== 'boot')
     ) return null;
     return parsed as DownloadedTargetEvidence;
   } catch {
@@ -94,7 +100,22 @@ function persistEvidence(evidence: DownloadedTargetEvidence): boolean {
 
 /** Exported for tests; only `onSnapshot` calls it in production. */
 export function writeEvidence(snapshot: ShellUpdateSnapshot): void {
-  if (snapshot.phase !== 'ready-to-install' || !snapshot.targetVersion) return;
+  if (!snapshot.targetVersion) return;
+  // An install is starting: record who asked, so the relaunch verdict can
+  // credit the right path. The anti-loop marker is carried, not replaced.
+  if (snapshot.phase === 'installing') {
+    persistEvidence({
+      targetVersion: snapshot.targetVersion,
+      channel: snapshot.channel,
+      downloadedAt: new Date().toISOString(),
+      ...(priorBootInstallTarget === snapshot.targetVersion
+        ? { bootInstallAttemptedTarget: priorBootInstallTarget }
+        : {}),
+      installSource: snapshot.installSource ?? 'user',
+    });
+    return;
+  }
+  if (snapshot.phase !== 'ready-to-install') return;
   // Background refreshes republish the snapshot twice per poll with the same
   // pending target; only a changed target is worth rewriting to disk.
   if (snapshot.targetVersion === lastEvidenceVersion) return;
@@ -119,6 +140,7 @@ function markBootInstallAttempt(snapshot: ShellUpdateSnapshot): boolean {
     channel: snapshot.channel,
     downloadedAt: new Date().toISOString(),
     bootInstallAttemptedTarget: snapshot.targetVersion,
+    installSource: 'boot',
   })) return false;
   priorBootInstallTarget = snapshot.targetVersion;
   lastEvidenceVersion = snapshot.targetVersion;
@@ -139,9 +161,11 @@ export function reconcileDownloadedTarget(
   if (!evidence) return { phase: 'idle' };
   const comparison = compareUpdaterSemVer(currentVersion, evidence.targetVersion);
   const applied = comparison !== null && comparison >= 0;
-  // The marker names the target a boot install tried, so a relaunch can say
-  // which path installed (or failed to install) it.
-  const source: ShellInstallSource = evidence.bootInstallAttemptedTarget === evidence.targetVersion ? 'boot' : 'user';
+  // The recorded source wins. The marker alone cannot tell a boot install
+  // from a later Restart click, because it stays after a failed boot install
+  // to stop a retry loop; without a recorded source it is the best guess.
+  const source: ShellInstallSource = evidence.installSource
+    ?? (evidence.bootInstallAttemptedTarget === evidence.targetVersion ? 'boot' : 'user');
   const lastInstall = { applied, version: currentVersion, expected: evidence.targetVersion, source };
   if (applied) return { phase: 'complete', lastInstall };
   return {

@@ -43,6 +43,10 @@ describe('reconcileDownloadedTarget', () => {
     const booted = { ...evidence, bootInstallAttemptedTarget: '2.260727.2' };
     expect(reconcileDownloadedTarget('2.260727.2', booted).lastInstall?.source).toBe('boot');
     expect(reconcileDownloadedTarget('2.260727.1', booted).lastInstall).toMatchObject({ applied: false, source: 'boot' });
+    // A Restart click after a failed boot install: the marker stays to stop a
+    // retry loop, but the recorded source credits the user.
+    const retried = { ...booted, installSource: 'user' as const };
+    expect(reconcileDownloadedTarget('2.260727.2', retried).lastInstall).toMatchObject({ applied: true, source: 'user' });
   });
 
   it('surfaces a recoverable failure when relaunch stayed on the old shell', () => {
@@ -96,6 +100,11 @@ describe('writeEvidence', () => {
       // Now it is on disk, so the per-poll republishing stops rewriting it.
       writeEvidence(pending);
       expect(write).toHaveBeenCalledTimes(2);
+
+      // An install starting records who asked, every time.
+      writeEvidence({ ...pending, phase: 'installing', installSource: 'user' });
+      expect(write).toHaveBeenCalledTimes(3);
+      expect(JSON.parse(write.mock.calls[2][1] as string)).toMatchObject({ targetVersion: '2.260727.2', installSource: 'user' });
     } finally {
       write.mockReset();
       warn.mockRestore();
