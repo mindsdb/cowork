@@ -103,6 +103,43 @@ When enabled, main owns one immutable shell-update snapshot:
   mode waits for an explicit download and explicit restart. Either way the quit
   path first drains any in-flight UI/server apply (bounded) before the process
   terminates, so the on-quit install cannot overlap an apply.
+- **Restart asks first while tasks run (ENG-3291).** A restart that stops the
+  sidecar ends every running turn. So the in-app Restart (Settings card,
+  sidebar banner, and any other button that reaches `installShellAutoUpdate`
+  or a UI/server apply that includes a server update) first asks main how
+  many turns the sidecar is running, bounded at 2 seconds in total. Main reads
+  two things at once: chat turns from `/responses/in-flight-list`, and Code
+  turns as `/coding/sessions` entries whose status is `running` or
+  `awaiting_approval`, since the stop interrupts those through
+  `/coding/runtime/prepare-shutdown`. Either read failing counts as "cannot
+  tell". The session status is persisted state, so a stale `running` left by a
+  crash asks once too often, never too seldom. With none, the
+  restart proceeds as before. Otherwise main answers
+  `{ confirm: true, runningTasks }` instead of acting, and the renderer shows
+  one dialog, "Stop N running tasks and restart?", with **Restart anyway** and
+  **Cancel**. Cancel leaves the update ready. When the sidecar does not answer
+  in time, `runningTasks` is null and the dialog says Cowork cannot tell. The
+  exchange lives in `src/renderer/platform/restart-guard.ts` behind
+  `host.applyUpdate` / `host.installShellAutoUpdate`, so every restart button
+  inherits it; the dialog is `RestartConfirmHost`, mounted once in `App.tsx`.
+  A plain quit (Cmd+Q) does not ask.
+- **The sidecar stops before the shell exits.** `installShellAutoUpdate` first
+  freezes the pending install (`ready-to-install` → `installing`), so a
+  background refresh that finds a newer build during the stop is refused rather
+  than moving the target. It then stops the sidecar (bounded, then
+  force-reaped, like the quit drain) and only then calls `quitAndInstall`. The
+  install counts as launched only when the app begins quitting (electron-
+  updater's `before-quit-for-update`, or Electron's `before-quit`). A normal
+  return from `quitAndInstall` is not enough: the library's `install()` catches
+  installer exceptions, emits `error` and returns false, and on macOS Squirrel
+  can fail while staging the bundle after the call returns. If the stop throws,
+  the installer throws or reports an `error` event, or the app has not begun
+  quitting within 60 seconds, the install is re-armed (`INSTALL_ABORTED`, back
+  to `ready-to-install` with the reason on the snapshot) and the sidecar is
+  started again, so an app that stays open keeps its backend. The boot install of a stranded update (ENG-2764) goes through
+  the same function. On macOS the updater's quit tears the process down before
+  `before-quit` can drain, so without this the shell was gone while a turn was
+  still being written. The quit drain then finds nothing left to stop.
 - Concurrent boot, periodic, and manual checks coalesce into one operation.
 - The renderer pulls the snapshot on mount and subscribes to full snapshot
   changes, so a UI reload cannot lose progress/readiness state.
@@ -137,8 +174,9 @@ When enabled, main owns one immutable shell-update snapshot:
   transfer itself: a download stalled inside the library's checksum validation
   or its rename retries is not cancellable and stays bounded by the library.
   An `installing` phase that neither quits the app nor reports an error within
-  60 seconds is abandoned as recoverable `install-stalled`, and the banner
-  offers Retry. A late `error` from an operation the guard already abandoned
+  60 seconds is re-armed by the install's own launch window (see the quit order
+  above), which also restores the sidecar, so the stall guard leaves it alone.
+  A late `error` from an operation the guard already abandoned
   is dropped rather than reported twice. While a check or download is in
   flight the periodic timer runs every 30 minutes, as it does with an install
   pending, so a stalled one is released within 30 minutes of crossing its
@@ -416,6 +454,10 @@ Notes:
   UI can briefly show that warning until the next UI bundle catches up. The app
   shell is shown on its own line (it changes only on a relaunch), with the
   supported-window verdict beside it.
+  The Server and Agent rows read `/health` with a 10-second bound and retry
+  every 5 seconds while the panel is open; until a read answers they show
+  "Loading…" and then "Unavailable", never a bare dash, and the details Copy
+  copies that state (ENG-3291).
 - A **failed** UI/server apply keeps the banner as a "Try again" retry instead
   of silently vanishing until the next poll.
 

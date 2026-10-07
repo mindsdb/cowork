@@ -20,7 +20,9 @@ import type {
 } from './shell-update-state';
 import { decideBootShellInstall } from './update-logic';
 import { withUpdateMaintenance } from './update-maintenance';
-import { withServerMaintenance } from './server-process';
+import { forceReapServer, isServerRunning, startServer, stopServer, withServerMaintenance } from './server-process';
+import { countRunningTasks } from './running-tasks';
+import type { RestartRequestResult } from '../shared/restart-confirmation';
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 /** While an update is downloaded and waiting for a restart, re-check more often:
@@ -318,11 +320,84 @@ export async function downloadShellAutoUpdate(): Promise<ShellUpdateSnapshot> {
   return getShellAutoUpdateSnapshot();
 }
 
+/** How long the install waits for the sidecar to exit before reaping it. Same
+ *  ceiling as the quit drain in app.ts, for the same reason: a wedged python
+ *  must not pin the restart. */
+const INSTALL_STOP_CEILING_MS = 8_000;
+
+/** Stop the sidecar, bounded, so the shell never exits with a turn still being
+ *  written (ENG-3291). On macOS `quitAndInstall` tears the process down before
+ *  `before-quit` can drain, so the stop has to happen here, before the hand-off
+ *  to the updater. Runs inside the server lifecycle lock the caller holds; the
+ *  lock is re-entrant. */
+async function stopServerForInstall(): Promise<void> {
+  const stopped = await Promise.race([
+    stopServer().then(() => true),
+    new Promise<boolean>(resolve => setTimeout(() => resolve(false), INSTALL_STOP_CEILING_MS)),
+  ]);
+  if (stopped) return;
+  console.warn('[shell-updater] sidecar did not stop before the install ceiling; force-reaping it');
+  await Promise.race([
+    forceReapServer(),
+    new Promise<void>(resolve => setTimeout(resolve, 2_000)),
+  ]);
+}
+
+/** Install the downloaded shell update now. The sidecar is stopped first, so
+ *  any running turn is ended by a clean stop rather than by the shell's exit.
+ *  Callers that can ask the user first go through `requestShellInstall`.
+ *
+ *  The install is frozen (`installing`) BEFORE the stop. A background refresh
+ *  that finds a newer build during the stop is refused rather than moving the
+ *  target under us, which would leave the window open on a stopped sidecar.
+ *  If the install then does not proceed, because the stop threw, the
+ *  installer threw or reported an error event, or the app did not begin
+ *  quitting within the launch window, the sidecar is started again and the
+ *  install is re-armed, so the app the user still has open keeps its backend. */
 export async function installShellAutoUpdate(source: ShellInstallSource = 'user'): Promise<boolean> {
   if (!controller) return false;
-  return withUpdateMaintenance(() => withServerMaintenance(async () => (
-    controller?.quitAndInstall(source) ?? false
-  )));
+  return withUpdateMaintenance(() => withServerMaintenance(async () => {
+    const active = controller;
+    if (!active?.beginInstall(source)) return false;
+    const wasRunning = isServerRunning();
+    let launched = false;
+    try {
+      await stopServerForInstall();
+      // Resolves true only once the app has begun quitting. A normal return
+      // from electron-updater's quitAndInstall() is not that: the installer
+      // can fail and report it as an `error` event, and macOS can fail while
+      // Squirrel stages the bundle after the call returns.
+      launched = await active.launchInstall();
+    } catch (error) {
+      active.abortInstall(error);
+    }
+    if (launched) return true;
+    if (wasRunning) await restoreServerAfterAbortedInstall();
+    return false;
+  }));
+}
+
+async function restoreServerAfterAbortedInstall(): Promise<void> {
+  try {
+    const result = await startServer();
+    if (!result.ok) console.error('[shell-updater] sidecar did not restart after the aborted install:', result.reason);
+  } catch (error) {
+    console.error('[shell-updater] sidecar restart after the aborted install threw:', error);
+  }
+}
+
+/** The renderer's install request (ENG-3291). Unless forced, a restart that
+ *  would end running tasks is reported back for confirmation instead of
+ *  performed: `runningTasks` is the sidecar's count, or null when it did not
+ *  answer in time, and the renderer asks either way. */
+export async function requestShellInstall(options: { force?: boolean } = {}): Promise<RestartRequestResult> {
+  if (!controller) return false;
+  if (controller.getSnapshot().phase !== 'ready-to-install') return false;
+  if (!options.force) {
+    const runningTasks = await countRunningTasks();
+    if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
+  }
+  return installShellAutoUpdate();
 }
 
 export function registerShellAutoUpdateHandlers(): void {
@@ -330,7 +405,9 @@ export function registerShellAutoUpdateHandlers(): void {
   ipcMain.handle(IPC.SHELL_UPDATE_GET, () => getShellAutoUpdateSnapshot());
   ipcMain.handle(IPC.SHELL_UPDATE_CHECK, () => checkShellAutoUpdate('manual'));
   ipcMain.handle(IPC.SHELL_UPDATE_DOWNLOAD, () => downloadShellAutoUpdate());
-  ipcMain.handle(IPC.SHELL_UPDATE_INSTALL, () => installShellAutoUpdate());
+  ipcMain.handle(IPC.SHELL_UPDATE_INSTALL, (_event: unknown, options?: { force?: boolean }) => (
+    requestShellInstall(options ?? {})
+  ));
 }
 
 /** Resolve true once `predicate` holds for the controller's snapshot, or

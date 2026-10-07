@@ -47,7 +47,16 @@ vi.mock('../shared/shell-update-feed', () => ({
 }));
 vi.mock('./analytics', () => ({ sendEvent: vi.fn() }));
 vi.mock('./update-maintenance', () => ({ withUpdateMaintenance: (fn: () => unknown) => fn() }));
-vi.mock('./server-process', () => ({ withServerMaintenance: (fn: () => unknown) => fn() }));
+vi.mock('./server-process', () => ({
+  withServerMaintenance: (fn: () => unknown) => fn(),
+  // The boot install stops the sidecar before the hand-off and restores it if
+  // the install does not proceed (ENG-3291); no sidecar runs in this harness.
+  isServerRunning: () => false,
+  stopServer: async () => undefined,
+  forceReapServer: async () => undefined,
+  startServer: async () => ({ ok: true }),
+}));
+vi.mock('./running-tasks', () => ({ countRunningTasks: async () => 0 }));
 vi.mock('./shell-auto-updater', async (importActual) => {
   const actual = await importActual<typeof import('./shell-auto-updater')>();
   return { ...actual, createDefaultElectronUpdaterAdapter: () => env.adapter };
@@ -58,11 +67,15 @@ const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
 /** A fake updater that finds TARGET. `cached` replays it from disk with no
  *  progress, after a short validation delay, as electron-updater does. */
-function fakeUpdater({ cached, hangCheck = false, gate }: { cached: boolean; hangCheck?: boolean; gate?: Promise<void> }) {
+function fakeUpdater({ cached, hangCheck = false, gate, installQuits = false }: {
+  cached: boolean; hangCheck?: boolean; gate?: Promise<void>; installQuits?: boolean;
+}) {
   const on: Record<string, (...args: any[]) => void> = {};
   const quitAndInstall = vi.fn(() => {
-    // Simulate an install that leaves the app running on the old version.
-    setTimeout(() => on.error?.(new Error('install did not quit')), 0);
+    // By default simulate an install that leaves the app running on the old
+    // version (an installer error event); `installQuits` simulates the app
+    // beginning to quit for the update.
+    setTimeout(() => (installQuits ? on.quit?.() : on.error?.(new Error('install did not quit'))), 0);
   });
   const adapter: ShellUpdaterAdapter = {
     onChecking: l => { on.checking = l; },
@@ -71,6 +84,7 @@ function fakeUpdater({ cached, hangCheck = false, gate }: { cached: boolean; han
     onDownloadProgress: l => { on.progress = l; },
     onUpdateDownloaded: l => { on.downloaded = l; },
     onError: l => { on.error = l; },
+    onQuitForUpdate: l => { on.quit = l; },
     checkForUpdates: () => (hangCheck
       ? new Promise<void>(() => undefined)
       : (gate ?? Promise.resolve()).then(() => on.available(TARGET))),
@@ -201,8 +215,9 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
     strandTarget();
     await launch({ cached: true }); // boot install attempted, app stays on the old version
 
-    // Next launch: the marker blocks another boot install, the user clicks Restart.
-    const updater = fakeUpdater({ cached: true });
+    // Next launch: the marker blocks another boot install, the user clicks
+    // Restart and this time the installer quits the app.
+    const updater = fakeUpdater({ cached: true, installQuits: true });
     env.adapter = updater.adapter;
     vi.resetModules();
     const runtime = await import('./shell-auto-update-runtime');

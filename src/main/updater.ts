@@ -10,6 +10,7 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
+import { countRunningTasks } from './running-tasks';
 import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive, shellManualNoticeIsFallback } from './update-logic';
 import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
@@ -190,12 +191,20 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
-  ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
+  ipcMain.handle(IPC.UI_UPDATE_APPLY, async (_event: unknown, options?: { force?: boolean }) => {
     // A manual apply always re-checks the server so it can't drift from the UI.
     // A pending stream repair is excluded: it applies at boot, and a user
     // restarting for a UI update must not trigger a server downgrade.
     const server = await checkForServerUpdate();
-    return applyUpdates(getWindow, server.updateAvailable && !server.repair, true);
+    const applyServer = server.updateAvailable && !server.repair;
+    // A server update stops the sidecar, which ends every running turn. Unless
+    // the renderer has already asked, report the count back and let it ask
+    // (ENG-3291). A UI-only apply reloads the window and leaves turns running.
+    if (applyServer && !options?.force && isServerRunning()) {
+      const runningTasks = await countRunningTasks();
+      if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
+    }
+    return applyUpdates(getWindow, applyServer, true);
   });
   registerShellAutoUpdateHandlers();
 }

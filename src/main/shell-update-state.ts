@@ -64,6 +64,7 @@ export type ShellUpdateEvent =
   | { type: 'DOWNLOAD_PROGRESS'; progress: ShellUpdateProgress }
   | { type: 'DOWNLOAD_COMPLETE'; targetVersion: string }
   | { type: 'INSTALL_REQUESTED'; source?: ShellInstallSource }
+  | { type: 'INSTALL_ABORTED'; code: string; message?: string }
   | { type: 'RECONCILED'; currentVersion: string; installed: boolean }
   | { type: 'FAILED'; code: string; message?: string; recoverable: boolean }
   | { type: 'DISABLED'; reason: string };
@@ -204,6 +205,20 @@ export function transitionShellUpdate(
         installSource: event.source ?? 'user',
         refreshing: undefined,
         refreshTrigger: undefined,
+      };
+
+    case 'INSTALL_ABORTED':
+      // The install never left this process: the sidecar stop or the installer
+      // launch failed before the app quit. The artifact is still on disk, so
+      // the install is armed again and the banner's Restart is the retry. The
+      // code and message stay on the snapshot for Settings and telemetry.
+      if (snapshot.phase !== 'installing') return snapshot;
+      return {
+        ...snapshot,
+        phase: 'ready-to-install',
+        recoverable: true,
+        errorCode: event.code,
+        errorMessage: event.message,
       };
 
     case 'RECONCILED':

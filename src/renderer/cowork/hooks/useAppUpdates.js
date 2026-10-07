@@ -64,10 +64,18 @@ export function useAppUpdates() {
     console.log('[ui-update] install clicked, applying update...');
     if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
     setUpdateApplying(true);
+    const previous = updateStatus;
     setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
     try {
       const result = await host.applyUpdate();
       console.log('[ui-update] applyUpdate result:', result);
+      if (result === 'cancelled') {
+        // The person kept their running tasks (ENG-3291). Put the banner back
+        // the way it was so the update is still offered.
+        setUpdateApplying(false);
+        setUpdateStatus(previous);
+        return;
+      }
       // Window will reload with the new bundle — no further action needed
     } catch (err) {
       console.error('[ui-update] applyUpdate failed:', err);

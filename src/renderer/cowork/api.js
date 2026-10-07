@@ -241,12 +241,13 @@ async function responseError(res, fallback) {
 // every health read passes through. Same shape as the `cacheSettings` call
 // below — a lib-level setter written from the transport layer.
 // `setAntonInstallId` self-gates to desktop.
-export async function fetchHealth() {
+export async function fetchHealth({ timeoutMs } = {}) {
   try {
     /* Bounded, because every send waits on this check first: a server that
        holds the request open would otherwise leave Send busy with no message.
-       A timeout reads as offline, the same answer as any other failure. */
-    const health = await rootReq('/api/v1/health', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+       A timeout reads as offline, the same answer as any other failure. The
+       Updates panel passes its own, longer bound (ENG-3291). */
+    const health = await rootReq('/api/v1/health', { timeoutMs: timeoutMs ?? SHORT_REQUEST_TIMEOUT_MS });
     // Isolated: analytics must never decide whether the server looks healthy.
     // This sits inside fetchHealth's try, so an exception here would fall to the
     // catch below and report `status: 'offline'` — making an analytics failure
