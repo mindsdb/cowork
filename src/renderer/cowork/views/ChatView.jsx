@@ -1992,6 +1992,22 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.messages.length, isStreaming]);
 
+  // Content can grow without the message count changing (an image loading, a
+  // block expanding). The prepend delta is measured from this snapshot, so it
+  // follows that growth; it never scrolls.
+  useEffect(() => {
+    const col = scrollRef.current?.querySelector('.chat-transcript-col');
+    if (!col) return undefined;
+    const ro = new ResizeObserver(() => {
+      const el = scrollRef.current;
+      const anchor = scrollAnchorRef.current;
+      if (!el || anchor?.taskId !== task.id) return;
+      scrollAnchorRef.current = { ...anchor, scrollHeight: el.scrollHeight };
+    });
+    ro.observe(col);
+    return () => ro.disconnect();
+  }, [task.id]);
+
   // Inverted infinite scroll: reaching the top of the transcript pulls the
   // next older page in, which is the behaviour a long conversation is
   // expected to have. The button below stays as the explicit affordance and
