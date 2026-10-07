@@ -830,3 +830,69 @@ describe('a late empty reopen result after a turn completed meanwhile', () => {
     expect(screen.queryByText('Second answer')).toBeNull();
   });
 });
+
+describe('a late reopen page that ends before rows the client added since', () => {
+  const firstTurn = [
+    { role: 'user', id: 'u1', content: 'First question' },
+    { role: 'assistant', id: 'a1', content: 'First answer' },
+  ];
+
+  /** Opens Alpha, then reopens it with the loader's read held until `release`. */
+  async function reopenHeld(user, initial) {
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: initial }) });
+    await openTask(user);
+    await screen.findByText(initial[initial.length - 1].content);
+    let release;
+    spies.fetchSessionResult.mockImplementation((id) => (id === 'conv-a'
+      ? new Promise((resolve) => { release = resolve; })
+      : Promise.resolve({ status: 'ok', task: baseTask({ id, title: 'Beta task' }) })));
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    return { composer, release: (task) => act(async () => { release({ status: 'ok', task }); }) };
+  }
+
+  it('keeps a turn that completed while the read was out', async () => {
+    const user = userEvent.setup();
+    const { composer, release } = await reopenHeld(user, firstTurn);
+    await user.click(composer);
+    await user.keyboard('New question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-new' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'New answer' });
+    await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-new' });
+    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    await screen.findByText('New answer');
+
+    await release(baseTask({ messages: firstTurn }));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(screen.getByText('New question')).toBeInTheDocument();
+    expect(screen.getByText('New answer')).toBeInTheDocument();
+    expect(screen.getByText('First answer')).toBeInTheDocument();
+  });
+
+  it('guard: still drops rows that were there before the read and are gone on the server', async () => {
+    const user = userEvent.setup();
+    const { release } = await reopenHeld(user, [
+      ...firstTurn,
+      { role: 'user', id: 'u2', content: 'Deleted elsewhere' },
+      { role: 'assistant', id: 'a2', content: 'Gone too' },
+    ]);
+
+    await release(baseTask({ messages: firstTurn }));
+
+    await waitFor(() => expect(screen.queryByText('Deleted elsewhere')).toBeNull());
+    expect(screen.queryByText('Gone too')).toBeNull();
+    expect(screen.getByText('First answer')).toBeInTheDocument();
+  });
+});

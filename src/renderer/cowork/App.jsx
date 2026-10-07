@@ -113,6 +113,7 @@ import {
   initialNavState,
   markOptimisticConversation,
   clearOptimisticConversation,
+  setKnownRowIdsProvider,
 } from './CoworkRouter';
 import { Outlet } from 'react-router-dom';
 
@@ -594,6 +595,11 @@ function AppCore() {
   // requests whose results the `local.length > 0` guard then discards.
   const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  // The `/c/:id` loader asks this before its fetch; see openConversation's merge.
+  useEffect(() => {
+    setKnownRowIdsProvider((id) => knownRowIds(tasksRef.current.find((t) => t.id === id)?.messages));
+    return () => setKnownRowIdsProvider(null);
+  }, []);
   // IDs of tasks deleted this session. Used to filter them out of
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
@@ -2496,7 +2502,7 @@ function AppCore() {
     const patch = (t) => {
       const next = {
         ...t,
-        messages: mergeMessagePage(t.messages, reconciled),
+        messages: mergeMessagePage(t.messages, reconciled, loaded.knownIds),
         messagesStatus: 'loaded',
         // Decided from the array the merge consumed, not the raw page.
         ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
