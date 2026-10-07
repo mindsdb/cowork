@@ -1442,9 +1442,10 @@ function AppCore() {
         ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
         : null;
     } finally {
-      // Released before the rows are rewritten below, but in the same
-      // synchronous run: whatever waits on it resumes after that update is
-      // queued, and the callers drain held sends only once this returns.
+      // Released before the rows are rewritten below, in the same synchronous
+      // run: a waiter's functional update queues after that rewrite, and the
+      // callers drain held sends only once this returns. A waiter must not read
+      // tasksRef, which lags until the commit; it reads through latestTask.
       ids.forEach((id) => {
         if (recoveringRef.current.get(id) === recovery) recoveringRef.current.delete(id);
       });
@@ -4147,13 +4148,10 @@ function AppCore() {
   const handleSubmitDataVaultForm = (submission) => {
     if (!currentTask) return;
     const id = currentTask.id;
-    // Its live row would be the one a pending recovery rewrites as the failed
-    // turn's answer; the submission starts once that recovery has landed.
+    // A pending recovery would rewrite its live row as the failed turn's answer,
+    // so it starts after; returned so the form stays busy and shows errors meanwhile.
     const recovering = recoveringRef.current.get(id);
-    if (recovering) {
-      recovering.then(() => handleSubmitDataVaultForm(submission));
-      return;
-    }
+    if (recovering) return recovering.then(() => handleSubmitDataVaultForm(submission));
     const { formId, formSpec, values, skipped, name, method } = submission;
 
     setTasks((prev) => prev.map((t) =>
@@ -4789,6 +4787,15 @@ function AppCore() {
     return { ...forgetTurnArtifacts(t, messageId), messages: msgs.slice(0, cutFrom) };
   };
 
+  // A task as of every update queued so far: an updater runs after them all,
+  // which tasksRef, synced only after a commit, cannot promise.
+  const latestTask = (taskId) => new Promise((resolve) => {
+    setTasks((prev) => {
+      resolve(prev.find((t) => t.id === taskId));
+      return prev;
+    });
+  });
+
   // The turn a user-row anchor names, once that turn may have been answered:
   // the server refuses an answered user message as an anchor, so its first
   // reply's id is sent instead. A reply with no id was never persisted, so the
@@ -4806,26 +4813,30 @@ function AppCore() {
 
   const performDeleteTurn = async (taskId, clickedId) => {
     if (!taskId || !clickedId) return;
-    // A failed turn being recovered here would land its reloaded page on top
-    // of this delete. Like a cancel, recovery can also answer an orphan row.
-    const recovering = recoveringRef.current.get(taskId);
-    if (recovering) await recovering;
     const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
-    // The clicked user row may have been answered while the dialog was open.
-    // `messageId` is the turn as this client shows it: dimming and cleanup use it.
-    const localMessages = tasksRef.current.find((t) => t.id === taskId)?.messages || [];
-    const messageId = resolveTurnAnchor(localMessages, clickedId);
-    // Taken now: during the DELETE (up to its timeout) a reopen can replace the
-    // list, and after that nothing can work out which ids this cut covers.
-    const cut = turnCut(localMessages, messageId);
-    // Raised before the stop-stream branch, not after it: cancelling a live
-    // stream is itself two network calls, and the turn has to read as in
-    // flight for that wait too. The local-only path never sets it.
+    // Raised before anything this awaits (a pending recovery, a cancel), so
+    // the turn reads as in flight and no second delete starts meanwhile.
+    // The local-only path never sets it.
     if (!isLocalOnly) {
-      setDeletingTurns((prev) => ({ ...prev, [taskId]: messageId }));
+      setDeletingTurns((prev) => ({ ...prev, [taskId]: clickedId }));
     }
     deletingRef.current.add(taskId);
     try {
+      // A failed turn being recovered here would land its reloaded page on top
+      // of this delete, so wait for it and read the rows it left.
+      const recovering = recoveringRef.current.get(taskId);
+      if (recovering) await recovering;
+      const snapshot = recovering ? await latestTask(taskId) : tasksRef.current.find((t) => t.id === taskId);
+      // The clicked user row may have been answered while the dialog was open.
+      // `messageId` is the turn as this client shows it: dimming and cleanup use it.
+      const localMessages = snapshot?.messages || [];
+      const messageId = resolveTurnAnchor(localMessages, clickedId);
+      if (!isLocalOnly && messageId !== clickedId) {
+        setDeletingTurns((prev) => ({ ...prev, [taskId]: messageId }));
+      }
+      // Taken now: during the DELETE (up to its timeout) a reopen can replace the
+      // list, and after that nothing can work out which ids this cut covers.
+      const cut = turnCut(localMessages, messageId);
       /*
        * If this conversation's turn is still running, stop it first so the
        * SSE connection doesn't keep producing events for a turn that no
@@ -4840,7 +4851,7 @@ function AppCore() {
        * with no stream here, such as a scheduled run (the in-flight set); or a
        * live row on screen, the same signal that shows Stop.
        */
-      const deletingTask = tasksRef.current.find((t) => t.id === taskId);
+      const deletingTask = snapshot;
       const running = liveStreamsRef.current.has(taskId)
         || activeStreamingTaskIdRef.current === taskId
         || inFlightSetRef.current.has(taskId)
@@ -4859,7 +4870,7 @@ function AppCore() {
       // received, which makes the user row an answered one the server refuses.
       // Assumes the cancel has landed by now; true when one replica served both.
       let serverAnchorId = messageId;
-      if ((stoppedStream || recovering) && messageId === clickedId) {
+      if (stoppedStream && messageId === clickedId) {
         try {
           const res = await fetchSessionResult(taskId);
           if (res?.status === 'ok' && Array.isArray(res.task?.messages)) {

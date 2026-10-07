@@ -95,6 +95,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
+import { cancelResponse } from './api';
 import { __resetDraftsForTests } from './lib/draftStore';
 
 const baseTask = (overrides = {}) => ({
@@ -574,6 +575,9 @@ describe('deleting a turn while a failed turn is still being recovered', () => {
     await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
+    // In flight while it waits: dimmed, and no second delete can be started.
+    expect(screen.getByText('First question').closest('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryAllByRole('button', { name: 'Delete' })).toHaveLength(0);
 
     // The reload answers with the history as it was before the delete.
     await act(async () => {
@@ -589,5 +593,35 @@ describe('deleting a turn while a failed turn is still being recovered', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(screen.queryByText('First question')).toBeNull();
     expect(screen.queryByText('New question')).toBeNull();
+  });
+
+  it('deleting the recovering turn itself targets its persisted reply, with no cancel for a turn already over', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask() });
+    const composer = await openTask(user);
+    // One promise for every retry: a null reload is retried.
+    let releaseReload;
+    const reload = new Promise((resolve) => { releaseReload = resolve; });
+    spies.fetchSession.mockImplementation(() => reload);
+
+    await user.click(composer);
+    await user.keyboard('New question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-new' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'Partial answer' });
+    await act(async () => {
+      stream.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error', assistant_message_id: 'a-new', user_message_id: 'u-new',
+      });
+    });
+    cancelResponse.mockClear();
+
+    // While the reload is out the question still reads as unanswered.
+    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
+    await act(async () => { releaseReload(null); });
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a-new'));
+    expect(cancelResponse).not.toHaveBeenCalled();
   });
 });

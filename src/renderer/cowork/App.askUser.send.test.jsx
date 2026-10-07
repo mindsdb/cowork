@@ -868,10 +868,16 @@ describe('interrupted stream recovery', () => {
         await user.click(await screen.findByRole('button', { name: /^submit$/i }));
         await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
         expect(vaultStarted()).toBe(false);
+        // The form stays busy while held, so a second click submits nothing more.
+        const busyButton = screen.getByRole('button', { name: 'Working…' });
+        expect(busyButton).toBeDisabled();
+        await user.click(busyButton);
 
         await release(null);
 
         await waitFor(() => expect(vaultStarted()).toBe(true));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(streams.filter((x) => x.kind === 'datavault')).toHaveLength(1);
         const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
         expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
       } finally {
