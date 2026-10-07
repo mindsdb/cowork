@@ -531,10 +531,14 @@ describe('deleting a turn that gets a reply while the confirm dialog is open', (
     // row is still an orphan as far as the server is concerned.
     await emitOn(stream, { type: 'response.completed' });
     await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    const release = holdDelete();
     spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: [] }) });
 
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u-new'));
+    expect(isDimmed('New question')).toBe(true);
+    await release();
+    await waitFor(() => expect(screen.queryByText('New question')).toBeNull());
   });
 });

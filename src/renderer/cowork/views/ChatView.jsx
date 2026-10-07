@@ -2367,7 +2367,8 @@ export default function ChatView({
                 if (isOrphanUser(start)) return visibleMessages[start].id ?? null;
                 for (let k = start + 1; k < visibleMessages.length; k++) {
                   if (visibleMessages[k]?.role === 'user') break;
-                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? null;
+                  // A reply with no id was never persisted, so the user row still anchors the turn.
+                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? visibleMessages[start].id ?? null;
                 }
                 return visibleMessages[start].id ?? null;
               };

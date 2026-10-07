@@ -4611,14 +4611,16 @@ function AppCore() {
   };
 
   // The turn a user-row anchor names, once that turn may have been answered:
-  // the server refuses an answered user message as an anchor, so its reply's
-  // id is sent instead. Same rule as ChatView's turnAnchorIdAt, which only
-  // differs in returning null for a reply with no id; here the user row stays.
+  // the server refuses an answered user message as an anchor, so its first
+  // reply's id is sent instead. A reply with no id was never persisted, so the
+  // user row stays. ChatView's turnAnchorIdAt and the server's delete_turn
+  // apply the same first-reply rule; the three must agree or the turn either
+  // does not dim or is cut in the wrong place.
   const resolveTurnAnchor = (msgs, messageId) => {
     const idx = msgs.findIndex((m) => m.id === messageId);
     if (idx === -1 || msgs[idx].role !== 'user' || isOrphanUser(msgs, idx)) return messageId;
     for (let k = idx + 1; k < msgs.length && msgs[k]?.role !== 'user'; k++) {
-      if (msgs[k]?.role === 'assistant' && msgs[k].id != null) return msgs[k].id;
+      if (msgs[k]?.role === 'assistant') return msgs[k].id ?? messageId;
     }
     return messageId;
   };
