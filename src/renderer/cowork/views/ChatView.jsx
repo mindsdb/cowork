@@ -1400,16 +1400,28 @@ function RateLimitedCard({
       }]
     : [];
 
+  /* A screen reader announces the refusal through this alert region. It mounts
+     empty and fills on the next commit, because a live region announces content
+     changes, not the text it mounts with. The countdown button stays outside
+     it, so its ticking label is not read out every second. */
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    setAnnouncement(body ? `${title}. ${body}` : title);
+  }, [title, body]);
+
   return (
-    <ActionCard
-      deleting={deleting}
-      time={time}
-      agentLabel={agentLabel}
-      kind={kind}
-      title={title}
-      body={body}
-      buttons={buttons}
-    />
+    <>
+      <div className="sr-only" role="alert">{announcement}</div>
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind={kind}
+        title={title}
+        body={body}
+        buttons={buttons}
+      />
+    </>
   );
 }
 
@@ -1644,14 +1656,20 @@ function ProviderOverloadedCard({
   );
 }
 
-// Most recent user text before index `i` — the message whose turn failed.
-// Used by failure cards whose action is "resend the failed message".
-function lastUserTextBefore(visibleMessages, i) {
+/* Most recent user message before index `i`, the message whose turn failed,
+   as `{ text, attachments }`, or null when there is none. Used by failure cards
+   whose action is "resend the failed message". `attachments` is the message's
+   own list, [] when it had none: a resend passes it to onSend so the files and
+   Drive references go with the question again, and an empty list keeps the
+   composer's staged files out of the resend. */
+function lastUserMessageBefore(visibleMessages, i) {
   for (let j = i - 1; j >= 0; j--) {
-    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-    if (typeof c === 'string' && c) return c;
+    const m = visibleMessages[j];
+    if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
+      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [] };
+    }
   }
-  return '';
+  return null;
 }
 
 /**
@@ -2395,7 +2413,7 @@ export default function ChatView({
                 // Single CTA on purpose (ENG-1169): the out-of-credits
                 // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
-                  const balancePrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const balanceResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <BalanceEmptyCard
                       key={i}
@@ -2408,8 +2426,8 @@ export default function ChatView({
                          needs one to resend, and a task already on Air has
                          nothing to switch to. */
                       onSwitchToAir={
-                        onSwitchToAirAndResend && balancePrevUserText && taskModelId !== MINDSHUB_AIR_MODEL_ID
-                          ? () => onSwitchToAirAndResend(balancePrevUserText)
+                        onSwitchToAirAndResend && balanceResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments)
                           : undefined
                       }
                     />
@@ -2453,7 +2471,7 @@ export default function ChatView({
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
-                  const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
                       key={i}
@@ -2465,8 +2483,8 @@ export default function ChatView({
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
                       onSwitchToAir={
-                        onSwitchToAirAndResend && deniedPrevUserText
-                          ? () => onSwitchToAirAndResend(deniedPrevUserText)
+                        onSwitchToAirAndResend && deniedResend
+                          ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
                           : undefined
                       }
                     />
@@ -2476,7 +2494,7 @@ export default function ChatView({
                 // budget → Retry (resend the last user message), plus a MindsHub
                 // failover nudge for BYOK users (ENG-673).
                 if (m.code === 'provider_overloaded') {
-                  const prevUserText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
                       key={i}
@@ -2484,7 +2502,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      onRetry={resend ? () => onSend?.(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2561,7 +2579,7 @@ export default function ChatView({
                 // nothing here, so the card offers "Try again" instead —
                 // the same message now sends clean.
                 if (m.code === 'content_recovery') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
                       key={i}
@@ -2571,8 +2589,8 @@ export default function ChatView({
                       kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2610,7 +2628,7 @@ export default function ChatView({
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
                 if (m.code === 'policy_unavailable') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
                       key={i}
@@ -2620,8 +2638,8 @@ export default function ChatView({
                       kind="Billing"
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2635,7 +2653,7 @@ export default function ChatView({
                  * so it can be improved OTA, same as the other retryable cards
                  * (ENG-2126). */
                 if (m.code === 'worker_unresponsive') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
                       key={i}
@@ -2645,8 +2663,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2672,7 +2690,7 @@ export default function ChatView({
                 // the fix, so the card says so and offers a time-gated Retry —
                 // never a top-up, which is what this used to show (ENG-1537).
                 if (m.code === 'rate_limited') {
-                  const rlRetryText = lastUserTextBefore(visibleMessages, i);
+                  const rlResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
                       key={i}
@@ -2681,7 +2699,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
+                      onRetry={rlResend ? () => onSend?.(rlResend.text, rlResend.attachments) : undefined}
                     />
                   );
                 }
@@ -2691,7 +2709,7 @@ export default function ChatView({
                    it shares the rate limit's Retry gate, counted down to the
                    server's Retry-After, under its own title. */
                 if (m.code === 'server_busy') {
-                  const busyRetryText = lastUserTextBefore(visibleMessages, i);
+                  const busyResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
                       key={i}
@@ -2702,7 +2720,7 @@ export default function ChatView({
                       title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyRetryText ? () => onSend?.(busyRetryText) : undefined}
+                      onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
                     />
                   );
                 }

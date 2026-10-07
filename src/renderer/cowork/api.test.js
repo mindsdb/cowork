@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -759,6 +759,78 @@ describe('streamNewSession: a refusal before the stream', () => {
 
     expect(message).toBe('Internal Server Error');
     expect(event).toMatchObject({ code: 'stream_error', http_status: 500 });
+  });
+});
+
+/* cowork-server answers a permission refusal with detail {code, message}. Every
+   request that throws on a refusal shows that message, never [object Object],
+   and keeps the status for callers that branch on it. */
+describe('a refused request with an object detail', () => {
+  const DENIED = 'Your current role does not allow this action.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    { status, headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json' } },
+  ));
+  const denied = () => refuse(403, { detail: { code: 'permission_denied', message: DENIED } });
+
+  it("deleteArtifact shows the 403's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe('permission_denied');
+  });
+
+  it.each([
+    ['unpublishArtifact', () => unpublishArtifact('/tmp/general/dash')],
+    ['deleteProject', () => deleteProject({ id: 'proj-1', name: 'general' })],
+    ['writeProjectFile', () => writeProjectFile('general', 'notes.md', 'hi')],
+    ['uploadProjectFiles', () => uploadProjectFiles('general', [new File(['x'], 'a.txt')])],
+    ['deleteProjectFile', () => deleteProjectFile('general', 'notes.md')],
+    ['deleteConversationTurn', () => deleteConversationTurn('conv-1', 0)],
+    ['deleteConversation', () => deleteConversation('conv-1')],
+    ['req (deleteAttachment)', () => deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' })],
+  ])("%s shows the 403's message and keeps its status", async (_name, call) => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await call().catch((e) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+  });
+
+  it('req shows a plain-text error body, which a JSON read used to consume', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const err = await deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Internal Server Error');
+    expect(err.status).toBe(500);
+  });
+
+  it("req joins a validation list's messages", async () => {
+    vi.stubGlobal('fetch', refuse(422, { detail: [{ msg: 'field required' }, { msg: 'not a number' }] }));
+
+    const err = await deleteAttachment('att-1').catch((e) => e);
+
+    expect(err.message).toBe('field required, not a number');
+    expect(err.status).toBe(422);
+  });
+
+  it('falls back to the status line when the body says nothing', async () => {
+    vi.stubGlobal('fetch', refuse(502, ''));
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Delete failed (502)');
   });
 });
 

@@ -3,7 +3,7 @@
 // finished answer. The sweep at the bottom pins the renderer to the server's
 // code vocabulary so a new code can't silently fall through again.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,6 +36,17 @@ const taskWith = (messages) => ({
 
 const failedTurn = (code, content, extra = {}) => [
   { role: 'user', content: 'draw me a chart' },
+  { role: 'error', content, code, ...extra },
+];
+
+/* A question sent with an uploaded file and a Drive reference chip, as App
+   keeps it on the local user message. A resend has to carry both again. */
+const ATTACHMENTS = [
+  { id: 'att-1', name: 'sales.csv' },
+  { id: 'gdrive:doc-1', name: 'Q3 plan', source: 'gdrive' },
+];
+const failedTurnWithFiles = (code, content, extra = {}) => [
+  { role: 'user', content: 'draw me a chart', attachments: ATTACHMENTS },
   { role: 'error', content, code, ...extra },
 ];
 
@@ -328,7 +339,18 @@ describe('token_limit card names the limit that fired', () => {
     expect(stopCard().getByRole('button', { name: 'Add funds' })).toBeEnabled();
     await user.click(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' }));
     // Resends the message whose turn failed, on Air.
-    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+
+  it("switches to Air with the failed question's own files and Drive references", async () => {
+    const user = userEvent.setup();
+    const onSwitchToAirAndResend = vi.fn();
+    renderStop(hubUsage({ remaining: 80 }), {
+      task: taskWith(failedTurnWithFiles('token_limit', "You've run out of credits.")),
+      onSwitchToAirAndResend,
+    });
+    await user.click(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' }));
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
   });
 
   it('offers no switch when the task is already on MindsHub Air', () => {
@@ -581,6 +603,15 @@ describe('rate_limited failure card (ENG-1537)', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
 
+  it('announces the refusal to a screen reader, without the countdown', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: new Date(Date.now() + 30_000).toISOString(),
+    }))} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(`Too many requests too quickly. ${BODY}`);
+    expect(alert).not.toContainElement(screen.getByRole('button', { name: /Try again in/ }));
+  });
+
   it('resends the previous user message on Retry, like provider_overloaded', () => {
     const onSend = vi.fn();
     render(
@@ -590,7 +621,7 @@ describe('rate_limited failure card (ENG-1537)', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
   });
 });
 
@@ -624,7 +655,74 @@ describe('server_busy failure card', () => {
       />,
     );
     screen.getByRole('button', { name: 'Try again' }).click();
-    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+
+  it("resends the question with its own files once Retry-After passes", () => {
+    vi.useFakeTimers();
+    try {
+      const onSend = vi.fn();
+      render(
+        <ChatView
+          task={taskWith(failedTurnWithFiles('server_busy', BODY, { retryAt: new Date(Date.now() + 2_000).toISOString() }))}
+          onSend={onSend}
+        />,
+      );
+      expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+
+      act(() => { vi.advanceTimersByTime(3_000); });
+      screen.getByRole('button', { name: 'Try again' }).click();
+
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('announces the busy refusal, without the countdown', () => {
+    render(<ChatView task={taskWith(failedTurn('server_busy', BODY, {
+      retryAt: new Date(Date.now() + 5_000).toISOString(),
+    }))} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(`The server is busy. ${BODY}`);
+    expect(alert).not.toContainElement(screen.getByRole('button', { name: /Try again in/ }));
+  });
+});
+
+/* Every card whose action resends the failed message sends that message's own
+   attachments with it. The composer's staged files belong to the next message. */
+describe('resend cards carry the failed question\'s files', () => {
+  it.each([
+    'provider_overloaded',
+    'rate_limited',
+    'server_busy',
+    'content_recovery',
+    'policy_unavailable',
+    'worker_unresponsive',
+  ])('%s: Try again resends the text with its attachments', (code) => {
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurnWithFiles(code, 'Something went wrong.', { reconnectable: true }))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
+  });
+
+  it("model_access_denied: Switch to MindsHub Air resends the text with its attachments", async () => {
+    const user = userEvent.setup();
+    const onSwitchToAirAndResend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurnWithFiles('model_access_denied', 'denied', { failedModel: 'gpt-5.6-sol' }))}
+        onSwitchToAirAndResend={onSwitchToAirAndResend}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Switch to MindsHub Air' }));
+    expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', ATTACHMENTS);
   });
 });
 
@@ -658,7 +756,7 @@ describe('content_recovery failure card', () => {
     // wrong here, the failure isn't anything wrong with the image itself.
     expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -721,7 +819,7 @@ describe('policy_unavailable failure card', () => {
     );
     expect(screen.getByText(/Billing is temporarily unavailable/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
   });
 
   it('hides Try again when there is no user message to resend', () => {
@@ -750,7 +848,7 @@ describe('worker_unresponsive failure card', () => {
     );
     expect(screen.getByText(/never reached the agent/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
   });
 
   it('blames the infrastructure, not the request', () => {

@@ -152,6 +152,7 @@ import { markOptimisticConversation, clearOptimisticConversation } from './Cowor
 import {
   fetchSessions,
   fetchProjects,
+  fetchSettings,
   createProject,
   uploadAttachments,
   renameConversation,
@@ -164,6 +165,7 @@ import {
   clearForm as clearDataVaultForm,
 } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
+import { MINDSHUB_AIR_MODEL_ID } from './lib/modelCatalog';
 
 const ASK_EVENT = {
   type: 'response.ask_user',
@@ -852,6 +854,66 @@ describe('a question the server refuses', () => {
     expect(await screen.findByText('The server is busy')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
     expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+});
+
+/* A failure card's resend goes through handleSendInTask with the failed
+   question's own attachments, so its files go to the server again and a file
+   staged in the composer since stays there for the next message. */
+describe("a resend from a failure card carries the failed question's files", () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+    fetchSettings.mockReset();
+    fetchSettings.mockResolvedValue({});
+  });
+
+  /** Sends `text` with `notes.txt`, uploaded as att-1, and fails the turn. */
+  async function failWithFile(user, composer, text, failure) {
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'notes.txt' }]);
+    await attach(user, 'notes.txt');
+    await send(user, composer, text);
+    const handle = await waitForStream();
+    expect(spies.streamMessage.mock.calls[0][2].attachmentIds).toEqual(['att-1']);
+    await act(async () => {
+      handle.opts.onError(failure.message, failure.event);
+      await Promise.resolve();
+    });
+  }
+
+  it("busy card: Try again resends att-1, and leaves a file staged since in the composer", async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: 'Cowork is busy. Try again in about 5 seconds.',
+      event: { code: 'server_busy', retry_at: new Date(Date.now() - 1_000).toISOString() },
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await attach(user, 'later.txt');
+
+    await user.click(retry);
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('chart these sales');
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
+    expect(uploadAttachments).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('later.txt')).toBeInTheDocument();
+  });
+
+  it('Switch to MindsHub Air resends att-1 on Air', async () => {
+    fetchSettings.mockResolvedValue({ recommendedModels: { 'minds-cloud': [MINDSHUB_AIR_MODEL_ID] } });
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: "You don't have enough credits for this model.",
+      event: { code: 'model_access_denied', http_status: 402 },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Switch to MindsHub Air' }));
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][2].model).toBe(MINDSHUB_AIR_MODEL_ID);
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
   });
 });
 

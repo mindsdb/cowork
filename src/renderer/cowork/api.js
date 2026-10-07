@@ -88,21 +88,9 @@ async function req(path, { timeoutMs, ...options } = {}) {
       signal,
       headers: { 'Content-Type': 'application/json', ...options.headers },
     });
-    if (!res.ok) {
-      let detail = '';
-      try {
-        const data = await res.json();
-        const raw = data?.detail;
-        detail = Array.isArray(raw)
-          ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-          : (raw || data?.message || '');
-      } catch {
-        detail = await res.text().catch(() => '');
-      }
-      const err = new Error(detail || `API ${path} returned ${res.status}`);
-      err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
-      throw err;
-    }
+    /* responseError carries err.status, so callers can branch on the HTTP
+       code (e.g. 404 fallbacks). */
+    if (!res.ok) throw await responseError(res, `API ${path} returned ${res.status}`);
     if (res.status === 204) return { ok: true };
     return await res.json();
   } finally {
@@ -1096,11 +1084,7 @@ export async function unpublishArtifact(path) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone' };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Unpublish failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Unpublish failed (${res.status})`);
   return res.json();
 }
 
@@ -1120,11 +1104,7 @@ export async function deleteArtifact(artifact) {
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
       )}`;
   const res = await authFetch(BASE + url, { method: 'DELETE' });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return { status: 'deleted' };
 }
 
@@ -1145,11 +1125,7 @@ export async function deleteProject(projectOrName) {
   });
   if (res.status === 404) return { status: 'gone', name };
   if (res.status === 204) return { status: 'deleted', name };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -1245,11 +1221,7 @@ export async function writeProjectFile(projectName, path, content) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || '' }),
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Write failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Write failed (${res.status})`);
   return res.json();
 }
 
@@ -1263,11 +1235,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
 }
 
@@ -1277,11 +1245,7 @@ export async function deleteProjectFile(projectName, path) {
     method: 'DELETE',
   });
   if (res.status === 404) return { status: 'gone', path };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -2431,15 +2395,9 @@ export async function deleteConversationTurn(id, turnIndex) {
       },
     );
     if (res.status === 404) return { status: 'gone', id, turnIndex };
-    if (!res.ok) {
-      let detail = '';
-      try { detail = (await res.json())?.detail || ''; } catch {}
-      const err = new Error(detail || `Delete turn failed (${res.status})`);
-      // Carried like req() does: the caller has to tell a refusal apart from a
-      // gateway giving up on a delete the server may still be running.
-      err.status = res.status;
-      throw err;
-    }
+    /* responseError carries err.status: the caller has to tell a refusal apart
+       from a gateway giving up on a delete the server may still be running. */
+    if (!res.ok) throw await responseError(res, `Delete turn failed (${res.status})`);
     // Awaited inside the bound: a server that sends headers and then stalls the
     // body is the same hang the timeout exists for.
     return await res.json();
@@ -2472,11 +2430,7 @@ export async function deleteConversation(id) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone', id };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   if (res.status === 204) return { ok: true };
   return res.json();
 }

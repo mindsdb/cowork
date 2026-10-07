@@ -1986,13 +1986,15 @@ function AppCore() {
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
-  const handleSwitchToAirAndResend = (text) => {
+  const handleSwitchToAirAndResend = (text, attachments = null) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
     setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
+    /* `attachments` is the failed message's own list, so its files go with the
+       resend and the composer's staged files stay put. */
+    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
