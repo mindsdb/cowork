@@ -542,3 +542,52 @@ describe('deleting a turn that gets a reply while the confirm dialog is open', (
     await waitFor(() => expect(screen.queryByText('New question')).toBeNull());
   });
 });
+
+describe('deleting a turn while a failed turn is still being recovered', () => {
+  it('waits for the recovery, so the recovered page cannot land on top of the delete', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+      ] }),
+    });
+    const composer = await openTask(user);
+    await screen.findByText('First answer');
+    let releaseReload;
+    spies.fetchSession.mockImplementation(() => new Promise((resolve) => { releaseReload = resolve; }));
+
+    await user.click(composer);
+    await user.keyboard('New question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-new' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'Partial answer' });
+    await act(async () => {
+      stream.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error', assistant_message_id: 'a-new', user_message_id: 'u-new',
+      });
+    });
+
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: [] }) });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
+
+    // The reload answers with the history as it was before the delete.
+    await act(async () => {
+      releaseReload({ id: 'conv-a', messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', id: 'u-new', content: 'New question' },
+      ] });
+    });
+
+    await waitFor(() => expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a1'));
+    await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.queryByText('First question')).toBeNull();
+    expect(screen.queryByText('New question')).toBeNull();
+  });
+});

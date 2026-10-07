@@ -786,6 +786,100 @@ describe('interrupted stream recovery', () => {
     }
   });
 
+  describe('a message sent while a failed turn is still being recovered', () => {
+    /** Fails the turn and leaves its history reload open until `release`. */
+    async function failWithReloadHeld(user, failure) {
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      spies.fetchSession.mockImplementation(() => held);
+      const composer = await openTask(user);
+      await send(user, composer, 'do something');
+      const handle = await waitForStream();
+      await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+      await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+      await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+      return { composer, release: (value) => act(async () => { release(value); }) };
+    }
+
+    const sentTexts = () => spies.streamMessage.mock.calls.map((c) => c[1]);
+
+    it('waits, then goes out once, and the failed partial keeps its own reply id', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release(null);
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
+    it('waits, and its live answer survives the recovery that replaces history', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        code: 'stream_error', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release({ messages: [
+        { id: 'user-current', role: 'user', content: 'do something' },
+        { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+      ] });
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      const followUp = streams[streams.length - 1];
+      await emitOn(followUp, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-follow-up' });
+      await emitOn(followUp, { type: 'response.output_text.delta', delta: 'fresh live text' });
+      // Stop shows only while this conversation holds a live row.
+      expect(await screen.findByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      expect(screen.getByText('finished answer')).toBeInTheDocument();
+    });
+
+    it('a connect form submitted meanwhile starts its stream only after recovery', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      await act(async () => {
+        setDataVaultForm('conv-a', { form_id: 'fm_1', title: 'Connect Postgres', fields: [] });
+      });
+      const vaultStarted = () => streams.some((x) => x.kind === 'datavault');
+      try {
+        await user.click(await screen.findByRole('button', { name: /^submit$/i }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(vaultStarted()).toBe(false);
+
+        await release(null);
+
+        await waitFor(() => expect(vaultStarted()).toBe(true));
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+      } finally {
+        clearDataVaultForm('conv-a');
+      }
+    });
+  });
+
   it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

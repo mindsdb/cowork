@@ -743,6 +743,12 @@ function AppCore() {
    * delete to finish instead of starting a turn the delete may remove.
    */
   const deletingRef = useRef(new Set());
+  /*
+   * Conversations whose failed turn is reloading its history, cid -> a promise
+   * that settles once the recovered rows are queued. Everything that writes a
+   * turn waits for it: that update rewrites the conversation's streaming row.
+   */
+  const recoveringRef = useRef(new Map());
 
   // A second stream on the SAME conversation replaces the first, which has to
   // be aborted: left attached it keeps replaying into a turn nobody reads and
@@ -814,10 +820,11 @@ function AppCore() {
 
   /*
    * A conversation still has a turn here while its stream is registered, a Stop
-   * is ending it, or a delete is removing it.
+   * is ending it, a delete is removing it, or a failed one is being recovered.
    */
   const hasLiveTurnHere = useCallback((cid) => (
     liveStreamsRef.current.has(cid) || stoppingRef.current.has(cid) || deletingRef.current.has(cid)
+      || recoveringRef.current.has(cid)
   ), []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
@@ -1426,9 +1433,23 @@ function AppCore() {
     releaseSlotClaim(...ids);
     ids.forEach((id) => markInFlightDone(id));
 
-    const loaded = cid
-      ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
-      : null;
+    let releaseRecovery;
+    const recovery = new Promise((resolve) => { releaseRecovery = resolve; });
+    ids.forEach((id) => recoveringRef.current.set(id, recovery));
+    let loaded = null;
+    try {
+      loaded = cid
+        ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
+        : null;
+    } finally {
+      // Released before the rows are rewritten below, but in the same
+      // synchronous run: whatever waits on it resumes after that update is
+      // queued, and the callers drain held sends only once this returns.
+      ids.forEach((id) => {
+        if (recoveringRef.current.get(id) === recovery) recoveringRef.current.delete(id);
+      });
+      releaseRecovery();
+    }
     // A successful history GET can still contain only the pending question, or
     // an older completed turn. Only this turn's persisted terminal can replace
     // the partial text and transport error. The response.created user message
@@ -4116,9 +4137,17 @@ function AppCore() {
   // same React state machine. The user sees a normal Anton bubble
   // appear after they submit; under the hood the LLM never read the
   // values. Mirrors handleSendInTask but wired to streamDataVaultSubmission.
-  const handleSubmitDataVaultForm = ({ formId, formSpec, values, skipped, name, method }) => {
+  const handleSubmitDataVaultForm = (submission) => {
     if (!currentTask) return;
     const id = currentTask.id;
+    // Its live row would be the one a pending recovery rewrites as the failed
+    // turn's answer; the submission starts once that recovery has landed.
+    const recovering = recoveringRef.current.get(id);
+    if (recovering) {
+      recovering.then(() => handleSubmitDataVaultForm(submission));
+      return;
+    }
+    const { formId, formSpec, values, skipped, name, method } = submission;
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -4770,6 +4799,10 @@ function AppCore() {
 
   const performDeleteTurn = async (taskId, clickedId) => {
     if (!taskId || !clickedId) return;
+    // A failed turn being recovered here would land its reloaded page on top
+    // of this delete. Like a cancel, recovery can also answer an orphan row.
+    const recovering = recoveringRef.current.get(taskId);
+    if (recovering) await recovering;
     const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
     // The clicked user row may have been answered while the dialog was open.
     // `messageId` is the turn as this client shows it: dimming and cleanup use it.
@@ -4819,7 +4852,7 @@ function AppCore() {
       // received, which makes the user row an answered one the server refuses.
       // Assumes the cancel has landed by now; true when one replica served both.
       let serverAnchorId = messageId;
-      if (stoppedStream && messageId === clickedId) {
+      if ((stoppedStream || recovering) && messageId === clickedId) {
         try {
           const res = await fetchSessionResult(taskId);
           if (res?.status === 'ok' && Array.isArray(res.task?.messages)) {
