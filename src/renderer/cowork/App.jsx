@@ -2303,8 +2303,8 @@ function AppCore() {
     // whatever the task already has rather than replacing wholesale, so an
     // older prefix loaded earlier via "load earlier messages" survives.
     // A delete left unconfirmed here may have committed since; this page shows it.
-    const pendingCutIds = unconfirmedDeletesRef.current[id]?.ids;
-    const cutCommitted = cutConfirmedGone(pendingCutIds, reconciled);
+    const pendingCut = unconfirmedDeletesRef.current[id];
+    const cutCommitted = cutConfirmedGone(pendingCut, reconciled, fresh.hasMoreMessages);
     const patch = (t) => {
       const next = {
         ...t,
@@ -2314,7 +2314,7 @@ function AppCore() {
         ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
         ...(dc !== undefined ? { disabledConnections: dc } : {}),
       };
-      return cutCommitted ? forgetTurnIds(next, pendingCutIds) : next;
+      return cutCommitted ? forgetTurnIds(next, pendingCut.ids) : next;
     };
     setTasks((prev) => (prev.some((t) => t.id === id)
       ? prev.map((t) => (t.id === id ? patch(t) : t))
@@ -4413,8 +4413,8 @@ function AppCore() {
   // delete. Nothing the client does can bound when a delete it gave up on
   // commits, so the guarantee is narrower than it looks: the next delete only
   // goes out against a list fetched after the user was told about this one.
-  // Per conversation, `{ ids }`: the rows the unconfirmed delete would cut, so
-  // whichever later refresh first shows them gone can clean up after it.
+  // Per conversation, the unconfirmed delete's cut (see turnCut), so whichever
+  // later refresh first shows it gone can clean up after it.
   const [unconfirmedDeletes, setUnconfirmedDeletes] = useState({});
   const unconfirmedDeletesRef = useRef(unconfirmedDeletes);
   useEffect(() => { unconfirmedDeletesRef.current = unconfirmedDeletes; }, [unconfirmedDeletes]);
@@ -4424,10 +4424,10 @@ function AppCore() {
    * Re-reads the conversation from the server after a delete, so the list on
    * screen is one the server has vouched for. Returns null when the server
    * could not be asked; the list then stays unvouched for. Otherwise returns
-   * `{ committed }`: true when none of `cutIds` came back, in which case their
-   * notices and sidecar entries are dropped in the same update.
+   * `{ committed }`: true when the page shows `cut` gone (cutConfirmedGone), in
+   * which case its notices and sidecar entries are dropped in the same update.
    */
-  const resyncConversationAfterDelete = async (taskId, cutIds = null) => {
+  const resyncConversationAfterDelete = async (taskId, cut = null) => {
     try {
       // fetchSessionResult, not fetchSession: that one turns a failed `/items`
       // into `messages: []`, blanking the transcript and reading as a re-sync.
@@ -4445,7 +4445,7 @@ function AppCore() {
       // what came back, which means an older prefix pulled in through "load
       // earlier" has to be loaded again — the honest cost of trusting the
       // server here.
-      const committed = cutConfirmedGone(cutIds, fresh.messages);
+      const committed = cutConfirmedGone(cut, fresh.messages, fresh.hasMoreMessages);
       setTasks((prev) => prev.map((t) => {
         if (t.id !== taskId) return t;
         const next = {
@@ -4454,7 +4454,7 @@ function AppCore() {
           hasMoreMessages: fresh.hasMoreMessages ?? false,
           messagesCursor: fresh.messagesCursor ?? null,
         };
-        return committed ? forgetTurnIds(next, cutIds) : next;
+        return committed ? forgetTurnIds(next, cut.ids) : next;
       }));
       return { committed };
     } catch (e) {
@@ -4477,7 +4477,7 @@ function AppCore() {
       // and this spends it on a refresh rather than on the delete.
       alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
       try {
-        if (await resyncConversationAfterDelete(taskId, unconfirmedDeletes[taskId]?.ids)) {
+        if (await resyncConversationAfterDelete(taskId, unconfirmedDeletes[taskId])) {
           setUnconfirmedDeletes((prev) => {
             if (!prev[taskId]) return prev;
             const next = { ...prev };
@@ -4606,25 +4606,30 @@ function AppCore() {
       : anchorIdx;
   };
 
-  // The ids a cut at `messageId` removes, and the notices and sidecar entries
-  // to drop with them. Kept apart from the rows: the server-backed path leaves
-  // the list to the resync, which replaces it and cannot tell which ids went.
-  const turnCutIds = (msgs, messageId) => {
+  // A cut at `messageId`: the ids it removes and the nearest id-bearing row
+  // before it. Kept apart from the rows: the server-backed path leaves the list
+  // to the resync, which replaces it and cannot tell which ids went.
+  const turnCut = (msgs, messageId) => {
     const cutFrom = turnCutFrom(msgs, messageId);
-    return cutFrom === -1 ? [] : msgs.slice(cutFrom).map((m) => m.id).filter(Boolean);
+    if (cutFrom === -1) return { ids: [], beforeId: null };
+    const before = msgs.slice(0, cutFrom).findLast((m) => m?.id != null);
+    return { ids: msgs.slice(cutFrom).map((m) => m.id).filter(Boolean), beforeId: before?.id ?? null };
   };
   const forgetTurnIds = (t, removedIds) => {
     removeConvTurnsFor(t.id, removedIds);
     return { ...t, usageNotices: dropNoticesFromTurn(t.usageNotices, removedIds) };
   };
   const forgetTurnArtifacts = (t, messageId) => {
-    const removedIds = turnCutIds(t.messages || [], messageId);
+    const removedIds = turnCut(t.messages || [], messageId).ids;
     return removedIds.length ? forgetTurnIds(t, removedIds) : t;
   };
-  // A cut is a suffix and a fetched page is the newest rows, so an uncommitted
-  // cut always has a row on the page; any match means it did not happen.
-  const cutConfirmedGone = (cutIds, freshMessages) => Array.isArray(cutIds) && cutIds.length > 0
-    && !freshMessages.some((m) => cutIds.includes(m?.id));
+  // A fetched page is the newest contiguous run of rows. Only a page reaching
+  // back to the row before the cut can show the cut is gone; turns sent since
+  // can push an uncommitted cut off a page that stops short of it.
+  const cutConfirmedGone = (cut, freshMessages, freshHasMore) => {
+    if (!cut?.ids?.length || freshMessages.some((m) => cut.ids.includes(m?.id))) return false;
+    return cut.beforeId != null ? freshMessages.some((m) => m?.id === cut.beforeId) : !freshHasMore;
+  };
 
   // Full local cut, for a conversation the server has never seen: there is no
   // resync to follow it, so this is the only thing that removes the rows.
@@ -4657,6 +4662,9 @@ function AppCore() {
     // `messageId` is the turn as this client shows it: dimming and cleanup use it.
     const localMessages = tasksRef.current.find((t) => t.id === taskId)?.messages || [];
     const messageId = resolveTurnAnchor(localMessages, clickedId);
+    // Taken now: during the DELETE (up to its timeout) a reopen can replace the
+    // list, and after that nothing can work out which ids this cut covers.
+    const cut = turnCut(localMessages, messageId);
     // Raised before the stop-stream branch, not after it: cancelling a live
     // stream is itself two network calls, and the turn has to read as in
     // flight for that wait too. The local-only path never sets it.
@@ -4707,19 +4715,16 @@ function AppCore() {
       // an anchor. That is a refusal, not a failure to reach the server, so
       // the resync below is what puts the list right.
       const gone = result?.status === 'gone';
-      // Taken while the list still holds the cut rows; nothing after this can
-      // work out which ids went.
-      const cutIds = turnCutIds(tasksRef.current.find((t) => t.id === taskId)?.messages || [], messageId);
       // The list itself is left to the resync below, so the turn never
       // un-dims into one the server has not vouched for. Only the by-id
       // cleanup happens here.
       if (!failure && !gone) {
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? forgetTurnIds(t, cutIds) : t)));
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? forgetTurnIds(t, cut.ids) : t)));
       }
       // Re-fetch whatever happened above, not just on success: a delete we did
       // not see confirmed may still have landed, so the list on screen is not
       // one the server has vouched for until this returns.
-      const resync = await resyncConversationAfterDelete(taskId, cutIds);
+      const resync = await resyncConversationAfterDelete(taskId, cut);
       const resynced = resync != null;
       // Only a 4xx is the server saying it did not do this. Our own timeout, a
       // gateway 5xx and no response at all all leave a delete that may still
@@ -4728,7 +4733,7 @@ function AppCore() {
       // An unanswered delete the resync already shows done needs no follow-up.
       const unconfirmed = failure && !refused && !resync?.committed;
       if (!resynced || unconfirmed) {
-        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: { ids: cutIds } }));
+        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: cut }));
       }
       if (!resynced) {
         // The quiet version of this is the one that loses data: the exchange

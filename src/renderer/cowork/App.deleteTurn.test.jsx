@@ -464,6 +464,34 @@ describe('deleting a turn shows it as in flight', () => {
       expect(screen.getByText('notice after: u1')).toBeInTheDocument();
     });
 
+    it('keeps an uncommitted cut unconfirmed when newer turns push it off the page', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 1);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      alertSpy.mockClear();
+
+      // The cut never happened, but enough was sent since that the newest page
+      // holds neither its rows nor the row before it.
+      const newerOnly = [
+        { role: 'user', id: 'u9', content: 'ninth question' },
+        { role: 'assistant', id: 'a9', content: 'ninth answer' },
+      ];
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: newerOnly, hasMoreMessages: true, messagesCursor: 'c9' },
+      });
+
+      // The unconfirmed refresh reads that page. It must not take the cut's
+      // absence as proof that it committed.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      await screen.findByText('msg: user: ninth question');
+
+      expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+    });
+
     it('settles a late commit when the conversation is reopened', async () => {
       const user = userEvent.setup();
       timedOut();
