@@ -29,6 +29,11 @@ export const CHECK_STALL_MS = 10 * 60 * 1000;
  *  `ShellUpdaterAdapter.cancelDownload`). The next check finds the update again
  *  and starts a fresh download. */
 export const DOWNLOAD_STALL_MS = 30 * 60 * 1000;
+/** An `installing` phase that neither quit the app nor reported an error
+ *  within this limit is abandoned as recoverable `install-stalled`, so the
+ *  banner offers Retry instead of a disabled pill until relaunch. The boot
+ *  install reaches this phase with no user action, so it needs a way out. */
+export const INSTALL_STALL_MS = 60 * 1000;
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -277,6 +282,12 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
         code: 'check-stalled',
         recoverable: true,
       });
+    } else if (snapshot.phase === 'installing') {
+      if (idleFor < INSTALL_STALL_MS) return;
+      fail(new Error(`shell update install made no progress for ${INSTALL_STALL_MS}ms`), null, {
+        code: 'install-stalled',
+        recoverable: true,
+      });
     } else if (snapshot.phase === 'downloading') {
       if (idleFor < DOWNLOAD_STALL_MS) return;
       // Settle the updater's own download first, or its deduplication hands
@@ -365,7 +376,14 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // download fault the check swallows this way is not lost: downloadUpdate()
   // rejects too, and that rejection carries the download's own flight. An error
   // with no flight open (an internal retry, say) still fails normally.
-  options.adapter.onError(error => fail(error, checkToken ?? downloadToken));
+  options.adapter.onError(error => {
+    // A late error with no flight open while an install is armed can only
+    // come from an operation the stall guard already abandoned (a refresh,
+    // say). The artifact on disk is untouched, so failing the armed install
+    // would take a working Restart away for nothing; drop it.
+    if (!checkToken && !downloadToken && snapshot.phase === 'ready-to-install') return;
+    fail(error, checkToken ?? downloadToken);
+  });
 
   return {
     getSnapshot: () => snapshot,

@@ -130,7 +130,13 @@ When enabled, main owns one immutable shell-update snapshot:
   which starts the automatic download, before it creates that token. A check needs no cancelling: its feed
   request has a 60-second socket timeout in the library, so it always settles
   with an `error`, and a new check meanwhile adopts the same pending promise
-  rather than starting a second request. While a check or download is in
+  rather than starting a second request. Cancellation reaches only the
+  transfer itself: a download stalled inside the library's checksum validation
+  or its rename retries is not cancellable and stays bounded by the library.
+  An `installing` phase that neither quits the app nor reports an error within
+  60 seconds is abandoned as recoverable `install-stalled`, and the banner
+  offers Retry. A late `error` from an operation the guard already abandoned
+  is dropped rather than reported twice. While a check or download is in
   flight the periodic timer runs every 30 minutes, as it does with an install
   pending, so a stalled one is released within 30 minutes of crossing its
   threshold.
@@ -147,7 +153,9 @@ When enabled, main owns one immutable shell-update snapshot:
   `error_code` is `install-not-applied` when the app came back on the old
   shell, and `install_source` is `boot` when a launch-time install produced the
   verdict. Count `installing` with `install_source=boot` against `relaunched`
-  with the same source to watch the stranded-install rollout. An install on normal quit sends no `installing`; it appears only as
+  with the same source to watch the stranded-install rollout. `relaunched`
+  fires once per install attempt: a launch that reports it rewrites the
+  evidence as reported, so later launches still on the old shell stay quiet. An install on normal quit sends no `installing`; it appears only as
   the next launch's `relaunched`. Checks that find nothing send nothing.
 - `boot_screen_resolved` carries `shell_version` and `build_kind` on every
   launch. Use them for shell adoption, not `app_version`: that is the running
@@ -160,12 +168,17 @@ the update stays downloaded and uninstalled, and the user meets the same banner
 every launch.
 
 When `shell-update-target.json` shows an earlier launch downloaded a target
-this launch is not running, and that target has not already failed a boot
-install, the loading gate also waits on the shell boot check, for up to 10
-seconds. Every other launch skips the wait. If that check replays a cached
-download, the app installs it and relaunches before it is shown, and the
-loading screen reads "Installing the update — Cowork will reopen…". `decideBootShellInstall` in
-`src/main/update-logic.ts` requires all of:
+this launch is not running, and no install of that target has been attempted,
+by a boot install or a Restart click, the loading gate also waits on the shell
+boot check, for up to 10 seconds in all, hand-off included. Every other launch
+skips the wait. If that check replays a cached download, the app installs it
+and relaunches before it is shown. The install starts only after the OTA boot
+apply has settled, so it never quits the app mid-apply; the gate is held by
+that apply anyway. On Windows the loading screen reads "Installing the update
+— Cowork will reopen…" while the quit drains; on macOS the updater closes the
+window before the renderer paints. The stale record stays on disk until the
+check answers, so a crash in between does not lose it. `decideBootShellInstall`
+in `src/main/update-logic.ts` requires all of:
 
 - the snapshot is at `ready-to-install`;
 - the mode is `auto`;
@@ -173,7 +186,9 @@ loading screen reads "Installing the update — Cowork will reopen…". `decideB
   download without emitting `download-progress`, so this separates a stranded
   update from a fresh one. The gate is released at the first progress event, and
   a fresh download is left to the banner and the next quit;
-- this target has not already failed a boot install.
+- no install of this target has been attempted. A failed boot install is
+  marked before it runs; a failed Restart click leaves `installSource` behind.
+  Either falls back to the banner.
 
 A stranded update and a failed install look the same afterwards, so the attempt
 is recorded in `shell-update-target.json` before it is made. The marker persists

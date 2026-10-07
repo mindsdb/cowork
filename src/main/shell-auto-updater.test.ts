@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHECK_STALL_MS,
   DOWNLOAD_STALL_MS,
+  INSTALL_STALL_MS,
   adaptElectronUpdater,
   createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
@@ -763,6 +764,61 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
     expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2);
     expect(downloadImpl).toHaveBeenCalledTimes(1);
     expect(updater.getSnapshot().phase).toBe('downloading');
+  });
+
+  it('releases an install that neither quit nor errored once the install stall limit passes', async () => {
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { adapter.emit('available', '2.1.0'); adapter.emit('downloaded', '2.1.0'); };
+    await updater.check('boot');
+    expect(updater.quitAndInstall('boot')).toBe(true);
+    expect(updater.getSnapshot().phase).toBe('installing');
+
+    // Short of the limit the install is left alone and no check starts.
+    advance(INSTALL_STALL_MS - 1);
+    await updater.check('periodic');
+    expect(updater.getSnapshot().phase).toBe('installing');
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
+
+    // Past it: recoverable failure that keeps the target, then a fresh check.
+    advance(1);
+    adapter.checkImpl = async () => { adapter.emit('none'); };
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['install-stalled']);
+    expect(failures[0]).toMatchObject({ phase: 'installing', recoverable: true, targetVersion: '2.1.0' });
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().phase).not.toBe('installing');
+  });
+
+  it('drops a late error from an abandoned refresh instead of failing the armed install', async () => {
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { adapter.emit('available', '2.1.0'); adapter.emit('downloaded', '2.1.0'); };
+    await updater.check('boot');
+    expect(updater.getSnapshot().phase).toBe('ready-to-install');
+
+    // A background refresh hangs, is abandoned past the limit, and the fresh
+    // refresh finds nothing, so no flight is open and the install stays armed.
+    let release!: () => void;
+    adapter.checkImpl = () => new Promise(resolve => { release = () => { adapter.emit('none'); resolve(undefined); }; });
+    await Promise.race([updater.check('periodic'), nextTick()]);
+    expect(updater.getSnapshot().refreshing).toBe(true);
+    advance(CHECK_STALL_MS);
+    // The fresh refresh adopts the same pending request (library dedup); the
+    // feed then answers it, which settles the adopted flight.
+    const adopted = updater.check('periodic');
+    release();
+    await adopted;
+    const armed = updater.getSnapshot();
+    expect(armed).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+    expect(armed.refreshing).toBeFalsy();
+
+    // The abandoned request errors late: the armed install must not fail.
+    adapter.emit('updater-error', new Error('late failure from the abandoned request'));
+    await nextTick();
+    expect(updater.getSnapshot()).toEqual(armed);
+    expect(failures).toEqual([]);
+    expect(updater.quitAndInstall()).toBe(true);
   });
 
   it('ends a stalled background refresh without disturbing the pending install', async () => {

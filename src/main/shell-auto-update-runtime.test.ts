@@ -49,6 +49,12 @@ describe('reconcileDownloadedTarget', () => {
     expect(reconcileDownloadedTarget('2.260727.2', retried).lastInstall).toMatchObject({ applied: true, source: 'user' });
   });
 
+  it('omits the relaunch verdict once a launch has reported it', () => {
+    const reported = { ...evidence, installSource: 'boot' as const, bootInstallAttemptedTarget: '2.260727.2', relaunchReported: true };
+    expect(reconcileDownloadedTarget('2.260727.1', reported)).toMatchObject({ phase: 'failed', errorCode: 'install-not-applied' });
+    expect(reconcileDownloadedTarget('2.260727.1', reported).lastInstall).toBeUndefined();
+  });
+
   it('surfaces a recoverable failure when relaunch stayed on the old shell', () => {
     expect(reconcileDownloadedTarget('2.260727.1', evidence)).toMatchObject({
       phase: 'failed',
@@ -117,6 +123,7 @@ describe('periodicCheckIntervalFor', () => {
   const FOUR_HOURS = 4 * 60 * 60 * 1000;
 
   it('checks every 30 minutes while an install is pending or a check/download is in flight', () => {
+    expect(periodicCheckIntervalFor('installing')).toBe(HALF_HOUR);
     // In flight: the controller's stall guard only runs from check(), so the
     // shorter cadence is what releases a stalled flight within 30 minutes of
     // its threshold instead of at the 4-hour tick.
@@ -126,7 +133,7 @@ describe('periodicCheckIntervalFor', () => {
   });
 
   it('checks every 4 hours otherwise', () => {
-    for (const phase of ['idle', 'available', 'failed', 'complete', 'installing', 'disabled'] as const) {
+    for (const phase of ['idle', 'available', 'failed', 'complete', 'disabled'] as const) {
       expect(periodicCheckIntervalFor(phase)).toBe(FOUR_HOURS);
     }
   });
