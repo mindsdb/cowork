@@ -690,4 +690,28 @@ describe('deleting a question that never reached the server', () => {
     expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
     expect(alertSpy).not.toHaveBeenCalled();
   });
+
+  it('removes a question in a chat the server never created, locally', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessions.mockResolvedValue([
+      {
+        id: 'tmp-local-9', title: 'Unsaved chat', status: 'idle', projectName: 'general',
+        messages: [
+          { role: 'user', content: 'Local question' },
+          { role: 'error', content: 'Could not reach the server.' },
+        ],
+      },
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+    render(<App />);
+    await user.click(await screen.findByText('Unsaved chat'));
+    await screen.findByText('Local question');
+
+    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByText('Local question')).toBeNull());
+    expect(screen.queryByText('Could not reach the server.')).toBeNull();
+    expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
 });

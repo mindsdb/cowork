@@ -2416,14 +2416,8 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    // Anchored on this user message's own id — an
-                    // orphan turn (stopped/failed before any answer) has no
-                    // assistant row to anchor on instead. Hidden, not just
-                    // disabled, when a row the server has seen has no id yet
-                    // (a stop/error refetch that hasn't landed) rather than
-                    // rendering a button that 422s silently when clicked. No
-                    // turn offers a delete while one is out, so the list
-                    // cannot be re-cut under a delete that has not come back.
+                    // A row the server has seen is hidden until it has an id, not
+                    // sent to 422; no turn offers a delete while one is out.
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}

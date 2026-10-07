@@ -520,10 +520,41 @@ describe('deleting a turn shows it as in flight', () => {
       await confirmDelete(user, 0);
 
       await waitFor(() => expect(screen.queryByText('msg: user: first question')).toBeNull());
-      expect(spies.fetchOlderMessages).toHaveBeenCalledWith(task.id, 'c-old');
+      expect(spies.fetchOlderMessages).toHaveBeenCalledWith(
+        task.id, 'c-old', expect.objectContaining({ timeoutMs: expect.any(Number) }),
+      );
       expect(alertSpy).not.toHaveBeenCalled();
       await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
       expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    });
+
+    it('leaves that delete unconfirmed when the older page cannot be read', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      spies.fetchSessionResult.mockImplementation(async (id) => ({
+        status: 'ok',
+        task: { id, messages: exchange, hasMoreMessages: true, messagesCursor: 'c-old' },
+      }));
+      render(<App />);
+      await openTask(user, task);
+      const older = [
+        { role: 'user', id: 'u0', content: 'older question' },
+        { role: 'assistant', id: 'a0', content: 'older answer' },
+      ];
+      spies.fetchOlderMessages.mockResolvedValue(null);
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: older, hasMoreMessages: true, messagesCursor: 'c-older' },
+      });
+
+      await confirmDelete(user, 0);
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(alertSpy.mock.calls[0][0]).toMatch(/may still have gone through/i);
+      alertSpy.mockClear();
+      // Still unconfirmed: the next delete click is spent on a refresh.
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(alertSpy.mock.calls[0][0]).toMatch(/refreshed/i);
     });
 
     it('settles a late commit that emptied the conversation when it is reopened', async () => {

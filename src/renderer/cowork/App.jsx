@@ -4819,20 +4819,20 @@ function AppCore() {
    * instead of doing nothing when the row has changed since it was clicked.
    */
   const deleteLocalRow = async (taskId, row) => {
-    const current = await latestTask(taskId);
-    if (!current?.messages?.includes(row)) {
-      alert('This message changed before it could be deleted. Try again.');
-      return;
-    }
-    setTasks((prev) => prev.map((t) => {
-      if (t.id !== taskId) return t;
-      const msgs = t.messages || [];
-      const from = msgs.indexOf(row);
-      if (from === -1) return t;
-      let to = from + 1;
-      while (to < msgs.length && msgs[to]?.role !== 'user') to += 1;
-      return { ...t, messages: [...msgs.slice(0, from), ...msgs.slice(to)] };
-    }));
+    const removed = await new Promise((resolve) => {
+      setTasks((prev) => {
+        const t = prev.find((x) => x.id === taskId);
+        const msgs = t?.messages || [];
+        const from = msgs.indexOf(row);
+        resolve(from !== -1);
+        if (from === -1) return prev;
+        let to = from + 1;
+        while (to < msgs.length && msgs[to]?.role !== 'user') to += 1;
+        const next = { ...t, messages: [...msgs.slice(0, from), ...msgs.slice(to)] };
+        return prev.map((x) => (x === t ? next : x));
+      });
+    });
+    if (!removed) alert('This message changed before it could be deleted. Try again.');
   };
 
   // A task as of every update queued so far: an updater runs after them all,
@@ -4954,10 +4954,11 @@ function AppCore() {
       // commit, which a re-sync read before it does cannot show.
       const refused = gone || (failure?.status >= 400 && failure.status < 500);
       // A cut of the oldest loaded turn has no row before it on screen; the
-      // newest row of the older page is that row (default request timeout).
+      // newest row of the older page is that row. If a page boundary split the
+      // turn, that row is its question, which the cut also takes: stays unconfirmed.
       let checkedCut = cut;
       if (failure && !refused && cut.beforeId == null && snapshot?.hasMoreMessages && snapshot.messagesCursor) {
-        const older = await fetchOlderMessages(taskId, snapshot.messagesCursor);
+        const older = await fetchOlderMessages(taskId, snapshot.messagesCursor, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
         const newestOlder = older?.messages?.findLast((m) => m?.id != null);
         if (newestOlder) checkedCut = { ...cut, beforeId: newestOlder.id };
       }

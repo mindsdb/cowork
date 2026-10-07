@@ -519,10 +519,10 @@ export async function fetchSession(id, { timeoutMs } = {}) {
  * merges the result in ahead of what it already has (see
  * lib/mergeMessagePage.js). Returns `null` on failure — same "caller
  * decides how to degrade" convention as fetchSession. */
-export async function fetchOlderMessages(id, cursor) {
+export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
   if (!cursor) return null;
   try {
-    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }));
+    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
     const page = _pageFromItemsResponse(raw);
     return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
