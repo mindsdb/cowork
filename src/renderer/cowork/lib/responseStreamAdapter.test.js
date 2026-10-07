@@ -261,6 +261,23 @@ describe('model_wait: the still-working line while a model call is silent', () =
     });
   });
 
+  it('shows the line during a tool call\'s arguments after narration already streamed', () => {
+    /* The wire order of a non-scratchpad tool: narration, then the
+     * formatter's phase-less tool-start progress, then nothing but ticks while
+     * the arguments stream. The tick is the only live sign of work there. */
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'Building the deck.' },
+      { type: 'response.in_progress', thought_role: 'thought.progress', content: 'generate_artifact', at_ms: 110 },
+      tick('The model is still writing (1m 0s)', 120),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'The model is still writing (1m 0s)', startedAt: 120, kind: 'model_wait',
+    });
+    expect(state.bodyText).toBe('Building the deck.');
+    expect(state.status).toBe('streaming');
+  });
+
   it('a later reasoning delta replaces the line instead of appending to it', () => {
     const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
     expect(afterTick.currentThought).toEqual(waiting);

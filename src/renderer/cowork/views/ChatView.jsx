@@ -2661,9 +2661,12 @@ export default function ChatView({
                       kind="Agent"
                       title="The model didn't respond"
                       body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
-                        : []}
+                      buttons={[
+                        ...(retryText
+                          ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                          : []),
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                      ]}
                     />
                   );
                 }

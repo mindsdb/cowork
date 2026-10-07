@@ -394,6 +394,50 @@ describe('tailInFlight idle-stall cancel', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps a silent model call alive on model_wait ticks and sends no cancel', async () => {
+    /* The server's still-working frames are ordinary data frames, so each one
+     * restarts the idle cut. A quiet call that outlasts the window several
+     * times over still completes, and nothing asks the server to cancel. */
+    let signal;
+    const cancelBodies = [];
+    const tick = {
+      type: 'response.in_progress', thought_role: 'thought.progress', phase: 'model_wait',
+      message: 'Waiting for the model (20s)', conversation_id: 'conv-1',
+    };
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.created', conversation_id: 'conv-1' } },
+          ...Array.from({ length: 8 }, () => ({ after: 10, frame: tick })),
+          { after: 10, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 50,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+    expect(cancelBodies).toEqual([]);
+  });
+
   it('asks the server to cancel the turn with reason stalled', async () => {
     let signal;
     const cancelBodies = [];

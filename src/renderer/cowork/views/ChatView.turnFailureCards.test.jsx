@@ -758,7 +758,8 @@ const reloadedFailure = (code, error) => hydrateMessagesFromServerEvents([
 describe.each([
   {
     code: 'model_timeout',
-    message: "The model didn't respond, so this turn was ended. Please try again.",
+    // What the server passes through: anton's own message, naming the deadline.
+    message: 'The model sent no output for 10 minutes, so the call was stopped.',
     title: "The model didn't respond",
     body: /The model stopped sending anything, so this turn was ended\. Try again\. If it keeps happening, pick another model in Settings\./,
   },
@@ -776,6 +777,8 @@ describe.each([
 
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.getByText(body)).toBeInTheDocument();
+    // Fixed copy: the server's message never reaches the card.
+    expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onSend).toHaveBeenCalledWith('draw me a chart');
@@ -787,6 +790,7 @@ describe.each([
     render(<ChatView task={taskWith(reloadedFailure(code, message))} onSend={onSend} />);
 
     expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByText(message, { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onSend).toHaveBeenCalledWith('draw me a chart');
@@ -798,6 +802,27 @@ describe.each([
     );
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
+describe('model_timeout failure card', () => {
+  /* Its copy sends the user to Settings for another model, so it carries the
+   * way there, with or without a message to retry. */
+  it.each([
+    ['with a message to retry', (m) => failedTurn('model_timeout', m)],
+    ['with nothing to retry', (m) => [{ role: 'error', content: m, code: 'model_timeout' }]],
+  ])('offers Open Settings %s', async (_label, messages) => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(messages("The model didn't respond, so this turn was ended. Please try again."))}
+        onSend={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('agent');
   });
 });
 

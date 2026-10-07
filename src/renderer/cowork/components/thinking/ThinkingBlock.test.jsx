@@ -85,6 +85,38 @@ describe('ThinkingBlock', () => {
     expect(collapsedHeader()).toHaveTextContent(/^Thinking… · Waiting for the model \(1m 0s\)$/);
   });
 
+  it('shows the wait line in the open block, and stays closed through later ticks once folded', () => {
+    /* Ticks arrive every 20 to 25 s. The first opens the live block like a
+     * reasoning burst does; after the user folds it, later ticks, and a tick
+     * after the line was cleared by a tool frame, must leave it folded while
+     * the header keeps the newest wait. */
+    const tick = (text, startedAt) => ({ text, startedAt, kind: 'model_wait' });
+    const block = (thought) => (
+      <ThinkingBlock isActive startedAt={1000} currentThought={thought} />
+    );
+    // Mounted empty, as a live turn starts, so the tick opens it through the
+    // auto-expand effect rather than the initial state.
+    const { rerender } = render(block(null));
+    const header = screen.getByRole('button');
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
+    rerender(block(tick('Waiting for the model (20s)', 1000)));
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Waiting for the model (20s)')).toBeVisible();
+    expect(header).toHaveTextContent(/^Working for /);
+    expect(header).not.toHaveTextContent(/Waiting/);
+
+    fireEvent.click(header);
+    rerender(block(tick('Waiting for the model (40s)', 21000)));
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(header).toHaveTextContent(/^Thinking… · Waiting for the model \(40s\)$/);
+
+    rerender(block(null));
+    rerender(block(tick('Waiting for the model (1m 0s)', 41000)));
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(header).toHaveTextContent(/^Thinking… · Waiting for the model \(1m 0s\)$/);
+  });
+
   it('keeps the model\'s own reasoning out of the collapsed header', () => {
     render(
       <ThinkingBlock
