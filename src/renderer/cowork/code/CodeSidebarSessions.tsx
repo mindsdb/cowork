@@ -5,10 +5,10 @@ import Button from '../components/ui/Button';
 import { Collapsible } from '../components/ui/Collapsible';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
-import Tooltip from '../components/ui/Tooltip';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
 import { useTaskSeen } from './taskSeen';
+import { useCodeTaskMenu } from './useCodeTaskMenu';
 
 
 type Organization = 'project' | 'list';
@@ -56,11 +56,17 @@ export function CodeSidebarSessions({
   selectedId,
   onSelect,
   onSetPinned,
+  onRename,
+  onSetArchived,
+  onDelete,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSetPinned: (id: string, pinned: boolean) => Promise<void>;
+  onRename: (id: string, title: string) => Promise<void>;
+  onSetArchived: (id: string, archived: boolean) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const preferences = useMemo(initialPreferences, []);
   const isUnread = useTaskSeen(sessions, selectedId);
@@ -69,7 +75,7 @@ export function CodeSidebarSessions({
   const [query, setQuery] = useState('');
   const [pinOverrides, setPinOverrides] = useState<Record<string, boolean>>({});
   const [pinBusy, setPinBusy] = useState<Set<string>>(() => new Set());
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
 
   useEffect(() => {
     setPinOverrides((current) => {
@@ -127,7 +133,7 @@ export function CodeSidebarSessions({
   const togglePinned = async (session: CodingSession) => {
     if (pinBusy.has(session.id)) return;
     const nextPinned = !session.pinned;
-    setPinError(null);
+    setRowError(null);
     setPinOverrides((current) => ({ ...current, [session.id]: nextPinned }));
     setPinBusy((current) => new Set(current).add(session.id));
     try {
@@ -138,7 +144,7 @@ export function CodeSidebarSessions({
         delete next[session.id];
         return next;
       });
-      setPinError(`Couldn't ${nextPinned ? 'pin' : 'unpin'} this task.`);
+      setRowError(`Couldn't ${nextPinned ? 'pin' : 'unpin'} this task.`);
     } finally {
       setPinBusy((current) => {
         const next = new Set(current);
@@ -147,6 +153,14 @@ export function CodeSidebarSessions({
       });
     }
   };
+
+  const taskMenu = useCodeTaskMenu({
+    onTogglePinned: (session) => void togglePinned(session),
+    onRename,
+    onSetArchived,
+    onDelete,
+    onError: setRowError,
+  });
 
   const sessionRow = (session: CodingSession) => {
     const status = codingSessionStatus(session);
@@ -159,6 +173,7 @@ export function CodeSidebarSessions({
     const working = status.tone === 'accent';
     const needsYou = status.tone === 'warning' || status.tone === 'danger';
     const resting = !working && !needsYou && !unread;
+    const name = session.title || 'untitled coding task';
     return (
       <div
         key={session.id}
@@ -185,20 +200,18 @@ export function CodeSidebarSessions({
             {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
           </span>
         </button>
-        <Tooltip content={isPinned ? 'Unpin task' : 'Pin task'}>
-          <Button
-            icon
-            size="xxs"
-            variant="subtle"
-            className="code-sidebar-session__pin"
-            disabled={pinBusy.has(session.id)}
-            onClick={() => void togglePinned(session)}
-            aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${session.title || 'untitled coding task'}`}
-            aria-pressed={isPinned}
-          >
-            {Ico.pin(12)}
-          </Button>
-        </Tooltip>
+        <Menu
+          side="bottom"
+          align="end"
+          width={200}
+          ariaLabel={`Actions for ${name}`}
+          trigger={(
+            <Button icon size="xxs" variant="subtle" className="code-sidebar-session__menu" aria-label={`Actions for ${name}`}>
+              {Ico.moreVert(12)}
+            </Button>
+          )}
+          items={taskMenu.items(session, { pinBusy: pinBusy.has(session.id) })}
+        />
       </div>
     );
   };
@@ -213,24 +226,24 @@ export function CodeSidebarSessions({
   const menuItems = [
     { heading: <span className="code-sidebar-organize-menu__heading">Organize</span>, id: 'organize-heading' },
     {
-      id: 'organize-project', icon: Ico.folder(13), label: 'Projects', hint: organization === 'project' ? '✓' : undefined,
+      id: 'organize-project', icon: Ico.folder(14), label: 'Projects', hint: organization === 'project' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'project' ? 'true' : undefined },
       onClick: () => updatePreference('project', sortOrder),
     },
     {
-      id: 'organize-list', icon: Ico.list(13), label: 'Task list', hint: organization === 'list' ? '✓' : undefined,
+      id: 'organize-list', icon: Ico.list(14), label: 'Task list', hint: organization === 'list' ? '✓' : undefined,
       aria: { 'aria-current': organization === 'list' ? 'true' : undefined },
       onClick: () => updatePreference('list', sortOrder),
     },
     { separator: true, id: 'organize-separator' },
     { heading: <span className="code-sidebar-organize-menu__heading">Sort</span>, id: 'sort-heading' },
     {
-      id: 'sort-priority', icon: Ico.slider(13), label: 'Priority', hint: sortOrder === 'priority' ? '✓' : undefined,
+      id: 'sort-priority', icon: Ico.slider(14), label: 'Priority', hint: sortOrder === 'priority' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'priority' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'priority'),
     },
     {
-      id: 'sort-updated', icon: Ico.clock(13), label: 'Last updated', hint: sortOrder === 'updated' ? '✓' : undefined,
+      id: 'sort-updated', icon: Ico.clock(14), label: 'Last updated', hint: sortOrder === 'updated' ? '✓' : undefined,
       aria: { 'aria-current': sortOrder === 'updated' ? 'true' : undefined },
       onClick: () => updatePreference(organization, 'updated'),
     },
@@ -243,7 +256,7 @@ export function CodeSidebarSessions({
         <Menu
           trigger={(
             <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
-              {Ico.slider(11)}<span>Organize</span>
+              {Ico.slider(12)}<span>Organize</span>
             </Button>
           )}
           items={menuItems}
@@ -265,7 +278,7 @@ export function CodeSidebarSessions({
           aria-label="Find a coding task"
         />
       )}
-      {pinError && <div className="code-sidebar-sessions__error" role="status">{pinError}</div>}
+      {rowError && <div className="code-sidebar-sessions__error" role="status">{rowError}</div>}
       <div className="scroll-clean code-sidebar-sessions__list">
         {ordered.length === 0 && archived.length === 0 && (
           <div className="code-sidebar-sessions__empty">
@@ -293,6 +306,7 @@ export function CodeSidebarSessions({
           </Collapsible>
         )}
       </div>
+      {taskMenu.dialogs}
     </div>
   );
 }

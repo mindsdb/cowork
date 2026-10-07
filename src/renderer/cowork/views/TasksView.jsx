@@ -148,7 +148,7 @@ function ScheduleGroupRow({
       actions={(
         <Tooltip content="Open latest run">
           <Button variant="subtle" icon size="sm" onClick={onOpenLatest} aria-label="Open latest run">
-            {Ico.externalLink(13)}
+            {Ico.externalLink(14)}
           </Button>
         </Tooltip>
       )}
@@ -364,7 +364,7 @@ export default function TasksView({
         clearLabel="Clear filters"
         empty={{
           bordered: true,
-          icon: <span className="inline-flex text-ink-4">{Ico.chats(28)}</span>,
+          icon: <span className="inline-flex text-ink-4">{Ico.chats(32)}</span>,
           title: 'No tasks yet',
           description: 'Start a conversation from the home screen — every chat shows up here.',
           className: 'mx-8 my-10',

@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import { ArrowUpDown } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import Select from '../ui/Select';
 
 export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
@@ -16,7 +17,7 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
     <Select
       variant="quiet"
       ariaLabel={label}
-      leading={<ArrowUpDown size={13} strokeWidth={1.5} />}
+      leading={<Icon of={ArrowUpDown} size={14} />}
       value={selected}
       onValueChange={onChange}
       options={items}

@@ -169,11 +169,11 @@ export function ArtifactHtmlVisualEditor({
         <div className="artifact-html-edit-actions">
           {selection && !showSource && (
             <button type="button" onClick={finishEditing}>
-              {Ico.check(13)} Done
+              {Ico.check(14)} Done
             </button>
           )}
           <button type="button" className="is-secondary" onClick={toggleSource}>
-            {showSource ? Ico.edit(13) : Ico.code(13)}
+            {showSource ? Ico.edit(14) : Ico.code(14)}
             {showSource ? 'Back to artifact' : 'Advanced'}
           </button>
         </div>

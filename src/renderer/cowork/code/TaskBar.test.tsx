@@ -51,13 +51,7 @@ const barProps = {
   onTogglePreview: vi.fn(),
   onRunProjectAction: vi.fn(),
   onOpenControls: vi.fn(),
-  onOpenExtensions: vi.fn(),
-  onRename: vi.fn(),
   onFork: vi.fn(),
-  onCompact: vi.fn(),
-  onStatus: vi.fn(),
-  onArchive: vi.fn(),
-  onDelete: vi.fn(),
 };
 
 
@@ -83,13 +77,7 @@ describe('TaskBar', () => {
         onTogglePreview={onPreview}
         onRunProjectAction={onRun}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 
@@ -117,13 +105,7 @@ describe('TaskBar', () => {
         onTogglePreview={vi.fn()}
         onRunProjectAction={vi.fn()}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 
@@ -161,13 +143,7 @@ describe('TaskBar', () => {
         onTogglePreview={vi.fn()}
         onRunProjectAction={vi.fn()}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 
@@ -203,13 +179,7 @@ describe('TaskBar', () => {
         onTogglePreview={vi.fn()}
         onRunProjectAction={vi.fn()}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 
@@ -240,19 +210,22 @@ describe('TaskBar', () => {
         onTogglePreview={vi.fn()}
         onRunProjectAction={vi.fn()}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
     expect(screen.getByText('Build computer')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  });
+
+  it('keeps only actions on the open task in its overflow menu', async () => {
+    const user = userEvent.setup();
+    render(<TaskBar {...barProps} session={{ ...session, status: 'completed' }} />);
+
+    await user.click(screen.getByRole('button', { name: 'Coding task actions' }));
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(items).toEqual(['Open original folder', 'Fork task', 'Task settings']);
   });
 
   it('shows no status badge for a finished task at rest, but keeps one while it works', () => {
@@ -292,13 +265,7 @@ describe('TaskBar', () => {
         onTogglePreview={vi.fn()}
         onRunProjectAction={vi.fn()}
         onOpenControls={vi.fn()}
-        onOpenExtensions={vi.fn()}
-        onRename={vi.fn()}
         onFork={vi.fn()}
-        onCompact={vi.fn()}
-        onStatus={vi.fn()}
-        onArchive={vi.fn()}
-        onDelete={vi.fn()}
       />,
     );
 

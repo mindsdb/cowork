@@ -216,7 +216,7 @@ export default function ServerOfflineHelpModal({
               borderColor: `color-mix(in srgb, ${HEADER.iconBgMix} 35%, transparent)`,
             }}
           >
-            {Ico.power(18)}
+            {Ico.power(20)}
           </span>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-[14.5px] text-ink">{HEADER.title}</div>

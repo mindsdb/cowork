@@ -295,13 +295,13 @@ export function DraftPullRequestSection({
               ...automationOptions.map(([key, label, hint]) => ({
                 id: key,
                 keepOpen: true,
-                icon: <span className={`code-delivery-policy-check${policy[key] ? ' is-checked' : ''}`}>{policy[key] ? Ico.check(10) : null}</span>,
+                icon: <span className={`code-delivery-policy-check${policy[key] ? ' is-checked' : ''}`}>{policy[key] ? Ico.check(12) : null}</span>,
                 label: <span className="code-delivery-policy-label"><b>{label}</b><small>{hint}</small></span>,
                 onClick: () => toggleAutomation(key),
               })),
             ]}
           />
-          <Button icon size="sm" variant="subtle" aria-label="Refresh pull requests" disabled={loading} onClick={() => void load()}>{loading ? '…' : Ico.refresh(13)}</Button>
+          <Button icon size="sm" variant="subtle" aria-label="Refresh pull requests" disabled={loading} onClick={() => void load()}>{loading ? '…' : Ico.refresh(14)}</Button>
         </div>
       </header>
 

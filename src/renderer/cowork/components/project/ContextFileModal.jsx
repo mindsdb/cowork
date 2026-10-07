@@ -84,7 +84,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
         }}
         className="no-underline cursor-pointer bg-transparent border border-solid border-line text-ink-2 py-[6px] px-3 rounded-[6px] font-[family-name:var(--font-body)] text-sm font-medium inline-flex items-center gap-[6px]"
-      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</button>
+      >{Ico.downloadCloud ? Ico.downloadCloud(14) : '↓'} Download</button>
     );
   }
 
@@ -94,7 +94,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
         <Tooltip content="Reveal in Finder">
           <Button
             onClick={() => abs && host.showItemInFolder(abs)}
-          >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</Button>
+          >{Ico.folder ? Ico.folder(14) : '📁'} Reveal</Button>
         </Tooltip>
       )}
       <Tooltip content="Open in default app">
@@ -106,7 +106,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
             if (rawUrl) host.openExternal(rawUrl);
             else if (abs) host.openPath(abs);
           }}
-        >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</Button>
+        >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
       </Tooltip>
     </div>
   );
@@ -120,7 +120,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
 function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl }) {
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
-      <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(26) : '📄'}</div>
+      <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(32) : '📄'}</div>
       <div className="flex flex-col gap-1">
         <span className="font-[family-name:var(--font-display)] text-[14.5px] font-semibold text-ink">{fileName}</span>
         <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 max-w-[380px] leading-[1.5]">
@@ -565,7 +565,7 @@ export default function ContextFileModal({
                 onClick={handleDelete}
                 disabled={busy || !deleteAllowed}
                 title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
-              >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
+              >{Ico.trash ? Ico.trash(14) : null}Delete</Button>
             )}
           </div>
           <div className="flex gap-2">

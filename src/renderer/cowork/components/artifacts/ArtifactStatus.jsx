@@ -23,9 +23,9 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 // content, so the label is always shown (ENG-1475); when a tight cell also holds
 // the "Unshared changes" badge the two wrap to a second line.
 const ACCESS_BADGE = {
-  public: { variant: 'success', icon: Ico.globe(11), label: 'Public' },
-  password: { variant: 'default', icon: Ico.lock(11), label: 'Password' },
-  restricted: { variant: 'default', icon: Ico.people(11), label: 'Restricted' },
+  public: { variant: 'success', icon: Ico.globe(12), label: 'Public' },
+  password: { variant: 'default', icon: Ico.lock(12), label: 'Password' },
+  restricted: { variant: 'default', icon: Ico.people(12), label: 'Restricted' },
 };
 
 // Fail CLOSED: only a positively-recognised mode gets its badge, and only
@@ -36,7 +36,7 @@ const ACCESS_BADGE = {
 // resolves to a neutral protected pill instead of defaulting to Public.
 // `Object.hasOwn` (not `mode in`/`ACCESS_BADGE[mode]`) also stops a mode string
 // like `constructor`/`__proto__` from yielding a blank inherited-property pill.
-const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
+const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(12), label: 'Restricted' };
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);

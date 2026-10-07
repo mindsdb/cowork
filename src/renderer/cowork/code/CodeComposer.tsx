@@ -373,7 +373,7 @@ export const CodeComposer = memo(function CodeComposer({
               onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
               options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
             {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
-              {Ico.send(13)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
+              {Ico.send(14)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
             </Button>}
           </div>
         </div>

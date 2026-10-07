@@ -16,6 +16,7 @@ import { fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { Info } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { Alert, Select, Tooltip } from '../ui';
@@ -150,7 +151,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
           {connector.notice && (
             <Tooltip content={connector.notice}>
               <span className="shrink-0 inline-flex items-center text-ink-4">
-                <Info size={14} strokeWidth={1.5} />
+                <Icon of={Info} size={14} />
                 {/* Lucide marks the glyph aria-hidden, and the tooltip is
                     hover-only: the badge is deliberately not focusable (it
                     sits inside the tile's own <button>, where a second tab

@@ -1262,3 +1262,31 @@ describe('paginated /items', () => {
     expect(await fetchOlderMessages('c1', 'cursor-1')).toBeNull();
   });
 });
+
+describe('updateSettings committed result', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns accepted values when the post-write read fails without offline defaults', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      if ((options.method || 'GET') === 'PUT') return jsonRes({ updated: ['greeting'] });
+      return jsonRes({ detail: 'offline' }, false, 503);
+    }));
+    const result = await updateSettings({ greeting: 'Confirmed greeting', tone: 'ignored' });
+    expect(result.status).toBe('ok');
+    expect(result.settings).toBeNull();
+    expect(result.committedPatch).toEqual({ greeting: 'Confirmed greeting' });
+  });
+
+  it('returns canonical values without requiring successful verification', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const u = String(url);
+      if ((options.method || 'GET') === 'PUT') return jsonRes({ updated: ['greeting'] });
+      if (u.endsWith('/settings/')) return jsonRes([{ key: 'greeting', value: 'Canonical greeting' }]);
+      if (u.includes('/settings/validate')) return jsonRes({ detail: 'validation unavailable' }, false, 503);
+      return jsonRes({});
+    }));
+    const result = await updateSettings({ greeting: 'Submitted greeting' });
+    expect(result.status).toBe('ok');
+    expect(result.settings.greeting).toBe('Canonical greeting');
+  });
+});

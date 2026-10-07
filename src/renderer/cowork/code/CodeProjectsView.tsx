@@ -3,9 +3,11 @@ import { useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import Menu from '../components/ui/Menu';
 import { CollectionState, FilterRow, ListGroup, ListItem, PageHeader, SearchInput, SortPill } from '../components/collection';
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
+import { projectActions } from './projectActions';
 
 const SORT_OPTIONS = [
   { id: 'updated', label: 'Recently updated' },
@@ -14,20 +16,20 @@ const SORT_OPTIONS = [
 
 export function CodeProjectsView({
   projects,
-  selectedId,
   loading,
   error,
   onOpen,
   onCreate,
   onEdit,
+  onDelete,
 }: {
   projects: CodeProject[];
-  selectedId: string | null;
   loading: boolean;
   error: string;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('updated');
@@ -45,7 +47,7 @@ export function CodeProjectsView({
       <PageHeader
         title="Projects"
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
-        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>}
+        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} New project</Button>}
       />
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
@@ -75,17 +77,20 @@ export function CodeProjectsView({
                 return (
                   <ListItem
                     key={project.id}
-                    leading={Ico.folder(15)}
+                    leading={Ico.folder(14)}
                     title={project.name}
                     description={resources.map((resource) => resource.name).join(', ') || undefined}
                     onActivate={() => onOpen(project.id)}
                     activateLabel={`View tasks in ${project.name}`}
-                    selected={selectedId === project.id}
+                    revealActions
                     meta={<>
                       <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
                       <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
                     </>}
-                    actions={<Button icon variant="subtle" size="sm" aria-label={`Edit ${project.name}`} onClick={() => onEdit(project.id)}>{Ico.settings(13)}</Button>}
+                    actions={<Menu
+                      trigger={<Button icon variant="subtle" size="sm" aria-label={`${project.name} actions`}>{Ico.moreVert(14)}</Button>}
+                      items={projectActions(project.id, onEdit, onDelete)}
+                    />}
                   />
                 );
               })}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, Folder } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import { codingApi, type CodeComputer, type ProjectResource, type ProjectResourceState } from './api';
 import {
@@ -77,14 +78,14 @@ export function TaskRepositoriesControl({
           setOpen(true);
         }}
       >
-        <Folder size={13} />
+        <Icon of={Folder} size={14} />
         <span>
           {selectedIds.length} {selectedIds.length === 1 ? 'resource' : 'resources'}
         </span>
         {hasChanges && (
-          <AlertCircle size={13} className="code-repositories-launcher__warning" aria-label="Local changes" />
+          <Icon of={AlertCircle} size={14} className="code-repositories-launcher__warning" aria-label="Local changes" />
         )}
-        <ChevronDown size={12} />
+        <Icon of={ChevronDown} size={12} />
       </Button>
       {open && (
         <TaskRepositoryDrawer

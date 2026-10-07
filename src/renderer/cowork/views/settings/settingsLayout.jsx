@@ -98,7 +98,7 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
         ) : autoSaved ? (
           <div className={`${barClass} gap-2 text-ink-3 text-sm`}>
             <span aria-hidden="true" className="inline-flex text-[var(--ok)]">
-              {Ico.check ? Ico.check(13) : '✓'}
+              {Ico.check ? Ico.check(14) : '✓'}
             </span>
             <span>Changes are saved automatically.</span>
           </div>

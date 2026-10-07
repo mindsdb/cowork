@@ -50,12 +50,12 @@ describe('CodeProjectsView', () => {
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={onOpen}
         onCreate={vi.fn()}
         onEdit={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -65,25 +65,30 @@ describe('CodeProjectsView', () => {
     expect(onOpen).toHaveBeenCalledWith('atlas');
   });
 
-  it('keeps project creation and settings directly reachable', async () => {
+  it('keeps project creation reachable and puts settings and delete in each row menu', async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn();
     const onEdit = vi.fn();
+    const onDelete = vi.fn();
     render(
       <CodeProjectsView
         projects={projects}
-        selectedId="mindshub"
         loading={false}
         error=""
         onOpen={vi.fn()}
         onCreate={onCreate}
         onEdit={onEdit}
+        onDelete={onDelete}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: 'New project' }));
-    await user.click(screen.getByRole('button', { name: 'Edit MindsHub' }));
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
+    await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
     expect(onCreate).toHaveBeenCalledOnce();
     expect(onEdit).toHaveBeenCalledWith('mindshub');
+    expect(onDelete).toHaveBeenCalledWith('mindshub');
   });
 });

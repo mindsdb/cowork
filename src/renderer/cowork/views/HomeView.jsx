@@ -536,7 +536,7 @@ export default function HomeView({
         <div className="w-full flex flex-col items-center [animation:boot-fadein_500ms_ease-out_both]">
           {blocked ? (
             <div className="home-connect-card">
-              <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(18)}</span>
+              <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(20)}</span>
               <div className="home-connect-card__body">
                 <div className="text-base font-[650] text-strong">Connect a provider to start chatting</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>

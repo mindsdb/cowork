@@ -50,10 +50,12 @@ export function ListGroup({
         {hasHeader && (
           <header className="flex min-h-8 items-center gap-3 px-1">
             <div className="flex min-w-0 flex-1 items-baseline gap-2">
-              {title}
-              {description && <span className="truncate text-xs text-ink-4">{description}</span>}
+              {/* The kit sets the title's size and weight; a caller's heading
+                  element keeps its semantics and inherits the look. */}
+              <span className="min-w-0 truncate font-body text-base font-semibold text-ink [&>*]:m-0 [&>*]:text-[length:inherit] [&>*]:font-[inherit]">{title}</span>
+              {description && <span className="truncate text-sm text-ink-4">{description}</span>}
             </div>
-            {meta && <span className="shrink-0 text-xs text-ink-4">{meta}</span>}
+            {meta && <span className="shrink-0 text-sm text-ink-4">{meta}</span>}
             {actions}
           </header>
         )}
@@ -120,11 +122,11 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
             onActivate={onActivate}
             activateLabel={activateLabel}
             busy={busy}
-            className="font-body text-sm font-medium text-ink has-[input]:flex-1"
+            className="font-body text-base font-medium text-ink has-[input]:flex-1"
           />
           {badges}
         </div>
-        {description && <div className="truncate font-body text-xs text-ink-3">{description}</div>}
+        {description && <div className="truncate font-body text-sm text-ink-3">{description}</div>}
         {children}
       </div>
       {/* Phone width: meta drops under the title instead of squeezing it, and
@@ -134,7 +136,7 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
       {meta && (
         <div
           className={cn(
-            'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-4',
+            'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-sm text-ink-4',
             'max-sm:order-last max-sm:min-w-0 max-sm:basis-full max-sm:[overflow-wrap:anywhere]',
             leading && 'max-sm:pl-9',
           )}

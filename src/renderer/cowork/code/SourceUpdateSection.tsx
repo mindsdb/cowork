@@ -80,7 +80,7 @@ export function SourceUpdateSection({
                 <SafeCodeExternalLink className="code-source-update__link" value={context.url}>
                   <span>{sourceProviderLabel(context.provider)}</span>
                   <strong>{sourceContextLabel(context)} · {context.title}</strong>
-                  {Ico.externalLink(11)}
+                  {Ico.externalLink(12)}
                 </SafeCodeExternalLink>
                 <div className="code-source-update__actions">
                   {canComplete && <Button size="sm" variant="subtle" disabled={busy} onClick={() => setCompletionContext(context)}>Complete issue</Button>}

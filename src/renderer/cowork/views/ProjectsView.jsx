@@ -173,19 +173,19 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
     !hideOpen && {
       id: 'open',
       label: 'Open',
-      icon: Ico.folder(13),
+      icon: Ico.folder(14),
       onClick: () => onOpen?.(project),
     },
     !hidePin && {
       id: 'pin',
       label: pinned ? 'Unpin' : 'Pin',
-      icon: Ico.pin(13),
+      icon: Ico.pin(14),
       onClick: () => onTogglePin?.(project, !pinned),
     },
     !isReserved && {
       id: 'rename',
       label: 'Rename…',
-      icon: Ico.edit(13),
+      icon: Ico.edit(14),
       disabled: !canRename,
       // A project pointed at a folder the user chose cannot be renamed
       // because renaming moves the directory, and that folder is theirs.
@@ -203,14 +203,14 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
     onReveal && {
       id: 'reveal',
       label: 'Reveal in Finder',
-      icon: Ico.externalLink(13),
+      icon: Ico.externalLink(14),
       onClick: () => onReveal?.(project),
     },
     { divider: true },
     {
       id: 'delete',
       label: 'Delete…',
-      icon: Ico.trash(13),
+      icon: Ico.trash(14),
       danger: true,
       disabled: undeletable || !canDelete,
       hint: !undeletable && !canDelete ? 'Admin or creator' : undefined,
@@ -338,7 +338,7 @@ function ProjectDetail({
               }}
               className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
             >
-              {Ico.panelExpandLeft(15)}
+              {Ico.panelExpandLeft(16)}
             </button>
           </Tooltip>
         )}
@@ -406,7 +406,7 @@ function ProjectDetail({
                   onBlur={() => setActionFocused(false)}
                   className={`project-action-trigger w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 >
-                  {Ico.moreVert(13)}
+                  {Ico.moreVert(14)}
                 </button>
               )}
             </div>
@@ -500,7 +500,7 @@ function ProjectDetail({
                 aria-label="Collapse panel"
                 className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
               >
-                {Ico.panelCollapseRight(15)}
+                {Ico.panelCollapseRight(16)}
               </button>
             </Tooltip>
           </div>
@@ -752,7 +752,9 @@ export default function ProjectsView({
     isMenuOpen: menuFor?.project?.name === p.name,
     onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
     onRenameCancel: handleRenameCancel,
-    alwaysShowActions: isMobile,
+    // Pin and menu are the row's only controls; nothing is gained by hiding
+    // them until the pointer arrives.
+    alwaysShowActions: true,
   });
 
   if (detailProject) {

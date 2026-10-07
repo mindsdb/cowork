@@ -17,8 +17,8 @@
 //   <CardRow onActivate={open}>…</CardRow>      // flat interactive list row
 //   <Bubble>…</Bubble>                          // glassy floating surface
 //
-// The single hover/active animation is ELEVATION ONLY (lift + soft shadow,
-// neutral border). Accent is reserved for the selected state, never hover.
+// The single hover cue is a surface tint (no lift, no shadow change, neutral
+// border), shared with list rows. Accent is reserved for the selected state.
 
 import { forwardRef } from 'react';
 import type { ComponentPropsWithoutRef, ElementType, KeyboardEvent } from 'react';

@@ -8,7 +8,7 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { isAntonConfigError } from './lib/antonErrors';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
-import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
+import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
@@ -598,6 +598,20 @@ export function allocateConversationId() {
 // tailInFlight; timed against producer frames, not raw keepalive bytes.
 const STREAM_IDLE_TIMEOUT_MS = 300_000;
 
+// Server-side ask_user deadline, for a frame that doesn't state its own.
+const ASK_USER_DEFAULT_TIMEOUT_S = 300;
+
+// How long to wait for the next producer frame after `msg`. A turn blocked on
+// an ask_user card is legitimately silent until the user answers or the
+// server's own deadline passes, and that deadline equals the normal idle
+// window — so the two timers raced and the client cancelled a healthy turn
+// as "stalled". Past the question's deadline the usual window applies again.
+function idleWindowAfter(msg, idleTimeoutMs) {
+  if (msg?.type !== 'response.ask_user') return idleTimeoutMs;
+  const timeoutS = Number(msg.timeout_s) > 0 ? Number(msg.timeout_s) : ASK_USER_DEFAULT_TIMEOUT_S;
+  return timeoutS * 1000 + idleTimeoutMs;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
@@ -614,9 +628,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // proxy connection had none before this.
   let idleTimer = null;
   let idledOut = false;
-  const bumpIdle = () => {
+  const bumpIdle = (ms = idleTimeoutMs) => {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
   (async () => {
     try {
@@ -682,7 +696,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
-          bumpIdle();
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
           // structured ThinkingStep[] for the UI. Fires before the
@@ -811,9 +825,9 @@ export function tailInFlight(conversationId, {
   // finished tail leaves no dangling timer.
   let idleTimer = null;
   let idledOut = false;
-  const bumpIdle = () => {
+  const bumpIdle = (ms = idleTimeoutMs) => {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
   (async () => {
     try {
@@ -852,7 +866,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
-          bumpIdle();
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
             case 'response.created':
@@ -1568,35 +1582,30 @@ export async function fetchHubUsage() {
   return { reachable: false };
 }
 
+// The lock-owning wrappers decide how to handle failure. A save must never
+// publish offline/mock defaults as if they were the canonical persisted values.
+async function readSettings({ validate = true } = {}) {
+  const rows = await req('/settings/');
+  const result = transformSettingsRows(rows);
+  if (validate) {
+    try {
+      const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
+      result.configReady = v.configReady;
+      result.configError = v.configError;
+      result.providerLabel = v.provider;
+    } catch { /* leave defaults */ }
+  }
+  const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
+  if (merged) Object.assign(result, merged);
+  _lastFetchedSettings = result;
+  cacheSettings(result);
+  return result;
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {
-      const rows = await req('/settings/');
-      const result = transformSettingsRows(rows);
-      try {
-        const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
-        result.configReady = v.configReady;
-        result.configError = v.configError;
-        result.providerLabel = v.provider;
-      } catch { /* leave defaults */ }
-      /* Overlay the live model list + effort capability. modelEfforts is the
-         single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. modelEnabled marks the models MindsHub says
-         can't run right now so the picker greys them (absent id ⇒ available),
-         modelDisabledReasons says why (an admin's model rule reads
-         "Restricted", anything else an "add credits" prompt), and modelLabels carries the
-         policy's display name per id (absent ⇒ id-derived at the render site).
-         mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
-         we-have rule; SettingsView's on-open refresh goes through the same
-         function. */
-      const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
-      if (merged) Object.assign(result, merged);
-      _lastFetchedSettings = result;
-      // Refresh the first-paint seed so the next cold start renders the server's
-      // values immediately instead of a hard-coded default that could drift
-      // (ENG-1125). Cache-of-the-truth only — never written from anywhere else.
-      cacheSettings(result);
-      return result;
+      return await readSettings();
     } catch {
       return { ...MOCK_DATA.settings, configReady: false, configError: 'Backend is offline.' };
     }
@@ -1646,7 +1655,8 @@ async function divertMindsKey(writes) {
 
 export async function updateSettings(patch) {
   const op = _settingsLock.then(async () => {
-    const writes = await divertMindsKey(diffSettingsForWrite(patch, _lastFetchedSettings));
+    const requestedWrites = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const writes = await divertMindsKey(requestedWrites);
     const keys = Object.keys(writes);
     let updated = keys;
 
@@ -1695,19 +1705,20 @@ export async function updateSettings(patch) {
       }
     }
 
-    // Re-fetch so _lastFetchedSettings reflects the server's canonical state
-    // (including any server-side defaults).
+    const acceptedKeys = new Set([
+      ...updated,
+      ...tombstones.map((key) => CLIENT_TO_SERVER[key]),
+    ]);
+    // Desktop diverts this accepted credential to the keychain before PUT.
+    if ('minds_api_key' in requestedWrites && !('minds_api_key' in writes)) acceptedKeys.add('minds_api_key');
+    const committedPatch = committedSettingsPatch(patch, acceptedKeys);
+    _lastFetchedSettings = { ..._lastFetchedSettings, ...committedPatch };
+    let settings = null;
     try {
-      const rows = await req('/settings/');
-      _lastFetchedSettings = transformSettingsRows(rows);
-    } catch { /* keep prior snapshot */ }
+      settings = await readSettings({ validate: false });
+    } catch { /* write succeeded; keep accepted values until a read recovers */ }
+    return { status: 'ok', updated, committedPatch, settings };
 
-    try {
-      const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
-      return { status: 'ok', updated, configReady: v.configReady, configError: v.configError };
-    } catch {
-      return { status: 'ok', updated };
-    }
   });
   _settingsLock = op.catch(() => {});
   return op;

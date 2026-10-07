@@ -232,7 +232,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
             {spec?.logo_url
               ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
-              : <span className="inline-flex text-ink-3">{Ico.database(18)}</span>
+              : <span className="inline-flex text-ink-3">{Ico.database(20)}</span>
             }
           </span>
           <div className="min-w-0 flex-1">

@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState, useCollectionView } from '../components/collection';
-import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
+import {
+  PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState, useCollectionView,
+  ListGroup, ListItem,
+} from '../components/collection';
+import { Menu, Badge, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -37,11 +41,11 @@ function SkillGridCard({ skill, onClick, projects = [] }) {
       as="button"
       interactive
       padding="none"
+      className="railed"
       onClick={() => onClick(skill)}
       style={{
-        padding: '12px 0 0',
+        paddingTop: 12,
         display: 'flex', flexDirection: 'column', gap: 12,
-        overflow: 'hidden',
       }}
     >
       {/* Top content */}
@@ -72,9 +76,7 @@ function SkillGridCard({ skill, onClick, projects = [] }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-2 bg-bg font-[family-name:var(--font-body)] text-[12px] text-ink-3" style={{
-        boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
-      }}>
+      <div className="card__rail flex items-center justify-between px-3 py-2 font-[family-name:var(--font-body)] text-[12px] text-ink-3">
         <span className="inline-flex items-center gap-1">
           {Ico.folder(14)}
           <span>{project}</span>
@@ -84,6 +86,45 @@ function SkillGridCard({ skill, onClick, projects = [] }) {
     </Card>
   );
 }
+
+// The list view is a kit row: name, description, and inline meta (project,
+// stable creator, last update). The grid keeps its railed SkillGridCard.
+function SkillRow({ skill, onClick, projects = [] }) {
+  const age = relativeAge(skill.updatedAt);
+  // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
+  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
+  const author = sharedResourceAttribution(skill)?.createdBy;
+  return (
+    <ListItem
+      as="article"
+      aria-label={skill.label}
+      leading={<span className="font-mono text-sm font-medium">/</span>}
+      title={skill.label}
+      badges={(skill.enabled === false || skill.isBuiltin) && (
+        <>
+          {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
+          {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
+        </>
+      )}
+      description={skill.description || skill.declarative?.slice(0, 120) || '—'}
+      onActivate={() => onClick(skill)}
+      meta={(
+        <>
+          <span className="inline-flex min-w-0 items-center gap-1">
+            {Ico.folder(12)}
+            <span className="truncate">{project || 'All projects'}</span>
+          </span>
+          {author && <span className="max-w-[160px] truncate" title={author}>{author}</span>}
+          {age && <span className="whitespace-nowrap">Updated {age}</span>}
+        </>
+      )}
+    />
+  );
+}
+
+// Page margin of the row group, shared with its loading skeleton so loading
+// does not shift the layout.
+const LIST_CLASS = 'mx-8 mb-[60px]';
 
 const fieldStyle = {
   width: '100%',
@@ -333,7 +374,7 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     >
       {Ico.plus(14)}
       <span>Create skill</span>
-      <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(11)}</span>
+      <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(12)}</span>
     </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
@@ -355,7 +396,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const toastManager = useToastManager();
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
-  const { view, setView, effectiveView } = useCollectionView('anton:skills-view');
+  // Rows by default: skills are a catalogue you scan and manage. Phones get
+  // rows too.
+  const { view, setView, effectiveView } = useCollectionView('anton:skills-view', { defaultView: 'list' });
+  // Skill awaiting the remove confirmation.
+  const [removing, setRemoving]       = useState(null);
   const searchRef = useRef(null);
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
@@ -395,9 +440,12 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     onSkillSaved(saved);
   };
 
-  const remove = async (skill) => {
-    if (!canUseSharedResource(skill, 'canDelete')) return;
-    if (!window.confirm(`Remove skill "${skill.label}"?`)) return;
+  const remove = (skill) => {
+    if (canUseSharedResource(skill, 'canDelete')) setRemoving(skill);
+  };
+
+  // Runs after the dialog closes, so the page stays usable while it settles.
+  const confirmRemove = async (skill) => {
     try {
       await deleteSkillAndSync(skill.label);
       setSelected((current) => (
@@ -515,7 +563,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           {/* Scope */}
           <div className="mb-4">
-            <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
+            <h3 className="s-h3 mt-0 mb-1">Scope</h3>
             <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
               {projectLabelByName(projects, selected.projects?.[0]) || 'All projects'}
             </p>
@@ -524,7 +572,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Description */}
           {selected.description && (
             <div className="mb-4">
-              <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Description</h3>
+              <h3 className="s-h3 mt-0 mb-1">Description</h3>
               <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
                 {selected.description}
               </p>
@@ -562,8 +610,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             shown={sorted.length}
             query={search}
             onClear={() => setSearch('')}
-            skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
-            skeletonClassName="px-8 pb-[60px]"
+            // Each skeleton takes its loaded layout's own wrapper classes.
+            skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
+            skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
             skeletonGridClassName="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
             empty={{
               icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
@@ -572,37 +621,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             }}
           >
             {effectiveView === 'list' ? (
-              <div className="px-8 pb-[60px]">
-                <div className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
-                  {['Name', 'Description', 'Project', 'Author', 'Updated'].map((h) => (
-                    <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
-                  ))}
-                </div>
-                {sorted.map((skill) => {
-                  const project = skill.projects?.[0] || skill.project;
-                  const age = relativeAge(skill.updatedAt);
-                  const attribution = sharedResourceAttribution(skill);
-                  const author = attribution?.createdBy;
-                  return (
-                    <div
-                      key={skill.label}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelected(skill)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                      className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
-                    >
-                      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
-                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
-                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 whitespace-nowrap">{project || '—'}</span>
-                      <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" title={author || undefined}>{author || '—'}</span>
-                      <span className="font-mono text-[11.5px] text-ink-4 whitespace-nowrap">{age || '—'}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <ListGroup className={LIST_CLASS}>
+                {sorted.map((skill) => (
+                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
+                ))}
+              </ListGroup>
             ) : (
               <div className="px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
                 {sorted.map((skill) => (
@@ -618,6 +641,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onClose={() => setUploadOpen(false)}
         onSaved={onSkillUploaded}
         onError={showToast}
+      />
+      <ConfirmModal
+        open={!!removing}
+        title={removing ? `Remove skill "${removing.label}"?` : ''}
+        confirmLabel="Remove"
+        destructive
+        onClose={() => setRemoving(null)}
+        onConfirm={() => { const skill = removing; setRemoving(null); if (skill) confirmRemove(skill); }}
       />
       <SkillModal
         open={modalSkill !== null}

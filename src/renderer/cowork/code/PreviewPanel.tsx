@@ -59,8 +59,8 @@ export function PreviewPanel({
             <div className="code-preview__title">Preview</div>
           </div>
           <div className="code-preview__actions">
-            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(13)}</Button>
-            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(13)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(14)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(14)}</Button>
             <Button icon size="sm" variant="subtle" aria-label="Close preview" onClick={onClose}>{Ico.close(14)}</Button>
           </div>
         </header>
@@ -73,9 +73,9 @@ export function PreviewPanel({
             value={viewport}
             onValueChange={(value) => setViewport(value as Viewport)}
             options={[
-              { value: 'responsive', label: Ico.computer(13), 'aria-label': 'responsive preview' },
-              { value: 'tablet', label: Ico.appWindow(13), 'aria-label': 'tablet preview' },
-              { value: 'mobile', label: Ico.phone(13), 'aria-label': 'mobile preview' },
+              { value: 'responsive', label: Ico.computer(14), 'aria-label': 'responsive preview' },
+              { value: 'tablet', label: Ico.appWindow(14), 'aria-label': 'tablet preview' },
+              { value: 'mobile', label: Ico.phone(14), 'aria-label': 'mobile preview' },
             ]}
           />
         </div>

@@ -88,10 +88,10 @@ function AttachmentChip({ attachment, onRemove }) {
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
         {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
-          : src === 'connector' ? Ico.link(13)
-            : src === 'gdrive' ? Ico.googleDrive(13)
-              : isImage ? Ico.image(13)
-                : Ico.doc(13)}
+          : src === 'connector' ? Ico.link(14)
+            : src === 'gdrive' ? Ico.googleDrive(14)
+              : isImage ? Ico.image(14)
+                : Ico.doc(14)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -465,7 +465,7 @@ export default function Composer({
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {Ico.settings(13)}
+                {Ico.settings(14)}
               </button>
             </Tooltip>
           ),
@@ -1041,7 +1041,7 @@ export default function Composer({
                     onClick={() => acceptSlash(item)}
                   >
                     <span className="inline-flex text-ink-2">
-                      {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
+                      {item.kind === 'action' ? Ico.upload(14) : Ico.cube(14)}
                     </span>
                     <span className="flex-1 min-w-0 truncate text-left">
                       {item.label}
@@ -1257,7 +1257,7 @@ export default function Composer({
                   setOpenMenu('attach');
                 }}
               >
-                {Ico.plus(15)}
+                {Ico.plus(16)}
               </button>
               </Tooltip>
               {openMenu === 'attach' && (
@@ -1340,7 +1340,7 @@ export default function Composer({
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
-                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
+                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(14)}</span>
                                 <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
                                   <span className="font-medium">{c.name}</span>
                                   <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
@@ -1414,7 +1414,7 @@ export default function Composer({
                     <span className="truncate">{MODEL_ROUTER_LABEL}</span>
                   </span>
                   <span className="inline-flex shrink-0 text-ink-3">
-                    {Ico.settings(13)}
+                    {Ico.settings(14)}
                   </span>
                 </button>
               </Tooltip>
@@ -1505,7 +1505,7 @@ export default function Composer({
                   aria-label="Send"
                   title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
                 >
-                  {Ico.send(15)}
+                  {Ico.send(16)}
                 </button>
               </Tooltip>
             )}
@@ -1543,7 +1543,7 @@ export default function Composer({
                   >
                     {Ico.folder(14)}
                     <span>{project ? projectLabel(project) : 'Work in a project'}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+                    <span className="inline-flex text-ink-4">{Ico.chevDown(14)}</span>
                   </button>
                 </Tooltip>
 
@@ -1571,7 +1571,7 @@ export default function Composer({
                         child of a non-scrolling container). */}
                     <div className="pt-1 px-[6px] pb-[6px]">
                       <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-md py-1 px-2">
-                        <span className="inline-flex text-ink-3">{Ico.folder(13)}</span>
+                        <span className="inline-flex text-ink-3">{Ico.folder(14)}</span>
                         <input
                           ref={projectSearchRef}
                           type="text"

@@ -277,7 +277,7 @@ export default function ScheduleDetailView({
                 disabled={busy}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                {Ico.send ? Ico.send(13) : null}
+                {Ico.send ? Ico.send(14) : null}
                 {busy ? 'Running…' : 'Run now'}
               </Button>
               {/* Edit + Delete live in the overflow — Delete opens a confirm,
