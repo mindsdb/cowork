@@ -15,12 +15,17 @@ import {
 import { compareUpdaterSemVer } from '../shared/version';
 
 /** A check that has not answered in this long is abandoned so the next
- *  scheduled check can run. electron-updater has no request timeout of its
- *  own, and a check that never settles would otherwise block every later
- *  CHECK_REQUESTED for the rest of the process. */
+ *  scheduled check can run. electron-updater's feed request carries a 60s
+ *  socket idle timeout (builder-util-runtime httpExecutor), so a check cannot
+ *  hang forever: it settles with an `error`. What this guards is a check that
+ *  settled WITHOUT emitting the event that moves the phase on, which would
+ *  otherwise block every later CHECK_REQUESTED for the rest of the process.
+ *  The limit sits well above the library's own timeout so the two never race. */
 export const CHECK_STALL_MS = 10 * 60 * 1000;
-/** A download with no progress event in this long is abandoned the same way.
- *  The next check finds the update again and starts a fresh download. */
+/** A download with no progress event in this long is abandoned the same way,
+ *  and the in-flight download is cancelled in the updater (see
+ *  `ShellUpdaterAdapter.cancelDownload`). The next check finds the update again
+ *  and starts a fresh download. */
 export const DOWNLOAD_STALL_MS = 30 * 60 * 1000;
 
 export interface ShellUpdaterAdapter {
@@ -32,6 +37,12 @@ export interface ShellUpdaterAdapter {
   onError(listener: (error: Error) => void): void;
   checkForUpdates(): Promise<unknown>;
   downloadUpdate(): Promise<unknown>;
+  /** Cancel the download `downloadUpdate()` started, settling its promise.
+   *  electron-updater deduplicates: `downloadUpdate()` returns the SAME promise
+   *  until the running download settles, so abandoning a stalled download at
+   *  the controller alone would leave the next download call reusing the hung
+   *  one. Cancelling settles it (CancellationError) and frees that slot. */
+  cancelDownload?(): void;
   quitAndInstall(): void;
 }
 
@@ -247,6 +258,11 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // already cleared its token. An abandoned promise may still settle later;
   // `settled` makes that a no-op, and the token comparison in each flight's
   // `finally` keeps it from clearing a newer flight.
+  //
+  // A check still genuinely in flight is not duplicated: electron-updater
+  // returns its one pending check promise to every caller until it settles, so
+  // the fresh check() below simply adopts that promise, and the library's own
+  // request timeout settles it (CHECK_STALL_MS sits far above that timeout).
   const releaseStalled = () => {
     const idleFor = now() - lastChangeAt;
     if (snapshot.phase === 'ready-to-install' && snapshot.refreshing) {
@@ -261,6 +277,9 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       });
     } else if (snapshot.phase === 'downloading') {
       if (idleFor < DOWNLOAD_STALL_MS) return;
+      // Settle the updater's own download first, or its deduplication hands
+      // the very same hung promise back to the next download() call.
+      options.adapter.cancelDownload?.();
       fail(new Error(`shell update download made no progress for ${DOWNLOAD_STALL_MS}ms`), downloadToken, {
         code: 'download-stalled',
         recoverable: true,
@@ -396,8 +415,22 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   };
 }
 
+/** The slice of electron-updater's `checkForUpdates()` result this adapter
+ *  reads: the per-check CancellationToken the library mints for the download
+ *  that follows (AppUpdater.doCheckForUpdates). */
+interface CheckResultWithToken {
+  cancellationToken?: { cancel(): void };
+}
+
 /** Adapt electron-updater's EventEmitter API without leaking it into tests. */
 export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
+  // electron-updater creates a CancellationToken per successful check and
+  // accepts it on downloadUpdate(). Threading it through is what lets
+  // cancelDownload() abort the HTTP transfer and settle the deduplicated
+  // download promise; a bare downloadUpdate() uses a private token nobody can
+  // reach.
+  let nextDownloadToken: { cancel(): void } | null = null;
+  let activeDownloadToken: { cancel(): void } | null = null;
   return {
     onChecking: listener => { updater.on('checking-for-update', listener); },
     onUpdateAvailable: listener => {
@@ -413,8 +446,24 @@ export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
       updater.on('update-downloaded', info => listener(info.version));
     },
     onError: listener => { updater.on('error', listener); },
-    checkForUpdates: () => updater.checkForUpdates(),
-    downloadUpdate: () => updater.downloadUpdate(),
+    checkForUpdates: () => updater.checkForUpdates().then(result => {
+      nextDownloadToken = (result as CheckResultWithToken | null)?.cancellationToken ?? null;
+      return result;
+    }),
+    downloadUpdate: () => {
+      const token = nextDownloadToken;
+      activeDownloadToken = token;
+      const flight = token
+        ? updater.downloadUpdate(token as Parameters<AppUpdater['downloadUpdate']>[0])
+        : updater.downloadUpdate();
+      return flight.finally(() => {
+        if (activeDownloadToken === token) activeDownloadToken = null;
+      });
+    },
+    cancelDownload: () => {
+      activeDownloadToken?.cancel();
+      activeDownloadToken = null;
+    },
     quitAndInstall: () => updater.quitAndInstall(),
   };
 }

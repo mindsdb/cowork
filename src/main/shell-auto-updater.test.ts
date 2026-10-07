@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHECK_STALL_MS,
   DOWNLOAD_STALL_MS,
+  adaptElectronUpdater,
   createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
   type ShellUpdaterAdapter,
@@ -24,9 +25,42 @@ vi.mock('electron-updater', () => ({
   autoUpdater: fakeAutoUpdater,
 }));
 
+// The fake keeps electron-updater's deduplication: while a check or download
+// is in flight, a second call returns the SAME promise and starts nothing new
+// (AppUpdater.checkForUpdates / downloadUpdate). `checkImpl` / `downloadImpl`
+// stand in for the network; `cancelDownload` settles the pending download the
+// way a cancelled CancellationToken does (a CancellationError rejection), which
+// is what frees the library's slot. Tests that only need a quick answer may
+// still `mockImplementation` the vi.fn directly.
 class FakeAdapter extends EventEmitter implements ShellUpdaterAdapter {
-  checkForUpdates = vi.fn(async () => undefined);
-  downloadUpdate = vi.fn(async () => undefined);
+  checkImpl: () => Promise<unknown> = async () => undefined;
+  downloadImpl: () => Promise<unknown> = async () => undefined;
+  private pendingCheck: Promise<unknown> | null = null;
+  private pendingDownload: { promise: Promise<unknown>; cancel: () => void } | null = null;
+
+  checkForUpdates = vi.fn((): Promise<unknown> => {
+    if (this.pendingCheck) return this.pendingCheck;
+    const flight: Promise<unknown> = this.checkImpl().finally(() => {
+      if (this.pendingCheck === flight) this.pendingCheck = null;
+    });
+    this.pendingCheck = flight;
+    return flight;
+  });
+
+  downloadUpdate = vi.fn((): Promise<unknown> => {
+    if (this.pendingDownload) return this.pendingDownload.promise;
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      cancel = () => reject(Object.assign(new Error('cancelled'), { name: 'CancellationError' }));
+    });
+    const flight: Promise<unknown> = Promise.race([this.downloadImpl(), cancelled]).finally(() => {
+      if (this.pendingDownload?.promise === flight) this.pendingDownload = null;
+    });
+    this.pendingDownload = { promise: flight, cancel };
+    return flight;
+  });
+
+  cancelDownload = vi.fn(() => { this.pendingDownload?.cancel(); });
   quitAndInstall = vi.fn();
 
   onChecking(listener: () => void) { this.on('checking', listener); }
@@ -39,11 +73,18 @@ class FakeAdapter extends EventEmitter implements ShellUpdaterAdapter {
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<undefined>(done => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<undefined>((done, fail) => {
     resolve = () => done(undefined);
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
+
+/** The fake's network answers on a later tick, as a real feed does. Emitting
+ *  synchronously would race the dedup slot that a cancelled download frees on
+ *  a microtask, which no real round trip can do. */
+const nextTick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 function setup(mode: 'auto' | 'manual' = 'auto') {
   const adapter = new FakeAdapter();
@@ -483,9 +524,43 @@ describe('createDefaultElectronUpdaterAdapter', () => {
   });
 });
 
+describe('adaptElectronUpdater — download cancellation', () => {
+  function fakeUpdater() {
+    const token = { cancelled: false, cancel() { this.cancelled = true; } };
+    return {
+      token,
+      updater: {
+        on: vi.fn(),
+        checkForUpdates: vi.fn(async () => ({ cancellationToken: token })),
+        downloadUpdate: vi.fn(async (_token?: unknown) => undefined),
+        quitAndInstall: vi.fn(),
+      },
+    };
+  }
+
+  it('passes the check result\'s token to downloadUpdate and cancels it on cancelDownload', async () => {
+    const { token, updater } = fakeUpdater();
+    const adapter = adaptElectronUpdater(updater as any);
+    await adapter.checkForUpdates();
+    void adapter.downloadUpdate();
+    expect(updater.downloadUpdate).toHaveBeenCalledWith(token);
+    expect(token.cancelled).toBe(false);
+    adapter.cancelDownload!();
+    expect(token.cancelled).toBe(true);
+  });
+
+  it('does not cancel a download that already finished', async () => {
+    const { token, updater } = fakeUpdater();
+    const adapter = adaptElectronUpdater(updater as any);
+    await adapter.checkForUpdates();
+    await adapter.downloadUpdate();
+    adapter.cancelDownload!();
+    expect(token.cancelled).toBe(false);
+  });
+});
+
 describe('createShellAutoUpdater — a stalled check or download must not starve later checks', () => {
-  function setupWithClock(mode: 'auto' | 'manual' = 'auto') {
-    const adapter = new FakeAdapter();
+  function setupWithClock(mode: 'auto' | 'manual' = 'auto', adapter: ShellUpdaterAdapter = new FakeAdapter()) {
     const failures: ShellUpdateFailureReport[] = [];
     let clock = 1_000_000;
     const updater = createShellAutoUpdater({
@@ -494,11 +569,12 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
       onFailure: report => failures.push(report),
       now: () => clock,
     });
-    return { adapter, failures, updater, advance: (ms: number) => { clock += ms; } };
+    return { failures, updater, advance: (ms: number) => { clock += ms; } };
   }
 
   it('releases a check whose promise resolved without any updater event once the stall limit passes', async () => {
-    const { adapter, failures, updater, advance } = setupWithClock();
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
     // electron-updater can resolve `checkForUpdates()` and emit nothing; the
     // phase then sits at `checking`, where a new check is refused.
     await updater.check('boot');
@@ -507,7 +583,7 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
 
     advance(CHECK_STALL_MS);
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    adapter.checkImpl = async () => { adapter.emit('none'); };
     await updater.check('periodic');
     expect(failures.map(f => f.code)).toEqual(['check-stalled']);
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
@@ -515,89 +591,139 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
   });
 
   it('releases a download whose promise resolved without update-downloaded once the stall limit passes', async () => {
-    const { adapter, failures, updater, advance } = setupWithClock();
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { adapter.emit('available', '2.1.0'); };
     await updater.check('boot');
     await updater.download();
     expect(updater.getSnapshot().phase).toBe('downloading');
 
     advance(DOWNLOAD_STALL_MS);
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    adapter.checkImpl = async () => { adapter.emit('none'); };
     await updater.check('periodic');
     expect(failures.map(f => f.code)).toEqual(['download-stalled']);
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
     expect(updater.getSnapshot().phase).toBe('idle');
   });
 
-  it('abandons a check that never settles once the stall limit passes', async () => {
-    const { adapter, failures, updater, advance } = setupWithClock();
+  it('adopts a check still in flight past the stall limit instead of duplicating it, and recovers when the library settles it', async () => {
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
     const hung = deferred();
-    adapter.checkForUpdates.mockImplementation(() => hung.promise);
+    const checkImpl = vi.fn(() => hung.promise);
+    adapter.checkImpl = checkImpl;
     void updater.check('boot');
     expect(updater.getSnapshot().phase).toBe('checking');
 
     // Short of the limit: the in-flight check is reused, nothing changes.
     advance(CHECK_STALL_MS - 1);
     void updater.check('periodic');
-    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(checkImpl).toHaveBeenCalledTimes(1);
     expect(updater.getSnapshot().phase).toBe('checking');
 
-    // Past it: the stalled flight is failed and a fresh check starts.
+    // Past it: the stalled flight is failed and a new check is requested. The
+    // library still has that one request open and hands the same promise back,
+    // so no second request starts; the new flight simply adopts it.
     advance(1);
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
-    await updater.check('periodic');
+    void updater.check('periodic');
     expect(failures.map(f => f.code)).toEqual(['check-stalled']);
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
-    expect(updater.getSnapshot().phase).toBe('idle');
+    expect(checkImpl).toHaveBeenCalledTimes(1);
+    expect(updater.getSnapshot().phase).toBe('checking');
 
-    // The hung promise settling later is a no-op for the newer state.
-    hung.resolve();
-    await Promise.resolve();
+    // The library's own request timeout settles it: `error` then rejection.
+    const timedOut = new Error('Request timed out');
+    adapter.emit('updater-error', timedOut);
+    hung.reject(timedOut);
+    await nextTick();
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'failed', errorCode: 'update-request-failed', recoverable: true });
+
+    // With the slot free, the next check starts a fresh request.
+    adapter.checkImpl = async () => { adapter.emit('none'); };
+    await updater.check('periodic');
     expect(updater.getSnapshot().phase).toBe('idle');
   });
 
-  it('abandons a download with no progress for the stall limit, but keeps one that is still moving', async () => {
-    const { adapter, failures, updater, advance } = setupWithClock();
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
+  it('cancels a stalled download in the updater so the next download starts a new transfer', async () => {
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { await nextTick(); adapter.emit('available', '2.1.0'); };
     const hung = deferred();
-    adapter.downloadUpdate.mockImplementation(() => hung.promise);
+    const downloadImpl = vi.fn(() => hung.promise);
+    adapter.downloadImpl = downloadImpl;
     await updater.check('boot');
     expect(updater.getSnapshot().phase).toBe('downloading');
 
+    // Still moving: progress resets the stall clock and nothing is cancelled.
     advance(DOWNLOAD_STALL_MS - 1);
     adapter.emit('progress', { transferred: 1, total: 10, percent: 10 });
     advance(DOWNLOAD_STALL_MS - 1);
     await updater.check('periodic');
     expect(updater.getSnapshot().phase).toBe('downloading');
+    expect(adapter.cancelDownload).not.toHaveBeenCalled();
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
 
+    // Stalled: the updater's download is cancelled, which settles its promise
+    // and frees the dedup slot, so the re-found update downloads afresh.
     advance(1);
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
+    adapter.downloadImpl = async () => { adapter.emit('downloaded', '2.1.0'); };
     await updater.check('periodic');
     expect(failures.map(f => f.code)).toEqual(['download-stalled']);
+    expect(adapter.cancelDownload).toHaveBeenCalledTimes(1);
     expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
-    expect(updater.getSnapshot().phase).toBe('idle');
+    expect(downloadImpl).toHaveBeenCalledTimes(1);
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+  });
+
+  it('without cancellation the updater hands the hung download back, which is the hazard cancelDownload exists for', async () => {
+    const adapter = new FakeAdapter();
+    // An adapter that cannot cancel, as the production one was before this fix.
+    (adapter as Partial<ShellUpdaterAdapter>).cancelDownload = undefined;
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { await nextTick(); adapter.emit('available', '2.1.0'); };
+    const hung = deferred();
+    const downloadImpl = vi.fn(() => hung.promise);
+    adapter.downloadImpl = downloadImpl;
+    await updater.check('boot');
+
+    advance(DOWNLOAD_STALL_MS);
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['download-stalled']);
+    // The controller asked for a download again, but the library's dedup
+    // returned the same hung promise and started no new transfer.
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(downloadImpl).toHaveBeenCalledTimes(1);
+    expect(updater.getSnapshot().phase).toBe('downloading');
   });
 
   it('ends a stalled background refresh without disturbing the pending install', async () => {
-    const { adapter, failures, updater, advance } = setupWithClock();
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('available', '2.1.0'); });
-    adapter.downloadUpdate.mockImplementation(async () => { adapter.emit('downloaded', '2.1.0'); });
+    const adapter = new FakeAdapter();
+    const { failures, updater, advance } = setupWithClock('auto', adapter);
+    adapter.checkImpl = async () => { adapter.emit('available', '2.1.0'); };
+    adapter.downloadImpl = async () => { adapter.emit('downloaded', '2.1.0'); };
     await updater.check('boot');
     await updater.download();
     expect(updater.getSnapshot().phase).toBe('ready-to-install');
 
     const hung = deferred();
-    adapter.checkForUpdates.mockImplementation(() => hung.promise);
+    adapter.checkImpl = () => hung.promise;
     void updater.check('periodic');
     expect(updater.getSnapshot().refreshing).toBe(true);
 
+    // Past the limit the stalled refresh ends; the new refresh adopts the same
+    // library promise, and the armed download is untouched throughout.
     advance(CHECK_STALL_MS);
-    adapter.checkForUpdates.mockImplementation(async () => { adapter.emit('none'); });
-    await updater.check('periodic');
+    void updater.check('periodic');
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0', refreshing: true });
+    expect(failures).toEqual([]);
+    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(3);
+
+    adapter.emit('none');
+    hung.resolve();
+    await nextTick();
     expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
     expect(updater.getSnapshot().refreshing).toBeUndefined();
     expect(failures).toEqual([]);
-    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(3);
   });
 });
