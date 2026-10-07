@@ -7,6 +7,7 @@ const spies = vi.hoisted(() => ({
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
   fetchSessions: vi.fn(),
+  fetchOlderMessages: vi.fn(async () => null),
 }));
 
 vi.mock('./api', async (importOriginal) => ({
@@ -15,6 +16,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessions: (...args) => spies.fetchSessions(...args),
   fetchSession: (...args) => spies.fetchSession(...args),
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
+  fetchOlderMessages: (...args) => spies.fetchOlderMessages(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
   fetchArtifacts: vi.fn(async () => []),
@@ -151,6 +153,7 @@ beforeEach(() => {
     status: 'ok',
     task: { id, messages: exchange },
   }));
+  spies.fetchOlderMessages.mockReset().mockResolvedValue(null);
   spies.fetchSessions.mockReset().mockResolvedValue([
     { ...task },
     { ...otherTask },
@@ -490,6 +493,37 @@ describe('deleting a turn shows it as in flight', () => {
       await screen.findByText('msg: user: ninth question');
 
       expect(screen.getByText('notice after: u2')).toBeInTheDocument();
+    });
+
+    it('confirms a committed delete of the oldest loaded turn in a long conversation', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      // Only the newest page is loaded; older history sits behind `c-old`.
+      spies.fetchSessionResult.mockImplementation(async (id) => ({
+        status: 'ok',
+        task: { id, messages: exchange, hasMoreMessages: true, messagesCursor: 'c-old' },
+      }));
+      render(<App />);
+      await openTask(user, task);
+
+      // The server committed: what is left is the older history, itself
+      // longer than one page.
+      const older = [
+        { role: 'user', id: 'u0', content: 'older question' },
+        { role: 'assistant', id: 'a0', content: 'older answer' },
+      ];
+      spies.fetchOlderMessages.mockResolvedValue({ messages: older, hasMoreMessages: true, messagesCursor: 'c-older' });
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok', task: { id: task.id, messages: older, hasMoreMessages: true, messagesCursor: 'c-older' },
+      });
+
+      await confirmDelete(user, 0);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: first question')).toBeNull());
+      expect(spies.fetchOlderMessages).toHaveBeenCalledWith(task.id, 'c-old');
+      expect(alertSpy).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
     });
 
     it('settles a late commit that emptied the conversation when it is reopened', async () => {

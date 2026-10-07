@@ -4921,19 +4921,27 @@ function AppCore() {
       if (!failure && !gone) {
         setTasks((prev) => prev.map((t) => (t.id === taskId ? forgetTurnIds(t, cut.ids) : t)));
       }
-      // Re-fetch whatever happened above, not just on success: a delete we did
-      // not see confirmed may still have landed, so the list on screen is not
-      // one the server has vouched for until this returns.
-      const resync = await resyncConversationAfterDelete(taskId, cut);
-      const resynced = resync != null;
       // Only a 4xx is the server saying it did not do this. Our own timeout, a
       // gateway 5xx and no response at all all leave a delete that may still
       // commit, which a re-sync read before it does cannot show.
       const refused = gone || (failure?.status >= 400 && failure.status < 500);
+      // A cut of the oldest loaded turn has no row before it on screen; the
+      // newest row of the older page is that row (default request timeout).
+      let checkedCut = cut;
+      if (failure && !refused && cut.beforeId == null && snapshot?.hasMoreMessages && snapshot.messagesCursor) {
+        const older = await fetchOlderMessages(taskId, snapshot.messagesCursor);
+        const newestOlder = older?.messages?.findLast((m) => m?.id != null);
+        if (newestOlder) checkedCut = { ...cut, beforeId: newestOlder.id };
+      }
+      // Re-fetch whatever happened above, not just on success: a delete we did
+      // not see confirmed may still have landed, so the list on screen is not
+      // one the server has vouched for until this returns.
+      const resync = await resyncConversationAfterDelete(taskId, checkedCut);
+      const resynced = resync != null;
       // An unanswered delete the resync already shows done needs no follow-up.
       const unconfirmed = failure && !refused && !resync?.committed;
       if (!resynced || unconfirmed) {
-        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: cut }));
+        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: checkedCut }));
       }
       if (!resynced) {
         // The quiet version of this is the one that loses data: the exchange
