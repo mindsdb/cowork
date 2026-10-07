@@ -16,6 +16,14 @@ describe('resolveConversationLoadState', () => {
       .toBe('loading');
   });
 
+  it('is ready when a task still marked loading already holds rows', () => {
+    // A turn started in a listed, never-opened conversation (an artifact
+    // repair) adds rows while no fetch is coming to flip the status.
+    const resolvedTask = { id: 't1', messages: [{ role: 'user', content: 'fix it' }], messagesStatus: 'loading' };
+    expect(resolveConversationLoadState({ resolvedTask, conversationErrorMatches: false }))
+      .toBe('ready');
+  });
+
   it('is ready once messagesStatus flips to loaded', () => {
     const resolvedTask = { id: 't1', messages: [{ role: 'user' }], messagesStatus: 'loaded' };
     expect(resolveConversationLoadState({ resolvedTask, conversationErrorMatches: false }))

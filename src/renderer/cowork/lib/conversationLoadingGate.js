@@ -23,7 +23,9 @@ export function resolveConversationLoadState({ resolvedTask, conversationErrorMa
   if (!resolvedTask) {
     return conversationErrorMatches ? 'error' : 'loading';
   }
-  if (resolvedTask.messagesStatus === 'loading') {
+  // A task that already holds rows is not waiting on a fetch, whatever its
+  // status says: a turn can start in a listed task no fetch will ever flip.
+  if (resolvedTask.messagesStatus === 'loading' && !resolvedTask.messages?.length) {
     return 'loading';
   }
   return 'ready';
