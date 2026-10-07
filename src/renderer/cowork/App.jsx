@@ -2386,17 +2386,33 @@ function AppCore() {
       });
     }).catch(() => {});
 
+    // A delete left unconfirmed here may have committed since; this page shows it.
+    const pendingCut = unconfirmedDeletesRef.current[id];
+    const cutCommitted = cutConfirmedGone(
+      pendingCut, Array.isArray(fresh.messages) ? fresh.messages : [], fresh.hasMoreMessages,
+    );
+    const settleCut = () => setUnconfirmedDeletes((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
     // Empty and not mid-flight: surface the record so a capped-list deep
     // link (conversation absent from the recents fetch) still renders, but
     // don't wipe any locally-restored messages.
     if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
+      // Unless the page proves a pending delete took everything. A turn just
+      // sent here is not on the server yet, so it keeps the rows.
+      const emptiedByCut = cutCommitted
+        && activeStreamingTaskIdRef.current !== id && !hasLiveTurnHere(id);
       setTasks((prev) => (prev.some((t) => t.id === id)
-        ? prev.map((t) => (t.id === id ? {
-          ...t,
-          messagesStatus: 'loaded',
-          ...reconcilePaginationState(t, fresh),
-        } : t))
+        ? prev.map((t) => {
+          if (t.id !== id) return t;
+          const next = { ...t, messagesStatus: 'loaded', ...reconcilePaginationState(t, fresh) };
+          return emptiedByCut ? forgetTurnIds({ ...next, messages: [] }, pendingCut.ids) : next;
+        })
         : [fresh, ...prev]));
+      if (emptiedByCut) settleCut();
       return;
     }
 
@@ -2414,9 +2430,6 @@ function AppCore() {
     // fresh.messages is only the most recent page — merge it against
     // whatever the task already has rather than replacing wholesale, so an
     // older prefix loaded earlier via "load earlier messages" survives.
-    // A delete left unconfirmed here may have committed since; this page shows it.
-    const pendingCut = unconfirmedDeletesRef.current[id];
-    const cutCommitted = cutConfirmedGone(pendingCut, reconciled, fresh.hasMoreMessages);
     const patch = (t) => {
       const next = {
         ...t,
@@ -2431,13 +2444,7 @@ function AppCore() {
     setTasks((prev) => (prev.some((t) => t.id === id)
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));
-    if (cutCommitted) {
-      setUnconfirmedDeletes((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    }
+    if (cutCommitted) settleCut();
   }, [reconnectInFlight]);
 
   const newTask = () => {

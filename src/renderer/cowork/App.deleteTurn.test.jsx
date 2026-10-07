@@ -492,6 +492,33 @@ describe('deleting a turn shows it as in flight', () => {
       expect(screen.getByText('notice after: u2')).toBeInTheDocument();
     });
 
+    it('settles a late commit that emptied the conversation when it is reopened', async () => {
+      const user = userEvent.setup();
+      timedOut();
+      withNotices();
+      render(<App />);
+      await openTask(user, task);
+      await confirmDelete(user, 0);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+
+      // The server commits: the cut covered every turn, so nothing is left.
+      const empty = { id: task.id, messages: [], hasMoreMessages: false, messagesCursor: null };
+      spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: empty });
+      spies.fetchSession.mockResolvedValue(empty);
+      // The real list fetch never carries messages; this file's default does.
+      spies.fetchSessions.mockResolvedValue([
+        { ...task, messages: [] }, { ...otherTask }, { ...localTask },
+      ]);
+      await openTask(user, otherTask);
+      await openTask(user, task);
+
+      await waitFor(() => expect(screen.queryByText('msg: user: first question')).toBeNull());
+      expect(screen.queryByText('msg: user: second question')).toBeNull();
+      expect(screen.queryByText('notice after: u1')).toBeNull();
+      expect(screen.queryByText('notice after: u2')).toBeNull();
+    });
+
     it('settles a late commit when the conversation is reopened', async () => {
       const user = userEvent.setup();
       timedOut();
