@@ -715,3 +715,69 @@ describe('deleting a question that never reached the server', () => {
     expect(alertSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('a late empty reopen result after a turn completed meanwhile', () => {
+  it('removes only what the delete covered and keeps the new turn', async () => {
+    const user = userEvent.setup();
+    const exchange = [
+      { role: 'user', id: 'u1', content: 'First question' },
+      { role: 'assistant', id: 'a1', content: 'First answer' },
+      { role: 'user', id: 'u2', content: 'Second question' },
+      { role: 'assistant', id: 'a2', content: 'Second answer' },
+    ];
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: exchange }) });
+    await openTask(user);
+    await screen.findByText('Second answer');
+
+    // The delete of the first turn times out. The resync still shows the
+    // rows, plus a reply saved under an id this client never recorded.
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [...exchange, { role: 'assistant', id: 'a-late', content: 'Saved by the cancel' }] }),
+    });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    await screen.findByText('Saved by the cancel');
+
+    // Reopen: the loader's read is held while a new turn runs to completion.
+    let releaseReopen;
+    spies.fetchSessionResult.mockImplementation((id) => (id === 'conv-a'
+      ? new Promise((resolve) => { releaseReopen = resolve; })
+      : Promise.resolve({ status: 'ok', task: baseTask({ id, title: 'Beta task' }) })));
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    await user.click(composer);
+    await user.keyboard('New question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-new' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'New answer' });
+    await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-new' });
+    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    await screen.findByText('New answer');
+
+    // The delete had committed: the server's read, taken before the new turn,
+    // is empty.
+    await act(async () => {
+      releaseReopen({ status: 'ok', task: baseTask({ messages: [], hasMoreMessages: false, messagesCursor: null }) });
+    });
+
+    await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
+    expect(screen.queryByText('Second answer')).toBeNull();
+    expect(screen.queryByText('Saved by the cancel')).toBeNull();
+    expect(screen.getByText('New question')).toBeInTheDocument();
+    expect(screen.getByText('New answer')).toBeInTheDocument();
+  });
+});

@@ -2449,11 +2449,18 @@ function AppCore() {
       // sent here is not on the server yet, so it keeps the rows.
       const emptiedByCut = cutCommitted
         && activeStreamingTaskIdRef.current !== id && !hasLiveTurnHere(id);
+      // Here the cut is only confirmed when it began at the top, so it covers
+      // everything before the first question it did not name; this read may
+      // predate a turn completed since, and that turn stays.
+      const afterCut = (msgs) => {
+        const keepFrom = msgs.findIndex((m) => m?.role === 'user' && m.id != null && !pendingCut.ids.includes(m.id));
+        return keepFrom === -1 ? [] : msgs.slice(keepFrom);
+      };
       setTasks((prev) => (prev.some((t) => t.id === id)
         ? prev.map((t) => {
           if (t.id !== id) return t;
           const next = { ...t, messagesStatus: 'loaded', ...reconcilePaginationState(t, fresh) };
-          return emptiedByCut ? forgetTurnIds({ ...next, messages: [] }, pendingCut.ids) : next;
+          return emptiedByCut ? forgetTurnIds({ ...next, messages: afterCut(t.messages || []) }, pendingCut.ids) : next;
         })
         : [fresh, ...prev]));
       if (emptiedByCut) settleCut();
