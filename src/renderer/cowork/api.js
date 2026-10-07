@@ -31,6 +31,22 @@ const API_ORIGIN = host.getApiOrigin();
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
+/* Settles with `promise`, or rejects with the abort reason, as fetch does,
+   once `signal` aborts first. A request's own deadline or Stop then also
+   covers the wait for its access token, which a stalled Keycloak refresh can
+   hold. */
+function _untilAborted(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 // Thin wrapper around fetch() for server calls.
 //
 // Web: attach the Keycloak access token as `Authorization: Bearer` so the
@@ -44,7 +60,7 @@ const ROOT_BASE = `${API_ORIGIN}`;
 // Keycloak token, so nothing is attached here.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
-    const token = await host.getAccessToken();
+    const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
       options = {
         ...options,

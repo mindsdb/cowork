@@ -945,6 +945,42 @@ describe('fetchHealth gives up on a server that does not answer', () => {
     expect(settled).toEqual({ status: 'offline', anton_available: false });
     expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
   });
+
+  /* An expired token waits for its refresh, and a stalled Keycloak never
+     finishes it, so the deadline has to cover the token wait too. */
+  it('reports offline at SHORT_REQUEST_TIMEOUT_MS while the access token never arrives', async () => {
+    vi.useFakeTimers();
+    hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers normally when a valid token arrives inside the deadline', async () => {
+    vi.useFakeTimers();
+    __resetOrganizationRequestBoundaryForTests();
+    const token = accessToken(ORGANIZATION_A);
+    hostMock.getAccessToken.mockImplementationOnce(
+      () => new Promise((resolve) => { setTimeout(() => resolve(token), SHORT_REQUEST_TIMEOUT_MS - 1_000); }),
+    );
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'ok' });
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${token}`);
+  });
 });
 
 describe('fetchHealth is not affected by an analytics failure (ENG-1689)', () => {

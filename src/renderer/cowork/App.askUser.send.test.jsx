@@ -146,7 +146,7 @@ vi.mock('./lib/analytics', () => ({
   trackTurnFailed: vi.fn(),
 }));
 
-import App from './App';
+import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
@@ -828,6 +828,50 @@ describe('a question the server refuses', () => {
     expect(sentence.closest('[role="alert"]')).not.toBeNull();
     expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
     expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  /* The 409 says another turn is running here. The conversation stays in the
+     in-flight set, so the poll that no longer lists it refetches the other
+     answer, and the refused question with its sentence stays under it. */
+  it('keeps the conversation in flight after a 409, so the poll that reports it finished refetches its history', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+    await send(user, composer, 'a second question');
+    await screen.findByText(SECOND);
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'the first question' },
+        { role: 'assistant', content: 'The other answer' },
+      ],
+    }));
+    fetchInFlightList.mockResolvedValueOnce([]);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalledWith('conv-a'));
+    const otherAnswer = await screen.findByText('The other answer');
+    const refused = screen.getByText('a second question');
+    expect(screen.getByText(SECOND)).toBeInTheDocument();
+    expect(otherAnswer.compareDocumentPosition(refused) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('carries every trailing refused question past a refetch, and nothing else', () => {
+    const refused = (text) => [
+      { role: 'user', content: text },
+      { role: 'error', content: SECOND, code: 'turn_in_progress' },
+    ];
+    const answered = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }];
+
+    expect(unsavedRefusedQuestions([...answered, ...refused('one'), ...refused('two')]))
+      .toEqual([...refused('one'), ...refused('two')]);
+    expect(unsavedRefusedQuestions([...refused('one'), ...answered])).toEqual([]);
+    expect(unsavedRefusedQuestions([
+      { role: 'user', content: 'q' },
+      { role: 'error', content: 'Something broke', code: 'anton_error' },
+    ])).toEqual([]);
+    expect(unsavedRefusedQuestions(undefined)).toEqual([]);
   });
 
   it('shows a busy failure inside the stream at once, as the same gated card, without reloading the conversation', async () => {

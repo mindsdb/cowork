@@ -513,6 +513,24 @@ function nextPollDelay(schedules) {
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
+/* The trailing questions the server refused with a 409 (`turn_in_progress`),
+   each with the sentence under it, or [] when the transcript does not end
+   with one. The server never saved them, so a refetch of saved history would
+   drop them; the caller appends them after it. */
+export function unsavedRefusedQuestions(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  let start = rows.length;
+  while (
+    start >= 2
+    && rows[start - 1]?.role === 'error'
+    && rows[start - 1].code === 'turn_in_progress'
+    && rows[start - 2]?.role === 'user'
+  ) {
+    start -= 2;
+  }
+  return rows.slice(start);
+}
+
 // Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
 // captures the token with begin() and applies its result only while isCurrent()
 // still holds. Both starting a newer detail (begin) AND leaving detail — to the
@@ -965,7 +983,10 @@ function AppCore() {
                 if (t.id !== cid) return t;
                 return {
                   ...t,
-                  messages: applySessionMessages(cid, fresh.messages),
+                  messages: [
+                    ...applySessionMessages(cid, fresh.messages),
+                    ...unsavedRefusedQuestions(t.messages),
+                  ],
                   status: 'idle',
                 };
               }));
@@ -1396,7 +1417,12 @@ function AppCore() {
      * already cleared the shared controller if its stream held it.
      */
     releaseSlotClaim(...ids);
-    ids.forEach((id) => markInFlightDone(id));
+    /* A 409 (`turn_in_progress`) means the server is still running another
+       turn in this conversation. Its entry stays in the in-flight set, so the
+       heartbeat keeps polling and refetches the conversation once that turn
+       finishes. The refused question survives that refetch (see
+       unsavedRefusedQuestions). */
+    if (event?.code !== 'turn_in_progress') ids.forEach((id) => markInFlightDone(id));
 
     /* Two failures skip the history reload, so the error shows at once
        instead of after up to three rounds of two history requests:
