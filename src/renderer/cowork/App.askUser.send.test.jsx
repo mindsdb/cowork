@@ -947,6 +947,20 @@ describe('interrupted stream recovery', () => {
         const followOne = streams[streams.length - 1];
         await act(async () => { followOne.opts.onDone(); });
         await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one', 'follow two']));
+        const followTwo = streams[streams.length - 1];
+        await act(async () => { followTwo.opts.onDone(); });
+
+        // The failed turn's id stays on its own partial, not on a later answer.
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        const originalAlert = window.alert;
+        window.alert = vi.fn();
+        try {
+          await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+          await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+          await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+        } finally {
+          window.alert = originalAlert;
+        }
       });
 
       it('leaves a turn the reattached stream completed alone when the older recovery lands', async () => {
