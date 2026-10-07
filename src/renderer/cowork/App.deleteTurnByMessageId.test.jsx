@@ -660,3 +660,34 @@ describe('deleting a turn while a failed turn is still being recovered', () => {
     expect(cancelResponse).not.toHaveBeenCalled();
   });
 });
+
+describe('deleting a question that never reached the server', () => {
+  it('removes only that question and its card, locally, and keeps the turn sent after it', async () => {
+    const user = userEvent.setup();
+    // Sent while no provider was set up, then a provider was added and the
+    // next turn went through and was persisted.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({ messages: [
+        { role: 'user', id: 'u1', content: 'First question' },
+        { role: 'assistant', id: 'a1', content: 'First answer' },
+        { role: 'user', content: 'Never sent', _unsent: true },
+        { role: 'provider_required' },
+        { role: 'user', id: 'u2', content: 'Sent after setup' },
+        { role: 'assistant', id: 'a2', content: 'Answer after setup' },
+      ] }),
+    });
+
+    await openTask(user);
+    await screen.findByText('Never sent');
+    const unsentTurn = screen.getByText('Never sent').closest('.user-turn');
+    await deleteTurn(user, within(unsentTurn).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByText('Never sent')).toBeNull());
+    expect(screen.getByText('Sent after setup')).toBeInTheDocument();
+    expect(screen.getByText('Answer after setup')).toBeInTheDocument();
+    expect(screen.getByText('First answer')).toBeInTheDocument();
+    expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+});

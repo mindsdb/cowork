@@ -182,3 +182,27 @@ describe('a turn being deleted', () => {
     expect(busyAround('The turn failed before it produced anything.')).not.toBeNull();
   });
 });
+
+describe('a question the server never saw', () => {
+  const localTask = (messages) => ({ id: 'tmp-local', title: 'New chat', status: 'idle', messages });
+
+  it('offers Delete in a conversation still on a local id, handing over the row itself', async () => {
+    const user = userEvent.setup();
+    const onDeleteTurn = vi.fn();
+    const question = { role: 'user', content: 'local question' };
+    render(<ChatView task={localTask([question, { role: 'error', content: 'Could not reach the server.' }])} onDeleteTurn={onDeleteTurn} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(onDeleteTurn).toHaveBeenCalledWith({ localRow: question });
+  });
+
+  it('offers no Delete on a first question whose turn is still streaming', () => {
+    render(<ChatView
+      task={localTask([{ role: 'user', content: 'local question' }, { role: '_streaming', content: 'thinking' }])}
+      onDeleteTurn={vi.fn()}
+    />);
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+});

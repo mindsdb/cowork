@@ -2397,6 +2397,13 @@ export default function ChatView({
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 const orphan = isOrphanUser(i);
+                // A question the server never saw has no id; it is removed
+                // locally, by the row itself, once nothing is streaming.
+                const neverSent = !m.id && !isStreaming
+                  && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
+                let deleteThisTurn = null;
+                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
+                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
                 return (
                   <UserTurn
                     key={messageKey(m, i)}
@@ -2412,12 +2419,12 @@ export default function ChatView({
                     // Anchored on this user message's own id — an
                     // orphan turn (stopped/failed before any answer) has no
                     // assistant row to anchor on instead. Hidden, not just
-                    // disabled, when there's no id yet (a stop/error refetch
-                    // that hasn't landed) rather than rendering a button that
-                    // 422s silently when clicked. No turn offers a delete
-                    // while one is out, so the list cannot be re-cut under a
-                    // delete that has not come back yet.
-                    onDelete={orphan && m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
+                    // disabled, when a row the server has seen has no id yet
+                    // (a stop/error refetch that hasn't landed) rather than
+                    // rendering a button that 422s silently when clicked. No
+                    // turn offers a delete while one is out, so the list
+                    // cannot be re-cut under a delete that has not come back.
+                    onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {

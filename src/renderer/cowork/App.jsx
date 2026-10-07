@@ -4637,6 +4637,11 @@ function AppCore() {
     // resync, and the list it was clicked against is the one being replaced.
     // Another conversation is unaffected and stays deletable.
     if (deletingTurns[taskId] != null) return;
+    // A row the server never saw (see ChatView) has nothing there to refresh.
+    if (messageId.localRow) {
+      setPendingDeleteTurn({ taskId, localRow: messageId.localRow });
+      return;
+    }
     if (unconfirmedDeletes[taskId]) {
       if (refreshingAfterDeleteRef.current.has(taskId)) return;
       refreshingAfterDeleteRef.current.add(taskId);
@@ -4805,6 +4810,29 @@ function AppCore() {
     const cutFrom = turnCutFrom(msgs, messageId);
     if (cutFrom === -1) return t;
     return { ...forgetTurnArtifacts(t, messageId), messages: msgs.slice(0, cutFrom) };
+  };
+
+  /**
+   * Removes a question the server never saw, found by the row object itself,
+   * with the rows after it up to the next question (its own card) and no
+   * further: later turns may be persisted. Never calls the server. Alerts
+   * instead of doing nothing when the row has changed since it was clicked.
+   */
+  const deleteLocalRow = async (taskId, row) => {
+    const current = await latestTask(taskId);
+    if (!current?.messages?.includes(row)) {
+      alert('This message changed before it could be deleted. Try again.');
+      return;
+    }
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== taskId) return t;
+      const msgs = t.messages || [];
+      const from = msgs.indexOf(row);
+      if (from === -1) return t;
+      let to = from + 1;
+      while (to < msgs.length && msgs[to]?.role !== 'user') to += 1;
+      return { ...t, messages: [...msgs.slice(0, from), ...msgs.slice(to)] };
+    }));
   };
 
   // A task as of every update queued so far: an updater runs after them all,
@@ -6086,7 +6114,8 @@ function AppCore() {
         onConfirm={async () => {
           const payload = pendingDeleteTurn;
           setPendingDeleteTurn(null);
-          if (payload) await performDeleteTurn(payload.taskId, payload.messageId);
+          if (payload?.localRow) await deleteLocalRow(payload.taskId, payload.localRow);
+          else if (payload) await performDeleteTurn(payload.taskId, payload.messageId);
         }}
       />
 
