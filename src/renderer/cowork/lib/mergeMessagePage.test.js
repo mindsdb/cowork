@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeMessagePage, reconcilePaginationState, pageReplacesLocalHistory } from './mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState, pageReplacesLocalHistory, knownRowIds } from './mergeMessagePage';
 
 const m = (id, content) => ({ id, role: 'user', content });
 
@@ -214,5 +214,59 @@ describe('pageReplacesLocalHistory', () => {
     expect(reconcilePaginationState(task, page)).toEqual({
       hasMoreMessages: true, messagesCursor: 'cursor-deep',
     });
+  });
+});
+
+describe('mergeMessagePage with the ids known when the fetch started', () => {
+  const known = (...ids) => new Set(ids);
+  const stub = { role: '_streaming', content: 'typing…' };
+
+  it('keeps a turn that completed after the fetch started', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), m('a2')];
+    const page = [m('u1'), m('a1')];
+    expect(mergeMessagePage(existing, page, known('u1', 'a1'))).toEqual(existing);
+  });
+
+  it('keeps the live row when the page shares nothing with local history', () => {
+    const existing = [m('x1'), m('x2'), stub];
+    const page = [m('o1'), m('o2')];
+    expect(mergeMessagePage(existing, page)).toEqual([...page, stub]);
+  });
+
+  it('does not repeat older rows that "load earlier" prepended during the fetch', () => {
+    const existing = [m('o1'), m('o2'), m('u5'), m('a5'), m('u6'), m('a6')];
+    const page = [m('u5'), m('a5')];
+    expect(mergeMessagePage(existing, page, known('u5', 'a5'))).toEqual(existing);
+  });
+
+  it('does not repeat a question stamped during the fetch that the page also holds', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), stub];
+    const page = [m('u1'), m('a1'), m('u2'), m('a2')];
+    expect(mergeMessagePage(existing, page, known('u1', 'a1'))).toEqual([...page, stub]);
+  });
+
+  it('guard: still drops rows the fetch knew and the page no longer has', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), m('a2')];
+    const page = [m('u1'), m('a1')];
+    expect(mergeMessagePage(existing, page, known('u1', 'a1', 'u2', 'a2'))).toEqual(page);
+  });
+
+  it('guard: without a snapshot a page that ends earlier still wins', () => {
+    const existing = [m('u1'), m('a1'), m('u2'), m('a2')];
+    const page = [m('u1'), m('a1')];
+    expect(mergeMessagePage(existing, page)).toEqual(page);
+  });
+
+  it('guard: never joins local rows onto a page it does not overlap', () => {
+    const existing = [m('x1'), m('x2')];
+    const page = [m('o1'), m('o2')];
+    expect(mergeMessagePage(existing, page, known())).toEqual(page);
+  });
+});
+
+describe('knownRowIds', () => {
+  it('collects the ids a list holds and skips rows without one', () => {
+    expect(knownRowIds([m('u1'), { role: 'error' }, m('a1')])).toEqual(new Set(['u1', 'a1']));
+    expect(knownRowIds(undefined)).toEqual(new Set());
   });
 });

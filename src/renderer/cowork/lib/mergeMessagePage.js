@@ -28,7 +28,34 @@
 const _isSyntheticCard = (m) => m?.id == null
   && (m?.role === 'error' || m?.role === 'provider_required');
 
-export function mergeMessagePage(existing, freshPage) {
+/** The ids a list holds: all a fetch started now could already know about. */
+export function knownRowIds(messages) {
+  return new Set((Array.isArray(messages) ? messages : []).map((m) => m?.id).filter((id) => id != null));
+}
+
+// Local rows newer than a page read before they existed: past the newest row
+// both hold, the ones the page lacks and the fetch could not have known (a
+// known one missing from the page was removed on the server), each with the
+// id-less rows that follow it.
+function _arrivedSinceFetch(existingArr, freshArr, knownIds) {
+  const pageIds = knownRowIds(freshArr);
+  let shared = -1;
+  existingArr.forEach((m, i) => { if (m?.id != null && pageIds.has(m.id)) shared = i; });
+  const kept = [];
+  let keeping = false;
+  for (const m of existingArr.slice(shared + 1)) {
+    if (m?.id != null) keeping = !pageIds.has(m.id) && !knownIds.has(m.id);
+    if (keeping) kept.push(m);
+  }
+  return kept;
+}
+
+/**
+ * Merges a fetched page into the local rows (see the header above).
+ * `knownIds`, when given, are the ids the conversation held when the fetch
+ * started; local rows outside them are newer than the page and are kept.
+ */
+export function mergeMessagePage(existing, freshPage, knownIds) {
   const existingArr = Array.isArray(existing) ? existing : [];
   const freshArr = Array.isArray(freshPage) ? freshPage : [];
   if (freshArr.length === 0) return existingArr;
@@ -43,17 +70,22 @@ export function mergeMessagePage(existing, freshPage) {
   // No overlap at all. Local state and the page are two disjoint runs with a
   // gap of unknown size between them, so joining them would render a hole as
   // though it were continuous history. The page plus its cursor is the
-  // honest state; the gap is reachable again through "load earlier".
-  if (startIdx === -1) return freshArr;
+  // honest state; the gap is reachable again through "load earlier". The live
+  // row stays: it is render state, not history.
+  if (startIdx === -1) return [...freshArr, ...existingArr.filter((m) => m?.role === '_streaming')];
 
   const lastIdIdx = existingArr.reduce((acc, m, i) => (m?.id != null ? i : acc), -1);
   // Local rows only count as newer than the page when the last row the two
   // share really is the page's own newest. Otherwise the page already covers
   // them -- an optimistic user row whose turn the page has since persisted is
-  // the common case, and keeping it would duplicate the question.
-  let trailingLocal = existingArr[lastIdIdx]?.id === withId[withId.length - 1].id
-    ? existingArr.slice(lastIdIdx + 1)
-    : [];
+  // the common case, and keeping it would duplicate the question -- unless the
+  // fetch's snapshot shows they arrived after it started.
+  let trailingLocal;
+  if (existingArr[lastIdIdx]?.id === withId[withId.length - 1].id) {
+    trailingLocal = existingArr.slice(lastIdIdx + 1);
+  } else {
+    trailingLocal = knownIds ? _arrivedSinceFetch(existingArr, freshArr, knownIds) : [];
+  }
 
   // A failed turn is usually the NEWEST turn, so its synthetic
   // error/provider_required card sits after the last id-bearing row in the
