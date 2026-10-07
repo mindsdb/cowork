@@ -1276,6 +1276,21 @@ function AppCore() {
     const queuedAtClick = new Set((messageQueueRef.current[cidToCancel] || []).map((item) => item.id));
 
     /*
+     * A failed turn here may still be reloading its history, which rewrites
+     * the streaming row; wait for it. If that ended the turn, the history
+     * reload below would only undo it (status, the kept partial), so the
+     * cancel still goes out but nothing is reloaded.
+     */
+    const recovering = recoveringRef.current.get(cidToCancel);
+    let endedByRecovery = false;
+    if (recovering) {
+      await recovering;
+      const after = await latestTask(cidToCancel);
+      endedByRecovery = !liveStreamsRef.current.has(cidToCancel)
+        && !(after?.messages || []).some((m) => m.role === '_streaming');
+    }
+
+    /*
      * Ask the server to cancel *before* any local teardown. On `error` the
      * request never landed, so the cancel flag was not written and the remote
      * turn may still be running (and spending tokens). Bail out with the
@@ -1385,6 +1400,11 @@ function AppCore() {
      */
     if (silent) {
       endStopping(true);
+      return;
+    }
+    if (endedByRecovery) {
+      endStopping(true);
+      drainNextQueuedMessageRef.current?.(cidToCancel);
       return;
     }
 

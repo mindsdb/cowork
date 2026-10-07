@@ -854,6 +854,40 @@ describe('interrupted stream recovery', () => {
       expect(screen.getByText('finished answer')).toBeInTheDocument();
     });
 
+    it('Stop during recovery waits for it, keeps the failed partial, and still cancels', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      spies.cancelResponse.mockClear();
+
+      await user.click(screen.getByRole('button', { name: 'Stop generation' }));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(spies.cancelResponse).not.toHaveBeenCalled();
+
+      // Later reads return a real page that ends at the question: a reload by
+      // Stop after recovery would merge that over the partial and drop it.
+      spies.fetchSession.mockImplementation(async () => ({
+        messages: [{ id: 'user-current', role: 'user', content: 'do something' }],
+      }));
+      await release(null);
+
+      await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      expect(screen.getByText('The provider rejected the request.')).toBeInTheDocument();
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
     it('a connect form submitted meanwhile starts its stream only after recovery', async () => {
       const user = userEvent.setup();
       const { release } = await failWithReloadHeld(user, {
