@@ -1,5 +1,6 @@
 import {
   autoUpdater,
+  CancellationToken,
   type AppUpdater,
   type ProgressInfo,
   type UpdateInfo,
@@ -415,22 +416,27 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   };
 }
 
-/** The slice of electron-updater's `checkForUpdates()` result this adapter
- *  reads: the per-check CancellationToken the library mints for the download
- *  that follows (AppUpdater.doCheckForUpdates). */
-interface CheckResultWithToken {
-  cancellationToken?: { cancel(): void };
+/** The cancellation handle the adapter mints for each download. */
+export interface DownloadCancellation {
+  cancel(): void;
 }
 
-/** Adapt electron-updater's EventEmitter API without leaking it into tests. */
-export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
-  // electron-updater creates a CancellationToken per successful check and
-  // accepts it on downloadUpdate(). Threading it through is what lets
-  // cancelDownload() abort the HTTP transfer and settle the deduplicated
-  // download promise; a bare downloadUpdate() uses a private token nobody can
-  // reach.
-  let nextDownloadToken: { cancel(): void } | null = null;
-  let activeDownloadToken: { cancel(): void } | null = null;
+/** Adapt electron-updater's EventEmitter API without leaking it into tests.
+ *
+ *  `createToken` exists for tests; production mints electron-updater's own
+ *  CancellationToken. */
+export function adaptElectronUpdater(
+  updater: AppUpdater,
+  createToken: () => DownloadCancellation = () => new CancellationToken(),
+): ShellUpdaterAdapter {
+  // electron-updater's check emits `update-available` BEFORE it creates the
+  // token it returns in the check result (AppUpdater.doCheckForUpdates), and
+  // the controller starts the automatic download from that event. So the
+  // result's token arrives after the transfer has begun and cannot govern it.
+  // Mint a token here for every download and hand it to downloadUpdate(): a
+  // bare downloadUpdate() uses a private token nobody can reach, and
+  // cancelling the token is what settles the deduplicated download promise.
+  let activeDownloadToken: DownloadCancellation | null = null;
   return {
     onChecking: listener => { updater.on('checking-for-update', listener); },
     onUpdateAvailable: listener => {
@@ -446,19 +452,15 @@ export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
       updater.on('update-downloaded', info => listener(info.version));
     },
     onError: listener => { updater.on('error', listener); },
-    checkForUpdates: () => updater.checkForUpdates().then(result => {
-      nextDownloadToken = (result as CheckResultWithToken | null)?.cancellationToken ?? null;
-      return result;
-    }),
+    checkForUpdates: () => updater.checkForUpdates(),
     downloadUpdate: () => {
-      const token = nextDownloadToken;
+      const token = createToken();
       activeDownloadToken = token;
-      const flight = token
-        ? updater.downloadUpdate(token as Parameters<AppUpdater['downloadUpdate']>[0])
-        : updater.downloadUpdate();
-      return flight.finally(() => {
-        if (activeDownloadToken === token) activeDownloadToken = null;
-      });
+      return updater
+        .downloadUpdate(token as Parameters<AppUpdater['downloadUpdate']>[0])
+        .finally(() => {
+          if (activeDownloadToken === token) activeDownloadToken = null;
+        });
     },
     cancelDownload: () => {
       activeDownloadToken?.cancel();

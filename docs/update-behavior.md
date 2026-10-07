@@ -123,9 +123,11 @@ When enabled, main owns one immutable shell-update snapshot:
   retry; the next scheduled check simply runs. `download-stalled` keeps its
   target and offers Retry. electron-updater deduplicates: a second
   `checkForUpdates()` or `downloadUpdate()` returns the promise already in
-  flight. So abandoning a download also cancels it in the updater, through the
-  CancellationToken the check result carries, which settles that promise and
-  frees the slot for a fresh transfer. A check needs no cancelling: its feed
+  flight. So abandoning a download also cancels it in the updater, through a
+  CancellationToken the adapter mints for every download it starts, which
+  settles that promise and frees the slot for a fresh transfer. The token
+  cannot come from the check result: the library emits `update-available`,
+  which starts the automatic download, before it creates that token. A check needs no cancelling: its feed
   request has a 60-second socket timeout in the library, so it always settles
   with an `error`, and a new check meanwhile adopts the same pending promise
   rather than starting a second request. While a check or download is in

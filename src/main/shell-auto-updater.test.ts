@@ -524,38 +524,106 @@ describe('createDefaultElectronUpdaterAdapter', () => {
   });
 });
 
-describe('adaptElectronUpdater — download cancellation', () => {
-  function fakeUpdater() {
-    const token = { cancelled: false, cancel() { this.cancelled = true; } };
-    return {
-      token,
-      updater: {
-        on: vi.fn(),
-        checkForUpdates: vi.fn(async () => ({ cancellationToken: token })),
-        downloadUpdate: vi.fn(async (_token?: unknown) => undefined),
-        quitAndInstall: vi.fn(),
-      },
-    };
-  }
+// A stand-in for electron-updater's AppUpdater that keeps the two behaviours
+// the adapter depends on. (1) `checkForUpdates()` emits `update-available`
+// BEFORE it creates the token it returns in the check result
+// (AppUpdater.doCheckForUpdates), so a download started from that event runs
+// before the result exists. (2) `downloadUpdate(token)` deduplicates on an
+// in-flight promise and only a cancelled token settles it (CancellationError),
+// which frees the slot (AppUpdater.downloadUpdate).
+class FakeElectronUpdater extends EventEmitter {
+  version = '2.1.0';
+  downloads: Array<{ token: { cancelled: boolean } }> = [];
+  private downloadPromise: Promise<unknown> | null = null;
 
-  it('passes the check result\'s token to downloadUpdate and cancels it on cancelDownload', async () => {
-    const { token, updater } = fakeUpdater();
-    const adapter = adaptElectronUpdater(updater as any);
-    await adapter.checkForUpdates();
-    void adapter.downloadUpdate();
-    expect(updater.downloadUpdate).toHaveBeenCalledWith(token);
-    expect(token.cancelled).toBe(false);
+  checkForUpdates = vi.fn(async () => {
+    await nextTick();
+    this.emit('update-available', { version: this.version });
+    return { isUpdateAvailable: true, cancellationToken: fakeToken(), downloadPromise: null };
+  });
+
+  downloadUpdate = vi.fn((token: FakeToken = fakeToken()): Promise<unknown> => {
+    if (this.downloadPromise) return this.downloadPromise;
+    this.downloads.push({ token });
+    const flight: Promise<unknown> = new Promise<never>((_, reject) => {
+      token.once('cancel', () => reject(Object.assign(new Error('cancelled'), { name: 'CancellationError' })));
+    }).finally(() => {
+      if (this.downloadPromise === flight) this.downloadPromise = null;
+    });
+    this.downloadPromise = flight;
+    return flight;
+  });
+
+  quitAndInstall = vi.fn();
+}
+
+/** The shape of builder-util-runtime's CancellationToken the fake needs. */
+type FakeToken = EventEmitter & { cancelled: boolean; cancel(): void };
+function fakeToken(): FakeToken {
+  const token = new EventEmitter() as FakeToken;
+  token.cancelled = false;
+  token.cancel = () => {
+    if (token.cancelled) return;
+    token.cancelled = true;
+    token.emit('cancel');
+  };
+  return token;
+}
+
+describe('adaptElectronUpdater — download cancellation', () => {
+  it('mints a token for each download and cancels the active one', async () => {
+    const fake = new FakeElectronUpdater();
+    const adapter = adaptElectronUpdater(fake as any, fakeToken);
+    void adapter.downloadUpdate().catch(() => {});
+    expect(fake.downloads).toHaveLength(1);
+    expect(fake.downloads[0].token.cancelled).toBe(false);
     adapter.cancelDownload!();
-    expect(token.cancelled).toBe(true);
+    expect(fake.downloads[0].token.cancelled).toBe(true);
+    await nextTick();
+    // The slot is free again: the next download is a new transfer.
+    void adapter.downloadUpdate().catch(() => {});
+    expect(fake.downloads).toHaveLength(2);
+    expect(fake.downloads[1].token.cancelled).toBe(false);
   });
 
   it('does not cancel a download that already finished', async () => {
-    const { token, updater } = fakeUpdater();
-    const adapter = adaptElectronUpdater(updater as any);
-    await adapter.checkForUpdates();
+    const fake = new FakeElectronUpdater();
+    fake.downloadUpdate.mockImplementationOnce(async (token: FakeToken = fakeToken()) => { fake.downloads.push({ token }); });
+    const adapter = adaptElectronUpdater(fake as any, fakeToken);
     await adapter.downloadUpdate();
     adapter.cancelDownload!();
-    expect(token.cancelled).toBe(false);
+    expect(fake.downloads[0].token.cancelled).toBe(false);
+  });
+
+  it('cancels the automatic download that starts from update-available, before the check result exists', async () => {
+    // Regression for the event-before-result ordering: the controller downloads
+    // from the `update-available` event, so a token taken from the check result
+    // would arrive after the transfer began and never govern it.
+    const fake = new FakeElectronUpdater();
+    const adapter = adaptElectronUpdater(fake as any, fakeToken);
+    const failures: ShellUpdateFailureReport[] = [];
+    let clock = 1_000_000;
+    const updater = createShellAutoUpdater({
+      adapter,
+      initialSnapshot: { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.0.7' },
+      onFailure: report => failures.push(report),
+      now: () => clock,
+    });
+
+    await updater.check('boot');
+    expect(updater.getSnapshot().phase).toBe('downloading');
+    expect(fake.downloads).toHaveLength(1);
+
+    clock += DOWNLOAD_STALL_MS;
+    await updater.check('periodic');
+    expect(failures.map(f => f.code)).toEqual(['download-stalled']);
+    // The stalled transfer was cancelled, the library's slot freed, and the
+    // re-found update started a NEW transfer instead of reusing the hung one.
+    expect(fake.downloads[0].token.cancelled).toBe(true);
+    expect(fake.downloads).toHaveLength(2);
+    expect(fake.downloads[1].token.cancelled).toBe(false);
+    expect(fake.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'downloading', targetVersion: '2.1.0' });
   });
 });
 
