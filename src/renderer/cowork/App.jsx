@@ -752,6 +752,9 @@ function AppCore() {
   const recoveringRef = useRef(new Map());
   // Number of recoveries started per conversation; only the newest rewrites rows.
   const recoveryCountRef = useRef(new Map());
+  // Streams ever registered per conversation: one that attached while a
+  // recovery was out, even if it has finished since, settled the turn itself.
+  const streamCountRef = useRef(new Map());
   /** Waits until no recovery is out for `cid`, including any started meanwhile; true if it waited. */
   const waitForRecoveries = async (cid) => {
     let waited = false;
@@ -773,6 +776,7 @@ function AppCore() {
       try { prev.ctrl.abort(); } catch { /* already closed */ }
     }
     liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
+    streamCountRef.current.set(cid, (streamCountRef.current.get(cid) ?? 0) + 1);
   }, []);
 
   // Drop the record only when `ctrl` is still the registered one, so a stream
@@ -1466,12 +1470,14 @@ function AppCore() {
     let releaseRecovery;
     const recovery = new Promise((resolve) => { releaseRecovery = resolve; });
     const recoveryNumber = {};
+    const streamsAtStart = {};
     ids.forEach((id) => {
       const pending = recoveringRef.current.get(id) ?? new Set();
       pending.add(recovery);
       recoveringRef.current.set(id, pending);
       recoveryNumber[id] = (recoveryCountRef.current.get(id) ?? 0) + 1;
       recoveryCountRef.current.set(id, recoveryNumber[id]);
+      streamsAtStart[id] = streamCountRef.current.get(id) ?? 0;
     });
     let loaded = null;
     try {
@@ -1511,11 +1517,14 @@ function AppCore() {
     const recovered = persistedFailure
       || (event?.type !== 'response.failed' && persistedCompletion);
     const hasError = history.some((m) => m.role === 'error' || m.role === 'provider_required');
-    // Only the newest recovery here writes the turn, and none while another
-    // stream (a reconnect tail) owns its live row: that one settles it instead.
+    // Only the newest recovery here writes the turn, and none once another
+    // stream (a reconnect tail) attached since it started: that one settles it.
     const ownsRows = (id) => recoveryCountRef.current.get(id) === recoveryNumber[id]
-      && !liveStreamsRef.current.has(id);
-    if (ids.some(ownsRows) && (!recovered || persistedFailure)) trackTurnFailed(cid, event);
+      && !liveStreamsRef.current.has(id)
+      && (streamCountRef.current.get(id) ?? 0) === streamsAtStart[id];
+    // Judged on the server id: a replay counts only that one, not the tmp- id.
+    const reportsFailure = cid != null ? ownsRows(cid) : ids.some(ownsRows);
+    if (reportsFailure && (!recovered || persistedFailure)) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id) || !ownsRows(t.id)) return t;
       if (recovered) {

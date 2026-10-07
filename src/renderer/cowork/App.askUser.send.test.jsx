@@ -949,6 +949,20 @@ describe('interrupted stream recovery', () => {
         await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one', 'follow two']));
       });
 
+      it('leaves a turn the reattached stream completed alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail } = await failTwice(user);
+        await emitOn(tail, { type: 'response.completed', assistant_message_id: 'assistant-done' });
+        await act(async () => { tail.opts.onDone(); });
+        trackTurnFailed.mockClear();
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(trackTurnFailed).not.toHaveBeenCalled();
+      });
+
       it('leaves the reattached stream\'s live row alone when the older recovery lands', async () => {
         const user = userEvent.setup();
         const { reloads } = await failTwice(user);
