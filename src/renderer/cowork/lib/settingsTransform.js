@@ -63,6 +63,7 @@ export const SETTINGS_KEY_MAP = {
   memory_enabled: 'memoryEnabled',
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
+  browser_enabled: 'browserEnabled',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   max_tool_rounds: 'maxToolRounds',

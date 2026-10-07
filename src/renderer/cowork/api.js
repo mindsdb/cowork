@@ -2102,8 +2102,28 @@ export function publishTargetPath(artifact) {
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
 }
 
+// ─── Shared browser (ENG-3299) ──────────────────────────────────────────────
+// The user's MindsHub browser instance. cowork-server makes each call as the
+// caller (their MindsHub token in X-MindsHub-Authorization, like /hub/*), so a
+// desktop install and the web app go through the same three routes.
+
+// { provisioned, status, endpoint, enabled, available }
 export async function fetchBrowseStatus() {
-  return req('/browse/status');
+  return req('/browse/status', { headers: await hubHeaders() });
+}
+
+// Creates (or wakes) the instance and remembers where it is. Same answer shape.
+export async function provisionBrowser() {
+  return req('/browse/provision', { method: 'POST', headers: await hubHeaders() });
+}
+
+// { session_id, view_url, expires_at }: a fresh viewer URL for the side pane.
+export async function embedBrowser(sessionId = 'main') {
+  return req('/browse/embed', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId }),
+  });
 }
 
 // ─── Channels ───────────────────────────────────────────────────────────────
