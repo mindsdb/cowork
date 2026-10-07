@@ -744,11 +744,23 @@ function AppCore() {
    */
   const deletingRef = useRef(new Set());
   /*
-   * Conversations whose failed turn is reloading its history, cid -> a promise
-   * that settles once the recovered rows are queued. Everything that writes a
-   * turn waits for it: that update rewrites the conversation's streaming row.
+   * Conversations whose failed turn is reloading its history, cid -> the set of
+   * recovery promises still out, each settling once its rows are queued. A
+   * reconnect can replay the same failure, so two can overlap. Everything that
+   * writes a turn waits for all of them: they rewrite the streaming row.
    */
   const recoveringRef = useRef(new Map());
+  // Number of recoveries started per conversation; only the newest rewrites rows.
+  const recoveryCountRef = useRef(new Map());
+  /** Waits until no recovery is out for `cid`, including any started meanwhile; true if it waited. */
+  const waitForRecoveries = async (cid) => {
+    let waited = false;
+    for (let pending = recoveringRef.current.get(cid); pending; pending = recoveringRef.current.get(cid)) {
+      waited = true;
+      await Promise.all([...pending]);
+    }
+    return waited;
+  };
 
   // A second stream on the SAME conversation replaces the first, which has to
   // be aborted: left attached it keeps replaying into a turn nobody reads and
@@ -1281,10 +1293,8 @@ function AppCore() {
      * reload below would only undo it (status, the kept partial), so the
      * cancel still goes out but nothing is reloaded.
      */
-    const recovering = recoveringRef.current.get(cidToCancel);
     let endedByRecovery = false;
-    if (recovering) {
-      await recovering;
+    if (await waitForRecoveries(cidToCancel)) {
       const after = await latestTask(cidToCancel);
       endedByRecovery = !liveStreamsRef.current.has(cidToCancel)
         && !(after?.messages || []).some((m) => m.role === '_streaming');
@@ -1455,7 +1465,14 @@ function AppCore() {
 
     let releaseRecovery;
     const recovery = new Promise((resolve) => { releaseRecovery = resolve; });
-    ids.forEach((id) => recoveringRef.current.set(id, recovery));
+    const recoveryNumber = {};
+    ids.forEach((id) => {
+      const pending = recoveringRef.current.get(id) ?? new Set();
+      pending.add(recovery);
+      recoveringRef.current.set(id, pending);
+      recoveryNumber[id] = (recoveryCountRef.current.get(id) ?? 0) + 1;
+      recoveryCountRef.current.set(id, recoveryNumber[id]);
+    });
     let loaded = null;
     try {
       loaded = cid
@@ -1467,7 +1484,9 @@ function AppCore() {
       // callers drain held sends only once this returns. A waiter must not read
       // tasksRef, which lags until the commit; it reads through latestTask.
       ids.forEach((id) => {
-        if (recoveringRef.current.get(id) === recovery) recoveringRef.current.delete(id);
+        const pending = recoveringRef.current.get(id);
+        pending?.delete(recovery);
+        if (pending?.size === 0) recoveringRef.current.delete(id);
       });
       releaseRecovery();
     }
@@ -1492,9 +1511,13 @@ function AppCore() {
     const recovered = persistedFailure
       || (event?.type !== 'response.failed' && persistedCompletion);
     const hasError = history.some((m) => m.role === 'error' || m.role === 'provider_required');
-    if (!recovered || persistedFailure) trackTurnFailed(cid, event);
+    // Only the newest recovery here writes the turn, and none while another
+    // stream (a reconnect tail) owns its live row: that one settles it instead.
+    const ownsRows = (id) => recoveryCountRef.current.get(id) === recoveryNumber[id]
+      && !liveStreamsRef.current.has(id);
+    if (ids.some(ownsRows) && (!recovered || persistedFailure)) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
-      if (!ids.includes(t.id)) return t;
+      if (!ids.includes(t.id) || !ownsRows(t.id)) return t;
       if (recovered) {
         // The stream is over, so its live rows go before the merge, which
         // otherwise keeps the `_streaming` stub and leaves "Stop" on screen.
@@ -4171,7 +4194,7 @@ function AppCore() {
     // A pending recovery would rewrite its live row as the failed turn's answer,
     // so it starts after; returned so the form stays busy and shows errors meanwhile.
     const recovering = recoveringRef.current.get(id);
-    if (recovering) return recovering.then(() => handleSubmitDataVaultForm(submission));
+    if (recovering) return Promise.all([...recovering]).then(() => handleSubmitDataVaultForm(submission));
     const { formId, formSpec, values, skipped, name, method } = submission;
 
     setTasks((prev) => prev.map((t) =>
@@ -4872,9 +4895,8 @@ function AppCore() {
     try {
       // A failed turn being recovered here would land its reloaded page on top
       // of this delete, so wait for it and read the rows it left.
-      const recovering = recoveringRef.current.get(taskId);
-      if (recovering) await recovering;
-      const snapshot = recovering ? await latestTask(taskId) : tasksRef.current.find((t) => t.id === taskId);
+      const recovered = await waitForRecoveries(taskId);
+      const snapshot = recovered ? await latestTask(taskId) : tasksRef.current.find((t) => t.id === taskId);
       // The clicked user row may have been answered while the dialog was open.
       // `messageId` is the turn as this client shows it: dimming and cleanup use it.
       const localMessages = snapshot?.messages || [];

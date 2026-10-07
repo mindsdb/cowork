@@ -888,6 +888,81 @@ describe('interrupted stream recovery', () => {
       }
     });
 
+    describe('when a reconnect replays the same failure', () => {
+      const failure = {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      };
+      const pendingPage = { messages: [{ id: 'user-current', role: 'user', content: 'do something' }] };
+
+      /** Each history reload waits in `reloads` until the test answers it. */
+      function holdReloads() {
+        const reloads = [];
+        spies.fetchSession.mockImplementation(() => new Promise((resolve) => { reloads.push(resolve); }));
+        return reloads;
+      }
+
+      /** Fails the turn (recovery A), then reattaches a tail that replays it. */
+      async function failTwice(user) {
+        const reloads = holdReloads();
+        const composer = await openTask(user);
+        await send(user, composer, 'do something');
+        const handle = await waitForStream();
+        await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(1));
+
+        spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+        await openByTitle(user, 'Beta task');
+        const alphaComposer = await openByTitle(user, 'Alpha task');
+        const tail = await waitFor(() => {
+          const t = streams.find((s) => s.kind === 'tail');
+          if (!t) throw new Error('tail not attached');
+          return t;
+        });
+        await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emitOn(tail, { type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        return { reloads, tail, composer: alphaComposer };
+      }
+
+      it('holds sends until both recoveries settle, and only one writes the failed turn', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail, composer } = await failTwice(user);
+        await act(async () => { tail.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(2));
+        await send(user, composer, 'follow one');
+        await send(user, composer, 'follow two');
+        expect(sentTexts()).toEqual(['do something']);
+
+        // The replay's recovery lands first; the turn's own is still out.
+        await act(async () => { reloads[1](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(sentTexts()).toEqual(['do something']);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one']));
+        expect(screen.getAllByText('Partial answer kept')).toHaveLength(1);
+        expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+        const followOne = streams[streams.length - 1];
+        await act(async () => { followOne.opts.onDone(); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one', 'follow two']));
+      });
+
+      it('leaves the reattached stream\'s live row alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads } = await failTwice(user);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        // The tail still owns the turn: no failed partial or error card from
+        // the older recovery, and it is still streaming.
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      });
+    });
+
     it('a connect form submitted meanwhile starts its stream only after recovery', async () => {
       const user = userEvent.setup();
       const { release } = await failWithReloadHeld(user, {
