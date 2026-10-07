@@ -9,6 +9,8 @@ import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
+import { ShellTooOldNotice } from './ShellTooOldNotice';
+import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
@@ -79,8 +81,22 @@ export default function App() {
   // held open through a boot-time update: an OTA, or the boot install of a
   // stranded shell update.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const [shellPhase, setShellPhase] = useState<string | null>(null);
-  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellPhase } });
+  const [shellAuto, setShellAuto] = useState<ShellAutoUpdateSnapshot | null>(null);
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } });
+  // ENG-1047: is the installed shell inside the supported desktop window? The
+  // UI hot-updates while the shell waits for a relaunch, so a newer UI on a
+  // shell weeks old is routine — and until now silent. Resolved once per
+  // launch from the bridge and the live manifest; null means show nothing.
+  // Dismissal is this mount's state only, so the notice is back next launch.
+  const [shellSupport, setShellSupport] = useState<ShellSupportVerdict | null>(null);
+  const [tooOldDismissed, setTooOldDismissed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellSupport()
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -131,7 +147,7 @@ export default function App() {
     let cancelled = false;
     const receive = (snapshot: ShellAutoUpdateSnapshot) => {
       if (cancelled) return;
-      setShellPhase(snapshot?.phase ?? null);
+      setShellAuto(snapshot ?? null);
       trackShellUpdatePhase(snapshot);
     };
     host.getShellAutoUpdate().then(receive).catch(() => {});
@@ -314,6 +330,20 @@ export default function App() {
       )}
 
       {page === 'loading' && <WelcomeLoading status={bootStatus} />}
+
+      {/* Too-old shell notice (ENG-1047). Mounted here, like the ownership
+          dialog above, so it reaches the first screen after launch whether
+          that is onboarding or the chat app. Hidden only while the welcome
+          orb is up, and on web, stable and preview, where the verdict is
+          never `too-old`. */}
+      {page !== 'loading' && shellSupport?.status === 'too-old' && !tooOldDismissed && (
+        <ShellTooOldNotice
+          verdict={shellSupport}
+          shellAuto={shellAuto}
+          onDismiss={() => setTooOldDismissed(true)}
+          topOffset={isMac ? 40 : 12}
+        />
+      )}
 
       {page === 'auth' && (
         <OnboardingScreen onComplete={handleAuthComplete} />

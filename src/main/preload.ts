@@ -69,9 +69,11 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
     ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
   // Deliberately a separate method rather than the second argument above.
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a new renderer routinely runs against an older shell —
-  // and an older shell's `mindshubFinalize` silently drops a second argument.
+  // Renderer bundles update over the air while `src/main/**` only arrives when
+  // the shell relaunches into a new build, so a new renderer routinely runs
+  // against an older shell (docs/update-behavior.md, "Supported desktop
+  // window") — and an older shell's `mindshubFinalize` silently drops a second
+  // argument.
   // A method the old preload does not have is something the renderer can
   // actually test for, which the established `typeof bridge.x === 'function'`
   // checks in host.ts already rely on (ENG-2199).
