@@ -296,6 +296,9 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // instead of tearing it down: the downloaded artifact is intact, so the
   // banner's Restart is the retry.
   const abortInstall = (error: unknown) => {
+    // Settle any pending launch before the phase guard, so a launch can never
+    // be left hanging (and the install locks held) if the phase moved on.
+    settleLaunch(false);
     if (snapshot.phase !== 'installing') return;
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
@@ -315,7 +318,6 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       });
     }
     dispatch({ type: 'INSTALL_ABORTED', code: classified.code, message: normalized.message });
-    settleLaunch(false);
   };
 
   // A clean check or a completed download ends the current failure episode, so

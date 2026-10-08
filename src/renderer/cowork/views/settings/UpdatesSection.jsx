@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Ico from '../../components/Icons';
 import { Alert, Button } from '../../components/ui';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -158,11 +158,15 @@ export default function UpdatesSection({
     }
   };
 
+  const applyInFlight = useRef(false);
   const handleApplyUpdateNow = async () => {
-    if (applyingUpdate) return;
-    setApplyingUpdate(true);
+    if (applyInFlight.current) return;
+    applyInFlight.current = true;
     setApplyError(false);
-    const applied = await host.applyUpdate().catch(() => false);
+    // The button reads "Restarting…" only once the restart proceeds, not
+    // while the running-tasks dialog is open (ENG-3291).
+    const applied = await host.applyUpdate({ onProceed: () => setApplyingUpdate(true) }).catch(() => false);
+    applyInFlight.current = false;
     // The person chose to keep their running tasks (ENG-3291): not an error,
     // the card simply offers Restart now again.
     if (applied === 'cancelled') { setApplyingUpdate(false); return; }
