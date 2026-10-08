@@ -86,7 +86,7 @@
 
   /* ─── Type scale ─────────────────────────────────────────────────────── */
   --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
-  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-xs:   11px;   /* small meta text */
   --text-sm:   12.5px; /* secondary body, captions, helper text */
   --text-base: 14px;   /* primary body, buttons, form inputs */
   --text-md:   15px;   /* slightly emphasized body, composer */
@@ -739,10 +739,16 @@ a[href],
 .recent-item:hover { background: var(--stone-100); color: var(--text-strong); }
 .recent-item.active { background: var(--stone-150); color: var(--text-strong); }
 
+/* Subheading and group label everywhere: sidebar groups, page sections,
+   settings groups, menu groups, detail labels. Sentence case on the text
+   scale; hierarchy comes from weight and colour, not spaced caps. Layout
+   (padding, margin) belongs to the caller. */
 .section-label {
-  font-size: var(--text-xs); font-weight: 600;
-  color: var(--frost-600); letter-spacing: 0.02em;
-  padding: 12px 12px 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .icon-btn {
@@ -1495,7 +1501,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
    Inter's variable opsz axis already tightens large sizes, so the inherited
    negative tracking stacked into cramped display type. Now on the "loose" scale —
    near-neutral, only a whisper of tightening at the top, H3 sits at 0.
-   Operable text (=0) and .t-special branding are unaffected. */
+   Operable text (=0) is unaffected. */
 .s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.010em; font-weight: 600; color: var(--ink); }
 .s-h1          { font-family: var(--font-sans); font-size: var(--text-2xl); line-height: 1.15; letter-spacing: -0.007em; font-weight: 600; color: var(--ink); }
 .s-h2          { font-family: var(--font-sans); font-size: var(--text-xl);  line-height: 1.2;  letter-spacing: -0.004em; font-weight: 600; color: var(--ink); }
@@ -1504,16 +1510,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 .s-body-strong { font-family: var(--font-sans); font-size: var(--text-base); line-height: 1.55; font-weight: 500; color: var(--ink); }
 .s-small       { font-family: var(--font-sans); font-size: 13px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
 .s-caption     { font-family: var(--font-sans); font-size: 12px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
-.s-overline    { font-family: var(--font-mono); font-size: var(--text-xs);  line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
-
-/* ─── Special title — Inter (display only) ─────────────────────── */
-.t-special {
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  color: var(--ink);
-  line-height: 1.05;
-}
 
 /* ─── Form fields ──────────────────────────────────────────────────────── */
 .field-input,
@@ -1758,17 +1755,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   box-shadow: var(--sh-2);
 }
 
-/* Eyebrow — uppercase mono label sitting above headings (per guideline) */
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-4);
-  margin: 0 0 8px;
-  display: inline-block;
-}
-
 /* Hairline divider */
 .divider {
   height: 1px; width: 100%;
@@ -2010,15 +1996,6 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* Section labels */
 .app-sidebar .section-label {
-  /* Group headers (Pinned, Recent tasks, Agent, Code tasks) are a quiet label
-     on the text scale, not a spaced-caps overline. */
-  font-family: var(--font-sans);
-  font-size: 12px;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-3);
-  font-weight: 500;
-  line-height: 16px;
   /* More space above than below, so each heading groups with the rows it
      introduces. The 20px inline padding (10px nav-list gutter + 10px row
      inset) starts the text where the row icons and titles start. */
