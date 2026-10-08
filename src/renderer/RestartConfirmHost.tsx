@@ -24,7 +24,7 @@ export default function RestartConfirmHost() {
     <Modal open size="sm" layer="system" labelledBy="restart-confirm-title" onClose={cancel}>
       <ModalHeader id="restart-confirm-title" title={copy.title} onClose={cancel} />
       <ModalBody>
-        <p style={{ margin: 0, lineHeight: 1.5 }}>{copy.body}</p>
+        <p className="s-body" style={{ margin: 0 }}>{copy.body}</p>
       </ModalBody>
       <ModalFooter align="flex-end">
         <Button variant="subtle" onClick={cancel}>{copy.cancelLabel}</Button>
