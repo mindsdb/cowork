@@ -113,7 +113,9 @@ const EVENTS = {
   // repaired (a reinstall that was not a version move: stream repair, venv
   // rebuild) | skipped (withheld this pass, e.g. the UI behind a failed server
   // update). `from`/`to` are that layer's versions. `trigger` is which check
-  // applied it. `journal_id` dedupes a rare double send.
+  // applied it. Sent with `journal_id` as the event uuid (PostHog dedupes a
+  // resend) and the outcome's time as the event time (day counts are by
+  // when it happened, not when it was reported).
   UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, component, repair, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
@@ -418,13 +420,20 @@ async function getDistinctId() {
 // when the POST actually succeeded (2xx). Both capture() and the `$identify`
 // merge go through here so the request shape and error handling stay in one
 // place. `keepalive` lets an event fired just before quit/navigation flush.
-function postCapture(event, distinctId, properties) {
+// `envelope` lets a caller fix the event's identity and time instead of the
+// send's. PostHog dedupes on `uuid`, so a resend with the same one is one
+// event, and buckets by `timestamp`, so a late send lands on the day the
+// thing happened.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function postCapture(event, distinctId, properties, envelope = {}) {
+  const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
     api_key: POSTHOG_KEY,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
-    timestamp: new Date().toISOString(),
+    timestamp: at && !Number.isNaN(at.getTime()) ? at.toISOString() : new Date().toISOString(),
+    ...(typeof envelope.uuid === 'string' && UUID_RE.test(envelope.uuid) ? { uuid: envelope.uuid } : {}),
   });
   return fetch(`${POSTHOG_HOST}/capture/`, {
     method: 'POST',
@@ -485,10 +494,12 @@ function mergeAnonIntoAccount(sub) {
  * Fire-and-forget capture of one product event. Never throws, never blocks.
  * @param {string} event one of the EVENTS values.
  * @param {object} [properties] event-specific props (see EVENTS for the shape).
+ * @param {{ uuid?: string, timestamp?: string }} [envelope] a stable event id
+ *   and the time the event happened, for events sent later than they occur.
  * @returns {Promise<boolean>} true only when the POST actually succeeded, so
  *   one-shot callers (trackAppInstalled, trackFirstQuery) can gate on delivery.
  */
-function capture(event, properties = {}) {
+function capture(event, properties = {}, envelope = {}) {
   if (!POSTHOG_KEY) {
     dlog('skip', event, '— no POSTHOG_KEY (VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN unset)');
     return Promise.resolve(false);
@@ -575,7 +586,7 @@ function capture(event, properties = {}) {
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps);
+      return postCapture(event, captureId, eventProps, envelope);
     })
     .catch((err) => {
       dlog('capture failed for', event, err);
@@ -941,7 +952,10 @@ async function readServerVersion() {
 }
 
 /** One journaled UI/server update outcome (src/main/update-journal.ts).
- *  Resolves true only when PostHog took it, so the drain can ack it. */
+ *  Resolves true only when PostHog took it, so the drain can ack it. The
+ *  journal id is the event's uuid, so a resend after a lost ack is one event,
+ *  and the outcome's own time is the event's, so a late send counts on the
+ *  day the update happened. */
 export function trackUpdatePhase(entry) {
   if (!host.isElectron || !entry) return Promise.resolve(false);
   return capture(EVENTS.UPDATE_PHASE, {
@@ -960,14 +974,15 @@ export function trackUpdatePhase(entry) {
     repair: Boolean(entry.repair),
     journal_id: entry.id,
     journaled_at: entry.at ?? null,
-  });
+  }, { uuid: entry.id, timestamp: entry.at });
 }
 
 // Update outcomes happen in main and the window reloads mid-apply, so main
 // journals them and this renderer reports them on boot: one event per entry,
 // then an ack for the ones PostHog took. The rest stay in the journal for the
 // next launch (main leases them briefly so a reload mid-drain does not send
-// them twice). Runs once per renderer; a reload is a fresh renderer.
+// them twice, and the stable uuid dedupes a resend whose ack was lost). Runs
+// once per renderer; a reload is a fresh renderer.
 let journalDrained = false;
 export async function drainUpdateJournal() {
   if (!host.isElectron || journalDrained) return;
@@ -988,7 +1003,7 @@ export async function drainUpdateJournal() {
   if (delivered.length === 0) return;
   try {
     await host.ackUpdateJournal(delivered);
-  } catch { /* unacked entries are re-sent next launch; journal_id dedupes */ }
+  } catch { /* unacked entries are re-sent next launch under the same uuid */ }
 }
 
 // Auto mode skips `available`, so `downloading` counts as it. An install on quit

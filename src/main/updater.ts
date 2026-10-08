@@ -35,10 +35,15 @@ type GetWindow = () => BrowserWindow | null;
 // Cached so the renderer can recover the notice after an OTA reload.
 let lastShellStatus: ShellUpdateStatus = { available: false };
 
-// Whether the last UI check found a bundle to apply. A manual apply always
-// asks for the UI, so this is how its journal entry knows whether a UI apply
-// that landed nothing was a failure or just a server-only update.
-let lastUiAvailable = false;
+// The UI bundle the last check offered, or null. A manual apply always asks
+// for the UI, so this is how its journal entry knows whether a UI apply that
+// landed nothing was a failure or just a server-only update, and which
+// version the failed or skipped attempt was for.
+let lastUiOffer: string | null = null;
+
+function rememberUiOffer(result: UpdateCheckResult): void {
+  lastUiOffer = result.updateAvailable ? result.newVersion ?? '' : null;
+}
 
 // The most recent server check, from any poll, manual check or apply. The apply
 // handler reads it to decide whether a restart will stop the sidecar BEFORE it
@@ -197,19 +202,19 @@ async function applyUpdatesUnlocked(
   const uiFrom = servedUiVersion();
   if (applyUi && !serverOk) {
     console.warn('[updater] server update failed — deferring UI update this pass');
-    if (lastUiAvailable) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: uiFrom });
+    if (lastUiOffer !== null) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: uiFrom, to: lastUiOffer || null });
   }
   const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
   // A UI the last check offered did not land: the download, checksum,
   // extraction or activation failed, and ui-updater logged which.
-  if (applyUi && serverOk && !uiApplied && lastUiAvailable) {
-    recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, durationMs: Date.now() - uiStartedAt });
+  if (applyUi && serverOk && !uiApplied && lastUiOffer !== null) {
+    recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, to: lastUiOffer || null, durationMs: Date.now() - uiStartedAt });
   }
   // One offer, one attempt, one entry: the next check decides again whether
   // a UI is pending, so a later apply in the same session (a server-only
   // restart, say) is not journaled as a failed UI update.
-  if (applyUi && serverOk) lastUiAvailable = false;
+  if (applyUi && serverOk) lastUiOffer = null;
   if (uiApplied) {
     // A UI bundle was swapped — verify it loads and roll back if not (R4).
     await activateUiAndJournal(getWindow, uiFrom, trigger, uiStartedAt);
@@ -228,7 +233,7 @@ function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boole
 // still win when another channel is inconclusive.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const [ui, server, shell, shellAuto] = await Promise.all([
-    checkForUIUpdate().then((result) => { lastUiAvailable = result.updateAvailable; return result; }),
+    checkForUIUpdate().then((result) => { rememberUiOffer(result); return result; }),
     checkServer(),
     checkForShellUpdate().catch(() => ({ available: false as const })),
     // The stateful shell updater owns background download/install. This call
@@ -383,7 +388,7 @@ export function initUpdater(
       manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
       checkServer(),
     ]);
-    lastUiAvailable = ui.updateAvailable;
+    rememberUiOffer(ui);
 
     // Shell notices are independent of OTA and never auto-applied. Poll the
     // ENG-849 manifest only when it's the fallback path — auto-update disabled

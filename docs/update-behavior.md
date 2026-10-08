@@ -219,8 +219,11 @@ When enabled, main owns one immutable shell-update snapshot:
   outcome. The outcome happens in main while the window reloads, so main
   journals it (`update-journal.json`, beside `shell-update-target.json`) and
   the next renderer to boot reports it and acks what landed. Events therefore
-  arrive one launch late, and an entry whose send failed is retried at the
-  next launch; `journal_id` dedupes the rare double send. Properties:
+  arrive one launch late, but each carries the time of the outcome, not of
+  the send, so a daily count lands on the day the update happened. An entry
+  whose send failed is retried at the next launch under the same event
+  `uuid` (its `journal_id`), so PostHog keeps one event even when the first
+  send landed and only its ack was lost. Properties:
   `channel` (`ui` or `server`), `phase`, `from` and `to` (that layer's
   versions, a short commit on the git channel), `error_code`, `trigger`
   (`boot`, `periodic` or `manual`), `duration_ms`, `build_kind`, `component`

@@ -546,6 +546,34 @@ describe('update_phase journal drain', () => {
     expect(ackUpdateJournal).toHaveBeenCalledWith(['a', 'b']);
   });
 
+  it('sends the journal id as the event uuid and the outcome time as the event time', async () => {
+    const id = '0f9a1d2e-3b4c-4d5e-8f60-718293a4b5c6';
+    drainUpdateJournal.mockResolvedValue([entry(id, { at: '2026-10-05T09:00:00.000Z' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    // PostHog dedupes on uuid, so a resend after a lost ack is one event, and
+    // buckets by timestamp, so it counts on the day of the outcome.
+    expect(body.uuid).toBe(id);
+    expect(body.timestamp).toBe('2026-10-05T09:00:00.000Z');
+  });
+
+  it('falls back to send time and no uuid for a malformed journal entry', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('not-a-uuid', { at: 'not a date' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    expect(body).not.toHaveProperty('uuid');
+    expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
+    expect(body.properties.journal_id).toBe('not-a-uuid');
+  });
+
   it('drains once per renderer, so a second call sends nothing', async () => {
     drainUpdateJournal.mockResolvedValue([entry('a')]);
     const fetchMock = mockFetch();

@@ -125,13 +125,25 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
     await checkForUpdates();
     expect(await apply({ force: true })).toBe(true);
-    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'failed', errorCode: 'not-applied' }));
+    // The failed row names the version the check offered, so a rollout query
+    // on `to` counts it.
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'failed', errorCode: 'not-applied', to: '2.26.10.7.1' }));
     journal.record.mockClear();
     // A second apply in the same session: the server again, but the UI offer
     // was consumed by the first attempt.
     expect(await apply({ force: true })).toBe(true);
     expect(journal.record).toHaveBeenCalledTimes(1);
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server' }));
+  });
+
+  it('a UI deferred behind a failed server update is journaled as skipped, naming the offered version', async () => {
+    const { checkForUIUpdate } = await import('./ui-updater');
+    vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
+    serverUpdater.apply.mockResolvedValueOnce({ updated: false, error: 'uv tool install failed' } as never);
+    await checkForUpdates();
+    expect(await apply({ force: true })).toBe(false);
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'skipped', errorCode: 'server-update-failed', to: '2.26.10.7.1' }));
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server', phase: 'failed', errorCode: 'install' }));
   });
 
   it('never asks for a UI-only apply', async () => {
