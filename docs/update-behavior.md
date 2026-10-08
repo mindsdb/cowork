@@ -222,9 +222,14 @@ When enabled, main owns one immutable shell-update snapshot:
   arrive one launch late, and an entry whose send failed is retried at the
   next launch; `journal_id` dedupes the rare double send. Properties:
   `channel` (`ui` or `server`), `phase`, `from` and `to` (that layer's
-  versions), `error_code`, `trigger` (`boot`, `periodic` or `manual`),
-  `duration_ms`, `build_kind` and `journaled_at`. The phases:
-  - `applied`: the new version is live and passed its health check.
+  versions, a short commit on the git channel), `error_code`, `trigger`
+  (`boot`, `periodic` or `manual`), `duration_ms`, `build_kind`, `component`
+  (`anton-agent` when an anton-only release moved; absent means
+  cowork-server), `repair` (the move was the stream repair, whatever its
+  outcome) and `journaled_at`. The phases:
+  - `applied`: the new version is live and passed its health check. A UI
+    activated with no window to load it into carries `error_code`
+    `unverified-no-window`; it serves at the next boot.
   - `rolled-back`: the apply ran, the health check failed, and the previous
     version is back. A UI rollback also quarantines the bundle (`error_code`
     `renderer-load`); a server rollback is `health-check`.
@@ -242,7 +247,9 @@ When enabled, main owns one immutable shell-update snapshot:
   The first question it answers: on a given day, how many devices applied UI
   version X, how many of those rolled back, and how many server updates
   succeeded, by `build_kind`. In PostHog: filter `update_phase` on
-  `channel = ui` and `to = X`, break down by `phase` and `build_kind`.
+  `channel = ui` and `to = X`, break down by `phase` and `build_kind`. For
+  cowork-server adoption, filter `channel = server` and exclude
+  `component = anton-agent`.
 
 ### Stranded updates: installed at the next launch (ENG-2764)
 

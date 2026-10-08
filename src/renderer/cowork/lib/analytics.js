@@ -114,7 +114,7 @@ const EVENTS = {
   // rebuild) | skipped (withheld this pass, e.g. the UI behind a failed server
   // update). `from`/`to` are that layer's versions. `trigger` is which check
   // applied it. `journal_id` dedupes a rare double send.
-  UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
+  UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, component, repair, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -953,6 +953,11 @@ export function trackUpdatePhase(entry) {
     trigger: entry.trigger ?? null,
     duration_ms: entry.durationMs ?? null,
     build_kind: entry.buildKind ?? null,
+    // Server channel: which component the versions name (an anton-only
+    // release shares cowork-server's number), and whether the move was the
+    // stream repair, whatever its outcome.
+    component: entry.component ?? null,
+    repair: Boolean(entry.repair),
     journal_id: entry.id,
     journaled_at: entry.at ?? null,
   });

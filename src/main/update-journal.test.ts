@@ -58,9 +58,23 @@ describe('serverOutcomeRecord', () => {
       .toEqual({ channel: 'server', phase: 'applied', trigger: 'boot', durationMs: 1200, from: '0.3.1', to: '0.3.2' });
   });
 
-  it('reports the stream repair as repaired, not applied', () => {
-    expect(serverOutcomeRecord({ updated: true, previousVersion: '0.3.2rc1', newVersion: '0.3.1', repair: true }, 'boot', 5)?.phase)
-      .toBe('repaired');
+  it('reports the stream repair as repaired, and keeps the repair flag on a failed one', () => {
+    expect(serverOutcomeRecord({ updated: true, previousVersion: '0.3.2rc1', newVersion: '0.3.1', repair: true }, 'boot', 5))
+      .toMatchObject({ phase: 'repaired', repair: true });
+    expect(serverOutcomeRecord({ updated: false, previousVersion: '0.3.2rc1', newVersion: '0.3.1', repair: true, error: 'x', outcome: 'rolled-back' }, 'boot', 5))
+      .toMatchObject({ phase: 'rolled-back', repair: true });
+  });
+
+  it('names the component of an anton-only release', () => {
+    expect(serverOutcomeRecord({ updated: true, previousVersion: '1', newVersion: '2', component: 'anton-agent' }, 'boot', 5))
+      .toMatchObject({ phase: 'applied', component: 'anton-agent' });
+    expect(serverOutcomeRecord({ updated: true, previousVersion: '1', newVersion: '2' }, 'boot', 5)).not.toHaveProperty('component');
+  });
+
+  it('shortens git commits so a failure and a later success name the same commit', () => {
+    const sha = 'abcdef0123456789abcdef0123456789abcdef01';
+    expect(serverOutcomeRecord({ updated: false, previousVersion: sha, newVersion: 'def5678', error: 'x', outcome: 'rolled-back' }, 'boot', 5))
+      .toMatchObject({ from: 'abcdef0', to: 'def5678' });
   });
 
   it('reports nothing when the server was already current', () => {
@@ -86,6 +100,7 @@ describe('uiOutcomeRecord', () => {
   const versions = { from: '2.26.10.1.1', to: '2.26.10.7.1' };
   it('maps the health-checked reload outcome', () => {
     expect(uiOutcomeRecord('applied', versions, 'boot', 300)).toEqual({ channel: 'ui', phase: 'applied', trigger: 'boot', durationMs: 300, ...versions });
+    expect(uiOutcomeRecord('unverified', versions, 'boot', 300)).toMatchObject({ phase: 'applied', errorCode: 'unverified-no-window' });
     expect(uiOutcomeRecord('rolled-back', versions, 'manual', 300)).toMatchObject({ phase: 'rolled-back', errorCode: 'renderer-load' });
     expect(uiOutcomeRecord('rollback-failed', versions, 'manual', 300)).toMatchObject({ phase: 'failed', errorCode: 'rollback-failed' });
   });

@@ -14,6 +14,11 @@ export interface UpdatePhaseRecord {
   to?: string | null;
   errorCode?: string | null;
   durationMs?: number | null;
+  /** Server channel: which backend component the versions name. Absent
+   *  means cowork-server. */
+  component?: 'cowork-server' | 'anton-agent' | null;
+  /** Server channel: the move was the stream repair, whatever its outcome. */
+  repair?: boolean;
 }
 
 export interface UpdatePhaseEntry extends UpdatePhaseRecord {

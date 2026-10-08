@@ -119,6 +119,21 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(serverUpdater.apply).not.toHaveBeenCalled();
   });
 
+  it('journals one UI attempt per offer, so a later server-only restart is not a failed UI update', async () => {
+    // The last check offered a UI; the apply lands nothing (a failed download).
+    const { checkForUIUpdate } = await import('./ui-updater');
+    vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
+    await checkForUpdates();
+    expect(await apply({ force: true })).toBe(true);
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'failed', errorCode: 'not-applied' }));
+    journal.record.mockClear();
+    // A second apply in the same session: the server again, but the UI offer
+    // was consumed by the first attempt.
+    expect(await apply({ force: true })).toBe(true);
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server' }));
+  });
+
   it('never asks for a UI-only apply', async () => {
     serverUpdater.check.mockResolvedValue({ updateAvailable: false });
     await checkForUpdates();

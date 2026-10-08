@@ -137,11 +137,12 @@ function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
 // Reload into a freshly-activated UI bundle and verify it loads. If it doesn't,
 // roll the bundle back and reload whatever we fall back to (previous cache or
 // the app-bundled renderer) — a bad hot-update must never brick the window.
-// Returns what happened, for the journal; null when there was no window to
-// load into.
-async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOutcome | null> {
+// Returns what happened, for the journal.
+async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOutcome> {
   const win = liveWindow(getWindow);
-  if (!win) return null;
+  // The bundle is already activated and serves at the next boot; there is just
+  // nothing to load it into now.
+  if (!win) return 'unverified';
   win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
   if (await loadAndVerify(win, getRendererPath())) return 'applied';
 
@@ -174,7 +175,7 @@ function servedUiVersion(): string {
 async function activateUiAndJournal(getWindow: GetWindow, from: string, trigger: UpdateJournalTrigger, startedAt: number): Promise<void> {
   const to = getCachedVersion();
   const outcome = await reloadWithUiHealthCheck(getWindow);
-  if (outcome) recordUpdatePhase(uiOutcomeRecord(outcome, { from, to }, trigger, Date.now() - startedAt));
+  recordUpdatePhase(uiOutcomeRecord(outcome, { from, to }, trigger, Date.now() - startedAt));
 }
 
 // Apply server (if requested) then UI, and reload if either landed. Shared by
@@ -193,11 +194,11 @@ async function applyUpdatesUnlocked(
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
   // server is current. Defer the UI to the next pass.
+  const uiFrom = servedUiVersion();
   if (applyUi && !serverOk) {
     console.warn('[updater] server update failed — deferring UI update this pass');
-    if (lastUiAvailable) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: servedUiVersion() });
+    if (lastUiAvailable) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: uiFrom });
   }
-  const uiFrom = servedUiVersion();
   const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
   // A UI the last check offered did not land: the download, checksum,
@@ -205,6 +206,10 @@ async function applyUpdatesUnlocked(
   if (applyUi && serverOk && !uiApplied && lastUiAvailable) {
     recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, durationMs: Date.now() - uiStartedAt });
   }
+  // One offer, one attempt, one entry: the next check decides again whether
+  // a UI is pending, so a later apply in the same session (a server-only
+  // restart, say) is not journaled as a failed UI update.
+  if (applyUi && serverOk) lastUiAvailable = false;
   if (uiApplied) {
     // A UI bundle was swapped — verify it loads and roll back if not (R4).
     await activateUiAndJournal(getWindow, uiFrom, trigger, uiStartedAt);

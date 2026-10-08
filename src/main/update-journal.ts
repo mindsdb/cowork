@@ -12,7 +12,7 @@
 // The journal is capped, so a build that never acks (no PostHog key, say)
 // cannot grow it without bound.
 
-import { app } from 'electron';
+import { app, ipcMain } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -97,6 +97,15 @@ export interface ServerApplyResult {
   error?: string;
   outcome?: 'rolled-back' | 'rollback-failed' | 'restore-failed';
   repair?: boolean;
+  component?: 'anton-agent';
+}
+
+/** A git install names its versions by commit. The success path reports the
+ *  short sha and the failure paths the full one, so both are shortened here
+ *  and one commit is one value in PostHog. */
+function shortCommit(version: string | undefined): string | null {
+  if (!version) return null;
+  return /^[0-9a-f]{40}$/i.test(version) ? version.slice(0, 7) : version;
 }
 
 /** The journal entry for one server apply, or null when there was nothing to
@@ -106,22 +115,28 @@ export function serverOutcomeRecord(
   trigger: UpdateJournalTrigger,
   durationMs: number,
 ): UpdatePhaseRecord | null {
-  const versions = { from: result.previousVersion ?? null, to: result.newVersion ?? null };
-  if (result.updated) {
-    return { channel: 'server', phase: result.repair ? 'repaired' : 'applied', trigger, durationMs, ...versions };
-  }
+  const common = {
+    channel: 'server' as const,
+    trigger,
+    durationMs,
+    from: shortCommit(result.previousVersion),
+    to: shortCommit(result.newVersion),
+    ...(result.component ? { component: result.component } : {}),
+    ...(result.repair ? { repair: true } : {}),
+  };
+  if (result.updated) return { ...common, phase: result.repair ? 'repaired' : 'applied' };
   if (!result.error) return null;
-  if (result.outcome === 'rolled-back') {
-    return { channel: 'server', phase: 'rolled-back', trigger, durationMs, errorCode: 'health-check', ...versions };
-  }
+  if (result.outcome === 'rolled-back') return { ...common, phase: 'rolled-back', errorCode: 'health-check' };
   const errorCode = result.outcome
     ?? (result.error === 'uv not found' ? 'uv-missing'
       : result.error === 'could not determine installed version' ? 'unknown-installed-version'
         : 'install');
-  return { channel: 'server', phase: 'failed', trigger, durationMs, errorCode, ...versions };
+  return { ...common, phase: 'failed', errorCode };
 }
 
-export type UiReloadOutcome = 'applied' | 'rolled-back' | 'rollback-failed';
+/** `unverified`: the bundle was activated but there was no window to load
+ *  it into, so the health check never ran. It serves at the next boot. */
+export type UiReloadOutcome = 'applied' | 'unverified' | 'rolled-back' | 'rollback-failed';
 
 /** The journal entry for one UI bundle swap and its health-checked reload. */
 export function uiOutcomeRecord(
@@ -131,6 +146,7 @@ export function uiOutcomeRecord(
   durationMs: number,
 ): UpdatePhaseRecord {
   if (outcome === 'applied') return { channel: 'ui', phase: 'applied', trigger, durationMs, ...versions };
+  if (outcome === 'unverified') return { channel: 'ui', phase: 'applied', trigger, durationMs, errorCode: 'unverified-no-window', ...versions };
   if (outcome === 'rolled-back') {
     return { channel: 'ui', phase: 'rolled-back', trigger, durationMs, errorCode: 'renderer-load', ...versions };
   }
@@ -231,7 +247,6 @@ export function recordUpdatePhase(record: UpdatePhaseRecord): void {
 }
 
 export function registerUpdateJournalHandlers(): void {
-  const { ipcMain } = require('electron');
   ipcMain.handle(IPC.UPDATE_JOURNAL_DRAIN, () => journal().drain());
   ipcMain.handle(IPC.UPDATE_JOURNAL_ACK, (_event: unknown, ids: unknown) => {
     journal().ack(Array.isArray(ids) ? ids : []);
