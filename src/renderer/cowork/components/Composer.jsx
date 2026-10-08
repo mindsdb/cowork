@@ -1017,7 +1017,7 @@ export default function Composer({
               role="listbox"
               aria-label="Skills and actions"
               onMouseDown={(e) => e.preventDefault()}
-              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
+              className={`menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto${slashMenuBelow ? ' menu--drop-down' : ''}`}
               style={{
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
