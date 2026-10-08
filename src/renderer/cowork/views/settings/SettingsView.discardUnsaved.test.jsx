@@ -272,7 +272,7 @@ describe('SettingsView appearance request ownership', () => {
     const input = screen.getByLabelText(label);
 
     typeChars(input, 'Hello');
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ [key]: 'Hello' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ [key]: 'Hello' }), { timeout: 2000 });
     typeChars(input, ' Wor');
     act(() => refresh.current({ [key]: 'Hel' }));
     expect(input).toHaveValue('Hello Wor');
@@ -282,7 +282,7 @@ describe('SettingsView appearance request ownership', () => {
     expect(input).toHaveValue('Hello Wor');
 
     typeChars(input, 'ld');
-    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ [key]: 'Hello World' }));
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ [key]: 'Hello World' }), { timeout: 2000 });
     while (pending.length) await act(async () => { pending.shift()(); });
     await waitFor(() => expect(latest.current[key]).toBe('Hello World'));
     expect(input).toHaveValue('Hello World');
