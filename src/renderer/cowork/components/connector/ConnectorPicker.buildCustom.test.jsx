@@ -16,7 +16,7 @@ vi.mock('../../../platform/host', () => ({
   host: { openExternal: vi.fn() },
 }));
 
-import ConnectorPicker, { connectorInitials } from './ConnectorPicker';
+import ConnectorPicker from './ConnectorPicker';
 
 const GMAIL = { id: 'gmail', label: 'Gmail', category: 'communication', featured: true };
 const KINAXIS = {
@@ -90,14 +90,5 @@ describe('ConnectorPicker build a custom connector', () => {
     await screen.findAllByText('Gmail', { exact: false });
 
     expect(screen.queryByText('Build a custom connector')).toBeNull();
-  });
-});
-
-describe('connectorInitials', () => {
-  it('takes the first letter of the first two words', () => {
-    expect(connectorInitials('Kinaxis RapidResponse')).toBe('KR');
-    expect(connectorInitials('httpbin')).toBe('H');
-    expect(connectorInitials('  acme  supply  chain ')).toBe('AS');
-    expect(connectorInitials('')).toBe('?');
   });
 });

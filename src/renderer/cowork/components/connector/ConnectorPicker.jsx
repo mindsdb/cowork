@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { connectorInitials } from '../../lib/connectionIdentity';
 import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
@@ -109,13 +110,6 @@ function iconFor(connector) {
     || CATEGORY_ICON[connector.category]
     || 'database';
   return Ico[name] || Ico.database;
-}
-
-// "Kinaxis RapidResponse" → "KR". A custom connector has no bundled icon,
-// so its tile shows its own initials rather than a generic category glyph.
-export function connectorInitials(label) {
-  const words = String(label || '').trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
 }
 
 function ConnectorLogo({ connector, size = 22 }) {

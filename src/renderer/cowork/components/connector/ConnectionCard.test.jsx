@@ -93,3 +93,29 @@ describe('ConnectionCard', () => {
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
   });
 });
+
+describe('ConnectionCard for custom and legacy connectors', () => {
+  it('shows a custom connector by its own name, initials in its color and a Custom badge', () => {
+    const { container } = render(<ConnectionCard connection={{
+      engine: 'kinaxis', name: 'kinaxis-1a2b3c4d', label: 'Kinaxis RapidResponse', custom: true, logo_color: '#3a7',
+    }} />);
+    expect(screen.getByText('Kinaxis RapidResponse')).toBeInTheDocument();
+    expect(screen.getByText('Custom')).toBeInTheDocument();
+    const initials = screen.getByText('KR');
+    expect(initials).toHaveStyle({ color: '#3a7' });
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('names a legacy generated-id connection plainly and says how to repair it', () => {
+    render(<ConnectionCard connection={{ engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6' }} />);
+    expect(screen.getByText('Unrecognized connector')).toBeInTheDocument();
+    expect(screen.getByText('Saved by an older version. Disconnect it and connect again.')).toBeInTheDocument();
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+  });
+
+  it('adds neither to a built-in connection', () => {
+    render(<ConnectionCard connection={connection} />);
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Saved by an older version/)).not.toBeInTheDocument();
+  });
+});
