@@ -117,9 +117,10 @@ describe('connectionIdentity — subtitle', () => {
   });
 
   it('does not repeat the title when user_label is the raw engine id, punctuation and all', () => {
-    // Connections saved by older cowork-server versions carry the bare
-    // engine id as their user_label when there was no account name to
-    // use instead — seen live connecting Google Drive: title correctly read
+    // A connection can carry the bare engine id as its user_label (anton's
+    // connect_datasource default, and older cowork-server saves) when there
+    // was no account name to use instead — seen live connecting Google
+    // Drive: title correctly read
     // "Google Drive", but the subtitle showed "google_drive · <email>"
     // because a plain lowercase compare doesn't equate an underscore with
     // the space in the humanized title.

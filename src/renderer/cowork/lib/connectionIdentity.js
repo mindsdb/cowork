@@ -7,10 +7,8 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Loose enough to equate "google_drive" with "Google Drive", so a user_label
-// that only restates the title reads as "the title, again". Connections saved
-// by older servers carry the bare engine id as their user_label, and a user
-// can type the connector's name by hand; both should collapse the same way.
+// A user_label can restate the title as the engine id (anton's connect_datasource
+// still defaults to it, as older cowork-server saves did) or as typed by hand.
 const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // user_label uniqueness is deliberately global — across every engine, not
