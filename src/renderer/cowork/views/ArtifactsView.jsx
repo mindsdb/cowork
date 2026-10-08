@@ -927,8 +927,11 @@ export default function ArtifactsView({
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
           button on the right ("+ New project"), which reads as
-          slightly taller — Artifacts compensates with a few extra. */}
-      <div className="h-5" />
+          slightly taller — Artifacts compensates with a few extra.
+          shrink-0: this is a flex child of the scroll column, so without it
+          the spacer collapses whenever the body overflows (and by a different
+          amount in grid vs list, since their heights differ). */}
+      <div className="h-5 shrink-0" />
 
       {(loading || total > 0) && (
         <FilterRow
