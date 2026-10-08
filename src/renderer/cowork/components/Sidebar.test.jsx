@@ -56,7 +56,7 @@ import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
-import { coordinateUpdates } from '../../../shared/update-coordinator';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput } from '../../../shared/update-coordinator';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
@@ -232,9 +232,9 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
   // sidebar renders one banner and wires its action/dismiss to the callback.
   const bannerFor = ({ ota = null, shellAuto = null, shellManual = null }) => deriveUpdateBanner(
     coordinateUpdates({
-      ota,
+      ...EMPTY_UPDATE_INPUT,
+      ...legacyOtaInput(ota),
       shell: shellAuto ? { mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...shellAuto } : null,
-      server: null,
       shellManual: shellManual ? { version: shellManual.version } : null,
     }),
     { debInstaller: !!shellManual?.debInstaller },
