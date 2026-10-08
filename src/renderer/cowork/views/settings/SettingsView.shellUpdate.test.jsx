@@ -36,6 +36,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { coordinateUpdates } from '../../../../shared/update-coordinator';
 
 afterEach(() => { platformMock.value = 'darwin'; });
 import { host } from '../../../platform/host';
@@ -50,21 +51,22 @@ const baseProps = {
   onSectionChange: vi.fn(),
 };
 
+// Every case renders from the one update state (src/shared/update-coordinator.ts)
+// the way App.jsx hands it down, and routes the one action through a stub of
+// useAppUpdates' handler.
+const stateFor = (input) => coordinateUpdates({ shell: null, ota: null, server: null, shellManual: null, ...input });
+const shell = (phase, over = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', ...over });
+const uiReady = { ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, uiVersion: '2.26.7.20.1', serverUpdate: false } };
+const manualNotice = (over = {}) => ({ shellManual: { version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://x/y.pkg', ...over } });
+
 describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
-  it('renders the reinstall notice from a background poll and Downloads via the passed handler', () => {
-    const onDownloadShellUpdate = vi.fn();
-    render(
-      <SettingsView
-        {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://x/y.pkg' }}
-        onDownloadShellUpdate={onDownloadShellUpdate}
-      />
-    );
-    expect(screen.getByText(/New app version 2\.26\.7\.20\.1/)).toBeInTheDocument();
+  it('renders the reinstall notice from a background poll and Downloads via the one action', () => {
+    const onUpdateAction = vi.fn(async () => true);
+    render(<SettingsView {...baseProps} updateState={stateFor(manualNotice())} onUpdateAction={onUpdateAction} />);
+    expect(screen.getByText(/New version available \(2\.26\.7\.20\.1\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Download installer/ }));
-    // The handler must be defined (the desktop instance was previously unwired)
-    // and receive the resolved installer URL.
-    expect(onDownloadShellUpdate).toHaveBeenCalledWith('https://x/y.pkg');
+    // The action is the renderer's own, and carries the resolved installer URL.
+    expect(onUpdateAction).toHaveBeenCalledWith('open-download-page', { url: 'https://x/y.pkg' });
     // After the hand-off to the browser download, the card guides the user
     // through the manual steps that download can't — quit + open the installer
     // — and the CTA de-emphasizes to a "Download again" retry.
@@ -74,13 +76,7 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
 
   it('tells a Debian user to apt install the .deb, before and after the download', () => {
     platformMock.value = 'linux';
-    render(
-      <SettingsView
-        {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' }}
-        onDownloadShellUpdate={vi.fn()}
-      />
-    );
+    render(<SettingsView {...baseProps} updateState={stateFor(manualNotice({ downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' }))} onUpdateAction={vi.fn(async () => true)} />);
     // "open it" does nothing on a desktop with no GUI handler for .deb, so the
     // card names the command that actually installs the package.
     const step = /run sudo apt install \.\/mindshub-cowork-2\.26\.7\.20\.1\*\.deb from the directory you downloaded it to\./;
@@ -92,30 +88,19 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
 
   it('names apt on linux even when the old shell supplied no installer URL', () => {
     platformMock.value = 'linux';
-    render(
-      <SettingsView
-        {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1' }}
-        onDownloadShellUpdate={vi.fn()}
-      />
-    );
+    render(<SettingsView {...baseProps} updateState={stateFor(manualNotice({ downloadUrl: null }))} onUpdateAction={vi.fn()} />);
     expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-2\.26\.7\.20\.1\*\.deb/)).toBeInTheDocument();
   });
 
   it('keeps the "open it" guidance off linux', () => {
-    render(
-      <SettingsView
-        {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' }}
-        onDownloadShellUpdate={vi.fn()}
-      />
-    );
+    render(<SettingsView {...baseProps} updateState={stateFor(manualNotice({ downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' }))} onUpdateAction={vi.fn()} />);
     expect(screen.getByText(/quit MindsHub Cowork and open it to finish updating/)).toBeInTheDocument();
   });
 
   it('shows no reinstall notice when nothing is pending', () => {
-    render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
+    render(<SettingsView {...baseProps} updateState={stateFor({})} onUpdateAction={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
+    expect(screen.queryByText(/Update ready/)).toBeNull();
   });
 });
 
@@ -124,171 +109,133 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     render(
       <SettingsView
         {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' }}
-        shellAutoUpdate={{
-          phase: 'downloading',
-          mode: 'auto',
-          channel: 'prod',
-          currentVersion: '2.260713.1',
-          targetVersion: '2.260720.1',
-          progress: { transferred: 50, total: 100, percent: 50 },
-        }}
-        onDownloadShellUpdate={vi.fn()}
+        updateState={stateFor({ shell: shell('downloading', { targetVersion: '2.260720.1', progress: { transferred: 50, total: 100, percent: 50 } }), ...manualNotice() })}
+        onUpdateAction={vi.fn()}
       />
     );
-    expect(screen.getByText(/Downloading app update — 50%/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+    expect(screen.getByText(/Downloading update \(50%\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
   });
 
-  it('offers restart only after the verified download is ready', () => {
-    const onInstallShellAutoUpdate = vi.fn();
-    render(
-      <SettingsView
-        {...baseProps}
-        shellAutoUpdate={{
-          phase: 'ready-to-install',
-          mode: 'auto',
-          channel: 'prod',
-          currentVersion: '2.260713.1',
-          targetVersion: '2.260720.1',
-        }}
-        onInstallShellAutoUpdate={onInstallShellAutoUpdate}
-      />
-    );
+  it('offers restart only after the verified download is ready, through the one action', () => {
+    const onUpdateAction = vi.fn(async () => true);
+    render(<SettingsView {...baseProps} updateState={stateFor({ shell: shell('ready-to-install', { targetVersion: '2.260720.1' }) })} onUpdateAction={onUpdateAction} />);
+    expect(screen.getByText('Update ready')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
-    expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdateAction).toHaveBeenCalledTimes(1);
+    expect(onUpdateAction.mock.calls[0][0]).toBe('relaunch');
   });
 
   it('says why the last restart did not finish and offers Try again (ENG-3291)', () => {
-    const onInstallShellAutoUpdate = vi.fn();
+    const onUpdateAction = vi.fn(async () => true);
     render(
       <SettingsView
         {...baseProps}
-        shellAutoUpdate={{
-          phase: 'ready-to-install', mode: 'auto', channel: 'prod',
-          currentVersion: '2.260713.1', targetVersion: '2.260720.1',
-          recoverable: true, errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
-        }}
-        onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+        updateState={stateFor({ shell: shell('ready-to-install', {
+          targetVersion: '2.260720.1', recoverable: true, errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
+        }) })}
+        onUpdateAction={onUpdateAction}
       />
     );
     expect(screen.getByText(/Last restart attempt failed: installer launch failed/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
-    expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdateAction.mock.calls[0][0]).toBe('relaunch');
   });
 
-  it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
-    // A failure with no targetVersion (rejected check / failed retry check) still
-    // shows its own Retry card, but must NOT suppress a valid OTA update — a shell
-    // feed outage would otherwise hide the UI/server Restart. Both cards coexist.
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
-      serverUpdateAvailable: false, shellUpdateAvailable: false,
-    });
+  it('a targetless shell failure does not hide the UI/server Restart, and is noted under it rather than as a second card', () => {
+    // A failure with no targetVersion (rejected check / failed retry check)
+    // must NOT suppress a valid OTA update — a shell feed outage would
+    // otherwise hide the UI/server Restart. One card, one restart.
     render(
       <SettingsView
         {...baseProps}
-        shellUpdate={null}
-        shellAutoUpdate={{ phase: 'failed', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', recoverable: true }}
-        onRetryShellAutoUpdate={vi.fn()}
-        onDownloadShellUpdate={vi.fn()}
+        updateState={stateFor({ ...uiReady, shell: shell('failed', { recoverable: true, errorMessage: 'feed unreachable' }) })}
+        onUpdateAction={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    // OTA card not hidden…
-    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    // …and the shell failure's Retry affordance is preserved.
-    expect(screen.getByText(/App update failed/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Restart|Retry|Download/ })).toHaveLength(1);
+    expect(screen.getByText(/The last app update check failed \(feed unreachable\)/)).toBeInTheDocument();
+  });
+
+  it('a recoverable shell failure with a known target offers Retry, and nothing else', () => {
+    const onUpdateAction = vi.fn(async () => true);
+    render(<SettingsView {...baseProps} updateState={stateFor({ ...uiReady, shell: shell('failed', { recoverable: true, targetVersion: '2.260720.1' }) })} onUpdateAction={onUpdateAction} />);
+    expect(screen.getByText('Update failed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }));
+    expect(onUpdateAction.mock.calls[0][0]).toBe('retry');
   });
 });
 
 describe('SettingsView desktop — UI/server updates framed as a restart', () => {
-  it('presents a pending UI/server update as "Restart now", not the shell\'s download/version wording', async () => {
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
-      serverUpdateAvailable: false, shellUpdateAvailable: false,
-    });
-    render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    // UI/server updates apply by restarting the app — reserve download/version
-    // language for the shell reinstall path.
-    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
-  });
-
-  it('suppresses the UI/server "Restart now" card while a shell update is pending (shell-first, no stacked cards)', async () => {
-    // A shell relaunch also applies the UI/server OTA at boot, so the separate
-    // OTA card would be redundant. Only the shell surface shows — mirroring the
-    // sidebar's single shell-first banner.
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
-      serverUpdateAvailable: false, shellUpdateAvailable: true, shellVersion: '2.26.7.20.1',
-    });
+  it('presents a pending UI/server update as "Restart now", naming the layers, not the shell\'s download wording', () => {
     render(
       <SettingsView
         {...baseProps}
-        shellUpdate={{ version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' }}
-        onDownloadShellUpdate={vi.fn()}
+        updateState={stateFor({ ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, uiVersion: '2.26.7.20.1', serverUpdate: true, serverVersion: '0.26.7.20.1', serverComponent: 'anton-agent' } })}
+        onUpdateAction={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    expect(await screen.findByRole('button', { name: /Download installer/ })).toBeInTheDocument();
+    // UI/server updates apply by restarting the app — reserve download/version
+    // language for the shell reinstall path.
+    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.getByText(/Restart the app to apply it \(Agent → 0\.26\.7\.20\.1, UI → 2\.26\.7\.20\.1\)\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
+  });
+
+  it('shows one restart while a shell update and an OTA are both pending (shell-first, no stacked cards)', () => {
+    // A shell relaunch also applies the UI/server OTA at boot, so the separate
+    // OTA card would be redundant. Only the shell surface shows — mirroring the
+    // sidebar's single shell-first banner — and it names what the restart applies.
+    const onUpdateAction = vi.fn(async () => true);
+    render(<SettingsView {...baseProps} updateState={stateFor({ ...uiReady, shell: shell('ready-to-install', { targetVersion: '2.26.7.20.1' }) })} onUpdateAction={onUpdateAction} />);
+    expect(screen.getAllByRole('button', { name: /Restart now/ })).toHaveLength(1);
+    expect(screen.getByText(/Restart Cowork to finish installing the downloaded update \(UI → 2\.26\.7\.20\.1\)\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    expect(onUpdateAction.mock.calls[0][0]).toBe('relaunch');
+  });
+
+  it('the manual installer notice suppresses the UI/server Restart (shell-first), as the sidebar does', () => {
+    render(<SettingsView {...baseProps} updateState={stateFor({ ...uiReady, ...manualNotice() })} onUpdateAction={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Download installer/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
     expect(screen.queryByText(/Update ready/)).toBeNull();
   });
 
-  it('an in-progress shell check does not hide a ready UI/server Restart card (checking is not pending)', async () => {
-    // `checking` renders its own "Checking for an app update…" card but is not a
-    // pending shell update, so — like the sidebar banner (shellAutoOwnsBanner
-    // excludes `checking`) — it must not suppress a valid OTA Restart. Both the
-    // transient check card and the OTA Restart card coexist.
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
-      serverUpdateAvailable: false, shellUpdateAvailable: false,
-    });
-    render(
-      <SettingsView
-        {...baseProps}
-        shellUpdate={null}
-        shellAutoUpdate={{ phase: 'checking', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1' }}
-        onDownloadShellUpdate={vi.fn()}
-      />
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+  it('an in-progress shell check does not hide a ready UI/server Restart card (checking is not pending)', () => {
+    render(<SettingsView {...baseProps} updateState={stateFor({ ...uiReady, shell: shell('checking') })} onUpdateAction={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
     expect(screen.getByText(/Checking for an app update/)).toBeInTheDocument();
   });
 
-  it('returns to a retryable state when applyUpdate resolves false', async () => {
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false,
-    });
-    host.applyUpdate.mockResolvedValueOnce(false);
-    render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Restart now/ }));
+  it('returns to a retryable state when the apply resolves false', async () => {
+    const onUpdateAction = vi.fn(async () => false);
+    render(<SettingsView {...baseProps} updateState={stateFor(uiReady)} onUpdateAction={onUpdateAction} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     expect(await screen.findByRole('button', { name: /Try again/ })).toBeInTheDocument();
     expect(screen.getByText(/Couldn't apply the update/)).toBeInTheDocument();
+  });
+
+  it('"Check for updates" reports up to date only when the state agrees', async () => {
+    render(<SettingsView {...baseProps} updateState={stateFor({})} onUpdateAction={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByText(/You're up to date/)).toBeInTheDocument();
+    expect(host.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 });
 
 // ENG-3291: a restart that stops the sidecar ends every running turn, so main
-// may answer an install request with `{ confirm, runningTasks }` instead of
+// may answer an apply request with `{ confirm, runningTasks }` instead of
 // acting. The renderer guard (platform/restart-guard) asks through
 // RestartConfirmHost and re-sends with `force` on a yes. These cases drive the
-// real guard and dialog behind the Settings buttons with a fake main.
+// real guard and dialog behind the one Settings button with a fake main.
 import RestartConfirmHost from '../../../RestartConfirmHost';
 import { guardRestart, resetRestartConfirmationForTests } from '../../../platform/restart-guard';
 
 function fakeMain({ runningTasks }) {
-  // Mirrors main: ask unless forced, then report the install as done.
+  // Mirrors main: ask unless forced, then report the restart as done.
   return vi.fn(async (options = {}) => {
     if (!options.force && (runningTasks === null || runningTasks > 0)) return { confirm: true, runningTasks };
     return true;
@@ -298,14 +245,15 @@ function fakeMain({ runningTasks }) {
 describe('SettingsView desktop — confirm before a restart ends running tasks (ENG-3291)', () => {
   afterEach(() => resetRestartConfirmationForTests());
 
-  const readyShell = { phase: 'ready-to-install', mode: 'auto', channel: 'prod', currentVersion: '2.260713.1', targetVersion: '2.260720.1' };
+  const readyShell = stateFor({ shell: shell('ready-to-install', { targetVersion: '2.260720.1' }) });
+  const guarded = (main) => (action, hooks = {}) => guardRestart(main, hooks);
 
-  it('asks before "App update ready" Restart now while tasks run, and Cancel keeps the update ready', async () => {
+  it('asks before "Update ready" Restart now while tasks run, and Cancel keeps the update ready', async () => {
     const main = fakeMain({ runningTasks: 2 });
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
       </>
     );
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
@@ -323,7 +271,7 @@ describe('SettingsView desktop — confirm before a restart ends running tasks (
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
       </>
     );
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
@@ -337,7 +285,7 @@ describe('SettingsView desktop — confirm before a restart ends running tasks (
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
       </>
     );
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
@@ -350,30 +298,29 @@ describe('SettingsView desktop — confirm before a restart ends running tasks (
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
       </>
     );
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     expect(await screen.findByText(/cannot tell whether any tasks are running/)).toBeInTheDocument();
   });
 
-  it('asks before an "Update ready" Restart now that includes a server update', async () => {
-    host.checkForUpdates.mockResolvedValueOnce({
-      ok: true, offline: false, updateAvailable: true,
-      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
-      serverUpdateAvailable: true, serverVersion: '0.26.7.20.1', shellUpdateAvailable: false,
-    });
+  it('asks before an "Update ready" Restart now that includes a server update, and never reads "Restarting…" under the dialog', async () => {
     const main = fakeMain({ runningTasks: 3 });
-    host.applyUpdate.mockImplementationOnce(() => guardRestart(main));
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />
+        <SettingsView
+          {...baseProps}
+          updateState={stateFor({ ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, serverUpdate: true, serverVersion: '0.26.7.20.1' } })}
+          onUpdateAction={guarded(main)}
+        />
       </>
     );
-    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Restart now/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     expect(await screen.findByText('Stop 3 running tasks and restart?')).toBeInTheDocument();
+    // The dialog is open and the card has not flipped to "Restarting…".
+    expect(screen.queryByText(/Restarting…/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
     // A cancelled apply is not a failure: the card returns to Restart now, not "Try again".
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();

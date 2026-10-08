@@ -66,7 +66,10 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "UI_UPDATE_APPLY": "ui:update-apply",
   "UI_UPDATE_CHECK": "ui:update-check",
   "UI_UPDATE_STATUS": "ui:update-status",
+  "UPDATE_APPLY": "update:apply",
   "UPDATE_JOURNAL_ACK": "update:journal-ack",
   "UPDATE_JOURNAL_DRAIN": "update:journal-drain",
+  "UPDATE_STATE": "update:state",
+  "UPDATE_STATE_GET": "update:state-get",
 }
 `;
