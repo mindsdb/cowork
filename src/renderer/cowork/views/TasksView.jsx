@@ -12,8 +12,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Badge, Button, Tooltip } from '../components/ui';
-import { relativeAge } from '../lib/formatTime';
+import { Button, Tooltip } from '../components/ui';
+import { TaskRow, ScheduleGroupRow, groupScheduleRuns, latestRun, ts } from '../components/task';
 import {
   PageHeader,
   FilterRow,
@@ -23,10 +23,7 @@ import {
   FilterChips,
   useCollectionShortcut,
   CollectionState,
-  HoverActions,
   ListGroup,
-  ListItem,
-  StatusDot,
 } from '../components/collection';
 
 const SORT_OPTIONS = [
@@ -34,127 +31,6 @@ const SORT_OPTIONS = [
   { id: 'name',    label: 'Name (A–Z)' },
   { id: 'project', label: 'Project' },
 ];
-
-// Project in a row's meta. Opens the project, above the row's own click
-// area, when the slug resolves; plain text otherwise.
-function ProjectMeta({ projectName, projects, onOpenProject }) {
-  if (!projectName) return null;
-  const projectMatch = projects.find((p) => p.name === projectName) || null;
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard. This is what a person reads.
-  // `projectLabel(null)` is null, so an unresolved project falls back to the
-  // slug exactly as before (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
-  // The cap keeps a long name from widening the row's meta, which does not
-  // shrink (it sizes to its content, even on its own phone-width line);
-  // `shrink` lets the link give way inside the cap so the label truncates
-  // (HoverActions is shrink-0 by default).
-  return (
-    <span className="flex min-w-0 max-w-[16rem] items-center gap-1.5 max-sm:max-w-[8rem]">
-      <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
-      {projectMatch && typeof onOpenProject === 'function' ? (
-        <HoverActions reveal className="min-w-0 shrink">
-          <Tooltip content={`Open ${projectDisplay}`}>
-            <button
-              type="button"
-              onClick={() => onOpenProject(projectMatch)}
-              className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2"
-            >{projectDisplay}</button>
-          </Tooltip>
-        </HoverActions>
-      ) : (
-        <span title={projectDisplay} className="min-w-0 truncate text-ink-3">{projectDisplay}</span>
-      )}
-    </span>
-  );
-}
-
-// A row's meta: project, status and time. Wraps onto a second line when a
-// narrow phone can't fit all three, instead of widening the page.
-function RowMeta({ children }) {
-  return <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">{children}</span>;
-}
-
-function TaskRow({ task, projects = [], onOpen, onOpenProject, onDelete }) {
-  // Prefer the same field the rest of the app uses for "last seen"
-  // (updatedAt). Fall back to subtitle (legacy mock-time string)
-  // when the server hasn't stamped the conversation yet.
-  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
-  return (
-    <ListItem
-      leading={Ico.chats(16)}
-      title={task.title || 'Untitled task'}
-      description={task.subtitle && task.subtitle !== updated ? task.subtitle : undefined}
-      onActivate={() => onOpen?.(task)}
-      meta={(
-        <RowMeta>
-          <ProjectMeta projectName={task.projectName || task.project || ''} projects={projects} onOpenProject={onOpenProject} />
-          {task.status === 'active' && <StatusDot tone="success">Running</StatusDot>}
-          <span className="whitespace-nowrap">{updated}</span>
-        </RowMeta>
-      )}
-      actions={(
-        <Tooltip content="Delete task">
-          <Button variant="danger" icon size="sm" onClick={() => onDelete?.(task.id)} aria-label="Delete task">
-            {Ico.trash(14)}
-          </Button>
-        </Tooltip>
-      )}
-    />
-  );
-}
-
-function ScheduleGroupRow({
-  schedule, runs = [], projects = [],
-  onOpenSchedule, onOpenLatest, onOpenProject,
-}) {
-  // Latest run → drives the timestamp. Defaults to the first run when none
-  // have a parsable timestamp (shouldn't happen, but guard anyway).
-  const ts = (raw) => {
-    if (!raw) return 0;
-    if (typeof raw === 'number') return raw;
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
-  const latest = runs.reduce((max, r) =>
-    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-  runs[0]);
-  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
-
-  return (
-    <ListItem
-      leading={Ico.schedule(16)}
-      title={schedule?.title || latest?.title || 'Scheduled task'}
-      badges={(
-        <Badge variant="accent" size="sm" className="shrink-0 font-mono uppercase tracking-[0.06em]">
-          {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </Badge>
-      )}
-      // The row opens the schedule (where per-run history lives); the hover
-      // action jumps straight to the most recent run.
-      onActivate={onOpenSchedule}
-      className="bg-[color-mix(in_srgb,var(--accent)_4%,transparent)]"
-      meta={(
-        <RowMeta>
-          <ProjectMeta
-            projectName={schedule?.project || runs[0]?.projectName || runs[0]?.project || ''}
-            projects={projects}
-            onOpenProject={onOpenProject}
-          />
-          {runs.some((r) => r.status === 'active') && <StatusDot tone="success">Running</StatusDot>}
-          <span className="whitespace-nowrap">{updated}</span>
-        </RowMeta>
-      )}
-      actions={(
-        <Tooltip content="Open latest run">
-          <Button variant="subtle" icon size="sm" onClick={onOpenLatest} aria-label="Open latest run">
-            {Ico.externalLink(14)}
-          </Button>
-        </Tooltip>
-      )}
-    />
-  );
-}
 
 export default function TasksView({
   tasks = [],
@@ -192,43 +68,10 @@ export default function TasksView({
     return out;
   }, [schedules]);
 
-  // Augment each task with its scheduled id (from server-side
-  // scheduledId OR the index lookup as a fallback for older
-  // records that were saved before the field was plumbed).
-  const augmented = useMemo(() => (
-    (tasks || []).map((t) => {
-      const sid = t.scheduledId || scheduleRunsIndex[t.id] || null;
-      return sid ? { ...t, scheduledId: sid } : t;
-    })
-  ), [tasks, scheduleRunsIndex]);
-
-  // Group: any task with a scheduledId rolls into one row keyed on
-  // that id. Non-scheduled tasks pass through 1:1.
-  const grouped = useMemo(() => {
-    const out = [];
-    const groupsBySchedId = new Map();
-    for (const t of augmented) {
-      if (!t.scheduledId) {
-        out.push({ kind: 'task', task: t });
-        continue;
-      }
-      let g = groupsBySchedId.get(t.scheduledId);
-      if (!g) {
-        g = { kind: 'group', scheduledId: t.scheduledId, runs: [] };
-        groupsBySchedId.set(t.scheduledId, g);
-        out.push(g);
-      }
-      g.runs.push(t);
-    }
-    return out;
-  }, [augmented]);
-
-  const ts = (raw) => {
-    if (!raw) return 0;
-    if (typeof raw === 'number') return raw;
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
+  const grouped = useMemo(
+    () => groupScheduleRuns(tasks, scheduleRunsIndex),
+    [tasks, scheduleRunsIndex],
+  );
 
   // Compute a row-shape representative for filtering / sorting that
   // works for both lone tasks AND collapsed schedule groups.
@@ -253,9 +96,7 @@ export default function TasksView({
       };
     }
     const sched = schedulesById.get(row.scheduledId);
-    const latest = row.runs.reduce((max, r) =>
-      ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-    row.runs[0]);
+    const latest = latestRun(row.runs);
     return {
       title: sched?.title || latest?.title || 'Scheduled task',
       project: sched?.project || latest?.projectName || latest?.project || ORPHAN_SCHEDULE_PROJECT,
@@ -380,7 +221,13 @@ export default function TasksView({
                   projects={projects}
                   onOpen={(task) => onOpenTask?.(task.id)}
                   onOpenProject={onOpenProject}
-                  onDelete={(id) => onDeleteTask?.(id)}
+                  actions={(
+                    <Tooltip content="Delete task">
+                      <Button variant="danger" icon size="sm" onClick={() => onDeleteTask?.(row.task.id)} aria-label="Delete task">
+                        {Ico.trash(14)}
+                      </Button>
+                    </Tooltip>
+                  )}
                 />
               );
             }
@@ -393,9 +240,7 @@ export default function TasksView({
                 projects={projects}
                 onOpenSchedule={() => onOpenSchedule?.(row.scheduledId)}
                 onOpenLatest={() => {
-                  const latest = row.runs.reduce((max, r) =>
-                    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-                  row.runs[0]);
+                  const latest = latestRun(row.runs);
                   if (latest?.id) onOpenTask?.(latest.id);
                 }}
                 onOpenProject={onOpenProject}

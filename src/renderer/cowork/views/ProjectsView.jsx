@@ -477,10 +477,8 @@ function ProjectDetail({
 
             <TaskList
               tasks={projectTasks}
-              projects={projects || []}
               schedules={scheduled || []}
               scheduleRunsIndex={scheduleRunsIndex}
-              emptyMessage={`No tasks in this project yet — type a prompt above to start one.`}
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
