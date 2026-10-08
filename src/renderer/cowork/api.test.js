@@ -286,6 +286,47 @@ describe('updateSettings', () => {
   });
 });
 
+// App merges every settings read into its state. A read that settled after a
+// later write would put the pre-write value back once the editor's draft clears.
+describe('settings reads and writes settle in the order they started', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('settles a read started before a write first, with the pre-write value', async () => {
+    let stored = 'Hello';
+    let releaseFirstRead;
+    const methods = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      methods.push(method);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        stored = JSON.parse(options.body).values.nav_title;
+        return jsonRes({ updated: ['nav_title'] });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        const rows = [{ key: 'nav_title', value: stored }];
+        if (!releaseFirstRead) await new Promise((resolve) => { releaseFirstRead = resolve; });
+        return jsonRes(rows);
+      }
+      return jsonRes({});
+    }));
+
+    const settled = [];
+    const read = fetchSettings().then((s) => { settled.push('read'); return s; });
+    const write = updateSettings({ navTitle: 'Hello World' }).then((r) => { settled.push('write'); return r; });
+    await vi.waitFor(() => expect(releaseFirstRead).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(methods).not.toContain('PUT');
+
+    releaseFirstRead();
+    const [readResult, writeResult] = await Promise.all([read, write]);
+    expect(settled).toEqual(['read', 'write']);
+    expect(readResult.navTitle).toBe('Hello');
+    expect(writeResult.settings.navTitle).toBe('Hello World');
+    expect(stored).toBe('Hello World');
+  });
+});
+
 // A MindsHub key the user typed must not be stored by the sidecar at all. The
 // Settings form writes it twice from one keystroke — the `minds_api_key` row
 // and the raw value inside the provider card — so both halves have to be
