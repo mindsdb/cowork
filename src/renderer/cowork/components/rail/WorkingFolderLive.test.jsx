@@ -233,6 +233,12 @@ describe('artifacts rail click in org mode', () => {
     expect(screen.queryByText('Download')).toBeNull();
   });
 
+  it('slides the kebab menu down, since it always opens below the kebab', async () => {
+    await renderRail(draft({ title: 'Ops Console', publishedUrl: SHARED_URL }));
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(screen.getByRole('menu')).toHaveClass('menu', 'menu--drop-down');
+  });
+
   it('does not label the dead end Download for an unshared fullstack app', async () => {
     // Same review pass: openLabel keyed off canOpenRemote alone, so the two
     // states where nothing can be saved read "Download" and then printed the

@@ -551,7 +551,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
               ref={menuRef}
               role="menu"
               onClick={(e) => e.stopPropagation()}
-              className="menu"
+              // Always opens below the kebab, so it must slide down; bare
+              // `.menu` rises from below, which suits upward menus only.
+              className="menu menu--drop-down"
               style={{
                 position: 'fixed',
                 top: menuPos.top,
