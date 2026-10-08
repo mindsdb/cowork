@@ -11,8 +11,7 @@
 // - Polls every 3s while streaming, plus once when streaming ends.
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
@@ -22,7 +21,7 @@ import {
   unpublishArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
-import { Tooltip } from '../ui';
+import { OverflowMenu } from '../OverflowMenu';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
@@ -188,80 +187,19 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
     });
   }, [artifacts]);
-  // Per-row kebab menu state (single-open) + portal coords.
-  //
-  // Why a portal: the rail-card body wraps this component with
-  // `overflow-y: auto` (RailCard.jsx). A `position: absolute`
-  // dropdown child of an artifact row gets visually clipped by that
-  // ancestor's overflow — so the menu appeared to "hide behind" the
-  // card. createPortal escapes to document.body, where no ancestor
-  // overflow can touch it. We compute viewport-fixed coords from the
-  // clicked kebab's getBoundingClientRect() and close on scroll +
-  // resize since the kebab might move under a stale menu.
+  // Which row's kebab menu is open. Single-open, and it hides that row's
+  // timestamp so the kebab stays visible while its menu is up.
   const [openMenuPath, setOpenMenuPath] = useState(null);
-  const [menuPos, setMenuPos] = useState(null);
+  // Forget a menu whose row left the list, or it would reopen if the row came back.
+  useEffect(() => {
+    if (openMenuPath != null && !rows.some((r) => r.path === openMenuPath)) setOpenMenuPath(null);
+  }, [rows, openMenuPath]);
   const [busyPath, setBusyPath] = useState(null);
   const [rowError, setRowError] = useState('');
   // Pending artifact-delete payload — drives the ConfirmModal, same
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
   const [pendingDeleteArtifact, setPendingDeleteArtifact] = useState(null);
-  const menuRef = useRef(null);
-  // Map of artifact.path → kebab button DOM node. Stored in a ref
-  // so renders don't replace the map; cleaned up implicitly when
-  // rows unmount via the ref callback's null branch.
-  const kebabRefs = useRef(new Map());
-  const setKebabRef = (path) => (el) => {
-    if (el) kebabRefs.current.set(path, el);
-    else kebabRefs.current.delete(path);
-  };
-
-  // Menu opens just below the kebab, right-anchored so it can't
-  // extend past the right edge of the viewport. `position: fixed`
-  // applies these directly to viewport coordinates.
-  const menuPosFor = (btn) => {
-    const r = btn.getBoundingClientRect();
-    return { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) };
-  };
-
-  const openMenuFor = (path) => {
-    const btn = kebabRefs.current.get(path);
-    if (!btn) return;
-    setMenuPos(menuPosFor(btn));
-    setOpenMenuPath(path);
-  };
-
-  useEffect(() => {
-    if (openMenuPath == null) return undefined;
-    const onClick = (e) => {
-      if (menuRef.current && menuRef.current.contains(e.target)) return;
-      setOpenMenuPath(null);
-    };
-    // The kebab that's anchoring the menu might scroll out from
-    // under it (rail-card body has overflow-y:auto) or the window
-    // may resize — close in either case so the menu doesn't dangle.
-    const onClose = () => setOpenMenuPath(null);
-    // Defer one tick so the click that OPENED the menu doesn't
-    // propagate up and immediately close it.
-    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
-    window.addEventListener('resize', onClose);
-    document.addEventListener('scroll', onClose, true); // capture catches all scrollers
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', onClick);
-      window.removeEventListener('resize', onClose);
-      document.removeEventListener('scroll', onClose, true);
-    };
-  }, [openMenuPath]);
-  // Rows move under an open menu (a chat switch regroups them, a poll adds
-  // new ones on top): keep the menu on its row, or close it once the row is gone.
-  useLayoutEffect(() => {
-    if (openMenuPath == null) return;
-    const btn = kebabRefs.current.get(openMenuPath);
-    if (btn) setMenuPos(menuPosFor(btn));
-    else setOpenMenuPath(null);
-  }, [rows]);
-
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
@@ -274,6 +212,52 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   //     HTTP (origin-relative → hits whatever server we're talking to).
   //     Falls back to publishedUrl, then a clear error.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
+
+  // Kebab menu rows for one artifact.
+  const menuItemsFor = (a) => {
+    // Where the Open item goes: the OS on desktop; a tab when there is a
+    // serve or shared URL; otherwise (org mode, non-HTML) it saves the
+    // file, since `openArtifactExternal` falls through to the download.
+    // A separate Download item is only worth a row when Open goes
+    // somewhere else, so the two never say the same thing (ENG-2044).
+    const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
+    // The fullstack-app exclusion applies to BOTH routes:
+    // canDownloadOrgDraft checks it, but on a non-org web deployment a
+    // fullstack app has a serveUrl too, and the `a.serveUrl ||`
+    // short-circuit was saving its shell index.html (review pass 2).
+    const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
+      && !!(a.serveUrl || canDownloadOrgDraft(a));
+    const openLabel = canOpenLocalFile
+      ? 'Open in OS'
+      // 'Download' only when the click can actually deliver one: an
+      // unshared fullstack app or a card with no primary file falls
+      // through to the dead-end message, and labelling THAT 'Download'
+      // promises a save that cannot happen (review finding on #764).
+      : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
+    const busy = busyPath === a.path;
+    return [
+      {
+        label: openLabel,
+        icon: (openLabel === 'Download' ? Ico.download : (Ico.externalLink || Ico.upload))(13),
+        disabled: busy,
+        onClick: () => openArtifactExternal(a),
+      },
+      canDownload && canOpenRemote && {
+        label: 'Download',
+        icon: Ico.download(14),
+        disabled: busy,
+        onClick: async () => {
+          if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
+        },
+      },
+      // Confirm first, like the project-file, upload, task and project deletes.
+      a.capabilities?.canEdit !== false && { divider: true },
+      a.capabilities?.canEdit !== false && {
+        label: 'Delete', icon: Ico.trash(14), danger: true, disabled: busy,
+        onClick: () => setPendingDeleteArtifact(a),
+      },
+    ].filter(Boolean);
+  };
   const openArtifactExternal = async (a) => {
     if (!canOpenLocalFile) {
       // `serveUrl` is origin-relative (`/v1/...`). In a web tab a
@@ -480,144 +464,38 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                           rather than a sentence. */}
                       {String(a.updated || '').replace(/^updated\s+/i, '')}
                     </span>
-                    <Tooltip content="More actions">
-                      <button
-                        ref={setKebabRef(a.path)}
-                        type="button"
-                        aria-label="More actions"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (menuOpen) setOpenMenuPath(null);
-                          else openMenuFor(a.path);
-                        }}
-                        className={clsx(
-                          // `justify-end` (not center) pins the kebab to
-                          // the right edge of the trailing slot so it sits
-                          // flush against the row's right margin — matching
-                          // where the project-files trash icon lands. The
-                          // artifact timestamp ("3h ago") is wider than the
-                          // project-file one ("3h"), so a centered kebab
-                          // floated noticeably left of the edge.
+                    {/* `contents` keeps the trigger positioned against the slot;
+                        the handlers stop menu clicks and keys, which bubble
+                        through the portal, from also opening the row. */}
+                    <span
+                      className="contents"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <OverflowMenu
+                        open={menuOpen}
+                        onOpenChange={(next) => setOpenMenuPath(next ? a.path : null)}
+                        ariaLabel="Artifact actions"
+                        icon={Ico.moreVert(14)}
+                        width={180}
+                        items={menuItemsFor(a)}
+                        // `justify-end` (not center) pins the kebab to the
+                        // right edge of the trailing slot, flush with where
+                        // the project-files trash icon lands; the artifact
+                        // timestamp ("3h ago") is wider than the project-file
+                        // one ("3h"), so a centered kebab floated left.
+                        triggerClassName={clsx(
                           'absolute inset-0 inline-flex items-center justify-end',
                           menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                          'transition-opacity rounded',
-                          'text-ink-4 hover:text-ink',
-                          'bg-transparent border-0 cursor-pointer p-0',
                         )}
-                      >
-                        {Ico.moreVert(14)}
-                      </button>
-                    </Tooltip>
+                      />
+                    </span>
                   </span>
                 </div>
               </Fragment>
             );
           })}
         </div>
-      )}
-
-      {/* Portaled menu for the currently-open kebab. Lives at
-          document.body so the rail-card body's overflow:auto can't
-          clip it. `position: fixed` uses viewport coords computed
-          from the kebab's getBoundingClientRect() in openMenuFor. */}
-      {openMenuPath != null && menuPos != null && createPortal(
-        (() => {
-          const a = rows.find((r) => r.path === openMenuPath);
-          if (!a) return null;
-          // Where the Open item goes: the OS on desktop; a tab when there is a
-          // serve or shared URL; otherwise (org mode, non-HTML) it saves the
-          // file, since `openArtifactExternal` falls through to the download.
-          // A separate Download item is only worth a row when Open goes
-          // somewhere else, so the two never say the same thing (ENG-2044).
-          const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
-          // The fullstack-app exclusion applies to BOTH routes:
-          // canDownloadOrgDraft checks it, but on a non-org web deployment a
-          // fullstack app has a serveUrl too, and the `a.serveUrl ||`
-          // short-circuit was saving its shell index.html (review pass 2).
-          const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
-            && !!(a.serveUrl || canDownloadOrgDraft(a));
-          const openLabel = canOpenLocalFile
-            ? 'Open in OS'
-            // 'Download' only when the click can actually deliver one: an
-            // unshared fullstack app or a card with no primary file falls
-            // through to the dead-end message, and labelling THAT 'Download'
-            // promises a save that cannot happen (review finding on #764).
-            : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
-          const canDelete = a.capabilities?.canEdit !== false;
-          return (
-            <div
-              ref={menuRef}
-              role="menu"
-              onClick={(e) => e.stopPropagation()}
-              // Always opens below the kebab, so it must slide down; bare
-              // `.menu` rises from below, which suits upward menus only.
-              className="menu menu--drop-down"
-              style={{
-                position: 'fixed',
-                top: menuPos.top,
-                right: menuPos.right,
-                minWidth: 180,
-                zIndex: 100,
-              }}
-            >
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  openArtifactExternal(a);
-                }}
-              >
-                <span className="inline-flex text-[var(--frost-700)]">
-                  {(openLabel === 'Download' ? Ico.download : (Ico.externalLink || Ico.upload))(13)}
-                </span>
-                <span>{openLabel}</span>
-              </button>
-              {canDownload && canOpenRemote && (
-                <button
-                  type="button"
-                  className="menu-item"
-                  disabled={busyPath === a.path}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    setOpenMenuPath(null);
-                    if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
-                  }}
-                >
-                  <span className="inline-flex text-[var(--frost-700)]">{Ico.download(14)}</span>
-                  <span>Download</span>
-                </button>
-              )}
-              {canDelete && (
-                <>
-                  <div className="h-px bg-[var(--border-0)] my-1" />
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={busyPath === a.path}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenMenuPath(null);
-                      // Open the confirm modal rather than deleting
-                      // immediately — matches the project files / task
-                      // uploads / task / project delete flows.
-                      setPendingDeleteArtifact(a);
-                    }}
-                    style={{ color: 'var(--danger)' }}
-                  >
-                    <span className="inline-flex text-danger">{Ico.trash(14)}</span>
-                    <span>Delete</span>
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })(),
-        document.body,
       )}
 
       <ConfirmModal
