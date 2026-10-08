@@ -230,6 +230,19 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
   });
 
+  it('a click the state no longer offers is not a failure', async () => {
+    // Main answered 'stale': the banner lagged a push, nothing ran, and the
+    // card re-renders from the state main pushes next.
+    const onUpdateAction = vi.fn(async () => 'stale');
+    render(<SettingsView {...baseProps} updateState={stateFor(uiReady)} onUpdateAction={onUpdateAction} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    await waitFor(() => expect(onUpdateAction).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't apply the update/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(screen.queryByText(/Restarting/)).toBeNull();
+  });
+
   it('"Check for updates" reports up to date only when the state agrees', async () => {
     render(<SettingsView {...baseProps} updateState={stateFor({})} onUpdateAction={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));

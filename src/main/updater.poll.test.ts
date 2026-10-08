@@ -307,10 +307,10 @@ describe('the status an apply leaves behind', () => {
       expect(await handleUnifiedApply(() => w2 as never, { force: true, action: 'reload' })).toBe(true);
       expect(w2.loadFile).toHaveBeenCalledTimes(1);
       await new Promise((r) => setTimeout(r, 5));
-      // Naming a reload that is not pending changes nothing.
+      // Naming a reload that is not pending changes nothing, and says so.
       updateCoordinator.feed({ ota: null });
       const w3 = win();
-      expect(await handleUnifiedApply(() => w3 as never, { force: true, action: 'reload' })).toBe(false);
+      expect(await handleUnifiedApply(() => w3 as never, { force: true, action: 'reload' })).toBe('stale');
       expect(w3.loadFile).not.toHaveBeenCalled();
     } finally {
       vi.mocked(applyUIUpdate).mockResolvedValue(false);
@@ -586,6 +586,26 @@ describe('handleUnifiedApply: one apply, the minimal sufficient step', () => {
     updateCoordinator.feed({ shell: shell('available', { mode: 'manual', targetVersion: 'v' }) });
     expect(await handleUnifiedApply(noWindow)).toBe(true);
     expect(runtime.downloadShellAutoUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs the clicked action only while it is still on offer: a Download click never installs', async () => {
+    // The banner rendered Download (manual mode, shell available)...
+    updateCoordinator.feed({ shell: shell('available', { mode: 'manual', targetVersion: '2.26.10.9.1' }) });
+    expect(updateCoordinator.getState().action).toBe('download');
+    // ...and the snapshot reached ready-to-install before the click landed.
+    updateCoordinator.feed({ shell: shell('ready-to-install', { mode: 'manual', targetVersion: '2.26.10.9.1' }) });
+    expect(updateCoordinator.getState().action).toBe('relaunch');
+    expect(await handleUnifiedApply(noWindow, { action: 'download' })).toBe('stale');
+    expect(await handleUnifiedApply(noWindow, { action: 'retry' })).toBe('stale');
+    expect(runtime.requestShellInstall).not.toHaveBeenCalled();
+    expect(runtime.downloadShellAutoUpdate).not.toHaveBeenCalled();
+    expect(runtime.checkShellAutoUpdate).not.toHaveBeenCalled();
+    // The Restart the banner now shows does install.
+    expect(await handleUnifiedApply(noWindow, { action: 'relaunch' })).toBe(true);
+    expect(runtime.requestShellInstall).toHaveBeenCalledTimes(1);
+    // An unknown action from the renderer runs nothing.
+    expect(await handleUnifiedApply(noWindow, { action: 'format-disk' as never })).toBe('stale');
+    expect(runtime.requestShellInstall).toHaveBeenCalledTimes(1);
   });
 
   it('answers false when nothing is pending, and leaves the installer page to the renderer', async () => {

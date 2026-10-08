@@ -140,6 +140,11 @@ export interface UpdateCoordinatorState {
   /** The shell failure is a check that produced no answer (`check-stalled`):
    *  nothing to retry, so no banner. */
   silentShellFailure: boolean;
+  /** Increases by one on every change of a coordinator instance. A renderer
+   *  uses it to drop a state older than one it already has (a mount-time pull
+   *  that resolves after a push). Absent from the pure reducer's result and
+   *  from shells that predate it. */
+  revision?: number;
 }
 
 export const EMPTY_UPDATE_INPUT: UpdateCoordinatorInput = { shell: null, ota: null, server: null, shellManual: null };
@@ -327,6 +332,47 @@ export function serverLabel(server: UpdateCoordinatorState['server']): string | 
   return server.component === 'anton-agent' ? `${server.component} ${server.version}` : server.version;
 }
 
+// ---- what a click runs ------------------------------------------------------
+
+/** What main (or the old-shell path) runs for a click. */
+export type ApplyStep = 'relaunch' | 'reload' | 'retry' | 'download';
+
+function isApplyStep(action: unknown): action is ApplyStep {
+  return action === 'relaunch' || action === 'reload' || action === 'retry' || action === 'download';
+}
+
+/** Is `step` still something the current state offers? The banner can lag
+ *  main by a push, so a click is checked against the state it lands on. */
+function stepStillOffered(state: UpdateCoordinatorState, step: ApplyStep): boolean {
+  if (state.applying) return false;
+  switch (step) {
+    case 'relaunch':
+      return state.pending.relaunch;
+    case 'reload':
+      // Also behind a dismissed manual installer notice, which outranks the
+      // reload in the ladder but leaves it pending.
+      return state.pending.reload || (state.ui.status === 'failed' && state.ui.error !== 'rolled-back');
+    case 'retry':
+      return state.shell.status === 'failed' && state.shell.recoverable === true;
+    case 'download':
+      return state.shell.status === 'available' && !state.shell.manual;
+  }
+}
+
+/** The step a click runs, decided once for main and the old-shell path alike.
+ *  The click names the action it rendered; it runs only if the current state
+ *  still offers it, and is otherwise `'stale'`, with no side effect, so the
+ *  renderer re-renders from the fresh state. A relaunch therefore never runs
+ *  for a Download or Retry click. A renderer that names no action (older than
+ *  this contract) gets whatever the state offers now. `open-download-page` is
+ *  the renderer's own and runs nothing here. */
+export function resolveApplyAction(state: UpdateCoordinatorState, clicked?: unknown): ApplyStep | 'stale' | null {
+  if (clicked === undefined) return isApplyStep(state.action) ? state.action : null;
+  if (clicked === null || clicked === 'open-download-page') return null;
+  if (!isApplyStep(clicked)) return 'stale';
+  return stepStillOffered(state, clicked) ? clicked : 'stale';
+}
+
 // ---- a feedable instance ---------------------------------------------------
 
 export interface UpdateCoordinator {
@@ -340,8 +386,10 @@ export interface UpdateCoordinator {
 
 export function createUpdateCoordinator(initial: Partial<UpdateCoordinatorInput> = {}): UpdateCoordinator {
   let input: UpdateCoordinatorInput = { ...EMPTY_UPDATE_INPUT, ...initial };
-  let state = coordinateUpdates(input);
-  let serialized = JSON.stringify(state);
+  let revision = 0;
+  let derived = coordinateUpdates(input);
+  let serialized = JSON.stringify(derived);
+  let state: UpdateCoordinatorState = { ...derived, revision };
   const listeners = new Set<(state: UpdateCoordinatorState) => void>();
   return {
     feed(partial) {
@@ -363,8 +411,10 @@ export function createUpdateCoordinator(initial: Partial<UpdateCoordinatorInput>
       const nextState = coordinateUpdates(input);
       const nextSerialized = JSON.stringify(nextState);
       if (nextSerialized !== serialized) {
-        state = nextState;
+        derived = nextState;
         serialized = nextSerialized;
+        revision += 1;
+        state = { ...derived, revision };
         listeners.forEach((listener) => listener(state));
       }
       return state;
