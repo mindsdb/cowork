@@ -449,6 +449,118 @@ describe('electron mode (bridge present)', () => {
     }
   });
 
+  describe('the one update state (ENG-2296)', () => {
+    const shell = (phase: string, over: Record<string, unknown> = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...over });
+
+    it('subscribes through the bridge when the shell carries UPDATE_STATE, pulling the current state first', async () => {
+      const state = { action: 'relaunch', shell: { status: 'ready' } };
+      let pushed: ((s: unknown) => void) | null = null;
+      const off = vi.fn();
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUpdateState: vi.fn(async () => state),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return off; }),
+        applyUpdates: vi.fn(async () => true),
+        // The legacy channels must not be touched on a shell that has the new one.
+        onUpdateStatus: vi.fn(),
+        onShellAutoUpdate: vi.fn(),
+      };
+      const host = await importHost();
+      const seen = vi.fn();
+      const unsubscribe = host.watchUpdateState(seen);
+      await vi.waitFor(() => expect(seen).toHaveBeenCalledWith(state));
+      pushed!({ action: 'reload' });
+      expect(seen).toHaveBeenLastCalledWith({ action: 'reload' });
+      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
+      expect(bridge.onUpdateStatus).not.toHaveBeenCalled();
+      expect(bridge.onShellAutoUpdate).not.toHaveBeenCalled();
+      await host.applyUpdates();
+      expect(bridge.applyUpdates).toHaveBeenCalledWith({});
+      unsubscribe();
+      expect(off).toHaveBeenCalledOnce();
+    });
+
+    it('composes the same state from the old channels on a shell that predates UPDATE_STATE', async () => {
+      // A newer OTA renderer on an older shell: the shell pushes its snapshot
+      // and the OTA status separately, and the renderer must still render one
+      // answer from them (shell-first: the relaunch owns the action).
+      let otaCb: ((s: unknown) => void) | null = null;
+      let shellCb: ((s: unknown) => void) | null = null;
+      (window as unknown as Record<string, unknown>).antontron = {
+        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
+        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => ({ available: false })),
+        applyUpdate: vi.fn(async () => true),
+        installShellAutoUpdate: vi.fn(async () => true),
+      };
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      expect(seen).toHaveBeenCalledTimes(1);
+      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, overall: 'idle' });
+      otaCb!({ phase: 'available', version: '2.26.10.7.1' });
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      shellCb!(shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', pending: { reload: true, relaunch: true } });
+      // The one apply picks the shell install on that shell's own channel.
+      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
+      await host.applyUpdates();
+      expect(bridge.installShellAutoUpdate).toHaveBeenCalledWith({});
+      expect(bridge.applyUpdate).not.toHaveBeenCalled();
+      // The legacy manual notice reaches the composed state too.
+      otaCb!({ phase: 'shell-available', version: '2.26.10.9.1', downloadUrl: 'https://x/y.pkg' });
+      expect((await host.getUpdateState())!.shell.manual).toBe(false); // the ready download still wins
+      shellCb!(shell('idle'));
+      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
+    });
+
+    it('on an older shell a manual OTA apply shows progress and reports a failure from the composed state', async () => {
+      let otaCb: ((s: unknown) => void) | null = null;
+      const applyUpdate = vi.fn(async () => false);
+      (window as unknown as Record<string, unknown>).antontron = {
+        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
+        onShellAutoUpdate: vi.fn(() => vi.fn()),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+        applyUpdate,
+      };
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      otaCb!({ phase: 'available', version: 'ui-1' });
+      const result = await host.applyUpdates();
+      expect(applyUpdate).toHaveBeenCalledOnce();
+      expect(result).toBe(false);
+      // Progress was shown while the apply ran, then the failure offers a retry.
+      const phases = seen.mock.calls.map((c) => (c[0] as { ui: { status: string } }).ui.status);
+      expect(phases).toContain('applying');
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'failed' } });
+    });
+
+    it('a manual check on an older shell feeds what it found into the composed state', async () => {
+      (window as unknown as Record<string, unknown>).antontron = {
+        checkForUpdate: vi.fn(async () => ({ updateAvailable: true, newVersion: '2.26.10.7.1' })),
+        onUpdateStatus: vi.fn(() => vi.fn()),
+        onShellAutoUpdate: vi.fn(() => vi.fn()),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+      };
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+      const host = await importHost();
+      await host.checkForUpdates();
+      expect((await host.getUpdateState())!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+    });
+
+    it('publishes nothing on web', async () => {
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen)();
+      expect(seen).not.toHaveBeenCalled();
+      expect(await host.getUpdateState()).toBeNull();
+      expect(await host.applyUpdates()).toBe(false);
+    });
+  });
+
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {
     (window as unknown as Record<string, unknown>).antontron = { getUIVersion: async () => '1.2.3' };
     let host = await importHost();

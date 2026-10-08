@@ -45,6 +45,13 @@ export const IPC = {
   // launch.
   UPDATE_JOURNAL_DRAIN: 'update:journal-drain',
   UPDATE_JOURNAL_ACK: 'update:journal-ack',
+  // The one update state over OTA, server and shell (src/shared/
+  // update-coordinator.ts), pushed on every change and pulled on mount, and the
+  // one apply that picks reload or relaunch for whatever is pending. The three
+  // channels above keep emitting for renderers older than these.
+  UPDATE_STATE: 'update:state',
+  UPDATE_STATE_GET: 'update:state-get',
+  UPDATE_APPLY: 'update:apply',
 
   // Renderer awaits this before leaving the loading screen, so a boot-time
   // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).

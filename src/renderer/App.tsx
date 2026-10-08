@@ -9,7 +9,8 @@ import RestartConfirmHost from './RestartConfirmHost';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
+import { host, type AccountOwnershipQuestion } from './platform/host';
+import type { UpdateCoordinatorState } from '../shared/update-coordinator';
 import { ShellTooOldNotice } from './ShellTooOldNotice';
 import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
@@ -78,12 +79,14 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
+  // The one update state: the loading screen's progress line, the
+  // too-old notice's shell snapshot and the shell telemetry all read it. The
+  // sidebar banner and Settings subscribe to the same state in CoworkApp.
+  const [updateState, setUpdateState] = useState<UpdateCoordinatorState | null>(null);
   // ENG-749: progress line under the welcome orb while the loading screen is
   // held open through a boot-time update: an OTA, or the boot install of a
   // stranded shell update.
-  const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const [shellAuto, setShellAuto] = useState<ShellAutoUpdateSnapshot | null>(null);
-  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } });
+  const bootStatus = deriveBootStatus(updateState);
   // ENG-1047: is the installed shell inside the supported desktop window? The
   // UI hot-updates while the shell waits for a relaunch, so a newer UI on a
   // shell weeks old is routine — and until now silent. Resolved once per
@@ -130,30 +133,15 @@ export default function App() {
     applyArcadePreset(skin);
   }, [theme, skin]);
 
-  // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
-  // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` is the manual reinstall notice (ENG-849), which the
-  // sidebar banner owns.
+  // Mounted for the app's lifetime so the loading-screen line is live while
+  // init() holds on the gate (ENG-749), and so shell auto-update milestones
+  // reach PostHog from the first screen onward, onboarding included. The
+  // subscription pulls the current state first, so a reload recovers it.
   useEffect(() => {
-    return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') return;
-      setOtaPhase(status?.phase ?? null);
+    return host.watchUpdateState((state) => {
+      setUpdateState(state);
+      trackShellUpdatePhase(state.shell.snapshot);
     });
-  }, []);
-
-  // Report shell auto-update milestones to PostHog, and feed the boot line.
-  // Pull once for reload recovery, then subscribe. No-ops in web.
-  // Tracked here, not in CoworkApp, so onboarding screens are covered.
-  useEffect(() => {
-    let cancelled = false;
-    const receive = (snapshot: ShellAutoUpdateSnapshot) => {
-      if (cancelled) return;
-      setShellAuto(snapshot ?? null);
-      trackShellUpdatePhase(snapshot);
-    };
-    host.getShellAutoUpdate().then(receive).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate(receive);
-    return () => { cancelled = true; unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -348,7 +336,7 @@ export default function App() {
       {page !== 'loading' && shellSupport?.status === 'too-old' && !tooOldDismissed && (
         <ShellTooOldNotice
           verdict={shellSupport}
-          shellAuto={shellAuto}
+          shellAuto={updateState?.shell.snapshot ?? null}
           onDismiss={() => setTooOldDismissed(true)}
           topOffset={isMac ? 40 : 12}
         />

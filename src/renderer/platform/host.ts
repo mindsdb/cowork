@@ -19,6 +19,13 @@ import type { UpdateCheckSummary } from '../../shared/update-types';
 import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
+import {
+  createUpdateCoordinator,
+  type OtaStatus,
+  type ShellSnapshot,
+  type UpdateCoordinator,
+  type UpdateCoordinatorState,
+} from '../../shared/update-coordinator';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
@@ -809,26 +816,9 @@ function mergeShellUpdate(
   };
 }
 
-export interface ShellAutoUpdateSnapshot {
-  phase: 'disabled' | 'idle' | 'checking' | 'available' | 'downloading' |
-    'ready-to-install' | 'installing' | 'complete' | 'failed';
-  mode: 'auto' | 'manual';
-  channel: 'prod' | 'stable' | 'preview';
-  currentVersion: string;
-  targetVersion?: string;
-  progress?: { transferred: number; total: number; percent: number; bytesPerSecond?: number };
-  recoverable?: boolean;
-  errorCode?: string;
-  errorMessage?: string;
-  disabledReason?: string;
-  trigger?: 'boot' | 'periodic' | 'manual' | 'retry';
-  /** Whether the update downloaded before the last relaunch was applied. Absent
-   *  on older shells. */
-  lastInstall?: { applied: boolean; version: string; expected: string; source?: 'user' | 'boot' };
-  /** Who asked for the current install: a Restart click or the boot install
-   *  of a stranded download. Absent on older shells. */
-  installSource?: 'user' | 'boot';
-}
+/** The shell auto-updater snapshot as the renderer sees it: the shared shape
+ *  the update coordinator reads. Older shells omit the newer optional fields. */
+export type ShellAutoUpdateSnapshot = ShellSnapshot;
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
   phase: 'disabled',
@@ -873,12 +863,144 @@ export async function installShellAutoUpdate(hooks: { onProceed?: () => void } =
   return false;
 }
 
+// ---- The one update state --------------------------------------------------
+//
+// Main holds the coordinator and pushes its state on UPDATE_STATE. A renderer
+// on a shell older than that channel composes the same state here from the
+// channels that shell does have (the OTA status, the shell snapshot and the
+// manual notice), through the same reducer, so every surface still renders
+// one answer. Web has no updater: nothing is ever published.
+
+let fallbackCoordinator: UpdateCoordinator | null = null;
+function localUpdateState(): UpdateCoordinator {
+  if (!fallbackCoordinator) fallbackCoordinator = createUpdateCoordinator();
+  return fallbackCoordinator;
+}
+
+function shellCarriesUpdateState(): boolean {
+  return isElectron && typeof bridge.getUpdateState === 'function' && typeof bridge.onUpdateState === 'function';
+}
+
+/** Watch the one update state. Called with the current state first,
+ *  then on every change. Returns the unsubscribe. */
+export function watchUpdateState(cb: (state: UpdateCoordinatorState) => void): () => void {
+  if (!isElectron) return () => {};
+  if (shellCarriesUpdateState()) {
+    let cancelled = false;
+    Promise.resolve(bridge.getUpdateState())
+      .then((state) => { if (!cancelled && state) cb(state); })
+      .catch(() => {});
+    const off = bridge.onUpdateState((state: UpdateCoordinatorState) => { if (!cancelled) cb(state); });
+    return () => { cancelled = true; off(); };
+  }
+  const local = localUpdateState();
+  const offOta = onUpdateStatus((status) => local.feed({ ota: status as OtaStatus }));
+  // The mount-time pull recovers the snapshot after a reload; a push that
+  // lands first is newer than what the pull answers with, and wins.
+  let shellPushed = false;
+  const offShell = onShellAutoUpdate((snapshot) => { shellPushed = true; local.feed({ shell: snapshot }); });
+  getShellAutoUpdate().then((snapshot) => { if (!shellPushed) local.feed({ shell: snapshot }); }).catch(() => {});
+  getShellUpdate()
+    .then((notice) => {
+      if (notice) local.feed({ shellManual: { version: notice.version, currentVersion: notice.currentVersion, downloadUrl: notice.downloadUrl ?? null } });
+    })
+    .catch(() => {});
+  const offLocal = local.subscribe(cb);
+  cb(local.getState());
+  return () => { offOta(); offShell(); offLocal(); };
+}
+
+/** The current update state, or null off Electron. */
+export async function getUpdateState(): Promise<UpdateCoordinatorState | null> {
+  if (!isElectron) return null;
+  if (shellCarriesUpdateState()) {
+    try { return (await bridge.getUpdateState()) ?? null; } catch { return null; }
+  }
+  return localUpdateState().getState();
+}
+
+/** The one apply: resolves whatever is pending by the minimal sufficient step,
+ *  and inherits the running-tasks confirmation. On a
+ *  shell that predates UPDATE_APPLY the step is chosen here from the composed
+ *  state and sent over the channel that shell has. `open-download-page` is the
+ *  caller's own action and never reaches here. */
+export async function applyUpdates(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
+  if (!isElectron) return false;
+  if (typeof bridge.applyUpdates === 'function') {
+    return guardRestart(options => bridge.applyUpdates(options), hooks);
+  }
+  const local = localUpdateState();
+  const state = local.getState();
+  switch (state.action) {
+    case 'relaunch':
+      return installShellAutoUpdate(hooks);
+    case 'reload': {
+      // An older main pushes `downloading` only for a server apply, so the
+      // composed state shows progress from here: at once for a UI-only
+      // reload, which never asks, and from the guard's onProceed otherwise.
+      const before = local.getInput().ota;
+      const showProgress = () => local.feed({ ota: { phase: 'downloading', version: state.version } });
+      if (state.server.status !== 'ready') showProgress();
+      try {
+        const result = await applyUpdate({ onProceed: () => { showProgress(); hooks.onProceed?.(); } });
+        if (result === 'cancelled') local.feed({ ota: before });
+        else if (result === false) local.feed({ ota: { phase: 'error', version: state.version } });
+        return result;
+      } catch (error) {
+        local.feed({ ota: { phase: 'error', version: state.version } });
+        throw error;
+      }
+    }
+    case 'retry': {
+      const snapshot = await checkShellAutoUpdate();
+      local.feed({ shell: snapshot });
+      return snapshot.phase !== 'failed';
+    }
+    case 'download': {
+      const snapshot = await downloadShellAutoUpdate();
+      local.feed({ shell: snapshot });
+      return snapshot.phase === 'downloading' || snapshot.phase === 'ready-to-install';
+    }
+    default:
+      return false;
+  }
+}
+
+/** On a shell that predates UPDATE_STATE, what a manual check found is fed
+ *  into the composed state here, as a newer main does itself. */
+function feedCheckSummary(summary: UpdateCheckSummary): void {
+  if (shellCarriesUpdateState() || !summary.ok) return;
+  const local = localUpdateState();
+  if (summary.uiUpdateAvailable || summary.serverUpdateAvailable) {
+    local.feed({ ota: {
+      phase: 'available',
+      version: summary.uiVersion ?? summary.serverVersion,
+      uiUpdate: summary.uiUpdateAvailable,
+      uiVersion: summary.uiVersion,
+      serverUpdate: summary.serverUpdateAvailable,
+      serverVersion: summary.serverVersion,
+      serverComponent: summary.serverComponent,
+    } });
+  } else if (local.getInput().ota?.phase === 'available') {
+    local.feed({ ota: { phase: 'idle' } });
+  }
+  if (summary.shellUpdateAvailable && summary.shellVersion) {
+    local.feed({ shellManual: { version: summary.shellVersion, downloadUrl: summary.shellDownloadUrl ?? null } });
+  }
+}
+
 // On-demand check for a newer UI, server, or shell version. Detection only —
-// never applies; call applyUpdate() (UI/server) or download the installer
-// (shell). Electron-only: the web app has no updater (hosted instances update
-// via redeploy, ENG-852), so it resolves to a benign "up to date" and the
-// Settings control is hidden there.
+// never applies; call applyUpdates() to resolve what it found. Electron-only:
+// the web app has no updater (hosted instances update via redeploy, ENG-852),
+// so it resolves to a benign "up to date" and the Settings control is hidden
+// there.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  const summary = await checkForUpdatesUnfed();
+  feedCheckSummary(summary);
+  return summary;
+}
+
+async function checkForUpdatesUnfed(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
     const reply = await bridge.checkForUpdate();
     if (reply && typeof reply === 'object' && 'ok' in reply) {
@@ -1714,6 +1836,9 @@ export const host = {
   applyUpdate,
   drainUpdateJournal,
   ackUpdateJournal,
+  watchUpdateState,
+  getUpdateState,
+  applyUpdates,
   checkForUpdates,
   getShellUpdate,
   getShellSupport,

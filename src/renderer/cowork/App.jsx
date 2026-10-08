@@ -65,7 +65,6 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
-import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -1864,40 +1863,16 @@ function AppCore() {
 
   const toastManager = useToastManager();
   useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
-  // OTA UI update + shell (desktop binary) update lifecycle — status, the
-  // apply/download/dismiss handlers, and the host subscriptions that feed
-  // them — all live in useAppUpdates.
+  // The one update state over OTA, server and shell, the one banner derived
+  // from it (shell-first, dismissal-filtered), and the one action: all in
+  // useAppUpdates. Settings renders from the same state, so the two surfaces
+  // cannot disagree.
   const {
-    updateStatus,
-    shellUpdate,
-    shellAutoUpdate,
-    shellUpdateDismissed,
-    handleApplyUpdate,
-    handleDownloadShellUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleShellAutoUpdateAction,
+    updateState,
+    updateBanner,
+    handleUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
-
-  // Collapse the three update mechanisms into one shell-first banner (or null).
-  // The manual notice is dismissal-filtered here before it can win the slot.
-  const updateBanner = deriveUpdateBanner({
-    ota: updateStatus,
-    shellAuto: shellAutoUpdate,
-    // Linux ships a .deb, which is installed rather than launched, so the
-    // notice names the install command instead of saying to open it.
-    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed
-      ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
-      : null,
-  });
-  const handleUpdateAction = useCallback((action) => {
-    if (action === 'apply-ota') return handleApplyUpdate();
-    if (action === 'shell-auto') return handleShellAutoUpdateAction();
-    if (action === 'download-installer') return handleDownloadShellUpdate();
-    return undefined;
-  }, [handleApplyUpdate, handleShellAutoUpdateAction, handleDownloadShellUpdate]);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -5620,12 +5595,8 @@ function AppCore() {
               isSsoConnected={ssoConnected}
               ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
-              shellUpdate={shellUpdate}
-              onDownloadShellUpdate={handleDownloadShellUpdate}
-              shellAutoUpdate={shellAutoUpdate}
-              onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
-              onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
-              onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
+              updateState={updateState}
+              onUpdateAction={handleUpdateAction}
             />
           </Modal>
         ) : (
@@ -5673,12 +5644,8 @@ function AppCore() {
                 isSsoConnected={ssoConnected}
                 ssoError={ssoError}
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
-                shellUpdate={shellUpdate}
-                onDownloadShellUpdate={handleDownloadShellUpdate}
-                shellAutoUpdate={shellAutoUpdate}
-                onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
-                onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
-                onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
+                updateState={updateState}
+                onUpdateAction={handleUpdateAction}
               />
             </ModalBody>
           </Modal>
@@ -5848,8 +5815,8 @@ function AppCore() {
         </ModalBody>
       </Modal>
 
-      {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {/* OTA update overlay — shown while a UI/server apply is in flight */}
+      {(updateState?.applying === 'downloading' || updateState?.applying === 'reloading') && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5870,8 +5837,8 @@ function AppCore() {
             color: 'var(--text-strong, #e0e0e0)',
             fontFamily: 'var(--font-sans)',
           }}>
-            {updateStatus.phase === 'downloading'
-              ? `Updating${updateStatus.version ? ` to ${updateStatus.version}` : ''}...`
+            {updateState.applying === 'downloading'
+              ? `Updating${updateState.version ? ` to ${updateState.version}` : ''}...`
               : 'Almost there...'}
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
