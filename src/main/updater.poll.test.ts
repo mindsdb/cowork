@@ -377,6 +377,77 @@ describe('the status an apply leaves behind', () => {
     updateCoordinator.feed({ ota: null, server: null });
   });
 
+  it('an offer found while a UI reload commits is kept for the apply\'s final settle', async () => {
+    const { checkForServerUpdate } = await import('./server-updater');
+    const { applyUIUpdate, checkForUIUpdate, getCachedVersion } = await import('./ui-updater');
+    // Version A is being applied; a check finds version B mid-reload.
+    const uiA = uiFound;
+    const uiB: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.8.1' };
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    const w = win({ navigates: false });
+    try {
+      // The last check offered A with the server current; the forced apply
+      // reuses it, so the server is left alone and A reloads.
+      vi.mocked(checkForUIUpdate).mockResolvedValue(uiA);
+      await checkForUpdates();
+      const applying = handleUnifiedApply(() => w as never, { force: true });
+      await vi.waitFor(() => expect(w.loadFile).toHaveBeenCalledTimes(1));
+      expect(updateCoordinator.getState().applying).toBe('reloading');
+      vi.mocked(checkForUIUpdate).mockResolvedValue(uiB);
+      await checkForUpdates();
+      // The reload commits while the apply still waits for the page to
+      // finish loading: the apply has not let go of the status yet.
+      vi.mocked(getCachedVersion).mockReturnValue(uiA.newVersion!);
+      w.emit('did-navigate');
+      w.emit('did-finish-load');
+      expect(await applying).toBe(true);
+      // A landed, B did not: B is in front of the person, not lost.
+      expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+    } finally {
+      vi.mocked(getCachedVersion).mockReturnValue(null);
+      vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
+      updateCoordinator.feed({ ota: null, server: null });
+    }
+  });
+
+  it('a check landing during the Restart\'s server re-check holds its offer, and the offer returns with the dialog', async () => {
+    const { checkForServerUpdate } = await import('./server-updater');
+    const { checkForUIUpdate } = await import('./ui-updater');
+    const { countRunningTasks } = await import('./running-tasks');
+    const uiB: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.8.1' };
+    // The last check offered UI A with the server current, so the click does
+    // not ask up front and goes straight to its re-check.
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    expect(updateCoordinator.getState()).toMatchObject({ action: 'reload', ui: { version: '2.26.10.7.1' } });
+    // The re-check hangs until released, then finds a server update the
+    // last check did not know about, with two tasks running.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    vi.mocked(checkForServerUpdate).mockImplementationOnce(async () => { await gate; return serverFound; });
+    vi.mocked(countRunningTasks).mockResolvedValueOnce(2);
+    try {
+      const request = handleUnifiedApply(() => null, {});
+      await new Promise((r) => setTimeout(r, 0));
+      expect(updateCoordinator.getState().applying).toBe('downloading');
+      // A check lands meanwhile and finds UI B.
+      vi.mocked(checkForUIUpdate).mockResolvedValue(uiB);
+      await checkForUpdates();
+      expect(updateCoordinator.getState().applying).toBe('downloading');
+      release();
+      expect(await request).toEqual({ confirm: true, runningTasks: 2 });
+      // The dialog opens over the newest offer, not over "Updating…".
+      expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+    } finally {
+      release();
+      vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
+      vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+      updateCoordinator.feed({ ota: null, server: null });
+    }
+  });
+
   it('a window closed before its reload commits does not throw when the health window elapses', async () => {
     const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
