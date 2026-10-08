@@ -13,7 +13,6 @@
 import { forwardRef } from 'react';
 import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode } from 'react';
 import { cva } from 'class-variance-authority';
-import Ico from '../Icons';
 import { cn } from '../../lib/cn';
 import { ITEM_ROOT, ItemActions, ItemTitle } from './itemParts';
 import type { ItemElement, ItemSlots } from './itemParts';
@@ -134,33 +133,6 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
   );
 });
 ListItem.displayName = 'ListItem';
-
-export interface NewRowProps {
-  label: ReactNode;
-  onClick: () => void;
-  className?: string;
-}
-
-/** Trailing "+ New …" row: the list layout's <NewTile>. */
-export const NewRow = forwardRef<HTMLButtonElement, NewRowProps>(function NewRow({ label, onClick, className }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'm-0 flex w-full cursor-pointer items-center gap-3 border-0 bg-transparent text-left font-body text-sm text-ink-3 transition-colors',
-        'hover:bg-surface-2 hover:text-ink focus-visible:[box-shadow:var(--ring)] focus-visible:outline-none',
-        ROW_PAD,
-        className,
-      )}
-    >
-      <span className="inline-flex w-6 shrink-0 justify-center">{Ico.plus(14)}</span>
-      {label}
-    </button>
-  );
-});
-NewRow.displayName = 'NewRow';
 
 /** A full-width line inside a ListGroup (OAuth waiting, an inline error). */
 export function ListNotice({ children, className }: { children: ReactNode; className?: string }) {

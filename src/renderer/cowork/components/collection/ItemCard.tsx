@@ -2,7 +2,6 @@
 //
 //   <CardGrid className="px-8 pt-5 pb-14">
 //     {items.map((i) => <ItemCard key={i.id} {...slots(i)} />)}
-//     <NewTile label="New project" onClick={create} />
 //   </CardGrid>
 //
 // One card language: flat at rest (border only), lift on hover when it opens,

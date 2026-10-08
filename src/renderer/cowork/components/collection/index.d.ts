@@ -32,7 +32,7 @@ export function SortPill(props: {
 
 export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | null>, enabled?: boolean): void;
 export { CardGrid, ItemCard } from './ItemCard';
-export { ListGroup, ListItem, NewRow, ListNotice } from './ListGroup';
+export { ListGroup, ListItem, ListNotice } from './ListGroup';
 export { ItemActions } from './itemParts';
 export type { ItemSlots } from './itemParts';
 export { StatusDot } from './StatusDot';
@@ -40,6 +40,5 @@ export type { StatusTone } from './StatusDot';
 
 export { CollectionState } from './CollectionState';
 export { ViewToggle, useCollectionView } from './ViewToggle';
-export { NewTile } from './NewTile';
 export { FilterMenu, FilterChips } from './FilterMenu';
 export type { Filter, FilterOption } from './FilterMenu';

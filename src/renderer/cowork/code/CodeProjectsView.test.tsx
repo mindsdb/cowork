@@ -82,13 +82,12 @@ describe('CodeProjectsView', () => {
       />,
     );
 
-    // The header button and the trailing tile both create.
-    for (const button of screen.getAllByRole('button', { name: 'New project' })) await user.click(button);
+    await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
     await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
     await user.click(screen.getByRole('button', { name: 'MindsHub actions' }));
     await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
-    expect(onCreate).toHaveBeenCalledTimes(2);
+    expect(onCreate).toHaveBeenCalledTimes(1);
     expect(onEdit).toHaveBeenCalledWith('mindshub');
     expect(onDelete).toHaveBeenCalledWith('mindshub');
   });

@@ -21,10 +21,8 @@ import {
   SortPill,
   ViewToggle,
   CollectionState,
-  NewTile,
   CardGrid,
   ListGroup,
-  NewRow,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -861,16 +859,12 @@ export default function ProjectsView({
             {visibleProjects.map((p) => (
               <ProjectCard key={p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.name === p.name} />
             ))}
-            {/* Trailing dashed tile; opens the same NewProjectModal as the
-                header button. Hidden on phones, where the FAB is the create entry. */}
-            <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </CardGrid>
         ) : (
           <ListGroup className={LIST_CLASS}>
             {visibleProjects.map((p) => (
               <ProjectRow key={p.name || p.path} {...itemProps(p)} />
             ))}
-            <NewRow label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </ListGroup>
         )}
       </CollectionState>
