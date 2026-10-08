@@ -139,6 +139,16 @@ describe('deriveUpdateBanner', () => {
       expect(bannerFor({ shellAuto: { phase: 'ready-to-install', targetVersion: 'v' } }, { dismissed: 'v' })?.kind).toBe('shell-auto');
     });
 
+    it('a dismissed notice does not hide a reload pending behind it', () => {
+      // The notice outranks the reload in the ladder, but dismissal applies to
+      // the notice alone: the Restart underneath still shows, as before.
+      const b = bannerFor({ ota: { phase: 'available', version: '0.26.8.1' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' });
+      expect(b).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.8.1' });
+      // A retryable OTA failure shows through too; a rolled-back bundle does not.
+      expect(bannerFor({ ota: { phase: 'error', version: '0.26.8.1' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' })).toMatchObject({ kind: 'ota-error', action: 'reload' });
+      expect(bannerFor({ ota: { phase: 'rolled-back' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' })).toBeNull();
+    });
+
     it('carries the caller\'s .deb flag so both surfaces name the real install step', () => {
       expect(bannerFor({ shellManual: { version: '0.26.8.2', debInstaller: true } })?.debInstaller).toBe(true);
       expect(bannerFor({ shellManual: { version: '0.26.8.2', debInstaller: false } })?.debInstaller).toBe(false);
