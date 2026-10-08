@@ -523,6 +523,24 @@ function nextPollDelay(schedules) {
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
+/* The trailing questions the server refused with a 409 (`turn_in_progress`),
+   each with the sentence under it, or [] when the transcript does not end
+   with one. The server never saved them, so a refetch of saved history would
+   drop them; the caller appends them after it. */
+export function unsavedRefusedQuestions(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  let start = rows.length;
+  while (
+    start >= 2
+    && rows[start - 1]?.role === 'error'
+    && rows[start - 1].code === 'turn_in_progress'
+    && rows[start - 2]?.role === 'user'
+  ) {
+    start -= 2;
+  }
+  return rows.slice(start);
+}
+
 // Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
 // captures the token with begin() and applies its result only while isCurrent()
 // still holds. Both starting a newer detail (begin) AND leaving detail — to the
@@ -1009,11 +1027,14 @@ function AppCore() {
               const reconciled = applySessionMessages(cid, fresh.messages);
               setTasks((tasksPrev) => tasksPrev.map((t) => {
                 if (t.id !== cid) return t;
+                // Only the most recent page — merge against what the task
+                // already has. The server never saved refused questions, so
+                // any the merge dropped go back after it.
+                const merged = mergeMessagePage(t.messages, reconciled, knownIds);
+                const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
                 return {
                   ...t,
-                  // Only the most recent page — merge against what the
-                  // task already has instead of replacing wholesale.
-                  messages: mergeMessagePage(t.messages, reconciled, knownIds),
+                  messages: [...merged, ...refused],
                   // Same array the merge just used. Inert today — applySessionMessages
                   // neither adds nor removes an id-bearing row, so both see the
                   // same oldest id — but the two decisions must agree on which
@@ -1460,6 +1481,8 @@ function AppCore() {
     drainNextQueuedMessageRef.current?.(cidToCancel);
   }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream, releaseSlotClaim]);
 
+  /** @param {string[]} taskIds @param {string|null} cid @param {string} message
+   *  @param {import('./api').StreamFailure} event */
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
     // A dead turn must not leave a stale pending question behind — that
@@ -1479,7 +1502,12 @@ function AppCore() {
      * already cleared the shared controller if its stream held it.
      */
     releaseSlotClaim(...ids);
-    ids.forEach((id) => markInFlightDone(id));
+    /* A 409 (`turn_in_progress`) means the server is still running another
+       turn in this conversation. Its entry stays in the in-flight set, so the
+       heartbeat keeps polling and refetches the conversation once that turn
+       finishes. The refused question survives that refetch (see
+       unsavedRefusedQuestions). */
+    if (event?.code !== 'turn_in_progress') ids.forEach((id) => markInFlightDone(id));
 
     let releaseRecovery;
     const recovery = new Promise((resolve) => { releaseRecovery = resolve; });
@@ -1494,9 +1522,17 @@ function AppCore() {
       streamsAtStart[id] = streamCountRef.current.get(id) ?? 0;
     });
     const knownIds = knownIdsOf(cid);
+    /* Two failures skip the history reload, so the error shows at once
+       instead of after up to three rounds of two history requests:
+       - A refusal before the stream (it carries an HTTP status). The server
+         saved nothing, so there is no persisted ending to find.
+       - A busy server (server_busy), before the stream or inside it. The
+         server found no free database connection, so it saved nothing new,
+         and each history request would wait on the same exhausted pool. */
+    const skipReload = typeof event?.http_status === 'number' || event?.code === 'server_busy';
     let loaded = null;
     try {
-      loaded = cid
+      loaded = cid && !skipReload
         ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
         : null;
     } finally {
@@ -2215,13 +2251,15 @@ function AppCore() {
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
-  const handleSwitchToAirAndResend = (text) => {
+  const handleSwitchToAirAndResend = (text, attachments = null) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
     setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
+    /* `attachments` is the failed message's own list, so its files go with the
+       resend and the composer's staged files stay put. */
+    handleSendInTask(text, attachments, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
@@ -3266,8 +3304,11 @@ function AppCore() {
     try {
       const fresh = await fetchHealth();
       if (fresh && typeof fresh === 'object') {
-        setHealth(fresh);
         setServerOnline(fresh.status === 'ok');
+        // fetchHealth resolves offline on a timeout or network failure. It
+        // has no readiness answer, so preserve the last config we received.
+        if (fresh.status === 'offline') return health?.config_ready !== false;
+        setHealth(fresh);
         return fresh.config_ready !== false;
       }
     } catch {

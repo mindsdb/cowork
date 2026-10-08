@@ -58,6 +58,44 @@ describe('transitionShellUpdate', () => {
     expect(ready.progress).toBeUndefined();
   });
 
+  // ENG-2764: no progress before ready-to-install means a cached replay.
+  describe('bytesTransferred', () => {
+    const readyAfter = (events: Parameters<typeof transitionShellUpdate>[1][]) =>
+      events.reduce(transitionShellUpdate, idle());
+
+    it('stays unset when a download completes without a single progress event', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+      ]);
+      expect(ready.phase).toBe('ready-to-install');
+      expect(ready.bytesTransferred).toBeFalsy();
+    });
+
+    it('latches on the first progress event and survives to ready-to-install', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_PROGRESS', progress: { transferred: 1, total: 100, percent: 1 } },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+      ]);
+      expect(ready).toMatchObject({ phase: 'ready-to-install', bytesTransferred: true });
+    });
+
+    it('clears on a new check, so a later cache replay is not misread as a fresh download', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_PROGRESS', progress: { transferred: 1, total: 100, percent: 1 } },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+        { type: 'RECONCILED', currentVersion: '2.1.0', installed: true },
+        { type: 'CHECK_REQUESTED', trigger: 'periodic' },
+      ]);
+      expect(ready.bytesTransferred).toBeUndefined();
+    });
+  });
+
   it('ignores late or illegal events instead of rewinding state', () => {
     const snapshot = idle();
     expect(transitionShellUpdate(snapshot, {
@@ -183,7 +221,8 @@ describe('transitionShellUpdate', () => {
       refreshing: undefined,
     });
     expect(settled).not.toHaveProperty('errorCode');
-    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' }).phase).toBe('installing');
+    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' })).toMatchObject({ phase: 'installing', installSource: 'user' });
+    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED', source: 'boot' }).installSource).toBe('boot');
   });
 
   it('reconciles installation across the relaunch boundary', () => {
@@ -248,6 +287,38 @@ describe('transitionShellUpdate', () => {
     const checking = transitionShellUpdate(complete, { type: 'CHECK_REQUESTED', trigger: 'boot' });
     expect(transitionShellUpdate(checking, { type: 'NO_UPDATE' })).toMatchObject({ phase: 'idle', lastInstall });
     expect(transitionShellUpdate(complete, { type: 'DISABLED', reason: 'rollout-disabled' }).lastInstall).toEqual(lastInstall);
+  });
+
+  it('re-arms an install that never left the process', () => {
+    const ready: ShellUpdateSnapshot = { ...idle(), phase: 'ready-to-install', targetVersion: '2.1.0' };
+    const installing = transitionShellUpdate(ready, { type: 'INSTALL_REQUESTED' });
+    expect(installing.phase).toBe('installing');
+    // Frozen: a newer build found by a refresh during the sidecar stop cannot
+    // move the target, and no new check starts.
+    expect(transitionShellUpdate(installing, { type: 'SUPERSEDED', targetVersion: '2.2.0' })).toBe(installing);
+    expect(transitionShellUpdate(installing, { type: 'CHECK_REQUESTED', trigger: 'periodic' })).toBe(installing);
+
+    const aborted = transitionShellUpdate(installing, {
+      type: 'INSTALL_ABORTED', code: 'update-request-failed', message: 'installer launch failed',
+    });
+    expect(aborted).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      recoverable: true,
+      errorCode: 'update-request-failed',
+      errorMessage: 'installer launch failed',
+    });
+    // Only a frozen install can be aborted.
+    expect(transitionShellUpdate(ready, { type: 'INSTALL_ABORTED', code: 'x' })).toBe(ready);
+
+    // The reason shows until the next attempt or a new target, then goes.
+    const retried = transitionShellUpdate(aborted, { type: 'INSTALL_REQUESTED' });
+    expect(retried.phase).toBe('installing');
+    expect(retried).not.toHaveProperty('errorCode');
+    expect(retried).not.toHaveProperty('errorMessage');
+    const superseded = transitionShellUpdate(aborted, { type: 'SUPERSEDED', targetVersion: '2.2.0' });
+    expect(superseded).toMatchObject({ phase: 'downloading', targetVersion: '2.2.0' });
+    expect(superseded).not.toHaveProperty('errorCode');
   });
 
   it('fails closed when disabled', () => {

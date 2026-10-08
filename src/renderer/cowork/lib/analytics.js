@@ -104,7 +104,7 @@ const EVENTS = {
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
-  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -939,6 +939,7 @@ export function trackShellUpdatePhase(snapshot) {
       current_version: install.version,
       target_version: install.expected,
       error_code: install.applied ? null : 'install-not-applied',
+      install_source: install.source ?? null,
     });
   }
   const phase = snapshot.phase === 'downloading' ? 'available' : snapshot.phase;
@@ -949,6 +950,9 @@ export function trackShellUpdatePhase(snapshot) {
     ...base,
     phase,
     trigger: snapshot.trigger ?? null,
+    // 'boot' is the launch-time install of a stranded download (ENG-2764);
+    // 'user' is a Restart click. Null outside the installing milestone.
+    install_source: phase === 'installing' ? (snapshot.installSource ?? null) : null,
     current_version: snapshot.currentVersion || null,
     target_version: snapshot.targetVersion ?? null,
     error_code: snapshot.errorCode ?? null,

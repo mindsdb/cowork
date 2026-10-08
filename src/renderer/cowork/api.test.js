@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -685,6 +685,165 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
+/* A question refused before the stream starts: cowork-server answers 503 when
+   no database connection frees in time, and 409 when the conversation already
+   has a running turn. The failure has to keep the status, the body's code and
+   Retry-After, so the chat can show the busy card's countdown, and the body's
+   sentence in whatever shape it arrives. Real Response objects, because the
+   body can only be read once. */
+describe('streamNewSession: a refusal before the stream', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body, headers = {}) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    {
+      status,
+      headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json', ...headers },
+    },
+  ));
+
+  const failure = () => new Promise((resolve) => {
+    streamNewSession('hi', {
+      onDone: () => resolve(null),
+      onError: (message, event) => resolve({ message, event }),
+    });
+  });
+
+  it("keeps a busy refusal's status, code and delay-seconds Retry-After", async () => {
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    const before = Date.now();
+    const { message, event } = await failure();
+    const after = Date.now();
+
+    expect(message).toBe(BUSY);
+    expect(event).toMatchObject({ code: 'server_busy', http_status: 503, retry_after: 5 });
+    const retryAt = Date.parse(event.retry_at);
+    expect(retryAt).toBeGreaterThanOrEqual(before + 5000);
+    expect(retryAt).toBeLessThanOrEqual(after + 5000);
+  });
+
+  it('reads an HTTP-date Retry-After as the instant itself', async () => {
+    // An HTTP-date has whole seconds only.
+    const at = new Date(Math.ceil(Date.now() / 1000) * 1000 + 30_000);
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': at.toUTCString() }));
+
+    const before = Date.now();
+    const { event } = await failure();
+    const after = Date.now();
+
+    expect(event.retry_at).toBe(at.toISOString());
+    expect(event.retry_after).toBeGreaterThanOrEqual(Math.ceil((at.getTime() - after) / 1000));
+    expect(event.retry_after).toBeLessThanOrEqual(Math.ceil((at.getTime() - before) / 1000));
+  });
+
+  it("keeps a second question's 409 and its sentence, with no wait to count down", async () => {
+    vi.stubGlobal('fetch', refuse(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe(SECOND);
+    expect(event).toEqual({ code: 'turn_in_progress', http_status: 409, retry_after: null, retry_at: null });
+  });
+
+  it("shows an object detail's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', refuse(403, {
+      detail: { code: 'permission_denied', message: 'Your current role does not allow this action.' },
+    }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Your current role does not allow this action.');
+    expect(event).toMatchObject({ code: 'permission_denied', http_status: 403 });
+  });
+
+  it('shows a plain-text error body instead of the status-line fallback', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Internal Server Error');
+    expect(event).toMatchObject({ code: 'stream_error', http_status: 500 });
+  });
+});
+
+/* cowork-server answers a permission refusal with detail {code, message}. Every
+   request that throws on a refusal shows that message, never [object Object],
+   and keeps the status for callers that branch on it. */
+describe('a refused request with an object detail', () => {
+  const DENIED = 'Your current role does not allow this action.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    { status, headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json' } },
+  ));
+  const denied = () => refuse(403, { detail: { code: 'permission_denied', message: DENIED } });
+
+  it("deleteArtifact shows the 403's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe('permission_denied');
+  });
+
+  it.each([
+    ['unpublishArtifact', () => unpublishArtifact('/tmp/general/dash')],
+    ['deleteProject', () => deleteProject({ id: 'proj-1', name: 'general' })],
+    ['writeProjectFile', () => writeProjectFile('general', 'notes.md', 'hi')],
+    ['uploadProjectFiles', () => uploadProjectFiles('general', [new File(['x'], 'a.txt')])],
+    ['deleteProjectFile', () => deleteProjectFile('general', 'notes.md')],
+    ['deleteConversationTurn', () => deleteConversationTurn('conv-1', 0)],
+    ['deleteConversation', () => deleteConversation('conv-1')],
+    ['req (deleteAttachment)', () => deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' })],
+  ])("%s shows the 403's message and keeps its status", async (_name, call) => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await call().catch((e) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+  });
+
+  it('req shows a plain-text error body, which a JSON read used to consume', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const err = await deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Internal Server Error');
+    expect(err.status).toBe(500);
+  });
+
+  it("req joins a validation list's messages", async () => {
+    vi.stubGlobal('fetch', refuse(422, { detail: [{ msg: 'field required' }, { msg: 'not a number' }] }));
+
+    const err = await deleteAttachment('att-1').catch((e) => e);
+
+    expect(err.message).toBe('field required, not a number');
+    expect(err.status).toBe(422);
+  });
+
+  it('falls back to the status line when the body says nothing', async () => {
+    vi.stubGlobal('fetch', refuse(502, ''));
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Delete failed (502)');
+  });
+});
+
 // The connection can close cleanly (no thrown error) with no
 // response.completed/failed — that used to fire onDone, rendering a
 // partial answer as finished.
@@ -776,6 +935,61 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
 
     expect(health.status).toBe('offline');
     expect(setAntonInstallId).not.toHaveBeenCalled();
+  });
+});
+
+/* Every send waits on this check first. With no bound, a server that holds
+   the request open leaves Send busy with no message, for every tester at once. */
+describe('fetchHealth gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('reports offline after SHORT_REQUEST_TIMEOUT_MS instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    const fetchMock = _abortAwareFetch(10 * 60_000, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
+  });
+
+  /* An expired token waits for its refresh, and a stalled Keycloak never
+     finishes it, so the deadline has to cover the token wait too. */
+  it('reports offline at SHORT_REQUEST_TIMEOUT_MS while the access token never arrives', async () => {
+    vi.useFakeTimers();
+    hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers normally when a valid token arrives inside the deadline', async () => {
+    vi.useFakeTimers();
+    __resetOrganizationRequestBoundaryForTests();
+    const token = accessToken(ORGANIZATION_A);
+    hostMock.getAccessToken.mockImplementationOnce(
+      () => new Promise((resolve) => { setTimeout(() => resolve(token), SHORT_REQUEST_TIMEOUT_MS - 1_000); }),
+    );
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'ok' });
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${token}`);
   });
 });
 
@@ -972,8 +1186,8 @@ describe('cancelResponse', () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
   });
 
-  /* Stop sends no reason, so the server keeps saving it as a Stop. An idle
-   * stall sends 'stalled', so the server saves a stall the reload can show. */
+  /* Stop sends no reason, so the server keeps saving it as a Stop. A caller
+   * that passes a reason gets it in the body; the idle stall sends no cancel. */
   const cancelBody = async (...args) => {
     const fetchMock = vi.fn(async () => jsonRes({ cancelled: true, conversation_id: 'conv-a' }));
     vi.stubGlobal('fetch', fetchMock);

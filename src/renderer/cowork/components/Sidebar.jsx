@@ -906,7 +906,7 @@ export default function Sidebar({
           }
 
           // One clickable pill; an in-flight download/install renders it disabled.
-          return (
+          const pill = (
             <button
               type="button"
               onClick={updateBanner.action ? () => onUpdateAction?.(updateBanner.action) : undefined}
@@ -916,6 +916,10 @@ export default function Sidebar({
               {dot}{label}{action}
             </button>
           );
+          // A `hint` says how the update lands without a click (ENG-2764).
+          return updateBanner.hint
+            ? <Tooltip content={updateBanner.hint}>{pill}</Tooltip>
+            : pill;
         })()}
 
         {/* The MindsHub workspace this session is scoped to, docked with the
@@ -1019,18 +1023,6 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-        </div>
-
-        {/* Which app this is (ENG-2172). Web and desktop look the same but
-            keep separate work, so the name sits quietly under the account
-            row on every screen, with the reason on hover. It stays in every
-            footer state, the status pill included. */}
-        <div className="anton-sidebar__surface px-5 pb-2 -mt-1 flex">
-          <Tooltip content={surface.detail} side="top">
-            <span className="text-[11px] text-ink-4 font-[family-name:var(--font-body)] cursor-default select-none">
-              {surface.label}
-            </span>
-          </Tooltip>
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
