@@ -31,6 +31,10 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
+  const legacy = isLegacyEngine(engine);
+  // The overlay button's own label is all a screen reader hears for the card.
+  const describedTitle = connection.custom ? `${title} (custom connector)` : title;
+  const repairHint = legacy ? '. Saved by an older version. Disconnect it and connect again.' : '';
   const needsReconnect = connection.status === 'needs_reconnect';
   // The summary API omits status for healthy saved connections. Do not paint
   // an unfamiliar explicit status green as if we had checked it successfully
@@ -60,7 +64,7 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
       {typeof onModify === 'function' && (
         <button
           type="button"
-          aria-label={`${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`}
+          aria-label={`${needsReconnect ? 'Reconnect' : 'Manage'} ${describedTitle}: ${subtitle}${repairHint}`}
           title={`${title} — ${subtitle}`}
           disabled={busy}
           onClick={() => onModify(connection)}
@@ -75,7 +79,7 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
         {connection.custom && <Badge variant="accent" size="xs" className="shrink-0">Custom</Badge>}
       </div>
       <span className="truncate text-sm text-ink-3">{subtitle}</span>
-      {isLegacyEngine(engine) && (
+      {legacy && (
         <span className="text-xs text-ink-4">Saved by an older version. Disconnect it and connect again.</span>
       )}
       <div className="flex-1" />
