@@ -240,6 +240,19 @@ function BuildCustomTile({ onBuildCustom }) {
   );
 }
 
+// Substring match across the metadata a user sees: label, description,
+// category and aliases. `q` is already lowercased.
+function matchesSearch(connector, q) {
+  if (!q) return true;
+  const hay = [
+    connector.label,
+    connector.description,
+    connector.category,
+    ...(connector.aliases || []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
 // `onBuildCustom(query)` starts an Anton task that builds a connector. Local
 // installs only for now; org mode never shows the entry points.
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom }) {
@@ -296,21 +309,16 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
   // category dropdown.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return connectors.filter((c) => {
-      const matchesQuery = !q || (() => {
-        const hay = [
-          c.label,
-          c.description,
-          c.category,
-          ...(c.aliases || []),
-        ].filter(Boolean).join(' ').toLowerCase();
-        return hay.includes(q);
-      })();
-      const matchesCategory = category === 'all'
-        || (c.category || 'other') === category;
-      return matchesQuery && matchesCategory;
-    });
+    return connectors.filter((c) => matchesSearch(c, q)
+      && (category === 'all' || (c.category || 'other') === category));
   }, [connectors, query, category]);
+
+  // Whether the search matches anything in any category: a match hidden only by
+  // the category filter is not a reason to build a duplicate connector.
+  const queryMatchesAny = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return connectors.some((c) => matchesSearch(c, q));
+  }, [connectors, query]);
 
   // Desktop-only connectors are flagged by the server (cloud mode only).
   // A server that doesn't send the flag leaves `available` as the whole list,
@@ -325,6 +333,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
 
   const canBuildCustom = Boolean(onBuildCustom) && !orgMode;
   const trimmedQuery = query.trim();
+  const offerBuildForQuery = canBuildCustom && Boolean(trimmedQuery) && !queryMatchesAny;
 
   return (
     <Modal
@@ -449,22 +458,24 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               {error}
             </div>
           )}
-          {!loading && !error && filtered.length === 0 && (canBuildCustom && trimmedQuery ? (
+          {!loading && !error && filtered.length === 0 && (offerBuildForQuery ? (
             <EmptyState
               icon={Ico.search(32)}
               title={<>No connectors match “{trimmedQuery}”</>}
               description="Anton can build one with you: it asks how the system is reached, then sets up and tests the connection."
               action={(
-                <Button variant="primary" onClick={() => onBuildCustom(trimmedQuery)}>
-                  Build a custom connector for “{trimmedQuery}”
+                <Button variant="primary" className="max-w-full" onClick={() => onBuildCustom(trimmedQuery)}>
+                  <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>
                 </Button>
               )}
             />
           ) : (
             <div className="p-3 text-ink-3 text-[13px]">
-              {query
-                ? <>No connectors match <strong>“{query}”</strong>.</>
-                : 'No connectors available yet.'}
+              {query && queryMatchesAny && category !== 'all'
+                ? <>No connectors in this category match <strong>“{query}”</strong>.</>
+                : query
+                  ? <>No connectors match <strong>“{query}”</strong>.</>
+                  : 'No connectors available yet.'}
             </div>
           ))}
           {/* Body — two modes:
@@ -517,7 +528,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               ))}
             </>
           )}
-          {canBuildCustom && !loading && !error && filtered.length > 0 && (
+          {canBuildCustom && !loading && !error && !(offerBuildForQuery && filtered.length === 0) && (
             <div className={GRID}>
               <BuildCustomTile onBuildCustom={onBuildCustom} />
             </div>
