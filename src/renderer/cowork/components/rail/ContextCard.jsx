@@ -94,15 +94,17 @@ function mergeFileResource(current, fresh) {
   return merged;
 }
 
+// Hover says what the file is for, not what's in it: memory files grow
+// to pages of raw markdown, and clicking opens the editor anyway.
+const MEMORY_DESCRIPTIONS = {
+  lessons: 'What the agent has learned working here',
+  rules: 'Standing instructions the agent follows',
+  profile: 'Who you are and how you like to work',
+};
+
 function MemoryRow({ entry, onOpen }) {
-  // Single-line row — the previous version displayed
-  // `previewFirstLine(entry.content)` underneath the filename, which
-  // for the canonical files (lessons.md, rules.md, identity.md, …)
-  // is just the H1 of the file and reads as a duplicate of the
-  // filename itself. Hover/click opens the editor, which has the
-  // full content; the rail row only needs the file identity + age.
   return (
-    <Tooltip content={entry.content || labelCategory(entry.category)}>
+    <Tooltip content={MEMORY_DESCRIPTIONS[entry.category]}>
       <button
         type="button"
         onClick={onOpen}
