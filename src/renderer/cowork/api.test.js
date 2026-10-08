@@ -289,11 +289,17 @@ describe('updateSettings', () => {
 // App merges every settings read into its state. A read that settled after a
 // later write would put the pre-write value back once the editor's draft clears.
 describe('settings reads and writes settle in the order they started', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  // A request left held after a failure would block the shared settings lock
+  // for every later test in this file.
+  let releaseFirstRead;
+  afterEach(() => {
+    releaseFirstRead?.();
+    releaseFirstRead = undefined;
+    vi.unstubAllGlobals();
+  });
 
   it('settles a read started before a write first, with the pre-write value', async () => {
     let stored = 'Hello';
-    let releaseFirstRead;
     const methods = [];
     vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
       const method = options.method || 'GET';
@@ -304,9 +310,8 @@ describe('settings reads and writes settle in the order they started', () => {
         return jsonRes({ updated: ['nav_title'] });
       }
       if (method === 'GET' && u.endsWith('/settings/')) {
-        const rows = [{ key: 'nav_title', value: stored }];
         if (!releaseFirstRead) await new Promise((resolve) => { releaseFirstRead = resolve; });
-        return jsonRes(rows);
+        return jsonRes([{ key: 'nav_title', value: stored }]);
       }
       return jsonRes({});
     }));
