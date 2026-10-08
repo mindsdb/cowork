@@ -896,7 +896,48 @@ describe('a late empty reopen result after a turn completed meanwhile', () => {
     expect(screen.getByText('Connected to Postgres')).toBeInTheDocument();
   });
 
-  it('drops the cancel\'s partial even when the reopen read started before the resync wrote it', async () => {
+  it('keeps a new turn whose question never got its id together with its answer', async () => {
+    const user = userEvent.setup();
+    listBoth();
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: exchange }) });
+    await openTask(user);
+    await screen.findByText('Second answer');
+    spies.deleteConversationTurn.mockRejectedValue(timeout());
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: withLatePartial }) });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+
+    let releaseReopen;
+    spies.fetchSessionResult.mockImplementation((id) => (id === 'conv-a'
+      ? new Promise((resolve) => { releaseReopen = resolve; })
+      : Promise.resolve({ status: 'ok', task: baseTask({ id, title: 'Beta task' }) })));
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    await user.click(composer);
+    await user.keyboard('Unstamped question');
+    await user.keyboard('{Enter}');
+    const stream = await waitForStream();
+    // No user_message_id: the question keeps no id.
+    await emitOn(stream, { type: 'response.created', conversation_id: 'conv-a' });
+    await emitOn(stream, { type: 'response.output_text.delta', delta: 'Its answer' });
+    await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-new' });
+    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
+    await screen.findByText('Its answer');
+
+    await act(async () => { releaseReopen({ status: 'ok', task: emptyTask() }); });
+
+    await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
+    expect(screen.queryByText('Saved by the cancel')).toBeNull();
+    expect(screen.getByText('Unstamped question')).toBeInTheDocument();
+    expect(screen.getByText('Its answer')).toBeInTheDocument();
+  });
+
+  it('guard: drops the cancel\'s partial even when the reopen read started before the resync wrote it', async () => {
     const user = userEvent.setup();
     listBoth();
     spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: exchange }) });

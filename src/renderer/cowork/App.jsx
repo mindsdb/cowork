@@ -6,7 +6,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
-import { mergeMessagePage, reconcilePaginationState, knownRowIds, rowsArrivedSince } from './lib/mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
 import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -2512,12 +2512,19 @@ function AppCore() {
       const emptiedByCut = cutCommitted
         && activeStreamingTaskIdRef.current !== id && !hasLiveTurnHere(id);
       // An empty page means every row this read knew of is gone; rows that
-      // arrived after it began (a turn, a form probe's answer) stay. The cut's
-      // own ids count as known: a read started during the DELETE predates the
-      // rows that delete's resync wrote.
+      // arrived after it began stay. The cut's own ids count as known: a read
+      // started during the DELETE predates the rows that delete's resync wrote.
       const knownAtRead = loaded.knownIds && pendingCut
         ? new Set([...loaded.knownIds, ...pendingCut.ids])
         : null;
+      // Rows arrive in order, so the newer ones are everything after the last
+      // known row, less the cards that still belong to that known turn.
+      const afterKnown = (msgs) => {
+        const lastKnown = msgs.findLastIndex((m) => m?.id != null && knownAtRead.has(m.id));
+        const tail = msgs.slice(lastKnown + 1);
+        const firstNew = tail.findIndex((m) => !(m?.id == null && (m.role === 'error' || m.role === 'provider_required')));
+        return firstNew === -1 ? [] : tail.slice(firstNew);
+      };
       // Without a snapshot: the cut began at the top, so it covers everything
       // before the first question it did not name.
       const afterCut = (msgs) => {
@@ -2526,7 +2533,7 @@ function AppCore() {
       };
       const settleEmptied = (t, next) => {
         const msgs = t.messages || [];
-        const kept = knownAtRead ? rowsArrivedSince(msgs, [], knownAtRead) : afterCut(msgs);
+        const kept = knownAtRead ? afterKnown(msgs) : afterCut(msgs);
         const droppedIds = msgs.filter((m) => m?.id != null && !kept.includes(m)).map((m) => m.id);
         return forgetTurnIds({ ...next, messages: kept }, [...new Set([...pendingCut.ids, ...droppedIds])]);
       };

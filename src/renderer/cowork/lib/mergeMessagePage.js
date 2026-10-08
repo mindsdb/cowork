@@ -33,14 +33,11 @@ export function knownRowIds(messages) {
   return new Set((Array.isArray(messages) ? messages : []).map((m) => m?.id).filter((id) => id != null));
 }
 
-/**
- * Local rows newer than a page read before they existed: past the newest row
- * both hold, the ones the page lacks and the fetch could not have known (a
- * known one missing from the page was removed on the server), each with the
- * id-less rows that follow it. With an empty page that is every row whose id
- * `knownIds` lacks. Returns a new array; inputs are not changed.
- */
-export function rowsArrivedSince(existingArr, freshArr, knownIds) {
+// Local rows newer than a page read before they existed: past the newest row
+// both hold, the ones the page lacks and the fetch could not have known (a
+// known one missing from the page was removed on the server), each with the
+// id-less rows that follow it.
+function _arrivedSinceFetch(existingArr, freshArr, knownIds) {
   const pageIds = knownRowIds(freshArr);
   let shared = -1;
   existingArr.forEach((m, i) => { if (m?.id != null && pageIds.has(m.id)) shared = i; });
@@ -87,7 +84,7 @@ export function mergeMessagePage(existing, freshPage, knownIds) {
   if (existingArr[lastIdIdx]?.id === withId[withId.length - 1].id) {
     trailingLocal = existingArr.slice(lastIdIdx + 1);
   } else {
-    trailingLocal = knownIds ? rowsArrivedSince(existingArr, freshArr, knownIds) : [];
+    trailingLocal = knownIds ? _arrivedSinceFetch(existingArr, freshArr, knownIds) : [];
   }
 
   // A failed turn is usually the NEWEST turn, so its synthetic
