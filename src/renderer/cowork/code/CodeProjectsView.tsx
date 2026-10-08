@@ -5,7 +5,7 @@ import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
 import {
-  CardGrid, CollectionState, FilterRow, ItemCard, ListGroup, ListItem, NewRow, NewTile, PageHeader, SearchInput, SortPill, ViewToggle,
+  CardGrid, CollectionState, FilterRow, ItemCard, ListGroup, ListItem, PageHeader, SearchInput, SortPill, ViewToggle,
   useCollectionView,
 } from '../components/collection';
 import { projectResources, type CodeProject } from './api';
@@ -100,12 +100,10 @@ export function CodeProjectsView({
             {effectiveView === 'grid' ? (
               <CardGrid>
                 {visible.map((project) => <ItemCard key={project.id} as="article" {...slots(project)} />)}
-                <NewTile label="New project" onClick={onCreate} />
               </CardGrid>
             ) : (
               <ListGroup aria-label="Code Projects">
                 {visible.map((project) => <ListItem key={project.id} as="article" {...slots(project)} />)}
-                <NewRow label="New project" onClick={onCreate} />
               </ListGroup>
             )}
           </CollectionState>

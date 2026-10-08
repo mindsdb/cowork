@@ -14,8 +14,8 @@ single shell owns a page.
 | ⌘K focuses search | `useCollectionShortcut(searchRef)` |
 | Grid or list preference | `useCollectionView(storageKey, { defaultView })`. It stores an explicit choice and gives phones the page default. |
 | Loading, empty, no match | `CollectionState` wraps the body |
-| Cards | `CardGrid` › `ItemCard` … `NewTile` |
-| Rows | `ListGroup` › `ListItem` … `NewRow`, plus `ListNotice` for an inline line |
+| Cards | `CardGrid` › `ItemCard` |
+| Rows | `ListGroup` › `ListItem`, plus `ListNotice` for an inline line |
 | Item controls | `actions` (a kebab: `<OverflowMenu size="sm">`); `ItemActions` for a control in `meta` |
 | Status in meta | `StatusDot` |
 
@@ -60,7 +60,7 @@ view === 'grid' ? <ItemCard as="article" {...slots} /> : <ListItem as="article" 
 
 Every list uses one row padding, `px-4 py-2.5`, with no minimum height, so a
 row's height follows its content: a one-line task stays compact, and a row
-with a description gets a second line. Rows, `NewRow`, and `ListNotice` share
+with a description gets a second line. Rows and `ListNotice` share
 it. Don't add per-page or per-mode spacing.
 
 `ListGroup` takes an optional header (`title`, `description`, `meta`,

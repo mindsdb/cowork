@@ -21,8 +21,6 @@ import {
   CollectionState,
   CardGrid,
   ListGroup,
-  NewTile,
-  NewRow,
   ViewToggle,
   useCollectionShortcut,
   useCollectionView,
@@ -643,21 +641,17 @@ export default function CustomizeView({
           style: { flex: 1 },
         }}
       >
-        {/* The trailing new tile or row runs the header's "+ Connect" flow.
-            The empty state carries its own CTA. */}
         {effectiveView === 'grid' ? (
           <CardGrid className="px-8 pb-[60px]">
             {visible.map((c) => (
               <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
             ))}
-            <NewTile label="New connection" onClick={handleConnectNew} />
           </CardGrid>
         ) : (
           <ListGroup className="mx-8 mb-[60px]">
             {visible.map((c) => (
               <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
             ))}
-            <NewRow label="New connection" onClick={handleConnectNew} />
           </ListGroup>
         )}
       </CollectionState>

@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CardGrid, ItemCard } from './ItemCard';
-import { ListGroup, ListItem, ListNotice, NewRow } from './ListGroup';
+import { ListGroup, ListItem, ListNotice } from './ListGroup';
 import { ItemActions } from './itemParts';
 import { StatusDot } from './StatusDot';
 
@@ -135,16 +135,6 @@ describe('ListGroup', () => {
   it('renders no header without header slots', () => {
     render(<ListGroup><ListItem title="Daily digest" /></ListGroup>);
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
-  });
-});
-
-describe('NewRow', () => {
-  it('is a button named by its label', async () => {
-    const user = userEvent.setup();
-    const onClick = vi.fn();
-    render(<ListGroup><NewRow label="New schedule" onClick={onClick} /></ListGroup>);
-    await user.click(screen.getByRole('button', { name: 'New schedule' }));
-    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
 

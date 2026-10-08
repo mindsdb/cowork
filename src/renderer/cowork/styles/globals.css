@@ -3296,11 +3296,9 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
 
   /* The mobile FAB menu is the single create entry on phone — hide
-     the in-page "+ New project" header button and the trailing
-     dashed tile in the projects grid so we don't show three "+"
-     affordances stacked on one screen. */
-  .proj-new-action,
-  .proj-new-tile { display: none !important; }
+     the in-page "+ New project" header button so we don't show two
+     "+" affordances on one screen. */
+  .proj-new-action { display: none !important; }
 
   /* Artifacts grid — desktop uses 32px horizontal gutters which
      waste half the screen on a phone. Tighten to 14px and reserve
