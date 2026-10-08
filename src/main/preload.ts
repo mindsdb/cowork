@@ -217,6 +217,15 @@ contextBridge.exposeInMainWorld('antontron', {
   // The renderer reports them to PostHog on boot and acks what landed.
   drainUpdateJournal: () => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_DRAIN),
   ackUpdateJournal: (ids: string[]) => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_ACK, ids),
+  // The one update state over OTA, server and shell, and the one apply that
+  // picks reload or relaunch for whatever is pending.
+  getUpdateState: () => ipcRenderer.invoke(IPC.UPDATE_STATE_GET),
+  onUpdateState: (cb: (state: Record<string, unknown>) => void) => {
+    const listener = (_: any, state: Record<string, unknown>) => cb(state);
+    ipcRenderer.on(IPC.UPDATE_STATE, listener);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_STATE, listener);
+  },
+  applyUpdates: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.UPDATE_APPLY, options),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

@@ -433,6 +433,67 @@ There is no in-app guard, because the build that would have to warn is the one
 that knows nothing about partitions. Treat it as a property of downgrading
 rather than a bug to be reported.
 
+## The update coordinator (ENG-2296)
+
+The three transports stay independent, but the user sees one update. Main
+holds one coordinator over them, `src/shared/update-coordinator.ts`: a pure
+reducer, modelled on `shell-update-state.ts`, over four serializable inputs:
+
+- the shell auto-updater's snapshot (`SHELL_UPDATE_STATUS`);
+- the OTA status pushes (`UI_UPDATE_STATUS`), which a newer main stamps with
+  which layers an `available` names (`uiUpdate`, `uiVersion`, `serverUpdate`,
+  `serverVersion`, `serverComponent`);
+- the server updater's progress (`SERVER_UPDATE_STATUS`);
+- the prod-only manual installer notice (ENG-849).
+
+It derives one state: a status per layer (`ui`, `server`, `shell`), an
+`overall` (`idle`, `checking`, `downloading`, `ready`, `applying`, `failed`),
+`pending: { reload, relaunch }`, which boot-time apply is in flight
+(`applying`), and the one `action` a click performs:
+
+| `action` | When | What it does |
+|---|---|---|
+| `relaunch` | a shell download is ready | installs the shell update and relaunches; the next boot applies any pending OTA too |
+| `reload` | a UI or server update is pending, or the last OTA apply failed | applies the OTA in place and reloads the window |
+| `retry` | a shell check or download failed and can be retried | re-runs the shell check |
+| `download` | manual mode found a shell update | starts the shell download |
+| `open-download-page` | the manual installer notice, or a terminal shell failure | the renderer opens the installer page |
+| `null` | nothing pending, or work in flight | the banner is display-only |
+
+The ladder is shell-first, as the banner always was: a pending shell update
+owns the action because its relaunch applies the OTA too, a shell failure with
+no known target drops below the OTA so a feed outage cannot hide a valid
+Restart, and a check that produced no answer (`check-stalled`) raises nothing.
+
+Main pushes the state on `UPDATE_STATE` on every change and answers
+`UPDATE_STATE_GET` on mount. One `UPDATE_APPLY` performs the action: a ready
+shell download goes to `requestShellInstall`, a pending OTA to the apply
+handler, so both inherit the running-tasks confirmation (ENG-3291) and answer
+with the same `{ confirm, runningTasks }` report. The three legacy channels
+keep emitting, and `UI_UPDATE_APPLY` keeps working, for renderers older than
+these; nothing is renamed. A newer OTA renderer on a shell older than
+`UPDATE_STATE` composes the same state in `platform/host.ts` from the channels
+that shell has, through the same reducer, and picks the step itself on the
+shell's own apply and install channels.
+
+Every surface renders from this one state, so none can disagree:
+
+- the **loading screen** line (`deriveBootStatus`) reads `applying`;
+- the **sidebar banner** and the **Settings → Updates card** are the same
+  `deriveUpdateBanner(state)`; Settings only skips the per-version dismissal
+  of the manual notice;
+- the **too-old notice** and the shell telemetry read `shell.snapshot`.
+
+Copy is layer-agnostic (ENG-1398): "Update ready — Restart now" whether the
+restart is a reload or a relaunch, "Downloading update (42%)", "Installing
+update…", "Update failed — Retry". The one exception is the manual installer
+fallback, a genuinely different action, which keeps "New version available —
+Download". At most one restart is ever offered: the Settings card is the
+banner, not a stack of per-layer cards, and the shell's passive states (a
+check in flight, a check that failed with nothing to retry) are one line under
+it. A manual "Check for updates" that finds a UI or server update feeds the
+same state, so the card and the banner appear together.
+
 ## Sample scenarios: what the user sees
 
 The app updates three independently-versioned pieces, each through its own
@@ -449,20 +510,21 @@ The shell is **independent** and always needs a restart to take effect.
 
 The sidebar shows **exactly one update banner** (or none), chosen by the pure
 `deriveUpdateBanner()` in [src/shared/update-banner.ts](../src/shared/update-banner.ts)
-and mirrored by Settings → Updates. Priority is **shell-first**: whenever a
-shell update is pending (auto-update or the manual notice), it owns the banner
-slot and the OTA "Restart" is suppressed. A shell relaunch is the superset
-action — the boot check auto-applies any pending UI/server OTA on relaunch — so
-one click updates everything, and an OTA reload never leaves a shell banner
-behind. Historically each mechanism had its own block with only pairwise guards,
-so an OTA update and a shell auto-update (which poll together) stacked into two
-pills, and an OTA reload — which does *not* relaunch the shell — left the shell
-banner behind; the single derived banner removes both.
+over the coordinator state above, and Settings → Updates shows the same one.
+Priority is **shell-first**: whenever a shell update is pending (auto-update or
+the manual notice), it owns the banner slot and the OTA restart is suppressed.
+A shell relaunch is the superset action — the boot check auto-applies any
+pending UI/server OTA on relaunch — so one click updates everything, and an OTA
+reload never leaves a shell banner behind. Historically each mechanism had its
+own block with only pairwise guards, so an OTA update and a shell auto-update
+(which poll together) stacked into two pills, and an OTA reload — which does
+*not* relaunch the shell — left the shell banner behind; the single derived
+banner removes both.
 
 The possible banners, in priority order:
 
-- **Shell** (auto-update) → a pill that walks the phases **"New app version
-  available — Download" → "Downloading update (42%)…" → "Update ready — Restart
+- **Shell** (auto-update) → a pill that walks the phases **"New version
+  available — Download" → "Downloading update (42%)" → "Update ready — Restart
   now"** (in auto mode the download happens on its own; a restart installs it).
   In auto mode the pill is a shortcut: `autoInstallOnAppQuit` installs the update
   on the next normal quit, and the tooltip says so. Manual mode shows no such
@@ -470,8 +532,9 @@ The possible banners, in priority order:
 - **Shell** (manual fallback) → a dismissible **"New version available —
   Download"** notice linking to the installer.
 - **UI/server found mid-session** (only when no shell update is pending) → a
-  sidebar **"Update ready — Restart"** pill and a Settings card ("Server → …" /
-  "UI → …"). The Restart reloads the renderer.
+  sidebar **"Update ready — Restart now"** pill and the same card in Settings,
+  which names what the restart applies ("Server → …", "UI → …"). The restart
+  reloads the renderer.
 - **UI/server auto-apply** (boot) is not a banner at all → a brief full-screen
   overlay (spinner + "Downloading the latest update…" / "Finishing up…"), then
   the window reloads.
@@ -484,17 +547,19 @@ cannot contradict a pending shell update.
 | Updates pending | What the user sees |
 |---|---|
 | **Server only, at boot** | Auto-applies. Brief overlay ("Almost there…"), then the window reloads on the new sidecar. Effectively invisible. |
-| **Server only, found mid-session** (4h periodic) | No auto-apply. A sidebar "Update ready — Restart" pill + Settings card ("Server → `<version>`"). Clicking it reloads the window and restarts the sidecar — *not* a full app relaunch. |
+| **Server only, found mid-session** (4h periodic) | No auto-apply. A sidebar "Update ready — Restart now" pill and the same Settings card ("Server → `<version>`"). Clicking either reloads the window and restarts the sidecar — *not* a full app relaunch. Restart asks first while tasks run. |
 | **Server only, server is down** | Force-applied immediately regardless of mode — recovery, not routine. Overlay + reload. |
 | **Server on the wrong stream** (prod build holding a pre-release) | Repaired like a boot server update: overlay + reload onto the latest stable. If the stable server can't boot against the rc-migrated database, the pre-release is restored and the app comes back up; the repair retries next launch. The boot log's "stream check" line records what happened. |
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
-| **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
+| **UI only, found mid-session** | Banner only ("Update ready — Restart now"); applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
 | **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches before the app is shown. A failed attempt falls back to the banner. |
-| **Shell only** (auto-update eligible) | Never named on the loading screen. The pill/card walk "available → downloading (%) → ready-to-install". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
+| **Shell only** (auto-update eligible) | Never named on the loading screen. The pill and the card walk "New version available → Downloading update (%) → Update ready". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
 | **Shell below the supported window** (`prod`, see above) | On the first screen after launch, a warning names the installed shell and offers one action — Restart / Download through the auto-updater, or the download page on shells that cannot update themselves. Dismissible per launch; Settings → Updates marks the App shell "⚠ too old". |
-| **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
+| **Shell + Server + UI, all pending** (mid-session) | One shell-first banner, "Update ready — Restart now", and the same card in Settings naming the UI and server it also applies. The coordinator reports both `pending.relaunch` and `pending.reload`, and the one action is `relaunch`: the shell relaunch applies the pending UI/server OTA at boot anyway. One Restart resolves all three — no stacked pills or cards, and nothing lingers after the relaunch. |
+| **Server + UI pending, shell check in flight or failed with nothing to retry** | The OTA restart is offered; the shell's state is one line under the Settings card ("Checking for an app update…", "The last app update check failed…"), never a second card. |
+| **Newer UI on a shell older than `UPDATE_STATE`** | The same banner and card: the renderer composes the state from the channels the shell has (`platform/host.ts`) and picks reload or relaunch itself on that shell's own channels. |
 
 Notes:
 
@@ -517,7 +582,8 @@ Notes:
   "Loading…" and then "Unavailable", never a bare dash, and the details Copy
   copies that state (ENG-3291).
 - A **failed** UI/server apply keeps the banner as a "Try again" retry instead
-  of silently vanishing until the next poll.
+  of silently vanishing until the next poll. Main pushes that `error` itself
+  when a manual apply lands nothing, so Settings and the sidebar agree.
 
 ## Related
 

@@ -16,7 +16,7 @@ import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapSe
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
-import { initUpdater, registerUpdateHandlers } from './updater';
+import { initUpdater, registerUpdateHandlers, feedServerUpdateStatus } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
@@ -1998,6 +1998,7 @@ app.whenReady().then(async () => {
     // maybeUpdateServer rolls back automatically if the new version also fails
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
+      feedServerUpdateStatus(payload);
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       // Mirror progress onto the UI status channel so the loading screen and
       // in-app overlay show it during a server download (ENG-749).
