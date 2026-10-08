@@ -21,8 +21,8 @@ single shell owns a page.
 
 ## Choosing cards or rows
 
-Lists are the default. Projects, Artifacts, and Connected Apps open as cards
-and offer a grid/list toggle; every other page is list-only. A task looks the
+Lists are the default. Projects (Cowork and Code Mode), Artifacts, and Connected
+Apps open as cards and offer a grid/list toggle; every other page is list-only. A task looks the
 same everywhere: use `TaskRow` from `components/task`.
 
 ## Item slots
