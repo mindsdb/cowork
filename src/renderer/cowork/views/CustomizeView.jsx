@@ -272,7 +272,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Credentials */}
               {displayFields.length > 0 && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Credentials
                   </div>
                   <div className="mb-5 overflow-hidden rounded-lg border border-solid border-line">
@@ -307,7 +307,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   existing ones without widening the OAuth scope. */}
               {connection.engine === 'google_drive' && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Drive files
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
@@ -386,7 +386,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   instead would pass without ever exercising the real shape. */}
               {saved?.method === 'mcp' && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Tool access
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">

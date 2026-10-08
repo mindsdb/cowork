@@ -7,7 +7,6 @@
 // WorkingFolderLive, OnboardingChecklist, Composer) — ENG-1151.
 //
 //   <Collapsible title="Advanced">…</Collapsible>
-//   <Collapsible title={<Eyebrow>Details</Eyebrow>} defaultOpen>…</Collapsible>
 //   <Collapsible open={open} onOpenChange={setOpen} title="Controlled">…</Collapsible>
 //
 // Two header styles, chosen by `variant`, so call sites don't restyle the

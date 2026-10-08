@@ -157,14 +157,14 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           ) : (
             groupByProject(filtered).map((group) => (
               <div key={group.projectName} className="flex flex-col gap-px mb-[6px]">
-                {/* Project header — small uppercase mono label with a
-                    count chip. Reads as a section divider, not as a
+                {/* Project header — a section label with a
+                    count. Reads as a section divider, not as a
                     clickable row, so each task underneath stays the
                     primary affordance. */}
-                <div className="flex items-center gap-2 pt-2 px-3 pb-1 font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.12em] uppercase text-ink-4">
+                <div className="section-label flex items-center gap-2 pt-2 px-3 pb-1">
                   <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabelByName(projects, group.projectName)}</span>
                   <span className="flex-1 h-px bg-line" />
-                  <span className="text-ink-4">{group.items.length}</span>
+                  <span className="text-ink-4 tabular-nums">{group.items.length}</span>
                 </div>
                 {group.items.map((t) => (
                   <Row

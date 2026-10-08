@@ -172,9 +172,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
 });
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]';
-const SECTION_HEADING =
-  'font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] '
-  + 'uppercase text-ink-3 pt-1 px-0.5 pb-2';
+const SECTION_HEADING = 'section-label pt-1 px-0.5 pb-2';
 
 // One titled grid of tiles. `count` is rendered beside the title when given
 // (the Featured section deliberately omits it).
