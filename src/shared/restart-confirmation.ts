@@ -11,9 +11,11 @@ export interface RestartConfirmation {
 }
 
 /** What a restart request resolves to: the legacy boolean (installed or
- *  applied, or not), or a request to confirm first. Old shells only ever return
- *  the boolean, so callers must treat a non-object as the old contract. */
-export type RestartRequestResult = boolean | RestartConfirmation;
+ *  applied, or not), a request to confirm first, or `'stale'` when the action
+ *  the renderer clicked is no longer what the current state offers (nothing
+ *  ran; re-render from the fresh state). Old shells only ever return the
+ *  boolean, so callers must treat a non-object as the old contract. */
+export type RestartRequestResult = boolean | RestartConfirmation | 'stale';
 
 export function needsRestartConfirmation(result: unknown): result is RestartConfirmation {
   return typeof result === 'object' && result !== null && (result as { confirm?: unknown }).confirm === true;
