@@ -219,7 +219,9 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
-      <div className="h-[14px]" />
+      {/* shrink-0: a flex child of the page column — without it the spacer
+          collapses when the content below needs the height. */}
+      <div className="h-[14px] shrink-0" />
       <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
