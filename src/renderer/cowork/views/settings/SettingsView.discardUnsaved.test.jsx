@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
@@ -42,7 +42,7 @@ import SettingsView from './SettingsView';
 
 const SERVER = { maxToolRounds: '50', maxContinuations: '5', maxTurnTokens: '1250000' };
 
-function Harness({ onSave, latest, initial = SERVER, onAppearancePreview }) {
+function Harness({ onSave, latest, initial = SERVER, onAppearancePreview, refresh }) {
   const [settings, setSettings] = useState(initial);
   const [open, setOpen] = useState(true);
   const [section, setSection] = useState('agent');
@@ -52,6 +52,8 @@ function Harness({ onSave, latest, initial = SERVER, onAppearancePreview }) {
     return result;
   };
   latest.current = settings;
+  // Stands in for App.refreshData merging a settings read into App state.
+  if (refresh) refresh.current = (data) => setSettings((prev) => ({ ...prev, ...data }));
   return (
     <>
       <button type="button" onClick={() => setOpen((o) => !o)}>toggle</button>
@@ -83,6 +85,9 @@ const clickSave = () => fireEvent.click(screen.getByRole('button', { name: /^Sav
 const reopen = () => {
   fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
   fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+};
+const typeChars = (input, text) => {
+  for (const ch of text) fireEvent.change(input, { target: { value: input.value + ch } });
 };
 
 describe('SettingsView — closing discards unsaved edits (ENG-3200)', () => {
@@ -250,6 +255,37 @@ describe('SettingsView appearance request ownership', () => {
     expect(onSave).toHaveBeenCalledExactlyOnceWith({ [key]: 'Latest' });
     await new Promise((resolve) => setTimeout(resolve, 650));
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['Sidebar title text', 'navTitle'],
+    ['Greeting text', 'greeting'],
+  ])('keeps %s typing made while an auto-save is in flight', async (label, key) => {
+    const latest = { current: null };
+    const refresh = { current: null };
+    const pending = [];
+    const onSave = vi.fn((patch) => new Promise((resolve) => {
+      pending.push(() => resolve({ settings: patch }));
+    }));
+    render(<Harness onSave={onSave} latest={latest} refresh={refresh} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    const input = screen.getByLabelText(label);
+
+    typeChars(input, 'Hello');
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ [key]: 'Hello' }));
+    typeChars(input, ' Wor');
+    act(() => refresh.current({ [key]: 'Hel' }));
+    expect(input).toHaveValue('Hello Wor');
+
+    await act(async () => { pending.shift()(); });
+    await waitFor(() => expect(latest.current[key]).toBe('Hello'));
+    expect(input).toHaveValue('Hello Wor');
+
+    typeChars(input, 'ld');
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ [key]: 'Hello World' }));
+    while (pending.length) await act(async () => { pending.shift()(); });
+    await waitFor(() => expect(latest.current[key]).toBe('Hello World'));
+    expect(input).toHaveValue('Hello World');
   });
 
   it('does not commit a rejected appearance flush to App', async () => {
