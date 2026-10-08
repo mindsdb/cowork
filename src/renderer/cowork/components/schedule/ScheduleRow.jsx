@@ -1,16 +1,13 @@
-// `<ScheduleCard>` / `<ScheduleRow>` — one scheduled task as a grid card or a
-// list row. Both are built from one set of collection-kit slots, so the view
-// toggle changes layout, not content.
+// `<ScheduleRow>` — one scheduled task as a collection-kit list row.
 //
-// Clicking the title (stretched over the item) opens the detail page. Run now
-// and the ⋮ menu reveal on hover, focus, an open menu, and touch, and stay
-// visible while an action is in flight. The project link sits above the
-// item's click area, so it opens the project without opening the schedule.
+// Clicking the title (stretched over the row) opens the detail page. Run and
+// the ⋮ menu stay visible at rest. The project link sits above the row's
+// click area, so it opens the project without opening the schedule.
 
 import Ico from '../Icons';
 import { projectLabel } from '../../lib/projectLabel';
-import { Alert, Button, Spinner, Tooltip } from '../ui';
-import { HoverActions, ItemCard, ListItem, StatusDot } from '../collection';
+import { Button, Spinner, Tooltip } from '../ui';
+import { HoverActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { scheduleStatusBadge } from './ScheduleStatusBadge';
@@ -35,12 +32,10 @@ function cadenceLabel(cadence) {
   }[cadence] || cadence;
 }
 
-// One slot builder for both layouts: same facts, same order.
-function scheduleSlots({
-  task, busy = false, projects = [], onOpenProject, layout,
+export default function ScheduleRow({
+  task, busy = false, projects = [], onOpenProject,
   onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
 }) {
-  const row = layout === 'row';
   // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
@@ -85,71 +80,45 @@ function scheduleSlots({
   // Badge variants (accent, muted, danger, success) are StatusDot tones.
   const statusDot = <StatusDot tone={status.variant}>{status.label}</StatusDot>;
 
-  return {
-    leading: row ? Ico.clock(16) : undefined,
-    title: task.title || 'Untitled schedule',
-    description: task.prompt || undefined,
-    onActivate: () => onOpen?.(task),
-    // Rows keep the list's short "Run"; cards say "Run now".
-    actions: (
-      <>
-        <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
-          {busy ? <Spinner /> : Ico.send(14)}
-          {row ? 'Run' : 'Run now'}
-        </Button>
-        <OverflowMenu
-          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
-          disabled={busy}
-          align="end"
-          icon={Ico.moreVert(16)}
-          size="sm"
-        />
-      </>
-    ),
-    // Run and the menu stay visible at rest, as they were before the kit:
-    // they're the page's main actions, not hover extras.
-    revealActions: true,
-    meta: row ? (
-      <>
-        {project}
-        {/* Runs that slipped while the app was closed; cleared on the next run. */}
-        {missed > 0 && <span className="whitespace-nowrap">Missed {missed}</span>}
-        {task.enabled && <span>{cadenceLabel(task.cadence)}</span>}
-        {when}
-        {statusDot}
-      </>
-    ) : (
-      <>
-        {project}
-        <span className={`flex shrink-0 items-center gap-3 ${projectDisplay ? 'ml-auto' : ''}`}>{statusDot}{when}</span>
-      </>
-    ),
-    children: !row && (task.lastError || missed > 0) && (
-      <>
-        {task.lastError && (
-          <Alert variant="danger" className="p-2 text-xs">
-            <span className="block truncate" title={task.lastError}>{task.lastError}</span>
-          </Alert>
-        )}
-        {missed > 0 && (
-          <div className="font-body text-xs text-ink-4">
-            Missed {missed} run{missed === 1 ? '' : 's'} while the app was closed.
-          </div>
-        )}
-      </>
-    ),
-  };
+  return (
+    <ListItem
+      leading={Ico.clock(16)}
+      title={task.title || 'Untitled schedule'}
+      description={task.prompt || undefined}
+      onActivate={() => onOpen?.(task)}
+      actions={(
+          <>
+            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+              {busy ? <Spinner /> : Ico.send(14)}
+              Run
+            </Button>
+            <OverflowMenu
+              items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
+              disabled={busy}
+              align="end"
+              icon={Ico.moreVert(16)}
+              size="sm"
+            />
+          </>
+      )}
+      // Run and the menu stay visible at rest: they're the page's main
+      // actions, not hover extras.
+      revealActions
+      meta={(
+        <>
+          {project}
+          {/* Runs that slipped while the app was closed; cleared on the next run. */}
+          {missed > 0 && <span className="whitespace-nowrap">Missed {missed}</span>}
+          {task.enabled && <span>{cadenceLabel(task.cadence)}</span>}
+          {when}
+          {statusDot}
+        </>
+      )}
+    />
+  );
 }
 
-export default function ScheduleCard(props) {
-  return <ItemCard {...scheduleSlots({ ...props, layout: 'card' })} />;
-}
-
-export function ScheduleRow(props) {
-  return <ListItem {...scheduleSlots({ ...props, layout: 'row' })} />;
-}
-
-// Overflow-menu items shared by the card and the list row. Delete routes to the
+// Overflow-menu items for the row. Delete routes to the
 // caller's confirm flow (a ConfirmModal), not an inline delete.
 export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
   return [

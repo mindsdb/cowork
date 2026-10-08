@@ -57,11 +57,11 @@ export function SkeletonRow() {
   );
 }
 
-/** A comfortable <ListItem> placeholder: leading icon, title over a
+/** A <ListItem> placeholder: leading icon, title over a
  *  description, and meta at the end. */
 export function SkeletonGroupRow() {
   return (
-    <div className="flex min-h-[60px] items-center gap-x-3 px-4 py-3">
+    <div className="flex items-center gap-x-3 px-4 py-2.5">
       <span className="inline-flex w-6 shrink-0 justify-center"><Bar className="size-3.5" /></span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <Bar className="h-3.5 w-1/3" />

@@ -1,2 +1,2 @@
 export { TaskList } from './TaskList';
-export { TaskRow, ScheduleGroupRow, groupScheduleRuns, latestRun, ts } from './TaskRows';
+export { TaskRow, ScheduleGroupRow, chatTaskRow, chatTaskMenu, groupScheduleRuns, latestRun, ts } from './TaskRows';

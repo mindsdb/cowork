@@ -2,18 +2,13 @@
 // affordance. Replaces the previous RecentsModal which capped at 100
 // rows and didn't surface filtering / sorting.
 //
-// Rows only — there's no useful "grid" presentation for a flat list of
-// conversations. Each row is a collection-kit ListItem: the title opens
-// the task, meta carries the project (clickable, routes to project
-// detail), a running dot, and the relative update time, and the delete
-// action reveals on hover or focus. Every run of one schedule collapses
-// into a single group row that opens the schedule.
+// Rows only, the shared TaskRow (components/task). Every run of one schedule
+// collapses into a single group row that opens the schedule.
 
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Button, Tooltip } from '../components/ui';
-import { TaskRow, ScheduleGroupRow, groupScheduleRuns, latestRun, ts } from '../components/task';
+import { TaskRow, ScheduleGroupRow, chatTaskMenu, chatTaskRow, groupScheduleRuns, latestRun, ts } from '../components/task';
 import {
   PageHeader,
   FilterRow,
@@ -45,6 +40,7 @@ export default function TasksView({
   onOpenProject,
   onOpenSchedule,
   onDeleteTask,
+  onMoveTaskToProject,
 }) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
@@ -217,32 +213,20 @@ export default function TasksView({
               return (
                 <TaskRow
                   key={row.task.id}
-                  task={row.task}
-                  projects={projects}
-                  onOpen={(task) => onOpenTask?.(task.id)}
-                  onOpenProject={onOpenProject}
-                  actions={(
-                    <Tooltip content="Delete task">
-                      <Button variant="danger" icon size="sm" onClick={() => onDeleteTask?.(row.task.id)} aria-label="Delete task">
-                        {Ico.trash(14)}
-                      </Button>
-                    </Tooltip>
-                  )}
+                  {...chatTaskRow(row.task, { projects, onOpenProject })}
+                  onOpen={() => onOpenTask?.(row.task.id)}
+                  menuItems={chatTaskMenu(row.task, { onMoveToProject: onMoveTaskToProject, onDelete: onDeleteTask })}
                 />
               );
             }
-            const sched = schedulesById.get(row.scheduledId);
             return (
               <ScheduleGroupRow
                 key={`sched:${row.scheduledId}`}
-                schedule={sched}
+                schedule={schedulesById.get(row.scheduledId)}
                 runs={row.runs}
                 projects={projects}
                 onOpenSchedule={() => onOpenSchedule?.(row.scheduledId)}
-                onOpenLatest={() => {
-                  const latest = latestRun(row.runs);
-                  if (latest?.id) onOpenTask?.(latest.id);
-                }}
+                onOpenTask={onOpenTask}
                 onOpenProject={onOpenProject}
               />
             );

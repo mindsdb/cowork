@@ -1,10 +1,13 @@
-// Collection-kit rows for a list of conversations, shared by the all-tasks
-// page and a project's task list. Every run of one schedule collapses into a
-// single group row that opens the schedule.
+// The one task row: Cowork's Tasks page, a project's task list, and Code
+// Mode's task lists all render it, so a task looks the same everywhere. Rows
+// differ only where the data does (a subtitle, a project, a status worth
+// showing). Every run of one schedule collapses into a single group row that
+// opens the schedule.
 
 import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
 import { Badge, Button, Tooltip } from '../ui';
+import { OverflowMenu } from '../OverflowMenu';
 import { relativeAge } from '../../lib/formatTime';
 import { HoverActions, ListItem, StatusDot } from '../collection';
 
@@ -43,82 +46,97 @@ export function groupScheduleRuns(tasks, scheduleRunsIndex = {}) {
   return out;
 }
 
-// Project in a row's meta. Opens the project, above the row's own click
-// area, when the slug resolves; plain text otherwise.
-function ProjectMeta({ projectName, projects, onOpenProject }) {
-  if (!projectName) return null;
-  const projectMatch = projects.find((p) => p.name === projectName) || null;
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard. This is what a person reads.
-  // `projectLabel(null)` is null, so an unresolved project falls back to the
-  // slug exactly as before (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
-  // The cap keeps a long name from widening the row's meta, which does not
-  // shrink (it sizes to its content, even on its own phone-width line);
-  // `shrink` lets the link give way inside the cap so the label truncates
-  // (HoverActions is shrink-0 by default).
+// Project in a row's meta: a link above the row's own click area when it can
+// open, plain text otherwise. The cap keeps a long name from widening the
+// meta, which sizes to its content; `shrink` lets the label truncate inside it.
+function ProjectMeta({ label, onOpen }) {
   return (
     <span className="flex min-w-0 max-w-[16rem] items-center gap-1.5 max-sm:max-w-[8rem]">
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
-      {projectMatch && typeof onOpenProject === 'function' ? (
+      {onOpen ? (
         <HoverActions reveal className="min-w-0 shrink">
-          <Tooltip content={`Open ${projectDisplay}`}>
+          <Tooltip content={`Open ${label}`}>
             <button
               type="button"
-              onClick={() => onOpenProject(projectMatch)}
+              onClick={onOpen}
               className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2"
-            >{projectDisplay}</button>
+            >{label}</button>
           </Tooltip>
         </HoverActions>
       ) : (
-        <span title={projectDisplay} className="min-w-0 truncate text-ink-3">{projectDisplay}</span>
+        <span title={label} className="min-w-0 truncate text-ink-3">{label}</span>
       )}
     </span>
   );
 }
 
-// A row's meta: project, status and time. Wraps onto a second line when a
-// narrow phone can't fit all three, instead of widening the page.
-function RowMeta({ children }) {
-  return <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">{children}</span>;
-}
-
-// `projects` is omitted inside a project, where every row's project is the
-// page's own.
-export function TaskRow({ task, projects, onOpen, onOpenProject, actions }) {
-  // Prefer the same field the rest of the app uses for "last seen"
-  // (updatedAt). Fall back to subtitle (legacy mock-time string)
-  // when the server hasn't stamped the conversation yet.
-  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
+export function TaskRow({
+  title, subtitle, project, status, updatedAt, onOpen,
+  menuItems, leading = Ico.chats(16), badges, actions, className,
+}) {
+  const stamp = ts(updatedAt);
+  const age = relativeAge(stamp || null);
   return (
     <ListItem
-      leading={Ico.chats(16)}
-      title={task.title || 'Untitled task'}
-      description={task.subtitle && task.subtitle !== updated ? task.subtitle : undefined}
-      onActivate={() => onOpen?.(task)}
+      leading={leading}
+      title={title || 'Untitled task'}
+      badges={badges}
+      description={subtitle || undefined}
+      onActivate={onOpen}
+      className={className}
       meta={(
-        <RowMeta>
-          {projects && (
-            <ProjectMeta projectName={task.projectName || task.project || ''} projects={projects} onOpenProject={onOpenProject} />
-          )}
-          {task.status === 'active' && <StatusDot tone="success">Running</StatusDot>}
-          <span className="whitespace-nowrap">{updated}</span>
-        </RowMeta>
+        // Wraps onto a second line when a narrow phone can't fit it all.
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          {project && <ProjectMeta label={project.label} onOpen={project.onOpen} />}
+          {status && <StatusDot tone={status.tone}>{status.label}</StatusDot>}
+          {age
+            ? <time dateTime={new Date(stamp).toISOString()} title={new Date(stamp).toLocaleString()} className="whitespace-nowrap">{age}</time>
+            : <span>—</span>}
+        </span>
       )}
-      actions={actions}
+      actions={actions ?? (menuItems?.length
+        ? <OverflowMenu size="sm" label={`Actions for ${title || 'untitled task'}`} items={menuItems} />
+        : undefined)}
     />
   );
 }
 
-export function ScheduleGroupRow({
-  schedule, runs = [], projects,
-  onOpenSchedule, onOpenLatest, onOpenProject,
-}) {
-  const latest = latestRun(runs);
-  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
+// Cowork task → row props. `projects` is omitted inside a project, where
+// every row's project is the page's own.
+export function chatTaskRow(task, { projects, onOpenProject } = {}) {
+  const updatedAt = task.updatedAt || task.subtitle || task.created_at;
+  const age = relativeAge(updatedAt);
+  return {
+    title: task.title,
+    // Older records stamp a display time into `subtitle`; it isn't a subtitle.
+    subtitle: task.subtitle && task.subtitle !== age ? task.subtitle : undefined,
+    project: projects && chatProject(task.projectName || task.project, projects, onOpenProject),
+    status: task.status === 'active' ? { label: 'Running', tone: 'accent' } : null,
+    updatedAt,
+  };
+}
 
+function chatProject(name, projects, onOpenProject) {
+  if (!name) return null;
+  const match = projects.find((p) => p.name === name) || null;
+  // An unresolved project falls back to its slug.
+  const label = projectLabel(match) || name;
+  return { label, onOpen: match && onOpenProject ? () => onOpenProject(match) : undefined };
+}
+
+export function chatTaskMenu(task, { onMoveToProject, onDelete }) {
+  return [
+    onMoveToProject && { id: 'move', icon: Ico.moveTo(14), label: 'Move to project…', onClick: () => onMoveToProject(task) },
+    onMoveToProject && onDelete && { divider: true },
+    onDelete && { id: 'delete', icon: Ico.trash(14), label: 'Delete', danger: true, onClick: () => onDelete(task.id) },
+  ].filter(Boolean);
+}
+
+export function ScheduleGroupRow({ schedule, runs = [], projects, onOpenSchedule, onOpenTask, onOpenProject }) {
+  const latest = latestRun(runs);
+  const running = runs.some((r) => r.status === 'active');
   return (
-    <ListItem
+    <TaskRow
       leading={Ico.schedule(16)}
       title={schedule?.title || latest?.title || 'Scheduled task'}
       badges={(
@@ -126,26 +144,16 @@ export function ScheduleGroupRow({
           {runs.length} {runs.length === 1 ? 'run' : 'runs'}
         </Badge>
       )}
+      project={projects && chatProject(schedule?.project || latest?.projectName || latest?.project, projects, onOpenProject)}
+      status={running ? { label: 'Running', tone: 'accent' } : null}
+      updatedAt={latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt}
       // The row opens the schedule (where per-run history lives); the hover
       // action jumps straight to the most recent run.
-      onActivate={onOpenSchedule}
+      onOpen={onOpenSchedule}
       className="bg-[color-mix(in_srgb,var(--accent)_4%,transparent)]"
-      meta={(
-        <RowMeta>
-          {projects && (
-            <ProjectMeta
-              projectName={schedule?.project || runs[0]?.projectName || runs[0]?.project || ''}
-              projects={projects}
-              onOpenProject={onOpenProject}
-            />
-          )}
-          {runs.some((r) => r.status === 'active') && <StatusDot tone="success">Running</StatusDot>}
-          <span className="whitespace-nowrap">{updated}</span>
-        </RowMeta>
-      )}
       actions={(
         <Tooltip content="Open latest run">
-          <Button variant="subtle" icon size="sm" onClick={onOpenLatest} aria-label="Open latest run">
+          <Button variant="subtle" icon size="sm" onClick={() => latest?.id && onOpenTask?.(latest.id)} aria-label="Open latest run">
             {Ico.externalLink(14)}
           </Button>
         </Tooltip>

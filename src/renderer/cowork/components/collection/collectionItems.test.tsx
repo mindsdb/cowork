@@ -143,29 +143,26 @@ describe('HoverActions', () => {
   });
 });
 
-describe('ListGroup density', () => {
-  it('renders a header and passes its density to rows, which may override it', () => {
+describe('ListGroup', () => {
+  it('renders a header, and rows and notices share one padding with no minimum height', () => {
     render(
-      <ListGroup title={<h2>GitHub</h2>} description="Draft PRs" actions={<button type="button">Connect</button>} density="compact">
+      <ListGroup title={<h2>GitHub</h2>} description="Draft PRs" actions={<button type="button">Connect</button>}>
         <ListItem title="octocat" />
-        <ListItem title="hubot" density="comfortable" />
         <ListNotice>Waiting for GitHub…</ListNotice>
       </ListGroup>,
     );
     expect(screen.getByRole('heading', { name: 'GitHub' })).toBeInTheDocument();
     expect(screen.getByText('Draft PRs')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
-    const row = (title: string) => screen.getByText(title).closest('.group\\/item');
-    expect(row('octocat')).toHaveClass('px-3', 'py-2.5');
-    expect(row('octocat')).not.toHaveClass('min-h-[60px]');
-    expect(row('hubot')).toHaveClass('px-4', 'py-3', 'min-h-[60px]');
-    expect(screen.getByText('Waiting for GitHub…')).toHaveClass('px-3', 'py-2.5');
+    const row = screen.getByText('octocat').closest('.group\\/item');
+    expect(row).toHaveClass('px-4', 'py-2.5');
+    expect(row).not.toHaveClass('min-h-[60px]');
+    expect(screen.getByText('Waiting for GitHub…')).toHaveClass('px-4', 'py-2.5');
   });
 
-  it('defaults to comfortable without a header', () => {
+  it('renders no header without header slots', () => {
     render(<ListGroup><ListItem title="Daily digest" /></ListGroup>);
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
-    expect(screen.getByText('Daily digest').closest('.group\\/item')).toHaveClass('px-4', 'py-3');
   });
 });
 

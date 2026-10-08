@@ -1,11 +1,8 @@
-// A project's tasks, as collection-kit rows. Same rows as the all-tasks page,
-// minus the project in the meta, and a menu that can move a task out.
+// A project's tasks: the shared task rows, minus the project in the meta.
 
 import { useMemo } from 'react';
-import Ico from '../Icons';
-import { OverflowMenu } from '../OverflowMenu';
 import { CollectionState, ListGroup } from '../collection';
-import { TaskRow, ScheduleGroupRow, groupScheduleRuns, latestRun } from './TaskRows';
+import { TaskRow, ScheduleGroupRow, chatTaskMenu, chatTaskRow, groupScheduleRuns } from './TaskRows';
 
 export function TaskList({
   tasks = [],
@@ -25,12 +22,6 @@ export function TaskList({
     [schedules],
   );
 
-  const menuItems = (task) => [
-    onMoveTaskToProject && { id: 'move', icon: Ico.moveTo(14), label: 'Move to project…', onClick: () => onMoveTaskToProject(task) },
-    onMoveTaskToProject && onDeleteTask && { divider: true },
-    onDeleteTask && { id: 'delete', icon: Ico.trash(14), label: 'Delete', danger: true, onClick: () => onDeleteTask(task.id) },
-  ].filter(Boolean);
-
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-3 pl-1">
@@ -45,13 +36,12 @@ export function TaskList({
         <ListGroup>
           {rows.map((row) => {
             if (row.kind === 'task') {
-              const items = menuItems(row.task);
               return (
                 <TaskRow
                   key={row.task.id}
-                  task={row.task}
-                  onOpen={(task) => onSelectTask?.(task.id)}
-                  actions={items.length ? <OverflowMenu size="sm" label="Task menu" items={items} /> : undefined}
+                  {...chatTaskRow(row.task)}
+                  onOpen={() => onSelectTask?.(row.task.id)}
+                  menuItems={chatTaskMenu(row.task, { onMoveToProject: onMoveTaskToProject, onDelete: onDeleteTask })}
                 />
               );
             }
@@ -61,10 +51,7 @@ export function TaskList({
                 schedule={schedulesById.get(row.scheduledId)}
                 runs={row.runs}
                 onOpenSchedule={() => onOpenSchedule?.(row.scheduledId)}
-                onOpenLatest={() => {
-                  const latest = latestRun(row.runs);
-                  if (latest?.id) onSelectTask?.(latest.id);
-                }}
+                onOpenTask={onSelectTask}
               />
             );
           })}

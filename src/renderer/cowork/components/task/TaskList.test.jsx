@@ -33,7 +33,7 @@ function setup(overrides = {}) {
 
 // Menu tests render a single task, so its kebab is the only one on screen.
 async function openMenu(user) {
-  await user.click(screen.getByRole('button', { name: 'Task menu' }));
+  await user.click(screen.getByRole('button', { name: /^Actions for/ }));
 }
 
 describe('TaskList', () => {
@@ -64,7 +64,7 @@ describe('TaskList', () => {
 
   it('offers no task menu on a schedule group row', () => {
     setup();
-    expect(screen.getAllByRole('button', { name: 'Task menu' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Actions for/ })).toHaveLength(2);
   });
 
   it('moves and deletes from the task menu without opening the task', async () => {
@@ -89,7 +89,7 @@ describe('TaskList', () => {
 
   it('renders no menu when no menu handlers are wired', () => {
     setup({ onDeleteTask: undefined, onMoveTaskToProject: undefined });
-    expect(screen.queryByRole('button', { name: 'Task menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 
   it('shows the empty state', () => {

@@ -71,7 +71,7 @@ export function CodeProjectsView({
               action: <Button variant="subtle" onClick={onCreate}>Create project</Button>,
             }}
           >
-            <ListGroup density="compact" aria-label="Code Projects">
+            <ListGroup aria-label="Code Projects">
               {visible.map((project) => {
                 const resources = projectResources(project);
                 return (

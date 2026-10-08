@@ -21,9 +21,9 @@ single shell owns a page.
 
 ## Choosing cards or rows
 
-Things you manage are rows: Scheduled, Connectors, Skills, Tasks. Places you
-work in and things you open are cards: Projects, Artifacts. Keep a page's
-grid/list toggle where it already exists, so saved preferences still work.
+Lists are the default. Projects, Artifacts, and Connected Apps open as cards
+and offer a grid/list toggle; every other page is list-only. A task looks the
+same everywhere: use `TaskRow` from `components/task`.
 
 ## Item slots
 
@@ -62,14 +62,12 @@ view === 'grid' ? <ItemCard as="article" {...slots} /> : <ListItem as="article" 
 - **`busy`** dims the item, sets `aria-busy`, and disables opening.
 - **`selected`** gives cards an accent border and rows a firmer fill.
 
-## Density
+## Spacing
 
-Set `density` once on `ListGroup`. Its rows, `NewRow`, and `ListNotice` read
-it, and a row can override it.
-
-- `comfortable` (default) is the Cowork page rhythm: 60px minimum rows,
-  `px-4 py-3`.
-- `compact` is Code Mode's rhythm: `px-3 py-2.5`, no minimum height.
+Every list uses one row padding, `px-4 py-2.5`, with no minimum height, so a
+row's height follows its content: a one-line task stays compact, and a row
+with a description gets a second line. Rows, `NewRow`, and `ListNotice` share
+it. Don't add per-page or per-mode spacing.
 
 `ListGroup` takes an optional header (`title`, `description`, `meta`,
 `actions`) for grouped lists, such as Code Mode connectors grouped by provider

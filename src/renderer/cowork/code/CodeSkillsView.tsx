@@ -374,7 +374,6 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             if (!items.length && searching) return null;
             return <ListGroup
               key={source.id}
-              density="compact"
               title={<button
                 type="button"
                 className="group/src flex min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-body text-ink"
@@ -395,10 +394,10 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             </ListGroup>;
           })}
           {(filter === 'all' || filter === 'personal') && personal.length > 0 && (
-            <ListGroup density="compact" title={groupTitle('Yours')} description="Personal skills available in Code Mode" meta={personal.length}>{rows(personal)}</ListGroup>
+            <ListGroup title={groupTitle('Yours')} description="Personal skills available in Code Mode" meta={personal.length}>{rows(personal)}</ListGroup>
           )}
           {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && (
-            <ListGroup density="compact" title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
+            <ListGroup title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
           )}
         </CollectionState>
       </div>
