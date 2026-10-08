@@ -141,6 +141,11 @@ export function serverPhaseToUiStatus(payload: Record<string, unknown>): OtaStat
 // settles whatever the mirror pushed, and nothing else would.
 let applyDepth = 0;
 
+// Restart requests that have announced `downloading` but have not finished:
+// they are re-checking the server or waiting for the maintenance lock before
+// `applyDepth` counts them, and they still own the status they pushed.
+let applyRequestsPending = 0;
+
 /** The server updater's progress (app.ts wires it in). The coordinator takes
  *  it raw for the server layer, and its busy phases are mirrored onto the OTA
  *  status, through the coordinator and the legacy channel alike, so `applying`
@@ -199,9 +204,10 @@ function contentsAlive(win: BrowserWindow): boolean {
 // waits until the apply settles and is replayed only if it still applies.
 let deferredOffer: OtaStatus | null = null;
 
-/** An apply holds the lock, or its reload has not committed yet. */
+/** An apply holds the lock, a Restart request is on its way to it, or a
+ *  reload has not committed yet. */
 function applyInFlight(): boolean {
-  return applyDepth > 0 || pendingNavigationSettle !== null;
+  return applyDepth > 0 || applyRequestsPending > 0 || pendingNavigationSettle !== null;
 }
 
 /** Push what a check found, unless an apply is in flight; then hold it. An
@@ -220,9 +226,12 @@ function pushOffer(getWindow: GetWindow, status: OtaStatus): void {
  *  apply landed the very UI it named, or left a failure the banner is already
  *  showing. */
 function replayDeferredOffer(): void {
+  // A reload commits (and settles) while its apply still waits for the page
+  // to finish loading. Leave the offer for the apply's own final settle.
+  if (applyInFlight()) return;
   const offer = deferredOffer;
   deferredOffer = null;
-  if (!offer || applyInFlight()) return;
+  if (!offer) return;
   if (updateCoordinator.getInput().ota) return;
   if (offer.uiUpdate && offer.uiVersion && offer.uiVersion === servedUiVersion()) return;
   sendStatus(windowRef, offer);
@@ -581,8 +590,33 @@ export async function handleApplyRequest(
   // the remote re-check below, which can take ten seconds. Until this push
   // the banner still reads "Update ready" and a second click is dropped.
   const offer = updateCoordinator.getInput().ota;
-  const restoreOffer = () => sendStatus(getWindow, offer ?? { phase: 'idle' });
+  // A check that lands while this request runs holds its offer (pushOffer);
+  // it is newer than the one the click answered, so it wins on the way back.
+  const restoreOffer = () => {
+    const next = deferredOffer ?? offer;
+    deferredOffer = null;
+    sendStatus(getWindow, next ?? { phase: 'idle' });
+  };
   sendStatus(getWindow, { phase: 'downloading', version: updateCoordinator.getState().version });
+  // From here this request owns the status until it returns. The re-check
+  // below and the wait for the maintenance lock come before `applyDepth`
+  // counts the apply, so count the request itself.
+  applyRequestsPending += 1;
+  try {
+    return await runApplyRequest(getWindow, options, { asked, confirmed, offer, restoreOffer });
+  } finally {
+    applyRequestsPending -= 1;
+    replayDeferredOffer();
+  }
+}
+
+/** The rest of a Restart request, once it has announced `downloading`. */
+async function runApplyRequest(
+  getWindow: GetWindow,
+  options: { force?: boolean } | undefined,
+  ctx: { asked: boolean; confirmed: boolean; offer: OtaStatus | null; restoreOffer: () => void },
+): Promise<boolean | { confirm: true; runningTasks: number | null }> {
+  const { asked, confirmed, offer, restoreOffer } = ctx;
   // A manual apply re-checks the server so it can't drift from the UI,
   // unless a check fresh enough preceded this call (the one the dialog
   // interrupted). A pending stream repair is excluded: it applies at boot,
