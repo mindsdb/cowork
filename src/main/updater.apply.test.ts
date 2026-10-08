@@ -53,7 +53,7 @@ vi.mock('./shell-auto-update-runtime', () => ({
   startShellAutoUpdatePolling: vi.fn(() => Promise.resolve()),
 }));
 
-import { checkForUpdates, handleApplyRequest } from './updater';
+import { checkForUpdates, handleApplyRequest, updateCoordinator } from './updater';
 
 const apply = (options?: { force?: boolean }) => handleApplyRequest(() => null, options);
 
@@ -178,6 +178,41 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(await apply({ force: true })).toBe(false);
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'skipped', errorCode: 'server-update-failed', to: '2.26.10.7.1' }));
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server', phase: 'failed', errorCode: 'install' }));
+  });
+
+  it('announces the restart before the remote re-check, so the click shows at once', async () => {
+    serverUpdater.check.mockResolvedValue({ updateAvailable: false });
+    await checkForUpdates();
+    updateCoordinator.feed({ ota: { phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1' } });
+    let phaseAtCheck: string | undefined;
+    serverUpdater.check.mockImplementation(async () => {
+      phaseAtCheck = updateCoordinator.getInput().ota?.phase;
+      return { updateAvailable: false };
+    });
+    await apply({});
+    expect(phaseAtCheck).toBe('downloading');
+    updateCoordinator.feed({ ota: null });
+  });
+
+  it('puts the offer back before asking when the re-check finds a server update the poll did not know', async () => {
+    serverUpdater.check.mockResolvedValue({ updateAvailable: false });
+    await checkForUpdates();
+    const offer = { phase: 'available' as const, version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1' };
+    updateCoordinator.feed({ ota: offer });
+    serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
+    tasks.count.mockResolvedValue(1);
+    expect(await apply({})).toEqual({ confirm: true, runningTasks: 1 });
+    // The dialog opens over "Update ready", not over "Updating…".
+    expect(updateCoordinator.getInput().ota).toEqual(offer);
+    updateCoordinator.feed({ ota: null });
+  });
+
+  it('an apply that throws leaves a failure the banner can retry, not silence', async () => {
+    updateCoordinator.feed({ ota: { phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1' } });
+    serverUpdater.apply.mockRejectedValueOnce(new Error('uv exploded'));
+    expect(await apply({ force: true })).toBe(false);
+    expect(updateCoordinator.getState()).toMatchObject({ action: 'reload', ui: { status: 'failed', version: '2.26.10.7.1' } });
+    updateCoordinator.feed({ ota: null });
   });
 
   it('never asks for a UI-only apply', async () => {
