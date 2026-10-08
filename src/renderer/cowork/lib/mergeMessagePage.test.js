@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeMessagePage, reconcilePaginationState, pageReplacesLocalHistory, knownRowIds } from './mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState, pageReplacesLocalHistory, knownRowIds, rowsArrivedSince } from './mergeMessagePage';
 
 const m = (id, content) => ({ id, role: 'user', content });
 
@@ -297,5 +297,18 @@ describe('mergeMessagePage: id-less rows and what the snapshot means', () => {
     const page = [m('u1'), m('a1')];
     expect(mergeMessagePage(existing, page, undefined)).toEqual(page);
     expect(mergeMessagePage(existing, page, new Set())).toEqual(existing);
+  });
+});
+
+describe('rowsArrivedSince against an empty page', () => {
+  it('keeps rows the read could not know, with their cards, and drops the rest', () => {
+    const card = { role: 'error', content: 'boom' };
+    const rows = [m('u1'), m('a1'), card, m('a-probe'), m('u-new'), m('a-new'), card];
+    expect(rowsArrivedSince(rows, [], new Set(['u1', 'a1'])))
+      .toEqual([m('a-probe'), m('u-new'), m('a-new'), card]);
+  });
+
+  it('drops an id-less row that follows no kept row', () => {
+    expect(rowsArrivedSince([{ role: 'user', content: 'unstamped' }, m('a1')], [], new Set(['a1']))).toEqual([]);
   });
 });

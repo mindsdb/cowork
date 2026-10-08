@@ -64,6 +64,11 @@ vi.mock('./api', async (importOriginal) => ({
     streams.push(handle);
     return handle;
   },
+  streamDataVaultSubmission: (...args) => {
+    const handle = { kind: 'datavault', opts: args[args.length - 1], abort: vi.fn() };
+    streams.push(handle);
+    return handle;
+  },
 }));
 
 // Spread the real host and override only what a mount needs — see
@@ -96,6 +101,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 
 import App from './App';
 import { cancelResponse } from './api';
+import { setForm as setDataVaultForm, clearForm as clearDataVaultForm } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
 
 const baseTask = (overrides = {}) => ({
@@ -149,7 +155,11 @@ async function deleteTurn(user, deleteButton) {
 let alertSpy;
 const originalAlert = window.alert;
 
-afterEach(() => { window.alert = originalAlert; });
+afterEach(() => {
+  window.alert = originalAlert;
+  // The form store is module state; an open form would leak into later tests.
+  clearDataVaultForm('conv-a');
+});
 
 beforeEach(() => {
   alertSpy = vi.fn();
@@ -828,6 +838,96 @@ describe('a late empty reopen result after a turn completed meanwhile', () => {
 
     await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
     expect(screen.queryByText('Second answer')).toBeNull();
+  });
+
+  const exchange = [
+    { role: 'user', id: 'u1', content: 'First question' },
+    { role: 'assistant', id: 'a1', content: 'First answer' },
+    { role: 'user', id: 'u2', content: 'Second question' },
+    { role: 'assistant', id: 'a2', content: 'Second answer' },
+  ];
+  const withLatePartial = [...exchange, { role: 'assistant', id: 'a-late', content: 'Saved by the cancel' }];
+  const emptyTask = () => baseTask({ messages: [], hasMoreMessages: false, messagesCursor: null });
+  const listBoth = () => spies.fetchSessions.mockResolvedValue([
+    { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+  ]);
+  const timeout = () => Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' });
+
+  it('keeps an answer-only probe turn that completed while the read was out', async () => {
+    const user = userEvent.setup();
+    listBoth();
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: exchange }) });
+    await openTask(user);
+    await screen.findByText('Second answer');
+    spies.deleteConversationTurn.mockRejectedValue(timeout());
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: withLatePartial }) });
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    await screen.findByText('Saved by the cancel');
+
+    let releaseReopen;
+    spies.fetchSessionResult.mockImplementation((id) => (id === 'conv-a'
+      ? new Promise((resolve) => { releaseReopen = resolve; })
+      : Promise.resolve({ status: 'ok', task: baseTask({ id, title: 'Beta task' }) })));
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+    // A connect form submitted meanwhile: its turn persists only an answer.
+    await act(async () => {
+      setDataVaultForm('conv-a', { form_id: 'fm_1', title: 'Connect Postgres', fields: [] });
+    });
+    await user.click(await screen.findByRole('button', { name: /^submit$/i }));
+    const probe = await waitFor(() => {
+      const s = streams.find((x) => x.kind === 'datavault');
+      if (!s) throw new Error('probe stream not started');
+      return s;
+    });
+    await emitOn(probe, { type: 'response.created', conversation_id: 'conv-a' });
+    await emitOn(probe, { type: 'response.output_text.delta', delta: 'Connected to Postgres' });
+    await emitOn(probe, { type: 'response.completed', assistant_message_id: 'a-probe' });
+    await act(async () => { probe.opts.onDone(); await Promise.resolve(); });
+    await screen.findByText('Connected to Postgres');
+
+    await act(async () => { releaseReopen({ status: 'ok', task: emptyTask() }); });
+
+    await waitFor(() => expect(screen.queryByText('First question')).toBeNull());
+    expect(screen.queryByText('Second answer')).toBeNull();
+    expect(screen.queryByText('Saved by the cancel')).toBeNull();
+    expect(screen.getByText('Connected to Postgres')).toBeInTheDocument();
+  });
+
+  it('drops the cancel\'s partial even when the reopen read started before the resync wrote it', async () => {
+    const user = userEvent.setup();
+    listBoth();
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages: exchange }) });
+    await openTask(user);
+    await screen.findByText('Second answer');
+
+    let failDelete;
+    spies.deleteConversationTurn.mockReturnValue(new Promise((_, reject) => { failDelete = reject; }));
+    await deleteTurn(user, screen.getAllByRole('button', { name: 'Delete' })[0]);
+
+    // Reopen while the DELETE is still out: this read's snapshot predates the resync.
+    let releaseReopen;
+    let alphaReads = 0;
+    spies.fetchSessionResult.mockImplementation((id) => {
+      if (id !== 'conv-a') return Promise.resolve({ status: 'ok', task: baseTask({ id, title: 'Beta task' }) });
+      alphaReads += 1;
+      if (alphaReads === 1) return new Promise((resolve) => { releaseReopen = resolve; });
+      return Promise.resolve({ status: 'ok', task: baseTask({ messages: withLatePartial }) });
+    });
+    await user.click(screen.getByText('Beta task'));
+    await user.click(screen.getByText('Alpha task'));
+    await waitFor(() => expect(alphaReads).toBe(1));
+
+    await act(async () => { failDelete(timeout()); });
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    await screen.findByText('Saved by the cancel');
+
+    await act(async () => { releaseReopen({ status: 'ok', task: emptyTask() }); });
+
+    await waitFor(() => expect(screen.queryByText('Saved by the cancel')).toBeNull());
+    expect(screen.queryByText('First question')).toBeNull();
   });
 });
 
