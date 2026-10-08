@@ -18,6 +18,10 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_FILE="$SCRIPT_DIR/server-credentials.json"
+# Fixed on a real install. The overrides exist for the mocked regression
+# tests (src/main/pkg-postinstall.test.ts), which cannot write /Applications.
+APPLICATIONS_DIR="${COWORK_PKG_APPLICATIONS_DIR:-/Applications}"
+SHARED_FALLBACK_DIR="${COWORK_PKG_SHARED_FALLBACK_DIR:-/Library/Application Support/MindsHub Cowork/.provision}"
 
 log() {
   echo "[cowork-postinstall] $*" >&2
@@ -54,7 +58,7 @@ stage_shared_fallback() {
   # user's home to place this under. Weaker than the normal path, but still
   # a real narrowing from the 0644 this replaces, and still consumed and
   # deleted by whichever account eventually launches the app.
-  local dest_dir="/Library/Application Support/MindsHub Cowork/.provision"
+  local dest_dir="$SHARED_FALLBACK_DIR"
   local dest_file="$dest_dir/server-credentials.json"
   install -d -o root -g staff -m 750 "$dest_dir" \
     && cp "$SRC_FILE" "$dest_file" \
@@ -81,14 +85,14 @@ chown_app_bundle() {
   fi
   local app_name
   app_name="$(cat "$name_file")"
-  # A bare name only, so the recursive chown can't leave /Applications.
+  # A bare name only, so the recursive chown can't leave the Applications folder.
   case "$app_name" in
     "" | */* | ..*)
       log "unexpected installed-app-name '$app_name' — skipping bundle chown"
       return 1
       ;;
   esac
-  local app_path="/Applications/$app_name"
+  local app_path="$APPLICATIONS_DIR/$app_name"
   if [ ! -d "$app_path" ]; then
     log "installed bundle not found at $app_path — skipping bundle chown"
     return 1
