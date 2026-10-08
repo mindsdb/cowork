@@ -124,8 +124,28 @@ function sendStatus(getWindow: GetWindow, payload: OtaStatus) {
   liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, payload);
 }
 
-/** The server updater's progress (app.ts wires it in). Mirrored onto the OTA
- *  channel by app.ts for the loading screen; the coordinator takes it raw. */
+// Map a server-updater notification onto the OTA status shape, so a server
+// download shows progress on the loading screen and the in-app overlay
+// (ENG-749). Only "busy" phases are mirrored: errors keep their own layer and
+// must never leave the UI stuck in a spinner. Exported for app.ts's test.
+export function serverPhaseToUiStatus(payload: Record<string, unknown>): OtaStatus | null {
+  const phase = typeof payload.phase === 'string' ? payload.phase : '';
+  const version = typeof payload.to === 'string' ? payload.to : undefined;
+  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
+  if (phase === 'restarting') return { phase: 'reloading' };
+  return null;
+}
+
+// How many applies hold the maintenance lock right now (0 or 1). The server
+// progress mirror below is only meaningful inside one: the apply's finally
+// settles whatever the mirror pushed, and nothing else would.
+let applyDepth = 0;
+
+/** The server updater's progress (app.ts wires it in). The coordinator takes
+ *  it raw for the server layer, and its busy phases are mirrored onto the OTA
+ *  status, through the coordinator and the legacy channel alike, so `applying`
+ *  reaches `reloading` during a server reinstall and the loading screen and
+ *  overlay keep their copy. */
 export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
   const phase = payload.phase;
   if (phase !== 'downloading' && phase !== 'restarting' && phase !== 'error' && phase !== 'idle') return;
@@ -136,24 +156,70 @@ export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
     ...(payload.critical === true ? { critical: true } : {}),
   };
   updateCoordinator.feed({ server: status });
+  const mirrored = serverPhaseToUiStatus(payload);
+  if (!mirrored) return;
+  if (applyDepth > 0) {
+    sendStatus(windowRef, mirrored);
+  } else {
+    // No apply to settle it: keep the legacy renderer's progress line without
+    // leaving the coordinator stuck in `applying`.
+    liveWindow(windowRef)?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
+  }
 }
 
-/** The window is about to load a renderer. The status that announced the
- *  apply belonged to the page being torn down: the coordinator now lives in
- *  main and would otherwise hand `applying` to the fresh renderer, which
- *  would keep the overlay up and hide every later offer. A server reinstall
- *  that reached this point is over too (the server updater reports no
- *  completion of its own), unless it ended in an error worth keeping. */
+/** The window is loading a renderer. The status that announced the apply
+ *  belonged to the page being torn down: the coordinator lives in main and
+ *  would otherwise hand `applying` to the fresh renderer, which would keep
+ *  the overlay up and hide every later offer. A server reinstall that reached
+ *  this point is over too (the server updater reports no completion of its
+ *  own), unless it ended in an error worth keeping. */
 function settleApplyStatus(): void {
   const server = updateCoordinator.getInput().server;
   updateCoordinator.feed({ ota: null, ...(server?.phase === 'error' ? {} : { server: null }) });
 }
 
+// A reload is in flight and the settle above is waiting for the navigation to
+// commit. Until it does, the old page is still on screen and must keep its
+// overlay: settling early pushes `applying: null` to it, and it drops to bare
+// UI for the moment before the new document loads.
+let pendingNavigationSettle: { cancel: () => void } | null = null;
+
+/** Settle the apply status once `win`'s next main-frame navigation commits,
+ *  or fails, or the health window elapses. Called right before `loadFile`.
+ *  A newer reload supersedes an older one still waiting. */
+function settleWhenNavigated(win: BrowserWindow): void {
+  pendingNavigationSettle?.cancel();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const cleanup = () => {
+    if (pendingNavigationSettle === entry) pendingNavigationSettle = null;
+    if (timer) clearTimeout(timer);
+    win.webContents.removeListener('did-navigate', done);
+    win.webContents.removeListener('did-fail-load', onFail);
+  };
+  const done = () => {
+    if (pendingNavigationSettle !== entry) return;
+    cleanup();
+    settleApplyStatus();
+  };
+  const onFail = (_e: unknown, errorCode: number, _desc: string, _url: string, isMainFrame: boolean) => {
+    if (!isMainFrame || errorCode === -3) return;
+    done();
+  };
+  const entry = { cancel: cleanup };
+  pendingNavigationSettle = entry;
+  timer = setTimeout(done, UI_RELOAD_HEALTH_MS);
+  timer.unref?.();
+  win.webContents.on('did-navigate', done);
+  win.webContents.on('did-fail-load', onFail);
+}
+
 /** An apply has finished, on any path: reloaded, failed, nothing to do, or
  *  no window to load into. Whatever it still reports as in flight is over.
  *  A server error is kept (it is what Settings shows), and so is an offer
- *  or failure the apply left behind on purpose. */
+ *  or failure the apply left behind on purpose. A reload that has not
+ *  committed yet settles itself when it does. */
 function settleInFlightStatus(): void {
+  if (pendingNavigationSettle) return;
   const { ota, server } = updateCoordinator.getInput();
   updateCoordinator.feed({
     ...(ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {}),
@@ -165,7 +231,7 @@ function reload(getWindow: GetWindow) {
   const win = liveWindow(getWindow);
   if (!win) return;
   sendStatus(getWindow, { phase: 'reloading' });
-  settleApplyStatus();
+  settleWhenNavigated(win);
   win.loadFile(getRendererPath());
 }
 
@@ -214,7 +280,7 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
   // nothing to load it into now.
   if (!win) return 'unverified';
   sendStatus(getWindow, { phase: 'reloading' });
-  settleApplyStatus();
+  settleWhenNavigated(win);
   if (await loadAndVerify(win, getRendererPath())) return 'applied';
 
   console.error('[updater] new UI bundle failed to load — rolling back');
@@ -230,7 +296,7 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
   const win2 = liveWindow(getWindow);
   if (!win2) return outcome;
   sendStatus(getWindow, { phase: 'rolled-back' });
-  settleApplyStatus();
+  settleWhenNavigated(win2);
   // Best-effort: the fallback (previous cache / bundled) should always load.
   await loadAndVerify(win2, getRendererPath());
   return outcome;
@@ -304,9 +370,14 @@ async function applyUpdatesUnlocked(
 
 function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean> {
   return withUpdateMaintenance(async () => {
+    // A reload from an earlier apply that never committed is superseded by
+    // this one; its settle must not fire over this apply's status.
+    pendingNavigationSettle?.cancel();
+    applyDepth += 1;
     try {
       return await applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger);
     } finally {
+      applyDepth -= 1;
       // Every path, not only the reload: a failed boot server install and an
       // apply with no live window both end without one, and the status they
       // pushed would otherwise hold the overlay up and hide every offer.
@@ -376,7 +447,12 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
       sendStatus(windowRef, { phase: 'idle' });
     }
   }
-  rememberShellManual(shell);
+  // The installer notice is the fallback for when the auto-updater is off or
+  // terminally failed, the same gate the poll applies (ENG-1739). A healthy
+  // auto-updater whose feed merely lags latest.json must not raise a Download
+  // banner for an update it will install itself.
+  const autoSnap = shellAuto ?? getShellAutoUpdateSnapshot();
+  rememberShellManual(shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable) ? shell : { available: false });
   return summary;
 }
 
@@ -437,6 +513,12 @@ export async function handleApplyRequest(
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
     confirmed = true;
   }
+  // The click has been answered: say the restart is going ahead now, before
+  // the remote re-check below, which can take ten seconds. Until this push
+  // the banner still reads "Update ready" and a second click is dropped.
+  const offer = updateCoordinator.getInput().ota;
+  const restoreOffer = () => sendStatus(getWindow, offer ?? { phase: 'idle' });
+  sendStatus(getWindow, { phase: 'downloading', version: updateCoordinator.getState().version });
   // A manual apply re-checks the server so it can't drift from the UI,
   // unless a check fresh enough preceded this call (the one the dialog
   // interrupted). A pending stream repair is excluded: it applies at boot,
@@ -445,24 +527,39 @@ export async function handleApplyRequest(
   const reusable = lastServerCheck && Date.now() - lastServerCheck.at <= APPLY_SERVER_CHECK_REUSE_MS
     ? lastServerCheck.result
     : null;
-  const server = options?.force && reusable ? reusable : await checkServer();
+  let server: ServerUpdateCheckResult;
+  try {
+    server = options?.force && reusable ? reusable : await checkServer();
+  } catch (error) {
+    restoreOffer();
+    throw error;
+  }
   const applyServer = serverUpdatePending(server);
   // The re-check can find a server update the last poll did not know about.
-  // That restart was never offered as one, so it still has to ask.
+  // That restart was never offered as one, so it still has to ask. The offer
+  // goes back first, so the dialog never opens over "Updating…".
   if (applyServer && asked && !confirmed && isServerRunning()) {
     const runningTasks = await countRunningTasks();
-    if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
+    if (runningTasks === null || runningTasks > 0) {
+      restoreOffer();
+      return { confirm: true, runningTasks };
+    }
   }
-  // The restart is going ahead: say so now, so the banner reads as applying
-  // rather than still offering the Restart while the download runs. Only
-  // after the question above, so the dialog never opens over "Updating…".
-  const offer = updateCoordinator.getInput().ota;
-  sendStatus(getWindow, { phase: 'downloading', version: updateCoordinator.getState().version });
-  const applied = await applyUpdates(getWindow, applyServer, true, 'manual');
+  let applied = false;
+  try {
+    applied = await applyUpdates(getWindow, applyServer, true, 'manual');
+  } catch (error) {
+    // The apply itself threw. The banner must not go silent until the next
+    // poll: name the failure, with the version, so it reads "Update failed"
+    // and offers Try again.
+    console.error('[updater] manual apply failed:', error);
+    sendStatus(getWindow, { phase: 'error', version: offer?.version ?? updateCoordinator.getState().version });
+    return false;
+  }
   // Nothing landed and no reload followed. Put the offer back as it was, so
   // the banner reads "Update ready" again rather than going silent until the
   // next poll; Settings says the attempt failed beside it.
-  if (!applied) sendStatus(getWindow, offer ?? { phase: 'idle' });
+  if (!applied) restoreOffer();
   return applied;
 }
 

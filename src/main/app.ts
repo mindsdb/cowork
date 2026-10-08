@@ -251,20 +251,6 @@ async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
   return configured?.mindsRuntimeCredentialRequired ?? null;
 }
 
-// Map a server-updater notification onto the UI update-status shape the renderer
-// already consumes, so a server download shows progress on the loading screen and
-// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
-// their own channel and must never leave the UI stuck in a spinner.
-function serverPhaseToUiStatus(
-  payload: Record<string, unknown>,
-): { phase: string; version?: string } | null {
-  const phase = typeof payload.phase === 'string' ? payload.phase : '';
-  const version = typeof payload.to === 'string' ? payload.to : undefined;
-  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
-  if (phase === 'restarting') return { phase: 'reloading' };
-  return null;
-}
-
 function httpRequest(
   url: string,
   options: { method: string; headers: Record<string, string>; body?: string }
@@ -1985,12 +1971,11 @@ app.whenReady().then(async () => {
     // maybeUpdateServer rolls back automatically if the new version also fails
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
+      // The coordinator takes the server layer raw and mirrors its busy
+      // phases onto the OTA status, so the loading screen and in-app overlay
+      // show progress during a server download (ENG-749).
       feedServerUpdateStatus(payload);
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
-      // Mirror progress onto the UI status channel so the loading screen and
-      // in-app overlay show it during a server download (ENG-749).
-      const mirrored = serverPhaseToUiStatus(payload);
-      if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
     const devMode = getDevMode();

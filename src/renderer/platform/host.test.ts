@@ -551,6 +551,92 @@ describe('electron mode (bridge present)', () => {
       expect((await host.getUpdateState())!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
     });
 
+    it('shares one bridge subscription across watchers, and tears it down with the last', async () => {
+      const state = { action: null, shell: { status: 'idle' } };
+      let pushed: ((s: unknown) => void) | null = null;
+      const off = vi.fn();
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUpdateState: vi.fn(async () => state),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return off; }),
+      };
+      const host = await importHost();
+      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
+      const first = vi.fn();
+      const second = vi.fn();
+      const offFirst = host.watchUpdateState(first);
+      const offSecond = host.watchUpdateState(second);
+      await vi.waitFor(() => expect(first).toHaveBeenCalledWith(state));
+      // A late watcher is caught up from the shared last value, with no second pull.
+      expect(second).toHaveBeenCalledWith(state);
+      expect(bridge.getUpdateState).toHaveBeenCalledTimes(1);
+      expect(bridge.onUpdateState).toHaveBeenCalledTimes(1);
+      pushed!({ action: 'reload' });
+      expect(first).toHaveBeenLastCalledWith({ action: 'reload' });
+      expect(second).toHaveBeenLastCalledWith({ action: 'reload' });
+      offFirst();
+      expect(off).not.toHaveBeenCalled();
+      pushed!({ action: 'relaunch' });
+      expect(first).not.toHaveBeenLastCalledWith({ action: 'relaunch' });
+      expect(second).toHaveBeenLastCalledWith({ action: 'relaunch' });
+      offSecond();
+      expect(off).toHaveBeenCalledOnce();
+      // A fresh watch after teardown subscribes anew.
+      host.watchUpdateState(vi.fn());
+      expect(bridge.onUpdateState).toHaveBeenCalledTimes(2);
+    });
+
+    it('on an older shell, two watchers register the legacy listeners once', async () => {
+      (window as unknown as Record<string, unknown>).antontron = {
+        onUpdateStatus: vi.fn(() => vi.fn()),
+        onShellAutoUpdate: vi.fn(() => vi.fn()),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+      };
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      host.watchUpdateState(vi.fn());
+      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
+      expect(bridge.onUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(bridge.onShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(bridge.getShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(bridge.getShellUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('on an older shell, a manual check does not turn an active auto-updater download into a stale installer notice', async () => {
+      // A shell with the unified check summary but no UPDATE_STATE channel:
+      // its summary flags the shell update the auto-updater is downloading
+      // (a version, no installer URL).
+      let shellCb: ((s: unknown) => void) | null = null;
+      (window as unknown as Record<string, unknown>).antontron = {
+        checkForUpdate: vi.fn(async () => ({
+          ok: true, offline: false, updateAvailable: true,
+          uiUpdateAvailable: false, serverUpdateAvailable: false,
+          shellUpdateAvailable: true, shellVersion: '2.26.10.9.1',
+        })),
+        onUpdateStatus: vi.fn(() => vi.fn()),
+        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+      };
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      shellCb!(shell('downloading', { targetVersion: '2.26.10.9.1' }));
+      await host.checkForUpdates();
+      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+      // The download later fails with no target: nothing stale falls through.
+      shellCb!(shell('failed', { recoverable: true, errorCode: 'check-stalled' }));
+      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+      // With the auto-updater out of the picture, the same summary is the notice,
+      // and a negative check clears it again.
+      shellCb!(shell('disabled'));
+      await host.checkForUpdates();
+      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', shell: { manual: true } });
+      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
+      bridge.checkForUpdate.mockResolvedValue({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
+      await host.checkForUpdates();
+      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+    });
+
     it('publishes nothing on web', async () => {
       const host = await importHost();
       const seen = vi.fn();

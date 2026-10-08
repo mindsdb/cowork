@@ -21,6 +21,7 @@ import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import {
   createUpdateCoordinator,
+  shellAutoIsPending,
   type OtaStatus,
   type ShellSnapshot,
   type UpdateCoordinator,
@@ -881,17 +882,28 @@ function shellCarriesUpdateState(): boolean {
   return isElectron && typeof bridge.getUpdateState === 'function' && typeof bridge.onUpdateState === 'function';
 }
 
-/** Watch the one update state. Called with the current state first,
- *  then on every change. Returns the unsubscribe. */
-export function watchUpdateState(cb: (state: UpdateCoordinatorState) => void): () => void {
-  if (!isElectron) return () => {};
+// One bridge subscription, however many watchers. App.tsx (loading screen,
+// telemetry) and the chat app's hook both watch; without this each would pull
+// over IPC and, on a shell without UPDATE_STATE, register its own set of
+// legacy listeners, feeding the composed state twice per push.
+type UpdateStateListener = (state: UpdateCoordinatorState) => void;
+let updateStateFeed: { listeners: Set<UpdateStateListener>; last: UpdateCoordinatorState | null; stop: () => void } | null = null;
+
+function startUpdateStateFeed(): NonNullable<typeof updateStateFeed> {
+  const listeners = new Set<UpdateStateListener>();
+  const feed = { listeners, last: null as UpdateCoordinatorState | null, stop: () => {} };
+  const publish = (state: UpdateCoordinatorState) => {
+    feed.last = state;
+    listeners.forEach((listener) => listener(state));
+  };
   if (shellCarriesUpdateState()) {
     let cancelled = false;
     Promise.resolve(bridge.getUpdateState())
-      .then((state) => { if (!cancelled && state) cb(state); })
+      .then((state) => { if (!cancelled && state) publish(state); })
       .catch(() => {});
-    const off = bridge.onUpdateState((state: UpdateCoordinatorState) => { if (!cancelled) cb(state); });
-    return () => { cancelled = true; off(); };
+    const off = bridge.onUpdateState((state: UpdateCoordinatorState) => { if (!cancelled) publish(state); });
+    feed.stop = () => { cancelled = true; off(); };
+    return feed;
   }
   const local = localUpdateState();
   const offOta = onUpdateStatus((status) => local.feed({ ota: status as OtaStatus }));
@@ -905,9 +917,27 @@ export function watchUpdateState(cb: (state: UpdateCoordinatorState) => void): (
       if (notice) local.feed({ shellManual: { version: notice.version, currentVersion: notice.currentVersion, downloadUrl: notice.downloadUrl ?? null } });
     })
     .catch(() => {});
-  const offLocal = local.subscribe(cb);
-  cb(local.getState());
-  return () => { offOta(); offShell(); offLocal(); };
+  const offLocal = local.subscribe(publish);
+  feed.last = local.getState();
+  feed.stop = () => { offOta(); offShell(); offLocal(); };
+  return feed;
+}
+
+/** Watch the one update state. Called with the current state first (as soon
+ *  as one is known), then on every change. Returns the unsubscribe. */
+export function watchUpdateState(cb: UpdateStateListener): () => void {
+  if (!isElectron) return () => {};
+  if (!updateStateFeed) updateStateFeed = startUpdateStateFeed();
+  const feed = updateStateFeed;
+  feed.listeners.add(cb);
+  if (feed.last) cb(feed.last);
+  return () => {
+    feed.listeners.delete(cb);
+    if (feed.listeners.size === 0 && updateStateFeed === feed) {
+      updateStateFeed = null;
+      feed.stop();
+    }
+  };
 }
 
 /** The current update state, or null off Electron. */
@@ -984,8 +1014,16 @@ function feedCheckSummary(summary: UpdateCheckSummary): void {
   } else if (local.getInput().ota?.phase === 'available') {
     local.feed({ ota: { phase: 'idle' } });
   }
-  if (summary.shellUpdateAvailable && summary.shellVersion) {
+  // The summary's shell flag also stands for an auto-updater download in
+  // flight on this shell (a version and no installer URL). That is the
+  // auto-updater's to finish, not a reinstall to offer; feeding it as the
+  // manual notice would outlive the download and dangle as a stale
+  // "Download" once the snapshot moves on. A check that reports no shell
+  // update clears the notice, as main's does.
+  if (summary.shellUpdateAvailable && summary.shellVersion && !shellAutoIsPending(local.getInput().shell)) {
     local.feed({ shellManual: { version: summary.shellVersion, downloadUrl: summary.shellDownloadUrl ?? null } });
+  } else if (!summary.shellUpdateAvailable || shellAutoIsPending(local.getInput().shell)) {
+    local.feed({ shellManual: null });
   }
 }
 
