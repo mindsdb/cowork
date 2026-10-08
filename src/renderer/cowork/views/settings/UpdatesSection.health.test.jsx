@@ -87,6 +87,16 @@ describe('UpdatesSection backend versions (ENG-3291)', () => {
     expect(copied).not.toMatch(/Server: —/);
   });
 
+  it('shows Unavailable, not Loading…, while the backend is stopped', async () => {
+    healthMock.impl = vi.fn(() => Promise.resolve({ status: 'ok', server_version: '0.26.10.5.2', anton_version: '2.26.10.5.1' }));
+    render(<UpdatesSection serverOnline={false} footer={null} />);
+    await act(async () => {});
+    await openDetails();
+    expect(screen.getAllByText('Unavailable')).toHaveLength(2);
+    expect(screen.queryByText('Loading…')).toBeNull();
+    expect(healthMock.impl).not.toHaveBeenCalled();
+  });
+
   it('passes the bound to fetchHealth and stops retrying once answered', async () => {
     healthMock.impl = vi.fn(() => Promise.resolve({ status: 'ok', server_version: '0.26.10.5.2', anton_version: '2.26.10.5.1' }));
     render(<UpdatesSection serverOnline footer={null} />);

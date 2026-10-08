@@ -20,7 +20,7 @@ import type {
 } from './shell-update-state';
 import { decideBootShellInstall } from './update-logic';
 import { withUpdateMaintenance } from './update-maintenance';
-import { forceReapServer, isServerRunning, startServer, stopServer, withServerMaintenance } from './server-process';
+import { SERVER_STOP_CEILING_MS, forceReapServer, isServerRunning, startServer, stopServer, withServerMaintenance } from './server-process';
 import { countRunningTasks } from './running-tasks';
 import type { RestartRequestResult } from '../shared/restart-confirmation';
 
@@ -32,7 +32,8 @@ const PENDING_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const EVIDENCE_FILE = 'shell-update-target.json';
 /** How long the boot gate waits on the shell check to tell a stranded update
  *  from a fresh download. Past this, the update is left to the banner. */
-const BOOT_INSTALL_WINDOW_MS = 10_000;
+const DEFAULT_BOOT_INSTALL_WINDOW_MS = 10_000;
+let bootInstallWindowMs = DEFAULT_BOOT_INSTALL_WINDOW_MS;
 
 interface DownloadedTargetEvidence {
   targetVersion: string;
@@ -212,7 +213,10 @@ export function configureShellAutoUpdate(options: {
   enabled: boolean;
   getWindow: GetWindow;
   getMode: () => ShellUpdateMode;
+  /** Test seams. Production uses the defaults. */
+  timings?: { bootInstallWindowMs?: number; installLaunchWindowMs?: number };
 }): ShellUpdateSnapshot {
+  bootInstallWindowMs = options.timings?.bootInstallWindowMs ?? DEFAULT_BOOT_INSTALL_WINDOW_MS;
   let buildKind: string | null = null;
   try { buildKind = buildKindStrict(); } catch { buildKind = null; }
   const feed = resolveShellUpdateFeed(buildKind, process.platform);
@@ -271,6 +275,7 @@ export function configureShellAutoUpdate(options: {
   controller = createShellAutoUpdater({
     adapter: createDefaultElectronUpdaterAdapter(mode === 'auto'),
     initialSnapshot: currentSnapshot,
+    installLaunchWindowMs: options.timings?.installLaunchWindowMs,
     onSnapshot(snapshot) {
       currentSnapshot = snapshot;
       writeEvidence(snapshot);
@@ -320,10 +325,12 @@ export async function downloadShellAutoUpdate(): Promise<ShellUpdateSnapshot> {
   return getShellAutoUpdateSnapshot();
 }
 
-/** How long the install waits for the sidecar to exit before reaping it. Same
- *  ceiling as the quit drain in app.ts, for the same reason: a wedged python
- *  must not pin the restart. */
-const INSTALL_STOP_CEILING_MS = 8_000;
+/** How long the install waits for the sidecar to exit before reaping it: the
+ *  stop's own worst case (prepare-shutdown + SIGTERM + SIGKILL grace), shared
+ *  with the quit drain in app.ts, so a slow but clean stop is never reaped
+ *  half a second from finishing, while a wedged python still cannot pin the
+ *  restart. */
+const INSTALL_STOP_CEILING_MS = SERVER_STOP_CEILING_MS;
 
 /** Stop the sidecar, bounded, so the shell never exits with a turn still being
  *  written (ENG-3291). On macOS `quitAndInstall` tears the process down before
@@ -492,17 +499,24 @@ export function startShellAutoUpdatePolling(
     // Nothing an earlier launch left behind, so no boot install to decide.
     if (!strandedTarget) return;
     const startedAt = Date.now();
-    const answered = await waitForSnapshot(bootCheckAnswered, BOOT_INSTALL_WINDOW_MS);
+    const answered = await waitForSnapshot(bootCheckAnswered, bootInstallWindowMs);
     settleStrandedEvidence();
     if (!answered) return;
     // The whole hold the shell adds to the gate stays within one window: the
-    // hand-off wait below gets whatever the check left of it.
-    const handoffBudget = Math.max(0, BOOT_INSTALL_WINDOW_MS - (Date.now() - startedAt));
+    // install below gets whatever the check left of it. The install itself
+    // runs to completion in the background: it stops the sidecar, hands the
+    // update to the installer, and waits up to the launch window for the app
+    // to begin quitting, restoring the sidecar if it does not. The gate only
+    // waits for that outcome while the budget lasts, so a stranded install
+    // whose installer neither quits nor errors cannot hold the loading screen
+    // for the whole launch window.
+    const handoffBudget = Math.max(0, bootInstallWindowMs - (Date.now() - startedAt));
     await otaBootSettled;
-    if (await installStrandedShellUpdate()) {
-      // Hold the gate while the app quits; release it if the install stalls.
-      await waitForSnapshot(snapshot => snapshot.phase !== 'installing', handoffBudget);
-    }
+    const install = installStrandedShellUpdate();
+    await Promise.race([
+      install,
+      new Promise<void>(resolve => setTimeout(resolve, handoffBudget)),
+    ]);
   });
 }
 

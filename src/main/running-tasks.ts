@@ -12,9 +12,11 @@ import { getServerOrigin, isServerRunning } from './server-process';
 // interrupts them through /coding/runtime/prepare-shutdown, so they count the
 // same. There is no endpoint for the coding service's live registry, so the
 // persisted session status stands in. A stale `running` left by a crash
-// over-counts, which asks once too often, never too seldom. The read is bounded, because on the 6 October
-// incident every sidecar request queued behind leaked streams; a confirmation
-// that never opens is worse than one that cannot give a number.
+// over-counts, which asks once too often, never too seldom.
+//
+// The read is bounded, because on the 6 October incident every sidecar request
+// queued behind leaked streams; a confirmation that never opens is worse than
+// one that cannot give a number.
 
 export const RUNNING_TASKS_TIMEOUT_MS = 2_000;
 

@@ -67,11 +67,19 @@ export type GuardedRestartResult = boolean | 'cancelled';
  *  returns. */
 export async function guardRestart(
   invoke: (options: { force?: boolean }) => Promise<RestartRequestResult>,
+  hooks: {
+    /** Called once the person has said yes, right before the forced request.
+     *  A caller that shows progress for the restart starts it here, not
+     *  before the first request, so the dialog never opens over a banner
+     *  that already says the update is being applied. */
+    onProceed?: () => void;
+  } = {},
 ): Promise<GuardedRestartResult> {
   const first = await invoke({});
   if (!needsRestartConfirmation(first)) return Boolean(first);
   const confirmed = await confirmRestart(first);
   if (!confirmed) return 'cancelled';
+  hooks.onProceed?.();
   const second = await invoke({ force: true });
   // Main does not ask twice when forced; a report here means an older shell
   // that ignores `force`, and the safe reading of that is "not restarted".

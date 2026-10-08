@@ -159,6 +159,25 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it('says why the last restart did not finish and offers Try again (ENG-3291)', () => {
+    const onInstallShellAutoUpdate = vi.fn();
+    render(
+      <SettingsView
+        {...baseProps}
+        shellAutoUpdate={{
+          phase: 'ready-to-install', mode: 'auto', channel: 'prod',
+          currentVersion: '2.260713.1', targetVersion: '2.260720.1',
+          recoverable: true, errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
+        }}
+        onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+      />
+    );
+    expect(screen.getByText(/Last restart attempt failed: installer launch failed/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
+    expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
     // A failure with no targetVersion (rejected check / failed retry check) still
     // shows its own Retry card, but must NOT suppress a valid OTA update — a shell

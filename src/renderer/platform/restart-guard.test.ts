@@ -39,11 +39,30 @@ describe('guardRestart', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, { force: true });
   });
 
+  it('calls onProceed only after a yes, right before the forced request', async () => {
+    const seen = mountAnswerer(true);
+    const calls: string[] = [];
+    const invoke = vi.fn(async (options: { force?: boolean }) => {
+      calls.push(options.force ? 'force' : 'ask');
+      return options.force ? true : { confirm: true as const, runningTasks: 1 };
+    });
+    expect(await guardRestart(invoke, { onProceed: () => calls.push('proceed') })).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(calls).toEqual(['ask', 'proceed', 'force']);
+
+    // No question asked: the first request did the work, nothing to proceed from.
+    const onProceed = vi.fn();
+    expect(await guardRestart(vi.fn(async () => true), { onProceed })).toBe(true);
+    expect(onProceed).not.toHaveBeenCalled();
+  });
+
   it('reports a no as cancelled, not failed, and never forces', async () => {
     mountAnswerer(false);
+    const onProceed = vi.fn();
     const invoke = vi.fn(async () => ({ confirm: true as const, runningTasks: null }));
-    expect(await guardRestart(invoke)).toBe('cancelled');
+    expect(await guardRestart(invoke, { onProceed })).toBe('cancelled');
     expect(invoke).toHaveBeenCalledTimes(1);
+    expect(onProceed).not.toHaveBeenCalled();
   });
 
   it('does not restart when nothing is mounted to ask', async () => {

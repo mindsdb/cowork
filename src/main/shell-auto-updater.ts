@@ -189,7 +189,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
    *  a background re-check behind a pending install: however that flight ends,
    *  it must never move the phase. `trigger` is the check's own, which a
    *  refresh doesn't write to the snapshot's `trigger`. */
-  type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger };
+  type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger; rejected?: boolean };
   let checkToken: UpdateFlight | null = null;
   let downloadToken: UpdateFlight | null = null;
   const now = options.now ?? Date.now;
@@ -296,18 +296,24 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // instead of tearing it down: the downloaded artifact is intact, so the
   // banner's Restart is the retry.
   const abortInstall = (error: unknown) => {
+    if (snapshot.phase !== 'installing') return;
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
-    options.onFailure?.({
-      error: normalized,
-      code: classified.code,
-      recoverable: true,
-      phase: snapshot.phase,
-      trigger: snapshot.trigger,
-      channel: snapshot.channel,
-      currentVersion: snapshot.currentVersion,
-      targetVersion: snapshot.targetVersion,
-    });
+    // Same episode latch as fail(): one report per failure code, so a fault
+    // that reached here twice (an event and a rejection, say) counts once.
+    if (classified.code !== failureEpisode) {
+      failureEpisode = classified.code;
+      options.onFailure?.({
+        error: normalized,
+        code: classified.code,
+        recoverable: true,
+        phase: snapshot.phase,
+        trigger: snapshot.trigger,
+        channel: snapshot.channel,
+        currentVersion: snapshot.currentVersion,
+        targetVersion: snapshot.targetVersion,
+      });
+    }
     dispatch({ type: 'INSTALL_ABORTED', code: classified.code, message: normalized.message });
     settleLaunch(false);
   };
@@ -440,11 +446,24 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     // MacUpdater forwards Squirrel's native error while it waits for staging.
     // Neither quits the app, so re-arm the install (the artifact is intact)
     // instead of tearing it down to `failed`, and let launchInstall report
-    // false so the caller restores the backend. With a refresh check still
-    // open the event is attributed to it, as below; an installer fault hidden
-    // behind one is still caught when the launch window elapses.
-    if (snapshot.phase === 'installing' && !checkToken) {
-      abortInstall(error);
+    // false so the caller restores the backend.
+    if (snapshot.phase === 'installing') {
+      if (!checkToken || !checkFlight) {
+        abortInstall(error);
+        return;
+      }
+      // A refresh check is still out on the network, and the library's
+      // untyped `error` could be its fault or the installer's. The check's
+      // own promise tells them apart: a failed check also rejects it (and
+      // fail() reports that), while an installer fault leaves it to resolve.
+      // So decide when the check settles, which its socket timeout bounds
+      // well inside the launch window: a refresh fault keeps the install
+      // frozen for the quit signal, an installer fault aborts at once.
+      const flight = checkToken;
+      void checkFlight.then(() => {
+        if (snapshot.phase !== 'installing' || flight.rejected) return;
+        abortInstall(error);
+      });
       return;
     }
     // A late error with no flight open while an install is armed can only
@@ -477,7 +496,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       checkToken = flight;
       checkFlight = options.adapter.checkForUpdates()
         .then(() => undefined)
-        .catch(error => fail(error, flight))
+        .catch(error => {
+          flight.rejected = true;
+          fail(error, flight);
+        })
         .finally(() => {
           if (checkToken === flight) {
             checkToken = null;

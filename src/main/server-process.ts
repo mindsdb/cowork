@@ -40,6 +40,15 @@ import {
 } from '../shared/server-status';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
+
+// The three bounded phases of a sidecar stop (see stopServer). Exported as one
+// worst-case sum so the callers that race a stop against a ceiling (the quit
+// drain in app.ts, the shell install in shell-auto-update-runtime.ts) cannot
+// drift below what a slow but clean stop needs.
+const PREPARE_SHUTDOWN_TIMEOUT_MS = 1_000;
+const SIGTERM_GRACE_MS = 6_000;
+const SIGKILL_GRACE_MS = 1_500;
+export const SERVER_STOP_CEILING_MS = PREPARE_SHUTDOWN_TIMEOUT_MS + SIGTERM_GRACE_MS + SIGKILL_GRACE_MS;
 const SERVER_HOST = '127.0.0.1';
 const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
@@ -1072,7 +1081,7 @@ async function prepareCodingTasksForShutdown(): Promise<void> {
     const response = await fetch(`${getServerOrigin()}/api/v1/coding/runtime/prepare-shutdown`, {
       method: 'POST',
       headers: authHeader(),
-      signal: AbortSignal.timeout(1_000),
+      signal: AbortSignal.timeout(PREPARE_SHUTDOWN_TIMEOUT_MS),
     });
     if (!response.ok) {
       console.warn(`[coding] shutdown checkpoint returned HTTP ${response.status}`);
@@ -1128,7 +1137,7 @@ async function stopServerUnlocked(): Promise<void> {
 
   await Promise.race([
     exited,
-    new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
+    new Promise<void>((resolve) => setTimeout(resolve, SIGTERM_GRACE_MS)),
   ]);
 
   // Still alive? Force-kill. `proc.exitCode === null` means the child
@@ -1137,7 +1146,7 @@ async function stopServerUnlocked(): Promise<void> {
     killTree(proc, 'SIGKILL');
     await Promise.race([
       exited,
-      new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+      new Promise<void>((resolve) => setTimeout(resolve, SIGKILL_GRACE_MS)),
     ]);
   }
 

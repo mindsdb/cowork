@@ -10,6 +10,10 @@ const env = vi.hoisted(() => ({
   failWrites: false,
   version: '2.0.0',
   adapter: null as null | ShellUpdaterAdapter,
+  // The sidecar as the boot install sees it: whether one runs, and how many
+  // times the runtime started it again after an install did not proceed.
+  serverRunning: false,
+  serverStarts: 0,
 }));
 
 vi.mock('electron', () => ({
@@ -48,13 +52,15 @@ vi.mock('../shared/shell-update-feed', () => ({
 vi.mock('./analytics', () => ({ sendEvent: vi.fn() }));
 vi.mock('./update-maintenance', () => ({ withUpdateMaintenance: (fn: () => unknown) => fn() }));
 vi.mock('./server-process', () => ({
+  SERVER_STOP_CEILING_MS: 8_500,
   withServerMaintenance: (fn: () => unknown) => fn(),
   // The boot install stops the sidecar before the hand-off and restores it if
-  // the install does not proceed (ENG-3291); no sidecar runs in this harness.
-  isServerRunning: () => false,
-  stopServer: async () => undefined,
+  // the install does not proceed (ENG-3291). No sidecar runs here unless a
+  // case says so.
+  isServerRunning: () => env.serverRunning,
+  stopServer: async () => { env.serverRunning = false; },
   forceReapServer: async () => undefined,
-  startServer: async () => ({ ok: true }),
+  startServer: async () => { env.serverRunning = true; env.serverStarts += 1; return { ok: true }; },
 }));
 vi.mock('./running-tasks', () => ({ countRunningTasks: async () => 0 }));
 vi.mock('./shell-auto-updater', async (importActual) => {
@@ -67,14 +73,16 @@ const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
 /** A fake updater that finds TARGET. `cached` replays it from disk with no
  *  progress, after a short validation delay, as electron-updater does. */
-function fakeUpdater({ cached, hangCheck = false, gate, installQuits = false }: {
-  cached: boolean; hangCheck?: boolean; gate?: Promise<void>; installQuits?: boolean;
+function fakeUpdater({ cached, hangCheck = false, gate, installQuits = false, installHangs = false }: {
+  cached: boolean; hangCheck?: boolean; gate?: Promise<void>; installQuits?: boolean; installHangs?: boolean;
 }) {
   const on: Record<string, (...args: any[]) => void> = {};
   const quitAndInstall = vi.fn(() => {
     // By default simulate an install that leaves the app running on the old
     // version (an installer error event); `installQuits` simulates the app
-    // beginning to quit for the update.
+    // beginning to quit for the update; `installHangs` an installer that
+    // neither quits nor errors.
+    if (installHangs) return;
     setTimeout(() => (installQuits ? on.quit?.() : on.error?.(new Error('install did not quit'))), 0);
   });
   const adapter: ShellUpdaterAdapter = {
@@ -127,6 +135,8 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
   beforeEach(() => {
     env.files.clear();
     env.failWrites = false;
+    env.serverRunning = false;
+    env.serverStarts = 0;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -136,6 +146,31 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
     strandTarget();
     const { quitAndInstall } = await launch({ cached: true });
     expect(quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the gate within its budget when the installer neither quits nor errors, and restores the sidecar later', async () => {
+    strandTarget();
+    env.serverRunning = true;
+    const updater = fakeUpdater({ cached: true, installHangs: true });
+    env.adapter = updater.adapter;
+    vi.resetModules();
+    const runtime = await import('./shell-auto-update-runtime');
+    runtime.configureShellAutoUpdate({
+      enabled: true, getWindow: () => null, getMode: () => 'auto',
+      timings: { bootInstallWindowMs: 150, installLaunchWindowMs: 400 },
+    });
+    const startedAt = Date.now();
+    await runtime.startShellAutoUpdatePolling(Promise.resolve());
+    // The gate let go inside the boot window, with the install still deciding.
+    expect(Date.now() - startedAt).toBeLessThan(400);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(runtime.getShellAutoUpdateSnapshot().phase).toBe('installing');
+    expect(env.serverRunning).toBe(false);
+    // The launch window then decides it in the background: re-armed, sidecar back.
+    await tick(450);
+    expect(runtime.getShellAutoUpdateSnapshot()).toMatchObject({ phase: 'ready-to-install', errorCode: 'update-request-failed' });
+    expect(env.serverStarts).toBe(1);
+    expect(env.serverRunning).toBe(true);
   });
 
   it('installs only after the OTA boot apply has settled', async () => {

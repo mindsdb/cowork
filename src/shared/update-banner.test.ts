@@ -57,6 +57,18 @@ describe('deriveUpdateBanner', () => {
       expect(b).toMatchObject({ tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false });
     });
 
+    it('ready-to-install after an aborted install says why and offers Try again', () => {
+      const b = deriveUpdateBanner({ shellAuto: {
+        phase: 'ready-to-install', mode: 'auto', version: '25.9.1',
+        errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
+      } });
+      expect(b).toMatchObject({ tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false });
+      expect(b?.hint).toBe('Last restart attempt failed: installer launch failed. The update is still downloaded. Try again to restart.');
+      // No message: still says it failed, still offers the retry.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', errorCode: 'update-request-failed' } })?.hint)
+        .toBe('The last restart attempt failed. The update is still downloaded. Try again to restart.');
+    });
+
     it('ready-to-install in auto mode hints the install-on-quit path', () => {
       expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto', version: '25.9.1' } })?.hint)
         .toBe('The new version (25.9.1) is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.');

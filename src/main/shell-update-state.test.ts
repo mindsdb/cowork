@@ -310,6 +310,15 @@ describe('transitionShellUpdate', () => {
     });
     // Only a frozen install can be aborted.
     expect(transitionShellUpdate(ready, { type: 'INSTALL_ABORTED', code: 'x' })).toBe(ready);
+
+    // The reason shows until the next attempt or a new target, then goes.
+    const retried = transitionShellUpdate(aborted, { type: 'INSTALL_REQUESTED' });
+    expect(retried.phase).toBe('installing');
+    expect(retried).not.toHaveProperty('errorCode');
+    expect(retried).not.toHaveProperty('errorMessage');
+    const superseded = transitionShellUpdate(aborted, { type: 'SUPERSEDED', targetVersion: '2.2.0' });
+    expect(superseded).toMatchObject({ phase: 'downloading', targetVersion: '2.2.0' });
+    expect(superseded).not.toHaveProperty('errorCode');
   });
 
   it('fails closed when disabled', () => {

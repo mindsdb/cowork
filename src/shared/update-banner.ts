@@ -69,8 +69,11 @@ export interface UpdateBannerInput {
     /** The update this snapshot is heading to. Present once an update is found;
      *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
     targetVersion?: string;
-    /** Classified failure code; a check-only code suppresses the banner. */
+    /** Classified failure code; a check-only code suppresses the banner. On a
+     *  `ready-to-install` snapshot it is the reason the last install attempt
+     *  was aborted (ENG-3291), and the banner says so. */
     errorCode?: string;
+    errorMessage?: string;
     progress?: { percent?: number | null } | null;
     /** `auto` installs a downloaded update on quit; `manual` never does. */
     mode?: string;
@@ -119,6 +122,16 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
     case 'installing':
       return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
     case 'ready-to-install':
+      // An install that never left the process (the sidecar stop or the
+      // installer failed) re-arms with its reason on the snapshot. Say so,
+      // or the pill flips from "Installing…" back to "Update ready" with no
+      // explanation (ENG-3291).
+      if (shellAuto.errorCode) {
+        return {
+          kind: 'shell-auto', tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false, dismissible: false, version,
+          hint: abortedInstallHint(shellAuto.errorMessage),
+        };
+      }
       // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
       // is the only way to install.
       return {
@@ -135,6 +148,13 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
     default:
       return { kind: 'shell-auto', tone: 'ready', title: 'New app version available', actionLabel: 'Download', action: 'shell-auto', disabled: false, dismissible: false, version };
   }
+}
+
+/** Why the last restart did not finish, for the banner hint and the Settings
+ *  card. Shared so the two surfaces cannot drift. */
+export function abortedInstallHint(message?: string): string {
+  const reason = message?.trim();
+  return `${reason ? `Last restart attempt failed: ${reason}.` : 'The last restart attempt failed.'} The update is still downloaded. Try again to restart.`;
 }
 
 /** The install step for a Debian package. Shared so the sidebar hint and the

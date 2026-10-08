@@ -65,9 +65,16 @@ export function useAppUpdates() {
     if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
     setUpdateApplying(true);
     const previous = updateStatus;
-    setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
+    const showProgress = () => setUpdateStatus({ phase: 'downloading', version: previous?.version });
+    // An apply with a server update may ask first (ENG-3291): main answers
+    // within seconds with a question, and the banner must still read "Update
+    // ready" under that dialog, not "Downloading…". So progress starts only
+    // once the restart proceeds: here for a UI-only apply, which never asks,
+    // and from the guard's onProceed after a yes. When no task is running
+    // main applies at once and pushes its own `downloading` status.
+    if (!previous?.serverUpdate) showProgress();
     try {
-      const result = await host.applyUpdate();
+      const result = await host.applyUpdate({ onProceed: showProgress });
       console.log('[ui-update] applyUpdate result:', result);
       if (result === 'cancelled') {
         // The person kept their running tasks (ENG-3291). Put the banner back

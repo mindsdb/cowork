@@ -6,7 +6,7 @@ import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
 import { MIN_SUPPORTED_SHELL, SUPPORTED_SHELL_WINDOW_DAYS } from '../../../../shared/shell-support';
-import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
+import { shellAutoOwnsBanner, debInstallStep, abortedInstallHint } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
@@ -109,7 +109,12 @@ export default function UpdatesSection({
   // the bound marks the rows unavailable and tries again a few seconds later,
   // until one answers.
   useEffect(() => {
-    if (!serverOnline) return undefined;
+    if (!serverOnline) {
+      // A stopped backend has no versions to read. Say so, rather than
+      // leaving the rows on the initial "Loading…" for as long as it is down.
+      setBackendVersions((prev) => ({ ...prev, state: 'unavailable' }));
+      return undefined;
+    }
     let cancelled = false;
     let retry = null;
     const read = async () => {
@@ -410,9 +415,14 @@ export default function UpdatesSection({
                                     ? 'Installing app update…'
                                     : 'App update failed'}
                         </span>
-                        <span className={`text-[11.5px] ${autoPhase === 'failed' ? 'text-warning' : 'text-ink-3'}`}>
+                        <span className={`text-[11.5px] ${autoPhase === 'failed' || (autoPhase === 'ready-to-install' && shellAutoUpdate.errorCode) ? 'text-warning' : 'text-ink-3'}`}>
                           {autoPhase === 'ready-to-install'
-                            ? 'Restart Cowork to finish installing the downloaded update.'
+                            ? (shellAutoUpdate.errorCode
+                              // The last Restart never left the process (ENG-3291): the
+                              // sidecar was stopped and started again, and the update is
+                              // still downloaded. Say why, or the card just reads "ready" again.
+                              ? abortedInstallHint(shellAutoUpdate.errorMessage)
+                              : 'Restart Cowork to finish installing the downloaded update.')
                             : autoPhase === 'failed'
                               ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
                               : autoPhase === 'available'
@@ -424,7 +434,9 @@ export default function UpdatesSection({
                         <Button variant="primary" onClick={onDownloadShellAutoUpdate}>Download update</Button>
                       )}
                       {autoPhase === 'ready-to-install' && (
-                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>Restart now</Button>
+                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>
+                          {shellAutoUpdate.errorCode ? 'Try again' : 'Restart now'}
+                        </Button>
                       )}
                       {autoPhase === 'failed' && shellAutoUpdate.recoverable && (
                         <Button variant="primary" onClick={onRetryShellAutoUpdate}>Retry</Button>

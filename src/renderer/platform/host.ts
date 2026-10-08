@@ -648,9 +648,9 @@ export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
 // `force` on a yes, so every button that reaches these two functions inherits
 // the dialog. Shells older than the contract return a plain boolean, which
 // passes straight through. `'cancelled'` means the person kept their tasks.
-export async function applyUpdate(): Promise<GuardedRestartResult> {
+export async function applyUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.applyUpdate === 'function') {
-    return guardRestart(options => bridge.applyUpdate(options));
+    return guardRestart(options => bridge.applyUpdate(options), hooks);
   }
   return false;
 }
@@ -845,9 +845,9 @@ export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot
   return DISABLED_SHELL_AUTO_UPDATE;
 }
 
-export async function installShellAutoUpdate(): Promise<GuardedRestartResult> {
+export async function installShellAutoUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.installShellAutoUpdate === 'function') {
-    return guardRestart(options => bridge.installShellAutoUpdate(options));
+    return guardRestart(options => bridge.installShellAutoUpdate(options), hooks);
   }
   return false;
 }

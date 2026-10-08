@@ -306,6 +306,37 @@ describe('createShellAutoUpdater', () => {
   // the fix launchInstall took that normal return as success while the error
   // event moved the phase to `failed`, and the runtime never restored the
   // sidecar it had just stopped.
+  it('aborts at once on an installer error while a refresh check is open, once the check clears itself', async () => {
+    const { adapter, updater, failures } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    // A refresh is out on the network when the user restarts.
+    const check = deferred();
+    adapter.checkForUpdates.mockReturnValueOnce(check.promise);
+    const refresh = updater.check('periodic');
+    expect(updater.beginInstall()).toBe(true);
+    const install = updater.launchInstall();
+
+    // The installer fails. The untyped event could be the refresh's, so the
+    // decision waits for the check's own promise: it resolves normally, which
+    // means the refresh did not fail, so the error was the installer's.
+    adapter.emit('updater-error', new Error('spawn elevate.exe ENOENT'));
+    expect(updater.getSnapshot().phase).toBe('installing');
+    check.resolve();
+    await refresh;
+    expect(await install).toBe(false);
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      errorCode: 'update-request-failed',
+    });
+    // One report, for the install, not a second one for a refresh that did not fail.
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ phase: 'installing', targetVersion: '2.1.0' });
+  });
+
   it('treats an installer error event raised during quitAndInstall as a failed launch', async () => {
     const { adapter, updater, failures } = setup();
     await updater.check('boot');

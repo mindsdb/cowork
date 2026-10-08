@@ -126,8 +126,9 @@ When enabled, main owns one immutable shell-update snapshot:
 - **The sidecar stops before the shell exits.** `installShellAutoUpdate` first
   freezes the pending install (`ready-to-install` → `installing`), so a
   background refresh that finds a newer build during the stop is refused rather
-  than moving the target. It then stops the sidecar (bounded, then
-  force-reaped, like the quit drain) and only then calls `quitAndInstall`. The
+  than moving the target. It then stops the sidecar (bounded by the stop's own
+  worst case, 8.5 seconds, then force-reaped, the same ceiling as the quit
+  drain) and only then calls `quitAndInstall`. The
   install counts as launched only when the app begins quitting (electron-
   updater's `before-quit-for-update`, or Electron's `before-quit`). A normal
   return from `quitAndInstall` is not enough: the library's `install()` catches
@@ -135,9 +136,17 @@ When enabled, main owns one immutable shell-update snapshot:
   can fail while staging the bundle after the call returns. If the stop throws,
   the installer throws or reports an `error` event, or the app has not begun
   quitting within 60 seconds, the install is re-armed (`INSTALL_ABORTED`, back
-  to `ready-to-install` with the reason on the snapshot) and the sidecar is
-  started again, so an app that stays open keeps its backend. The boot install of a stranded update (ENG-2764) goes through
-  the same function. On macOS the updater's quit tears the process down before
+  to `ready-to-install`) and the sidecar is
+  started again, so an app that stays open keeps its backend. The reason stays
+  on the snapshot until the next attempt: the sidebar pill reads "Last restart
+  attempt failed" with a **Try again** action, and the Settings card says the
+  same under its title, so the pill never flips from "Installing…" back to
+  "Update ready" with no explanation. An installer `error` that arrives while a
+  background refresh check is still out on the network is attributed by that
+  check's own promise: a failed check also rejects it, an installer fault does
+  not, so the abort waits for the check to settle (its socket timeout bounds
+  that) rather than for the whole launch window. The boot install of a
+  stranded update (ENG-2764) goes through the same function. On macOS the updater's quit tears the process down before
   `before-quit` can drain, so without this the shell was gone while a turn was
   still being written. The quit drain then finds nothing left to stop.
 - Concurrent boot, periodic, and manual checks coalesce into one operation.
@@ -211,7 +220,10 @@ every launch.
 When `shell-update-target.json` shows an earlier launch downloaded a target
 this launch is not running, and no install of that target has been attempted,
 by a boot install or a Restart click, the loading gate also waits on the shell
-boot check, for up to 10 seconds in all, hand-off included. Every other launch
+boot check, for up to 10 seconds in all. The install itself runs to completion
+in the background (sidecar stop, hand-off, launch window, and the sidecar
+restored if the installer neither quits nor errors); the gate only waits for its
+outcome while that budget lasts. Every other launch
 skips the wait. If that check replays a cached download, the app installs it
 and relaunches before it is shown. The install starts only after the OTA boot
 apply has settled, so it never quits the app mid-apply; the gate is held by

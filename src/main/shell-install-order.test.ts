@@ -41,6 +41,7 @@ const server = vi.hoisted(() => ({
   forceReapServer: vi.fn(async () => { order.events.push('reap'); }),
 }));
 vi.mock('./server-process', () => ({
+  SERVER_STOP_CEILING_MS: 8_500,
   withServerMaintenance: (fn: () => unknown) => Promise.resolve().then(fn),
   stopServer: server.stopServer,
   startServer: server.startServer,
