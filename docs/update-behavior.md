@@ -437,19 +437,33 @@ rather than a bug to be reported.
 
 The three transports stay independent, but the user sees one update. Main
 holds one coordinator over them, `src/shared/update-coordinator.ts`: a pure
-reducer, modelled on `shell-update-state.ts`, over four serializable inputs:
+reducer, modelled on `shell-update-state.ts`, over five serializable inputs:
 
 - the shell auto-updater's snapshot (`SHELL_UPDATE_STATUS`);
-- the OTA status pushes (`UI_UPDATE_STATUS`), which a newer main stamps with
-  which layers an `available` names (`uiUpdate`, `uiVersion`, `serverUpdate`,
-  `serverVersion`, `serverComponent`);
+- the OTA **offer**: what checks found and nothing has applied yet, per layer
+  (UI version; server version and component). Only checks write it, and each
+  channel decides only its own layer: a channel that errored, or was not
+  checked, leaves its layer as it was (`offerAfterCheck`). An apply removes
+  what it used up: a layer it landed, a rolled-back UI, and a UI it found
+  nothing to apply for, which was stale. A newer offer a check made meanwhile
+  stands (`offerAfterApply`);
+- the OTA **apply**: what an apply is doing (`downloading`, `reloading`) or how
+  the last one ended (`rolled-back`, `error`). Only applies write it, so a
+  check that lands mid-apply can never replace its progress; the offer it
+  finds waits in its own slot and shows once the apply settles;
 - the server updater's progress (`SERVER_UPDATE_STATUS`);
-- the prod-only manual installer notice (ENG-849).
+- the prod-only manual installer notice (ENG-849). It is raised only while
+  the auto-updater is the fallback, and a manifest that cannot be reached
+  leaves it as it was (`manualNoticeAfterCheck`).
 
-It derives one state: a status per layer (`ui`, `server`, `shell`), an
-`overall` (`idle`, `checking`, `downloading`, `ready`, `applying`, `failed`),
-`pending: { reload, relaunch }`, which boot-time apply is in flight
-(`applying`), and the one `action` a click performs:
+The legacy `UI_UPDATE_STATUS` channel carries offer and progress in one shape;
+`legacyOtaInput` splits it into the two inputs for a renderer composing the
+state on an older shell, and an older main's combined `available` is read by
+`legacyAvailableOffer`.
+
+It derives one state: a status per layer (`ui`, `server`, `shell`), which
+boot-time apply is in flight (`applying`), and the one `action` a click
+performs:
 
 | `action` | When | What it does |
 |---|---|---|
@@ -557,7 +571,7 @@ cannot contradict a pending shell update.
 | **Shell only** (auto-update eligible) | Never named on the loading screen. The pill and the card walk "New version available → Downloading update (%) → Update ready". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
 | **Shell below the supported window** (`prod`, see above) | On the first screen after launch, a warning names the installed shell and offers one action — Restart / Download through the auto-updater, or the download page on shells that cannot update themselves. Dismissible per launch; Settings → Updates marks the App shell "⚠ too old". |
-| **Shell + Server + UI, all pending** (mid-session) | One shell-first banner, "Update ready — Restart now", and the same card in Settings naming the UI and server it also applies. The coordinator reports both `pending.relaunch` and `pending.reload`, and the one action is `relaunch`: the shell relaunch applies the pending UI/server OTA at boot anyway. One Restart resolves all three — no stacked pills or cards, and nothing lingers after the relaunch. |
+| **Shell + Server + UI, all pending** (mid-session) | One shell-first banner, "Update ready — Restart now", and the same card in Settings naming the UI and server it also applies. The OTA stays offered behind the relaunch (a Reload click would still run), and the one action is `relaunch`: the shell relaunch applies the pending UI/server OTA at boot anyway. One Restart resolves all three — no stacked pills or cards, and nothing lingers after the relaunch. |
 | **Server + UI pending, shell check in flight or failed with nothing to retry** | The OTA restart is offered; the shell's state is one line under the Settings card ("Checking for an app update…", "The last app update check failed…"), never a second card. |
 | **Newer UI on a shell older than `UPDATE_STATE`** | The same banner and card: the renderer composes the state from the channels the shell has (`platform/host.ts`) and picks reload or relaunch itself on that shell's own channels. |
 

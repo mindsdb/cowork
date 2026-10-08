@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { deriveBootStatus } from './boot-status';
-import { coordinateUpdates, type ShellSnapshot, type UpdateCoordinatorInput } from './update-coordinator';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput, type OtaStatus, type ShellSnapshot, type UpdateCoordinatorInput } from './update-coordinator';
 
 const shell = (phase: ShellSnapshot['phase']): ShellSnapshot => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1' });
-const from = (input: Partial<UpdateCoordinatorInput>) => deriveBootStatus(coordinateUpdates({ shell: null, ota: null, server: null, shellManual: null, ...input }));
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+const from = ({ ota, ...input }: Partial<UpdateCoordinatorInput> & { ota?: OtaStatus | null }) =>
+  deriveBootStatus(coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...(ota !== undefined ? legacyOtaInput(ota) : {}), ...input }));
 
 describe('deriveBootStatus', () => {
   it('returns null when no boot-time OTA is in flight', () => {

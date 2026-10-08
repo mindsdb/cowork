@@ -497,11 +497,11 @@ describe('electron mode (bridge present)', () => {
       const seen = vi.fn();
       host.watchUpdateState(seen);
       expect(seen).toHaveBeenCalledTimes(1);
-      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, overall: 'idle' });
+      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, applying: null });
       otaCb!({ phase: 'available', version: '2.26.10.7.1' });
       expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
       shellCb!(shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
-      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', pending: { reload: true, relaunch: true } });
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', ui: { status: 'ready' } });
       // The one apply picks the shell install on that shell's own channel.
       const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
       await host.applyUpdates();
@@ -551,7 +551,7 @@ describe('electron mode (bridge present)', () => {
       host.watchUpdateState(vi.fn());
       otaCb!({ phase: 'available', version: 'ui-1' });
       otaCb!({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
-      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', pending: { reload: true } });
+      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', ui: { status: 'ready' } });
       // The notice's action is the renderer's own; unnamed, nothing is sent.
       expect(await host.applyUpdates()).toBe(false);
       expect(applyUpdate).not.toHaveBeenCalled();

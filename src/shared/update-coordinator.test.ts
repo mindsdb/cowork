@@ -1,9 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  EMPTY_UPDATE_INPUT,
+  applyProgressSettles,
+  availableStatus,
+  checkFromSummary,
   coordinateUpdates,
   createUpdateCoordinator,
+  dispatchApplyStep,
+  legacyAvailableOffer,
+  legacyOfferStatus,
+  legacyOtaInput,
+  manualNoticeAfterCheck,
+  offerAfterApply,
+  offerAfterCheck,
+  pollOfferCheck,
+  renderedStateKey,
   resolveApplyAction,
+  settledApplyInput,
   shellAutoIsPending,
+  type OtaOffer,
+  type OtaStatus,
   type ShellSnapshot,
   type UpdateCoordinatorInput,
 } from './update-coordinator';
@@ -11,12 +27,25 @@ import {
 const shell = (phase: ShellSnapshot['phase'], over: Partial<ShellSnapshot> = {}): ShellSnapshot => ({
   phase, mode: 'auto', channel: 'prod', currentVersion: '2.26.10.1.1', ...over,
 });
-const state = (input: Partial<UpdateCoordinatorInput>) => coordinateUpdates({ shell: null, ota: null, server: null, shellManual: null, ...input });
+/** The derived state, from the new inputs and/or a legacy-channel status. */
+type LooseInput = Partial<UpdateCoordinatorInput> & { ota?: OtaStatus | null };
+const state = ({ ota, ...rest }: LooseInput) => coordinateUpdates({
+  ...EMPTY_UPDATE_INPUT,
+  ...(ota !== undefined ? legacyOtaInput(ota) : {}),
+  ...rest,
+});
+const offer = (ui?: string | null, server?: string | null, component?: 'cowork-server' | 'anton-agent'): OtaOffer | null => {
+  const o: OtaOffer = {
+    ui: ui === undefined || ui === null ? null : { version: ui },
+    server: server === undefined || server === null ? null : { version: server, ...(component ? { component } : {}) },
+  };
+  return o.ui || o.server ? o : null;
+};
 
 describe('coordinateUpdates', () => {
   it('is idle with nothing pending', () => {
     const s = state({});
-    expect(s).toMatchObject({ overall: 'idle', action: null, pending: { reload: false, relaunch: false }, applying: null });
+    expect(s).toMatchObject({ action: null, applying: null });
     expect(s.shell.status).toBe('idle');
     expect(state({ shell: shell('disabled') }).shell.status).toBe('disabled');
   });
@@ -25,7 +54,7 @@ describe('coordinateUpdates', () => {
   describe('scenarios', () => {
     it('OTA only, found mid-session: one reload', () => {
       const s = state({ ota: { phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1', serverUpdate: false } });
-      expect(s).toMatchObject({ overall: 'ready', action: 'reload', pending: { reload: true, relaunch: false }, version: '2.26.10.7.1' });
+      expect(s).toMatchObject({ action: 'reload', version: '2.26.10.7.1' });
       expect(s.ui).toMatchObject({ status: 'ready', version: '2.26.10.7.1' });
       expect(s.server.status).toBe('idle');
     });
@@ -54,38 +83,40 @@ describe('coordinateUpdates', () => {
         shell: shell('ready-to-install', { targetVersion: '2.26.10.7.1' }),
         ota: { phase: 'available', version: '2.26.10.7.1', uiUpdate: true, serverUpdate: true, serverVersion: '0.26.10.7.1' },
       });
-      expect(s).toMatchObject({ overall: 'ready', action: 'relaunch', pending: { reload: true, relaunch: true }, version: '2.26.10.7.1' });
+      expect(s).toMatchObject({ action: 'relaunch', version: '2.26.10.7.1' });
       expect(s.shell).toMatchObject({ status: 'ready', manual: false });
+      // The OTA is still pending behind it: a reload click would still run.
+      expect(resolveApplyAction(s, 'reload')).toBe('reload');
     });
 
     it('a stranded shell update being installed at boot: applying, no action, the overlay says so', () => {
       const s = state({ shell: shell('installing', { targetVersion: '2.26.10.7.1', installSource: 'boot' }) });
-      expect(s).toMatchObject({ overall: 'applying', action: null, applying: 'installing' });
+      expect(s).toMatchObject({ action: null, applying: 'installing' });
       expect(s.shell.snapshot?.installSource).toBe('boot');
     });
 
     it('a boot OTA apply: applying through download and reload, with no action', () => {
-      expect(state({ ota: { phase: 'downloading', version: '0.26.10.7.1' } })).toMatchObject({ overall: 'applying', applying: 'downloading', action: null });
-      expect(state({ ota: { phase: 'reloading' } })).toMatchObject({ overall: 'applying', applying: 'reloading', action: null });
+      expect(state({ ota: { phase: 'downloading', version: '0.26.10.7.1' } })).toMatchObject({ applying: 'downloading', action: null });
+      expect(state({ ota: { phase: 'reloading' } })).toMatchObject({ applying: 'reloading', action: null });
       // A shell download in flight never hides a reload in flight.
       expect(state({ ota: { phase: 'reloading' }, shell: shell('downloading') }).applying).toBe('reloading');
     });
 
     it('shell only, auto mode: download in flight, then ready', () => {
       const dl = state({ shell: shell('downloading', { targetVersion: '2.26.10.7.1', progress: { percent: 42 } }) });
-      expect(dl).toMatchObject({ overall: 'downloading', action: null });
+      expect(dl).toMatchObject({ action: null });
       expect(dl.shell).toMatchObject({ status: 'downloading', progress: { percent: 42 } });
       const ready = state({ shell: shell('ready-to-install', { targetVersion: '2.26.10.7.1' }) });
-      expect(ready).toMatchObject({ overall: 'ready', action: 'relaunch', pending: { relaunch: true, reload: false }, version: '2.26.10.7.1' });
+      expect(ready).toMatchObject({ action: 'relaunch', version: '2.26.10.7.1' });
     });
 
     it('shell only, manual mode: an explicit download first', () => {
-      expect(state({ shell: shell('available', { mode: 'manual', targetVersion: '2.26.10.7.1' }) })).toMatchObject({ overall: 'ready', action: 'download' });
+      expect(state({ shell: shell('available', { mode: 'manual', targetVersion: '2.26.10.7.1' }) })).toMatchObject({ action: 'download' });
     });
 
     it('shell only, auto-update disabled or failed: the manual installer notice', () => {
       const s = state({ shell: shell('disabled', { disabledReason: 'rollout-disabled' }), shellManual: { version: '2.26.10.7.1', downloadUrl: 'https://x/y.pkg' } });
-      expect(s).toMatchObject({ overall: 'ready', action: 'open-download-page', version: '2.26.10.7.1' });
+      expect(s).toMatchObject({ action: 'open-download-page', version: '2.26.10.7.1' });
       expect(s.shell).toMatchObject({ status: 'available', manual: true, manualDownloadUrl: 'https://x/y.pkg' });
       // The manual notice outranks an OTA, as it always did.
       expect(state({ shellManual: { version: 'v' }, ota: { phase: 'available', version: 'ui' } }).action).toBe('open-download-page');
@@ -94,38 +125,38 @@ describe('coordinateUpdates', () => {
     });
 
     it('a failed shell update with a known target: retry, or the installer when terminal', () => {
-      expect(state({ shell: shell('failed', { targetVersion: 'v', recoverable: true }) })).toMatchObject({ overall: 'failed', action: 'retry' });
-      expect(state({ shell: shell('failed', { targetVersion: 'v', recoverable: false }) })).toMatchObject({ overall: 'failed', action: 'open-download-page', shell: { manual: false } });
+      expect(state({ shell: shell('failed', { targetVersion: 'v', recoverable: true }) })).toMatchObject({ action: 'retry' });
+      expect(state({ shell: shell('failed', { targetVersion: 'v', recoverable: false }) })).toMatchObject({ action: 'open-download-page', shell: { manual: false } });
       // It outranks a pending OTA, as a real shell update always has.
       expect(state({ shell: shell('failed', { targetVersion: 'v', recoverable: true }), ota: { phase: 'available', version: 'ui' } }).action).toBe('retry');
     });
 
     it('a targetless shell failure never hides an OTA restart, but keeps Retry when nothing else is pending', () => {
       const failed = shell('failed', { recoverable: true, errorCode: 'update-request-failed' });
-      expect(state({ shell: failed, ota: { phase: 'available', version: 'ui' } })).toMatchObject({ action: 'reload', overall: 'ready' });
+      expect(state({ shell: failed, ota: { phase: 'available', version: 'ui' } })).toMatchObject({ action: 'reload' });
       expect(state({ shell: failed, shellManual: { version: 'v' } }).action).toBe('open-download-page');
-      expect(state({ shell: failed })).toMatchObject({ action: 'retry', overall: 'failed' });
+      expect(state({ shell: failed })).toMatchObject({ action: 'retry' });
     });
 
     it('a check that produced no answer is silent', () => {
       const s = state({ shell: shell('failed', { recoverable: true, errorCode: 'check-stalled' }) });
-      expect(s).toMatchObject({ action: null, overall: 'idle', silentShellFailure: true });
+      expect(s).toMatchObject({ action: null, silentShellFailure: true });
     });
 
     it('a shell check in flight is reported, and does not hide an OTA restart', () => {
-      expect(state({ shell: shell('checking') })).toMatchObject({ overall: 'checking', action: null });
+      expect(state({ shell: shell('checking') })).toMatchObject({ action: null });
       expect(state({ shell: shell('checking'), ota: { phase: 'available', version: 'ui' } }).action).toBe('reload');
     });
 
     it('a failed OTA apply offers the reload again', () => {
       const s = state({ ota: { phase: 'error', version: '2.26.10.7.1' } });
-      expect(s).toMatchObject({ overall: 'failed', action: 'reload' });
+      expect(s).toMatchObject({ action: 'reload' });
       expect(s.ui).toMatchObject({ status: 'failed', error: 'apply-failed', version: '2.26.10.7.1' });
     });
 
     it('a rolled-back bundle is a failed layer with nothing to click: it is quarantined', () => {
       const s = state({ ota: { phase: 'rolled-back' } });
-      expect(s).toMatchObject({ overall: 'failed', action: null });
+      expect(s).toMatchObject({ action: null });
       expect(s.ui).toMatchObject({ status: 'failed', error: 'rolled-back' });
     });
 
@@ -133,7 +164,6 @@ describe('coordinateUpdates', () => {
       expect(state({ server: { phase: 'downloading', to: '0.26.10.7.1' } }).server).toMatchObject({ status: 'applying', version: '0.26.10.7.1' });
       const s = state({ server: { phase: 'error', critical: true, error: 'rollback failed' } });
       expect(s.server).toMatchObject({ status: 'failed', error: 'rollback failed' });
-      expect(s.overall).toBe('failed');
     });
 
     it('an aborted install keeps the relaunch and carries the reason (ENG-3291)', () => {
@@ -176,7 +206,7 @@ describe('createUpdateCoordinator', () => {
   it('routes the legacy shell-available push to the manual notice', () => {
     const c = createUpdateCoordinator();
     c.feed({ ota: { phase: 'shell-available', version: '2.26.10.7.1', currentVersion: '2.26.10.1.1', downloadUrl: 'https://x/y.pkg' } });
-    expect(c.getInput().ota).toBeNull();
+    expect(c.getInput()).toMatchObject({ otaOffer: null, otaApply: null });
     expect(c.getInput().shellManual).toEqual({ version: '2.26.10.7.1', currentVersion: '2.26.10.1.1', downloadUrl: 'https://x/y.pkg' });
     expect(c.getState().action).toBe('open-download-page');
   });
@@ -271,5 +301,305 @@ describe('createUpdateCoordinator: revision', () => {
 
   it('the pure reducer carries no revision', () => {
     expect(state({}).revision).toBeUndefined();
+  });
+});
+
+// ---- the two OTA inputs ------------------------------------------------------
+
+describe('an offer and an apply never overwrite each other', () => {
+  it('an offer found mid-apply waits behind the progress, and shows once it settles', () => {
+    const during = state({ otaOffer: offer('2.26.10.8.1'), otaApply: { phase: 'downloading', version: '2.26.10.7.1' } });
+    expect(during).toMatchObject({ applying: 'downloading', action: null, ui: { status: 'applying', version: '2.26.10.7.1' } });
+    const input = { ...EMPTY_UPDATE_INPUT, otaOffer: offer('2.26.10.8.1'), otaApply: { phase: 'reloading' as const } };
+    const after = coordinateUpdates({ ...input, ...settledApplyInput(input) });
+    expect(after).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+  });
+
+  it('a failed apply shows until an offer for another version arrives, whose Restart is the retry', () => {
+    expect(state({ otaOffer: offer('2.26.10.7.1'), otaApply: { phase: 'error', version: '2.26.10.7.1' } }))
+      .toMatchObject({ action: 'reload', ui: { status: 'failed', error: 'apply-failed', version: '2.26.10.7.1' } });
+    expect(state({ otaOffer: offer('2.26.10.8.1'), otaApply: { phase: 'error', version: '2.26.10.7.1' } }))
+      .toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+  });
+
+  it('a rolled-back bundle stays a failure with nothing to click, unless a newer UI is offered', () => {
+    expect(state({ otaApply: { phase: 'rolled-back', version: '2.26.10.7.1' } }))
+      .toMatchObject({ action: null, ui: { status: 'failed', error: 'rolled-back' } });
+    expect(state({ otaOffer: offer('2.26.10.8.1'), otaApply: { phase: 'rolled-back', version: '2.26.10.7.1' } }))
+      .toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+  });
+
+  it('a server offer reads as applying while the server updater installs it', () => {
+    expect(state({ otaOffer: offer(null, '0.26.10.7.1'), server: { phase: 'restarting' } }).server.status).toBe('applying');
+  });
+});
+
+describe('offerAfterCheck: each channel that answered decides its own layer', () => {
+  const found = { ui: { updateAvailable: true, newVersion: '2.26.10.7.1' }, server: { updateAvailable: true, latestVersion: '0.26.10.7.1', component: 'cowork-server' as const } };
+
+  it('a channel that found something offers it, and one that found nothing clears its layer', () => {
+    expect(offerAfterCheck(null, found)).toEqual(offer('2.26.10.7.1', '0.26.10.7.1', 'cowork-server'));
+    expect(offerAfterCheck(offer('2.26.10.7.1', '0.26.10.7.1'), { ui: { updateAvailable: false }, server: { updateAvailable: false } })).toBeNull();
+  });
+
+  it('a channel that errored keeps the offer it had (round four, finding 1)', () => {
+    const prev = offerAfterCheck(null, found);
+    expect(offerAfterCheck(prev, { ...found, server: { updateAvailable: false, error: true } })).toEqual(prev);
+    expect(offerAfterCheck(prev, { ui: { updateAvailable: false, error: true }, server: { updateAvailable: false } }))
+      .toEqual(offer('2.26.10.7.1', null));
+  });
+
+  it('a channel that was not checked keeps its offer', () => {
+    expect(offerAfterCheck(offer('2.26.10.7.1'), { server: { updateAvailable: false } })).toEqual(offer('2.26.10.7.1'));
+  });
+});
+
+describe('offerAfterApply: what an apply used up', () => {
+  it('a landed layer is no longer offered; one the apply did not try stands', () => {
+    expect(offerAfterApply(offer('X', 'Y'), { server: { landed: true, version: 'Y' } })).toEqual(offer('X', null));
+    expect(offerAfterApply(offer('X', 'Y'), { ui: { result: 'landed', version: 'X' } })).toEqual(offer(null, 'Y'));
+  });
+
+  it('a UI landing keeps the server update a check offered alongside it (round four, finding 3)', () => {
+    expect(offerAfterApply(offer('X', 'Y'), { ui: { result: 'landed', version: 'X' } })).toEqual(offer(null, 'Y'));
+  });
+
+  it('a newer offer a check made meanwhile stands', () => {
+    expect(offerAfterApply(offer('B'), { ui: { result: 'landed', version: 'A' } })).toEqual(offer('B'));
+    expect(offerAfterApply(offer('B'), { ui: { result: 'nothing', version: 'A' } })).toEqual(offer('B'));
+  });
+
+  it('an apply that found nothing to apply drops the stale offer, so Restart cannot loop (round four, finding 4)', () => {
+    expect(offerAfterApply(offer('X'), { ui: { result: 'nothing', version: 'X' } })).toBeNull();
+  });
+
+  it('a rolled-back UI drops its offer; a failed download keeps it for the retry', () => {
+    expect(offerAfterApply(offer('X'), { ui: { result: 'rolled-back', version: 'X' } })).toBeNull();
+    expect(offerAfterApply(offer('X'), { ui: { result: 'failed', version: 'X' } })).toEqual(offer('X'));
+  });
+
+  it('an offer with no version is the one the apply answered', () => {
+    expect(offerAfterApply({ ui: {}, server: null }, { ui: { result: 'landed', version: 'X' } })).toBeNull();
+  });
+});
+
+describe('pollOfferCheck: what a boot or periodic poll offers', () => {
+  // The scenario table from docs/update-behavior.md, as the offer each poll
+  // leaves for the reducer.
+  const uiFound = { updateAvailable: true, newVersion: '2.26.10.7.1' };
+  const uiNone = { updateAvailable: false };
+  const serverFound = { updateAvailable: true, latestVersion: '0.26.10.7.1', component: 'cowork-server' as const };
+  const serverNone = { updateAvailable: false };
+  const after = (input: Parameters<typeof pollOfferCheck>[0], shellSnap: ShellSnapshot | null = null) =>
+    state({ shell: shellSnap, otaOffer: offerAfterCheck(null, pollOfferCheck(input)) });
+
+  it('everything current: nothing offered', () => {
+    expect(after({ ui: uiNone, server: serverNone, surfaceServer: false, applyServer: false, applyUi: false }).action).toBeNull();
+  });
+
+  it('OTA only, mid-session: one reload naming the UI', () => {
+    expect(after({ ui: uiFound, server: serverNone, surfaceServer: false, applyServer: false, applyUi: false }))
+      .toMatchObject({ action: 'reload', version: '2.26.10.7.1', ui: { status: 'ready' }, server: { status: 'idle' } });
+  });
+
+  it('server + UI, mid-session: one reload naming both layers', () => {
+    expect(after({ ui: uiFound, server: serverFound, surfaceServer: true, applyServer: false, applyUi: false }))
+      .toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' }, server: { status: 'ready', version: '0.26.10.7.1', component: 'cowork-server' } });
+  });
+
+  it('a layer the poll auto-applies is not offered on the way in', () => {
+    expect(after({ ui: uiFound, server: serverFound, surfaceServer: true, applyServer: true, applyUi: true }).action).toBeNull();
+    expect(pollOfferCheck({ ui: uiFound, server: serverFound, surfaceServer: true, applyServer: true, applyUi: false }))
+      .toEqual({ ui: uiFound });
+  });
+
+  it('a stream repair is never offered mid-session', () => {
+    expect(after({ ui: uiNone, server: serverFound, surfaceServer: false, applyServer: false, applyUi: false }).action).toBeNull();
+  });
+
+  it('manifest host down: the UI is not reported, the server still is', () => {
+    expect(pollOfferCheck({ ui: null, server: serverFound, surfaceServer: true, applyServer: false, applyUi: false }))
+      .toEqual({ server: { ...serverFound, updateAvailable: true } });
+    expect(offerAfterCheck(offer('2.26.10.7.1'), pollOfferCheck({ ui: null, server: serverNone, surfaceServer: false, applyServer: false, applyUi: false })))
+      .toEqual(offer('2.26.10.7.1'));
+  });
+
+  it('all three pending: the relaunch owns the action, the OTA stays offered behind it', () => {
+    const s = after({ ui: uiFound, server: serverFound, surfaceServer: true, applyServer: false, applyUi: false }, shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
+    expect(s).toMatchObject({ action: 'relaunch', version: '2.26.10.9.1' });
+    expect(resolveApplyAction(s, 'reload')).toBe('reload');
+  });
+
+  it('a stranded shell install at boot: applying, and an OTA offer does not displace it', () => {
+    const s = after({ ui: uiFound, server: serverNone, surfaceServer: false, applyServer: false, applyUi: false }, shell('installing', { targetVersion: '2.26.10.9.1', installSource: 'boot' }));
+    expect(s).toMatchObject({ applying: 'installing', action: null });
+  });
+});
+
+describe('legacyAvailableOffer: an older main\'s `available`', () => {
+  it('a UI and a server update named only by version and serverUpdate are both offered (round four, finding 5)', () => {
+    expect(legacyAvailableOffer({ phase: 'available', version: '2.26.10.7.1', serverUpdate: true, serverVersion: '0.26.10.7.1', serverComponent: 'cowork-server' }))
+      .toEqual(offer('2.26.10.7.1', '0.26.10.7.1', 'cowork-server'));
+    const c = createUpdateCoordinator();
+    c.feed({ ota: { phase: 'available', version: '2.26.10.7.1', serverUpdate: true, serverVersion: '0.26.10.7.1', serverComponent: 'cowork-server' } });
+    expect(c.getState()).toMatchObject({ version: '2.26.10.7.1', ui: { status: 'ready', version: '2.26.10.7.1' }, server: { status: 'ready', version: '0.26.10.7.1' } });
+  });
+
+  it('a server-only update names the server, bare or labelled', () => {
+    expect(legacyAvailableOffer({ phase: 'available', version: '0.26.10.7.1', serverUpdate: true, serverVersion: '0.26.10.7.1' }))
+      .toEqual(offer(null, '0.26.10.7.1'));
+    expect(legacyAvailableOffer({ phase: 'available', version: 'anton-agent 0.26.10.7.1', serverUpdate: true, serverVersion: '0.26.10.7.1', serverComponent: 'anton-agent' }))
+      .toEqual(offer(null, '0.26.10.7.1', 'anton-agent'));
+    expect(legacyAvailableOffer({ phase: 'available', serverUpdate: true, serverVersion: '0.26.10.7.1' })).toEqual(offer(null, '0.26.10.7.1'));
+  });
+
+  it('no server update means a UI update, with or without a version; explicit fields win', () => {
+    expect(legacyAvailableOffer({ phase: 'available', version: '2.26.10.7.1' })).toEqual(offer('2.26.10.7.1'));
+    expect(legacyAvailableOffer({ phase: 'available' })).toEqual({ ui: {}, server: null });
+    expect(legacyAvailableOffer({ phase: 'available', version: 'v', uiUpdate: false, serverUpdate: true, serverVersion: 's' })).toEqual(offer(null, 's'));
+  });
+
+  it('round-trips the status main builds for an offer', () => {
+    for (const o of [offer('X'), offer(null, 'Y', 'anton-agent'), offer('X', 'Y', 'cowork-server')]) {
+      expect(legacyAvailableOffer(legacyOfferStatus(o))).toEqual(o);
+    }
+    expect(legacyOfferStatus(null)).toEqual({ phase: 'idle' });
+  });
+
+  it('splits every legacy status into the input it speaks for', () => {
+    expect(legacyOtaInput({ phase: 'idle' })).toEqual({ otaOffer: null });
+    expect(legacyOtaInput({ phase: 'reloading' })).toEqual({ otaApply: { phase: 'reloading' } });
+    expect(legacyOtaInput({ phase: 'error', version: 'v' })).toEqual({ otaApply: { phase: 'error', version: 'v' } });
+    expect(legacyOtaInput({ phase: 'shell-available' })).toEqual({ shellManual: null });
+    expect(legacyOtaInput(null)).toEqual({ otaOffer: null, otaApply: null });
+  });
+});
+
+describe('availableStatus', () => {
+  it('names each layer and keeps the legacy version for older renderers', () => {
+    expect(availableStatus({ updateAvailable: true, newVersion: '2.26.10.7.1' }, { updateAvailable: true, latestVersion: '0.26.10.7.1', component: 'cowork-server' })).toEqual({
+      phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1',
+      serverUpdate: true, serverVersion: '0.26.10.7.1', serverComponent: 'cowork-server',
+    });
+    expect(availableStatus({ updateAvailable: false }, { updateAvailable: true, latestVersion: '0.26.10.7.1', component: 'anton-agent' }))
+      .toMatchObject({ version: 'anton-agent 0.26.10.7.1', uiUpdate: false, uiVersion: undefined });
+  });
+});
+
+describe('checkFromSummary: what an older shell\'s check summary can vouch for', () => {
+  const base = { ok: true, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: false };
+  it('nothing found anywhere, and nothing errored: both channels answered no', () => {
+    expect(checkFromSummary({ ...base, updateAvailable: false })).toEqual({ ui: { updateAvailable: false }, server: { updateAvailable: false } });
+  });
+  it('a channel reported found is an answer; one left out may have errored, so it keeps its offer', () => {
+    const check = checkFromSummary({ ...base, uiUpdateAvailable: true, uiVersion: '2.26.10.7.1' });
+    expect(check).toEqual({ ui: { updateAvailable: true, newVersion: '2.26.10.7.1' } });
+    expect(offerAfterCheck(offer(null, '0.26.10.7.1'), check)).toEqual(offer('2.26.10.7.1', '0.26.10.7.1'));
+  });
+  it('an inconclusive summary says nothing', () => {
+    expect(checkFromSummary({ ...base, ok: false, updateAvailable: false })).toEqual({});
+  });
+});
+
+describe('manualNoticeAfterCheck: the installer notice', () => {
+  const notice = { version: '2.26.12.1.1', currentVersion: '2.26.9.1.1', downloadUrl: 'https://x/y.pkg' };
+  it('raised only while the auto-updater is the fallback', () => {
+    expect(manualNoticeAfterCheck(null, { available: true, latestVersion: notice.version, currentVersion: notice.currentVersion, downloadUrl: notice.downloadUrl }, true)).toEqual(notice);
+    expect(manualNoticeAfterCheck(notice, { available: true, latestVersion: notice.version }, false)).toBeNull();
+  });
+  it('a check that could not reach the manifest keeps it (round four, finding 2); one that answered no clears it', () => {
+    expect(manualNoticeAfterCheck(notice, { available: false, error: true }, true)).toEqual(notice);
+    expect(manualNoticeAfterCheck(notice, null, true)).toEqual(notice);
+    expect(manualNoticeAfterCheck(notice, { available: false }, true)).toBeNull();
+  });
+});
+
+describe('settling an apply\'s progress', () => {
+  const run = (over: Partial<Parameters<typeof applyProgressSettles>[0]> = {}) => ({ running: false, queued: 0, navigationPending: false, ...over });
+
+  it('a request waiting for the lock owns its progress, whoever settles', () => {
+    for (const at of ['navigation', 'apply-end', 'request-end'] as const) {
+      expect(applyProgressSettles(run({ queued: 1 }), at)).toBe(false);
+    }
+  });
+
+  it('a reload that commits settles the running apply; the apply\'s own end waits for that commit', () => {
+    expect(applyProgressSettles(run({ running: true, navigationPending: true }), 'navigation')).toBe(true);
+    expect(applyProgressSettles(run({ navigationPending: true }), 'apply-end')).toBe(false);
+    expect(applyProgressSettles(run(), 'apply-end')).toBe(true);
+  });
+
+  it('a request that ends without applying gives its progress up, unless an apply is running', () => {
+    expect(applyProgressSettles(run(), 'request-end')).toBe(true);
+    expect(applyProgressSettles(run({ running: true }), 'request-end')).toBe(false);
+  });
+
+  it('clears only what is in flight: a failure and a server error are what shows next', () => {
+    expect(settledApplyInput({ ...EMPTY_UPDATE_INPUT, otaApply: { phase: 'reloading' }, server: { phase: 'restarting' } }))
+      .toEqual({ otaApply: null, server: null });
+    expect(settledApplyInput({ ...EMPTY_UPDATE_INPUT, otaApply: { phase: 'rolled-back' }, server: { phase: 'error', critical: true } })).toEqual({});
+  });
+});
+
+describe('dispatchApplyStep: one dispatch for main and the old-shell path', () => {
+  const handlers = () => ({
+    relaunch: vi.fn(async (): Promise<unknown> => ({ confirm: true, runningTasks: 2 })),
+    reload: vi.fn(async (): Promise<unknown> => true),
+    retry: vi.fn(async () => ({ phase: 'checking' })),
+    download: vi.fn(async () => ({ phase: 'downloading' })),
+  });
+
+  it('runs only the chosen step and passes its answer through', async () => {
+    const h = handlers();
+    expect(await dispatchApplyStep('relaunch', h)).toEqual({ confirm: true, runningTasks: 2 });
+    expect(await dispatchApplyStep('reload', h)).toBe(true);
+    expect(h.retry).not.toHaveBeenCalled();
+    expect(h.download).not.toHaveBeenCalled();
+  });
+
+  it('a retry or download succeeds by the phase it reaches', async () => {
+    const h = handlers();
+    expect(await dispatchApplyStep('retry', h)).toBe(true);
+    h.retry.mockResolvedValueOnce({ phase: 'failed' });
+    expect(await dispatchApplyStep('retry', h)).toBe(false);
+    expect(await dispatchApplyStep('download', h)).toBe(true);
+    h.download.mockResolvedValueOnce({ phase: 'idle' });
+    expect(await dispatchApplyStep('download', h)).toBe(false);
+  });
+
+  it('a stale click and nothing pending run nothing', async () => {
+    const h = handlers();
+    expect(await dispatchApplyStep('stale', h)).toBe('stale');
+    expect(await dispatchApplyStep(null, h)).toBe(false);
+    for (const fn of Object.values(h)) expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('change detection: only what the surfaces render', () => {
+  const downloading = (percent: number, bytesPerSecond: number) => shell('downloading', {
+    targetVersion: 'v', progress: { transferred: percent * 10, total: 1000, percent, bytesPerSecond },
+  });
+
+  it('a download tick that changes no rendered value is not pushed, but the next pull sees it', () => {
+    const c = createUpdateCoordinator();
+    const seen = vi.fn();
+    c.subscribe(seen);
+    c.feed({ shell: downloading(41.2, 1000) });
+    expect(seen).toHaveBeenCalledTimes(1);
+    c.feed({ shell: downloading(41.4, 1500) });
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(c.getState().shell.snapshot?.progress?.bytesPerSecond).toBe(1500);
+    expect(c.getState().revision).toBe(1);
+    // The rounded percentage moved: that is a new state.
+    c.feed({ shell: downloading(42.6, 1500) });
+    expect(seen).toHaveBeenCalledTimes(2);
+    expect(c.getState().revision).toBe(2);
+  });
+
+  it('the key ignores the byte counts and rounds the percentage', () => {
+    const a = state({ shell: downloading(41.2, 1000) });
+    const b = state({ shell: downloading(41.4, 9000) });
+    expect(renderedStateKey(a)).toBe(renderedStateKey(b));
+    expect(renderedStateKey(a)).not.toBe(renderedStateKey(state({ shell: downloading(43, 1000) })));
   });
 });

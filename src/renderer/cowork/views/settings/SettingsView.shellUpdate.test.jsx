@@ -36,7 +36,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
-import { coordinateUpdates } from '../../../../shared/update-coordinator';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput } from '../../../../shared/update-coordinator';
 
 afterEach(() => { platformMock.value = 'darwin'; });
 import { host } from '../../../platform/host';
@@ -54,7 +54,8 @@ const baseProps = {
 // Every case renders from the one update state (src/shared/update-coordinator.ts)
 // the way App.jsx hands it down, and routes the one action through a stub of
 // useAppUpdates' handler.
-const stateFor = (input) => coordinateUpdates({ shell: null, ota: null, server: null, shellManual: null, ...input });
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+const stateFor = ({ ota, ...input }) => coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...(ota !== undefined ? legacyOtaInput(ota) : {}), ...input });
 const shell = (phase, over = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', ...over });
 const uiReady = { ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, uiVersion: '2.26.7.20.1', serverUpdate: false } };
 const manualNotice = (over = {}) => ({ shellManual: { version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://x/y.pkg', ...over } });

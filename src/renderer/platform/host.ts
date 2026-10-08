@@ -21,7 +21,10 @@ import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import {
   type UpdateAction,
+  checkFromSummary,
   createUpdateCoordinator,
+  dispatchApplyStep,
+  offerAfterCheck,
   resolveApplyAction,
   shellAutoIsPending,
   type OtaStatus,
@@ -989,40 +992,45 @@ export async function applyUpdates(hooks: { onProceed?: () => void; action?: Upd
   // An older shell: the same decision, from the composed state.
   const local = localUpdateState();
   const state = local.getState();
-  const step = resolveApplyAction(state, hooks.action);
-  if (step === 'stale') return 'stale';
-  switch (step) {
-    case 'relaunch':
-      return installShellAutoUpdate(hooks);
-    case 'reload': {
-      // An older main pushes `downloading` only for a server apply, so the
-      // composed state shows progress from here: at once for a UI-only
-      // reload, which never asks, and from the guard's onProceed otherwise.
-      const before = local.getInput().ota;
-      const showProgress = () => local.feed({ ota: { phase: 'downloading', version: state.version } });
-      if (state.server.status !== 'ready') showProgress();
-      try {
-        const result = await applyUpdate({ onProceed: () => { showProgress(); hooks.onProceed?.(); } });
-        if (result === 'cancelled') local.feed({ ota: before });
-        else if (result === false) local.feed({ ota: { phase: 'error', version: state.version } });
-        return result;
-      } catch (error) {
-        local.feed({ ota: { phase: 'error', version: state.version } });
-        throw error;
-      }
-    }
-    case 'retry': {
+  // The same step decision and the same dispatch as main's UPDATE_APPLY
+  // (handleUnifiedApply), over this shell's own channels.
+  return dispatchApplyStep<GuardedRestartResult>(resolveApplyAction(state, hooks.action), {
+    relaunch: () => installShellAutoUpdate(hooks),
+    reload: () => reloadOnOlderShell(local, state.version, state.server.status === 'ready', hooks),
+    retry: async () => {
       const snapshot = await checkShellAutoUpdate();
       local.feed({ shell: snapshot });
-      return snapshot.phase !== 'failed';
-    }
-    case 'download': {
+      return snapshot;
+    },
+    download: async () => {
       const snapshot = await downloadShellAutoUpdate();
       local.feed({ shell: snapshot });
-      return snapshot.phase === 'downloading' || snapshot.phase === 'ready-to-install';
-    }
-    default:
-      return false;
+      return snapshot;
+    },
+  });
+}
+
+/** A reload on a shell that predates UPDATE_APPLY. Its main pushes
+ *  `downloading` only for a server apply, so the composed state shows the
+ *  progress from here: at once for a UI-only reload, which never asks, and
+ *  from the guard's onProceed otherwise. The offer is untouched; a cancel
+ *  only takes the progress back. */
+async function reloadOnOlderShell(
+  local: UpdateCoordinator,
+  version: string | undefined,
+  asks: boolean,
+  hooks: { onProceed?: () => void },
+): Promise<GuardedRestartResult> {
+  const showProgress = () => local.feed({ otaApply: { phase: 'downloading', ...(version ? { version } : {}) } });
+  if (!asks) showProgress();
+  try {
+    const result = await applyUpdate({ onProceed: () => { showProgress(); hooks.onProceed?.(); } });
+    if (result === 'cancelled') local.feed({ otaApply: null });
+    else if (result === false) local.feed({ otaApply: { phase: 'error', ...(version ? { version } : {}) } });
+    return result;
+  } catch (error) {
+    local.feed({ otaApply: { phase: 'error', ...(version ? { version } : {}) } });
+    throw error;
   }
 }
 
@@ -1031,19 +1039,9 @@ export async function applyUpdates(hooks: { onProceed?: () => void; action?: Upd
 function feedCheckSummary(summary: UpdateCheckSummary): void {
   if (shellCarriesUpdateState() || !summary.ok) return;
   const local = localUpdateState();
-  if (summary.uiUpdateAvailable || summary.serverUpdateAvailable) {
-    local.feed({ ota: {
-      phase: 'available',
-      version: summary.uiVersion ?? summary.serverVersion,
-      uiUpdate: summary.uiUpdateAvailable,
-      uiVersion: summary.uiVersion,
-      serverUpdate: summary.serverUpdateAvailable,
-      serverVersion: summary.serverVersion,
-      serverComponent: summary.serverComponent,
-    } });
-  } else if (local.getInput().ota?.phase === 'available') {
-    local.feed({ ota: { phase: 'idle' } });
-  }
+  // The same offer rule main applies, over what this shell's summary can say
+  // (checkFromSummary): a channel it cannot vouch for keeps its offer.
+  local.feed({ otaOffer: offerAfterCheck(local.getInput().otaOffer, checkFromSummary(summary)) });
   // The summary's shell flag also stands for an auto-updater download in
   // flight on this shell (a version and no installer URL). That is the
   // auto-updater's to finish, not a reinstall to offer; feeding it as the

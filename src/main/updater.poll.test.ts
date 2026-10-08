@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The boot/periodic poll under a scenario table: the three channel checkers are
-// injected and the coordinator state the poll leaves behind is asserted. This
-// is the "Sample scenarios: what the user sees" table in docs/update-behavior.md,
-// as code.
+// The updater's wiring, with the transports mocked: what the poll reports and
+// applies, how an apply's progress settles with the page it was for, the real
+// boot path, the step a click runs, and the round-four offer findings through
+// main's entry points. The decisions themselves (what a check or an apply does
+// to the offer, when progress settles, which step a click runs) are pure and
+// tested directly in src/shared/update-coordinator.test.ts, which also holds the
+// "Sample scenarios" table from docs/update-behavior.md.
 
 vi.mock('electron', () => ({
   app: { getVersion: () => '2.260928.1', isPackaged: true, on: vi.fn() },
@@ -50,8 +53,11 @@ vi.mock('./shell-auto-update-runtime', () => ({
   startShellAutoUpdatePolling: vi.fn(() => Promise.resolve()),
 }));
 
-import { runUpdatePoll, handleUnifiedApply, updateCoordinator, availableStatus, initUpdater, checkForUpdates, feedServerUpdateStatus, type UpdatePollDeps, type ShellUpdateStatus } from './updater';
-import { createUpdateCoordinator, type ShellSnapshot } from '../shared/update-coordinator';
+import { runUpdatePoll, handleUnifiedApply, updateCoordinator, initUpdater, checkForUpdates, feedServerUpdateStatus, type UpdatePollDeps, type ShellUpdateStatus } from './updater';
+import { createUpdateCoordinator, offerAfterCheck, type OtaCheck, type ShellSnapshot } from '../shared/update-coordinator';
+import { applyUIUpdate, checkForUIUpdate, fetchManifest, getCachedVersion, lastUiApplyAttempt } from './ui-updater';
+import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
+import { getShellAutoUpdateSnapshot } from './shell-auto-update-runtime';
 import type { UpdateCheckResult } from './ui-updater';
 import type { ServerUpdateCheckResult } from './server-updater';
 
@@ -60,6 +66,7 @@ const shell = (phase: ShellSnapshot['phase'], over: Partial<ShellSnapshot> = {})
 });
 const uiFound: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' };
 const uiNone: UpdateCheckResult = { updateAvailable: false, applied: false };
+const uiNext: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.8.1' };
 const serverFound: ServerUpdateCheckResult = { updateAvailable: true, currentVersion: '0.26.10.5.2', latestVersion: '0.26.10.7.1', component: 'cowork-server' };
 const serverNone: ServerUpdateCheckResult = { updateAvailable: false };
 const noShell: ShellUpdateStatus = { available: false };
@@ -68,6 +75,7 @@ const noShell: ShellUpdateStatus = { available: false };
 function scenario(over: Partial<UpdatePollDeps> & { shell?: ShellSnapshot } = {}) {
   const coordinator = createUpdateCoordinator({ shell: over.shell ?? shell('idle') });
   const applied: Array<[boolean, boolean]> = [];
+  const reported: OtaCheck[] = [];
   const deps: UpdatePollDeps = {
     hasInternet: async () => true,
     checkUi: async () => uiNone,
@@ -77,101 +85,93 @@ function scenario(over: Partial<UpdatePollDeps> & { shell?: ShellSnapshot } = {}
     isServerRunning: () => true,
     getMode: () => 'auto',
     applyUpdates: async (applyServer, applyUi) => { applied.push([applyServer, applyUi]); return true; },
-    pushStatus: (status) => { coordinator.feed({ ota: status }); },
-    onShellManual: (status) => { if (status.available) coordinator.feed({ shellManual: { version: status.latestVersion!, downloadUrl: status.downloadUrl ?? null } }); },
+    recordCheck: (check) => { reported.push(check); coordinator.feed({ otaOffer: offerAfterCheck(coordinator.getInput().otaOffer, check) }); },
+    onShellManual: vi.fn(),
     ...over,
   };
-  return { deps, coordinator, applied, state: () => coordinator.getState() };
+  return { deps, coordinator, applied, reported, state: () => coordinator.getState() };
 }
 
-beforeEach(() => {
+/** A window whose navigation commits (`did-navigate`) and finishes on the next
+ *  tick, as Electron's does; `navigates: false` holds it so a test can commit
+ *  it by hand. */
+const win = ({ navigates = true }: { navigates?: boolean } = {}) => {
+  const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
+  const emit = (event: string, ...args: unknown[]) => { (listeners[event] ?? []).slice().forEach((cb) => cb(...args)); };
+  return {
+    isDestroyed: () => false,
+    loadFile: vi.fn(() => {
+      if (navigates) setTimeout(() => { emit('did-navigate'); emit('did-finish-load'); }, 0);
+    }),
+    emit,
+    webContents: {
+      send: vi.fn(),
+      on: vi.fn((event: string, cb: (...args: unknown[]) => void) => { (listeners[event] ??= []).push(cb); }),
+      removeListener: vi.fn((event: string, cb: (...args: unknown[]) => void) => { listeners[event] = (listeners[event] ?? []).filter((l) => l !== cb); }),
+    },
+  };
+};
+
+const idleSnapshot = { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.260928.1' };
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+beforeEach(async () => {
+  vi.clearAllMocks();
   vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
   runtime.requestShellInstall.mockClear();
   runtime.checkShellAutoUpdate.mockClear();
+  runtime.checkShellAutoUpdate.mockResolvedValue(idleSnapshot as never);
   runtime.downloadShellAutoUpdate.mockClear();
+  vi.mocked(getShellAutoUpdateSnapshot).mockReturnValue(idleSnapshot as never);
+  vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
+  vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+  vi.mocked(maybeUpdateServer).mockResolvedValue({ updated: false } as never);
+  vi.mocked(applyUIUpdate).mockResolvedValue(false);
+  vi.mocked(lastUiApplyAttempt).mockReturnValue(null);
+  vi.mocked(getCachedVersion).mockReturnValue(null);
+  vi.mocked(fetchManifest).mockResolvedValue(null);
+  // Start every case from a clean slate: a check that finds nothing clears
+  // the offer, and the rest is fed directly.
+  await checkForUpdates();
+  updateCoordinator.feed({ shell: shell('idle'), otaApply: null, server: null, shellManual: null });
+  vi.clearAllMocks();
 });
 
-describe('runUpdatePoll: what the user sees', () => {
-  it('everything current: idle, nothing applied, nothing offered', async () => {
+describe('runUpdatePoll: what it reports and applies', () => {
+  it('everything current: both channels answered no, nothing applied', async () => {
     const s = scenario();
     await runUpdatePoll(s.deps, true);
     expect(s.applied).toEqual([]);
-    expect(s.state()).toMatchObject({ overall: 'idle', action: null });
-  });
-
-  it('OTA only, at boot: applies at once and offers nothing', async () => {
-    const s = scenario({ checkUi: async () => uiFound });
-    await runUpdatePoll(s.deps, true);
-    expect(s.applied).toEqual([[false, true]]);
+    expect(s.reported).toEqual([{ ui: uiNone, server: { ...serverNone, updateAvailable: false } }]);
     expect(s.state().action).toBeNull();
   });
 
-  it('OTA only, found mid-session: one reload offered, nothing applied', async () => {
-    const s = scenario({ checkUi: async () => uiFound });
-    await runUpdatePoll(s.deps, false);
-    expect(s.applied).toEqual([]);
-    expect(s.state()).toMatchObject({ overall: 'ready', action: 'reload', pending: { reload: true, relaunch: false }, version: '2.26.10.7.1' });
-    expect(s.state().ui).toMatchObject({ status: 'ready', version: '2.26.10.7.1' });
-    expect(s.state().server.status).toBe('idle');
-  });
-
-  it('server + UI, mid-session: one reload naming both layers', async () => {
-    const s = scenario({ checkUi: async () => uiFound, checkServer: async () => serverFound });
-    await runUpdatePoll(s.deps, false);
-    expect(s.state().action).toBe('reload');
-    expect(s.state().ui).toMatchObject({ status: 'ready', version: '2.26.10.7.1' });
-    expect(s.state().server).toMatchObject({ status: 'ready', version: '0.26.10.7.1', component: 'cowork-server' });
-  });
-
-  it('server + UI, at boot: both apply server-first in one pass', async () => {
+  it('at boot it applies, and reports only the layers it does not apply', async () => {
     const s = scenario({ checkUi: async () => uiFound, checkServer: async () => serverFound });
     await runUpdatePoll(s.deps, true);
     expect(s.applied).toEqual([[true, true]]);
-  });
-
-  it('server only, server down, mid-session: applied as recovery, not offered', async () => {
-    const s = scenario({ checkServer: async () => serverFound, isServerRunning: () => false });
-    await runUpdatePoll(s.deps, false);
-    expect(s.applied).toEqual([[true, false]]);
+    expect(s.reported).toEqual([{}]);
     expect(s.state().action).toBeNull();
   });
 
-  it('a stream repair found mid-session is never surfaced', async () => {
-    const s = scenario({ checkServer: async () => ({ ...serverFound, repair: true }) });
-    await runUpdatePoll(s.deps, false);
-    expect(s.applied).toEqual([]);
-    expect(s.state().action).toBeNull();
+  it('mid-session it offers instead, and a down server is applied as recovery', async () => {
+    const offered = scenario({ checkUi: async () => uiFound, checkServer: async () => serverFound });
+    await runUpdatePoll(offered.deps, false);
+    expect(offered.applied).toEqual([]);
+    expect(offered.state()).toMatchObject({ action: 'reload', ui: { status: 'ready' }, server: { status: 'ready' } });
+    const down = scenario({ checkServer: async () => serverFound, isServerRunning: () => false });
+    await runUpdatePoll(down.deps, false);
+    expect(down.applied).toEqual([[true, false]]);
+    expect(down.state().action).toBeNull();
   });
 
-  it('all three pending: the shell relaunch owns the one action, the OTA stays marked pending behind it', async () => {
-    const s = scenario({ shell: shell('ready-to-install', { targetVersion: '2.26.10.9.1' }), checkUi: async () => uiFound, checkServer: async () => serverFound });
-    await runUpdatePoll(s.deps, false);
-    expect(s.state()).toMatchObject({ action: 'relaunch', pending: { reload: true, relaunch: true }, version: '2.26.10.9.1' });
-  });
-
-  it('a stranded shell update being installed at boot: applying, and an OTA offer does not displace it', async () => {
-    const s = scenario({ shell: shell('installing', { targetVersion: '2.26.10.9.1', installSource: 'boot' }), checkUi: async () => uiFound });
-    await runUpdatePoll(s.deps, false);
-    expect(s.state()).toMatchObject({ overall: 'applying', applying: 'installing', action: null, pending: { reload: true } });
-  });
-
-  it('shell only on the manual fallback (auto-update disabled): the installer notice, polled only then', async () => {
-    const checkShellManual = vi.fn(async (): Promise<ShellUpdateStatus> => ({ available: true, currentVersion: '2.260928.1', latestVersion: '2.261007.1', downloadUrl: 'https://x/y.pkg' }));
-    const disabled = scenario({ shell: shell('disabled', { disabledReason: 'rollout-disabled' }), checkShellManual });
-    await runUpdatePoll(disabled.deps, false);
-    expect(checkShellManual).toHaveBeenCalledTimes(1);
-    expect(disabled.state()).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
-    // With auto-update healthy the manual manifest is not polled at all (ENG-1739).
-    const healthy = scenario({ shell: shell('idle'), checkShellManual });
-    await runUpdatePoll(healthy.deps, false);
-    expect(checkShellManual).toHaveBeenCalledTimes(1);
-  });
-
-  it('manifest host down: the server is still checked and offered', async () => {
+  it('manifest host down: the UI is not checked or reported, the server still is', async () => {
     const s = scenario({ hasInternet: async () => false, checkUi: async () => { throw new Error('must not be called'); }, checkServer: async () => serverFound });
     await runUpdatePoll(s.deps, false);
-    expect(s.state().server.status).toBe('ready');
-    expect(s.state().ui.status).toBe('idle');
+    expect(s.reported).toEqual([{ server: { ...serverFound, updateAvailable: true } }]);
+    expect(s.state()).toMatchObject({ server: { status: 'ready' }, ui: { status: 'idle' } });
   });
 
   it('a UI held for server compat rides the server apply at boot', async () => {
@@ -179,38 +179,26 @@ describe('runUpdatePoll: what the user sees', () => {
     await runUpdatePoll(s.deps, true);
     expect(s.applied).toEqual([[true, true]]);
   });
+
+  it('the installer manifest is polled only while it is the fallback, and a thrown check is no answer', async () => {
+    const checkShellManual = vi.fn(async (): Promise<ShellUpdateStatus> => ({ available: true, currentVersion: '2.260928.1', latestVersion: '2.261007.1', downloadUrl: 'https://x/y.pkg' }));
+    const disabled = scenario({ shell: shell('disabled', { disabledReason: 'rollout-disabled' }), checkShellManual });
+    await runUpdatePoll(disabled.deps, false);
+    expect(disabled.deps.onShellManual).toHaveBeenCalledWith(expect.objectContaining({ available: true, latestVersion: '2.261007.1' }));
+    // With auto-update healthy the manual manifest is not polled at all (ENG-1739).
+    const healthy = scenario({ shell: shell('idle'), checkShellManual });
+    await runUpdatePoll(healthy.deps, false);
+    expect(checkShellManual).toHaveBeenCalledTimes(1);
+    const thrown = scenario({ shell: shell('disabled'), checkShellManual: async () => { throw new Error('offline'); } });
+    await runUpdatePoll(thrown.deps, false);
+    expect(thrown.deps.onShellManual).toHaveBeenCalledWith({ available: false, error: true });
+  });
 });
 
-describe('the status an apply leaves behind', () => {
-  // The coordinator lives in main, so the status that announced an apply
-  // would otherwise outlive the page it was for and reach the fresh renderer.
-  // A window whose navigation commits (`did-navigate`) and finishes on the
-  // next tick, as Electron's does; `navigates: false` holds it so a test can
-  // commit it by hand.
-  const win = ({ navigates = true }: { navigates?: boolean } = {}) => {
-    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
-    const emit = (event: string, ...args: unknown[]) => { (listeners[event] ?? []).slice().forEach((cb) => cb(...args)); };
-    return {
-      isDestroyed: () => false,
-      loadFile: vi.fn(() => {
-        if (navigates) setTimeout(() => { emit('did-navigate'); emit('did-finish-load'); }, 0);
-      }),
-      emit,
-      webContents: {
-        send: vi.fn(),
-        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => { (listeners[event] ??= []).push(cb); }),
-        removeListener: vi.fn((event: string, cb: (...args: unknown[]) => void) => { listeners[event] = (listeners[event] ?? []).filter((l) => l !== cb); }),
-      },
-    };
-  };
-
-  beforeEach(() => {
-    updateCoordinator.feed({ shell: shell('idle'), ota: null, server: null, shellManual: null });
-  });
-
-  it('a server-only manual apply settles the server and OTA layers once the reload commits', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
+describe('an apply\'s progress settles with the page it was for', () => {
+  it('a server-only manual apply settles the server and apply status once the reload commits', async () => {
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    await checkForUpdates();
     vi.mocked(maybeUpdateServer).mockImplementation(async () => {
       // What the server updater reports mid-reinstall, as app.ts feeds it.
       updateCoordinator.feed({ server: { phase: 'downloading', to: '0.26.10.7.1' } });
@@ -218,26 +206,20 @@ describe('the status an apply leaves behind', () => {
       return { updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' };
     });
     const w = win();
-    updateCoordinator.feed({ ota: availableStatus(uiNone, serverFound) });
     expect(await handleUnifiedApply(() => w as never, { force: true })).toBe(true);
     expect(w.loadFile).toHaveBeenCalledTimes(1);
-    // The navigation commits on the next tick. The fresh renderer then pulls
-    // an idle state: no stuck overlay, and a later server-only offer can be
-    // marked ready again.
-    await new Promise((r) => setTimeout(r, 0));
+    // The fresh renderer pulls an idle state: no stuck overlay, and the
+    // landed server update is no longer offered.
+    await tick();
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, server: { status: 'idle' }, ui: { status: 'idle' } });
-    updateCoordinator.feed({ ota: availableStatus(uiNone, serverFound) });
-    expect(updateCoordinator.getState().action).toBe('reload');
   });
 
-  it('the old page keeps its overlay until the reload commits, then the state settles', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
+  it('the old page keeps its overlay until the reload commits', async () => {
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
     vi.mocked(maybeUpdateServer).mockResolvedValue({ updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' });
+    await checkForUpdates();
     const w = win({ navigates: false });
-    updateCoordinator.feed({ ota: availableStatus(uiNone, serverFound) });
     expect(await handleUnifiedApply(() => w as never, { force: true })).toBe(true);
-    expect(w.loadFile).toHaveBeenCalledTimes(1);
     // The apply has returned but the navigation has not committed: the page
     // still on screen must not be told the apply is over.
     expect(updateCoordinator.getState().applying).toBe('reloading');
@@ -246,8 +228,8 @@ describe('the status an apply leaves behind', () => {
   });
 
   it('a server reinstall reports as reloading through the coordinator while the apply runs', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    await checkForUpdates();
     const seen: Array<string | null> = [];
     vi.mocked(maybeUpdateServer).mockImplementation(async () => {
       // The server updater's progress, as app.ts feeds it.
@@ -257,72 +239,20 @@ describe('the status an apply leaves behind', () => {
       seen.push(updateCoordinator.getState().applying);
       return { updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' };
     });
-    updateCoordinator.feed({ ota: availableStatus(uiNone, serverFound) });
     expect(await handleUnifiedApply(() => win() as never, { force: true })).toBe(true);
     expect(seen).toEqual(['downloading', 'reloading']);
-    await new Promise((r) => setTimeout(r, 5));
+    await tick(5);
     expect(updateCoordinator.getState().applying).toBeNull();
-    // Outside an apply there is nothing to settle it, so the mirror stays off
-    // the coordinator.
+    // Outside an apply the mirror stays off the coordinator.
     feedServerUpdateStatus({ phase: 'restarting' });
     expect(updateCoordinator.getState().applying).toBeNull();
-    updateCoordinator.feed({ server: null });
   });
 
-  it('a manual check raises the installer notice only when the auto-updater is the fallback', async () => {
-    const { checkForUIUpdate, fetchManifest } = await import('./ui-updater');
-    const { checkForServerUpdate } = await import('./server-updater');
-    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-    vi.mocked(fetchManifest).mockResolvedValue({ shellVersion: '2.26.12.1.1' } as never);
-    // Healthy auto-updater whose feed lags the manifest: its update to make.
-    runtime.checkShellAutoUpdate.mockResolvedValue({ phase: 'idle' } as never);
+  it('a rolled-back bundle keeps its failure after the fallback load commits, and offers nothing to repeat', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
     await checkForUpdates();
-    expect(updateCoordinator.getInput().shellManual).toBeNull();
-    expect(updateCoordinator.getState().action).toBeNull();
-    // Auto-update disabled: the installer notice is the only path.
-    runtime.checkShellAutoUpdate.mockResolvedValue({ phase: 'disabled' } as never);
-    await checkForUpdates();
-    expect(updateCoordinator.getInput().shellManual).toMatchObject({ version: '2.26.12.1.1' });
-    expect(updateCoordinator.getState().action).toBe('open-download-page');
-    runtime.checkShellAutoUpdate.mockResolvedValue({ phase: 'idle' } as never);
-    vi.mocked(fetchManifest).mockResolvedValue(null);
-    updateCoordinator.feed({ shellManual: null });
-  });
-
-  it('a Restart named as the reload runs it, even while the manual installer notice owns the ladder', async () => {
-    const { checkForServerUpdate } = await import('./server-updater');
-    const { applyUIUpdate } = await import('./ui-updater');
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-    vi.mocked(applyUIUpdate).mockResolvedValue(true);
-    try {
-      updateCoordinator.feed({ shell: shell('disabled'), ota: availableStatus(uiFound, serverNone), shellManual: { version: '2.26.12.1.1', downloadUrl: null } });
-      expect(updateCoordinator.getState()).toMatchObject({ action: 'open-download-page', pending: { reload: true } });
-      // Unnamed: the notice's action is the renderer's own, so nothing applies.
-      const w1 = win();
-      expect(await handleUnifiedApply(() => w1 as never, { force: true })).toBe(false);
-      expect(w1.loadFile).not.toHaveBeenCalled();
-      // Named: the person dismissed the notice and clicked the reload's Restart.
-      const w2 = win();
-      expect(await handleUnifiedApply(() => w2 as never, { force: true, action: 'reload' })).toBe(true);
-      expect(w2.loadFile).toHaveBeenCalledTimes(1);
-      await new Promise((r) => setTimeout(r, 5));
-      // Naming a reload that is not pending changes nothing, and says so.
-      updateCoordinator.feed({ ota: null });
-      const w3 = win();
-      expect(await handleUnifiedApply(() => w3 as never, { force: true, action: 'reload' })).toBe('stale');
-      expect(w3.loadFile).not.toHaveBeenCalled();
-    } finally {
-      vi.mocked(applyUIUpdate).mockResolvedValue(false);
-      updateCoordinator.feed({ shell: shell('idle'), shellManual: null, ota: null });
-    }
-  });
-
-  it('a rolled-back bundle keeps its failure after the fallback load commits', async () => {
-    const { checkForServerUpdate } = await import('./server-updater');
-    const { applyUIUpdate } = await import('./ui-updater');
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
     vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    vi.mocked(getCachedVersion).mockReturnValue(uiFound.newVersion!);
     // The new bundle fails its load check; the fallback load then commits.
     const w = win({ navigates: false });
     let loads = 0;
@@ -331,127 +261,16 @@ describe('the status an apply leaves behind', () => {
       if (loads === 1) setTimeout(() => w.emit('did-fail-load', null, -2, 'ERR_FAILED', 'file:///x', true), 0);
       else setTimeout(() => { w.emit('did-navigate'); w.emit('did-finish-load'); }, 0);
     });
-    updateCoordinator.feed({ ota: availableStatus(uiFound, serverNone) });
     await handleUnifiedApply(() => w as never, { force: true });
-    await new Promise((r) => setTimeout(r, 5));
+    await tick(5);
     expect(w.loadFile).toHaveBeenCalledTimes(2);
-    // The fresh renderer reads the rollback, not idle: nothing to retry, but
-    // Settings can say what happened.
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, ui: { status: 'failed', error: 'rolled-back' } });
-    updateCoordinator.feed({ ota: null });
-  });
-
-  it('an offer a check finds mid-apply waits, and comes back once the apply settles', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
-    const { checkForUIUpdate } = await import('./ui-updater');
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    vi.mocked(maybeUpdateServer).mockImplementation(async () => {
-      await gate;
-      return { updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' };
-    });
-    const w = win();
-    // The last check is what a forced apply reuses: make it the one that
-    // offered the server update.
-    const { checkForUIUpdate: checkUi } = await import('./ui-updater');
-    vi.mocked(checkUi).mockResolvedValue(uiNone);
-    await checkForUpdates();
-    expect(updateCoordinator.getState().action).toBe('reload');
-    const applying = handleUnifiedApply(() => w as never, { force: true });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(updateCoordinator.getState().applying).toBe('downloading');
-    // A manual check lands while the server reinstalls and finds a UI update.
-    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
-    await checkForUpdates();
-    expect(updateCoordinator.getState().applying).toBe('downloading');
-    expect(updateCoordinator.getState().action).toBeNull();
-    release();
-    expect(await applying).toBe(true);
-    await new Promise((r) => setTimeout(r, 5));
-    // The reload committed and the apply settled; the UI offer it did not
-    // apply is back in front of the person.
-    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
-    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
-    vi.mocked(maybeUpdateServer).mockReset();
-    updateCoordinator.feed({ ota: null, server: null });
-  });
-
-  it('an offer found while a UI reload commits is kept for the apply\'s final settle', async () => {
-    const { checkForServerUpdate } = await import('./server-updater');
-    const { applyUIUpdate, checkForUIUpdate, getCachedVersion } = await import('./ui-updater');
-    // Version A is being applied; a check finds version B mid-reload.
-    const uiA = uiFound;
-    const uiB: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.8.1' };
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
-    const w = win({ navigates: false });
-    try {
-      // The last check offered A with the server current; the forced apply
-      // reuses it, so the server is left alone and A reloads.
-      vi.mocked(checkForUIUpdate).mockResolvedValue(uiA);
-      await checkForUpdates();
-      const applying = handleUnifiedApply(() => w as never, { force: true });
-      await vi.waitFor(() => expect(w.loadFile).toHaveBeenCalledTimes(1));
-      expect(updateCoordinator.getState().applying).toBe('reloading');
-      vi.mocked(checkForUIUpdate).mockResolvedValue(uiB);
-      await checkForUpdates();
-      // The reload commits while the apply still waits for the page to
-      // finish loading: the apply has not let go of the status yet.
-      vi.mocked(getCachedVersion).mockReturnValue(uiA.newVersion!);
-      w.emit('did-navigate');
-      w.emit('did-finish-load');
-      expect(await applying).toBe(true);
-      // A landed, B did not: B is in front of the person, not lost.
-      expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
-    } finally {
-      vi.mocked(getCachedVersion).mockReturnValue(null);
-      vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
-      updateCoordinator.feed({ ota: null, server: null });
-    }
-  });
-
-  it('a check landing during the Restart\'s server re-check holds its offer, and the offer returns with the dialog', async () => {
-    const { checkForServerUpdate } = await import('./server-updater');
-    const { checkForUIUpdate } = await import('./ui-updater');
-    const { countRunningTasks } = await import('./running-tasks');
-    const uiB: UpdateCheckResult = { updateAvailable: true, applied: false, newVersion: '2.26.10.8.1' };
-    // The last check offered UI A with the server current, so the click does
-    // not ask up front and goes straight to its re-check.
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
-    await checkForUpdates();
-    expect(updateCoordinator.getState()).toMatchObject({ action: 'reload', ui: { version: '2.26.10.7.1' } });
-    // The re-check hangs until released, then finds a server update the
-    // last check did not know about, with two tasks running.
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    vi.mocked(checkForServerUpdate).mockImplementationOnce(async () => { await gate; return serverFound; });
-    vi.mocked(countRunningTasks).mockResolvedValueOnce(2);
-    try {
-      const request = handleUnifiedApply(() => null, {});
-      await new Promise((r) => setTimeout(r, 0));
-      expect(updateCoordinator.getState().applying).toBe('downloading');
-      // A check lands meanwhile and finds UI B.
-      vi.mocked(checkForUIUpdate).mockResolvedValue(uiB);
-      await checkForUpdates();
-      expect(updateCoordinator.getState().applying).toBe('downloading');
-      release();
-      expect(await request).toEqual({ confirm: true, runningTasks: 2 });
-      // The dialog opens over the newest offer, not over "Updating…".
-      expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
-    } finally {
-      release();
-      vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
-      vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-      updateCoordinator.feed({ ota: null, server: null });
-    }
   });
 
   it('a window closed before its reload commits does not throw when the health window elapses', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
     vi.mocked(maybeUpdateServer).mockResolvedValue({ updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' });
+    await checkForUpdates();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const w = win({ navigates: false });
@@ -464,9 +283,6 @@ describe('the status an apply leaves behind', () => {
         if (destroyed) throw new Error('Object has been destroyed');
         return removeListener(...args);
       });
-      const { checkForUIUpdate: checkUi } = await import('./ui-updater');
-      vi.mocked(checkUi).mockResolvedValue(uiNone);
-      await checkForUpdates();
       expect(await handleUnifiedApply(() => w as never, { force: true })).toBe(true);
       expect(updateCoordinator.getState().applying).toBe('reloading');
       destroyed = true;
@@ -476,29 +292,7 @@ describe('the status an apply leaves behind', () => {
       expect(updateCoordinator.getState().applying).toBeNull();
     } finally {
       vi.useRealTimers();
-      updateCoordinator.feed({ ota: null, server: null });
     }
-  });
-
-  it('a manual apply that lands nothing puts the offer back rather than calling it a failure', async () => {
-    const { checkForServerUpdate } = await import('./server-updater');
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
-    const offer = availableStatus(uiFound, serverNone);
-    updateCoordinator.feed({ ota: offer });
-    // Not forced: the apply re-checks the server and finds it current.
-    expect(await handleUnifiedApply(() => null, {})).toBe(false);
-    expect(updateCoordinator.getInput().ota).toEqual(offer);
-    expect(updateCoordinator.getState()).toMatchObject({ action: 'reload', ui: { status: 'ready' } });
-  });
-
-  it('a check that no longer reports the manual notice clears it', async () => {
-    const s = scenario({ shell: shell('disabled'), checkShellManual: async () => ({ available: true, latestVersion: '2.261007.1', downloadUrl: null }) });
-    await runUpdatePoll(s.deps, false);
-    expect(s.state().action).toBe('open-download-page');
-    s.deps.checkShellManual = async () => noShell;
-    s.deps.onShellManual = (status) => s.coordinator.feed({ shellManual: status.available ? { version: status.latestVersion! } : null });
-    await runUpdatePoll(s.deps, false);
-    expect(s.state().action).toBeNull();
   });
 });
 
@@ -509,29 +303,20 @@ describe('the real boot path settles what it reported', () => {
     initUpdater(getWindow as never, Promise.resolve(), () => 'auto', false, resolve);
   });
 
-  beforeEach(async () => {
-    updateCoordinator.feed({ shell: shell('idle'), ota: null, server: null, shellManual: null });
-    const { checkForUIUpdate, applyUIUpdate } = await import('./ui-updater');
-    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
-    vi.mocked(applyUIUpdate).mockResolvedValue(false);
-  });
-
-  it('a failed boot server install leaves no apply in flight', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
+  it('a failed boot server install leaves no apply in flight, and its offer for the retry', async () => {
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
     vi.mocked(maybeUpdateServer).mockImplementation(async () => {
       updateCoordinator.feed({ server: { phase: 'downloading', to: '0.26.10.7.1' } });
       return { updated: false, previousVersion: '0.26.10.5.2', error: 'uv tool install failed' };
     });
     await boot();
-    expect(updateCoordinator.getState()).toMatchObject({ applying: null, server: { status: 'idle' }, ui: { status: 'idle' } });
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, ui: { status: 'idle' } });
     // A later offer is actionable, not hidden behind a stale apply.
-    updateCoordinator.feed({ ota: availableStatus(uiNone, serverFound) });
-    expect(updateCoordinator.getState().action).toBe('reload');
+    await checkForUpdates();
+    expect(updateCoordinator.getState()).toMatchObject({ action: 'reload', server: { status: 'ready' } });
   });
 
   it('a critical server failure keeps its error for Settings, but nothing stays in flight', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
     vi.mocked(maybeUpdateServer).mockImplementation(async () => {
       updateCoordinator.feed({ server: { phase: 'error', critical: true, error: 'rollback failed' } });
@@ -540,37 +325,13 @@ describe('the real boot path settles what it reported', () => {
     await boot();
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, server: { status: 'failed', error: 'rollback failed' } });
   });
-
-  it('a successful boot server install with no live window leaves no apply in flight', async () => {
-    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
-    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
-    vi.mocked(maybeUpdateServer).mockImplementation(async () => {
-      updateCoordinator.feed({ server: { phase: 'restarting' } });
-      return { updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' };
-    });
-    await boot(() => null);
-    expect(updateCoordinator.getState()).toMatchObject({ applying: null, server: { status: 'idle' } });
-  });
 });
 
-describe('availableStatus', () => {
-  it('names each layer for the coordinator and keeps the legacy version for older renderers', () => {
-    expect(availableStatus(uiFound, serverFound)).toEqual({
-      phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1',
-      serverUpdate: true, serverVersion: '0.26.10.7.1', serverComponent: 'cowork-server',
-    });
-    expect(availableStatus(uiNone, { ...serverFound, component: 'anton-agent' })).toMatchObject({ version: 'anton-agent 0.26.10.7.1', uiUpdate: false, uiVersion: undefined });
-  });
-});
-
-describe('handleUnifiedApply: one apply, the minimal sufficient step', () => {
+describe('handleUnifiedApply wires the step to the runtime', () => {
   const noWindow = () => null;
-  beforeEach(() => {
-    updateCoordinator.feed({ shell: shell('idle'), ota: null, server: null, shellManual: null });
-  });
 
   it('a ready shell download installs and relaunches, with the running-tasks question passed through', async () => {
-    updateCoordinator.feed({ shell: shell('ready-to-install', { targetVersion: '2.26.10.9.1' }), ota: { phase: 'available', version: 'ui' } });
+    updateCoordinator.feed({ shell: shell('ready-to-install', { targetVersion: '2.26.10.9.1' }) });
     runtime.requestShellInstall.mockResolvedValueOnce({ confirm: true, runningTasks: 2 } as never);
     expect(await handleUnifiedApply(noWindow, {})).toEqual({ confirm: true, runningTasks: 2 });
     expect(runtime.requestShellInstall).toHaveBeenCalledWith({});
@@ -578,40 +339,118 @@ describe('handleUnifiedApply: one apply, the minimal sufficient step', () => {
     expect(runtime.requestShellInstall).toHaveBeenLastCalledWith({ force: true });
   });
 
-  it('a failed recoverable shell update retries the check; a manual-mode offer downloads', async () => {
-    updateCoordinator.feed({ shell: shell('failed', { targetVersion: 'v', recoverable: true }) });
-    runtime.checkShellAutoUpdate.mockResolvedValueOnce({ phase: 'checking' } as never);
-    expect(await handleUnifiedApply(noWindow)).toBe(true);
-    expect(runtime.checkShellAutoUpdate).toHaveBeenCalledWith('retry');
-    updateCoordinator.feed({ shell: shell('available', { mode: 'manual', targetVersion: 'v' }) });
-    expect(await handleUnifiedApply(noWindow)).toBe(true);
-    expect(runtime.downloadShellAutoUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it('runs the clicked action only while it is still on offer: a Download click never installs', async () => {
-    // The banner rendered Download (manual mode, shell available)...
-    updateCoordinator.feed({ shell: shell('available', { mode: 'manual', targetVersion: '2.26.10.9.1' }) });
-    expect(updateCoordinator.getState().action).toBe('download');
-    // ...and the snapshot reached ready-to-install before the click landed.
+  it('a Download or Retry click that lands after the shell became ready never installs', async () => {
     updateCoordinator.feed({ shell: shell('ready-to-install', { mode: 'manual', targetVersion: '2.26.10.9.1' }) });
-    expect(updateCoordinator.getState().action).toBe('relaunch');
     expect(await handleUnifiedApply(noWindow, { action: 'download' })).toBe('stale');
     expect(await handleUnifiedApply(noWindow, { action: 'retry' })).toBe('stale');
     expect(runtime.requestShellInstall).not.toHaveBeenCalled();
     expect(runtime.downloadShellAutoUpdate).not.toHaveBeenCalled();
     expect(runtime.checkShellAutoUpdate).not.toHaveBeenCalled();
-    // The Restart the banner now shows does install.
-    expect(await handleUnifiedApply(noWindow, { action: 'relaunch' })).toBe(true);
-    expect(runtime.requestShellInstall).toHaveBeenCalledTimes(1);
-    // An unknown action from the renderer runs nothing.
-    expect(await handleUnifiedApply(noWindow, { action: 'format-disk' as never })).toBe('stale');
-    expect(runtime.requestShellInstall).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('round four: the offer through main\'s entry points', () => {
+  it('a manual check where one channel errors keeps the other channel\'s offer (finding 1)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    await checkForUpdates();
+    // The server host flakes; the UI check still answers.
+    vi.mocked(checkForServerUpdate).mockResolvedValue({ updateAvailable: false, error: 'timeout' } as never);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().ui).toMatchObject({ status: 'ready', version: '2.26.10.7.1' });
+    expect(updateCoordinator.getState().server).toMatchObject({ status: 'ready', version: '0.26.10.7.1' });
   });
 
-  it('answers false when nothing is pending, and leaves the installer page to the renderer', async () => {
-    expect(await handleUnifiedApply(noWindow)).toBe(false);
-    updateCoordinator.feed({ shellManual: { version: 'v' } });
-    expect(await handleUnifiedApply(noWindow)).toBe(false);
-    expect(runtime.requestShellInstall).not.toHaveBeenCalled();
+  it('a manifest that cannot be reached keeps the installer notice, in a check and in the poll (finding 2)', async () => {
+    const disabled = { ...idleSnapshot, phase: 'disabled' };
+    runtime.checkShellAutoUpdate.mockResolvedValue(disabled as never);
+    vi.mocked(getShellAutoUpdateSnapshot).mockReturnValue(disabled as never);
+    vi.mocked(fetchManifest).mockResolvedValue({ shellVersion: '2.26.12.1.1' } as never);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().action).toBe('open-download-page');
+    // A network blip: fetchManifest swallows it to null.
+    vi.mocked(fetchManifest).mockResolvedValue(null);
+    await checkForUpdates();
+    const kept = { action: 'open-download-page', shell: { manual: true, version: '2.26.12.1.1' } };
+    expect(updateCoordinator.getState()).toMatchObject(kept);
+    await new Promise<void>((resolve) => { initUpdater((() => null) as never, Promise.resolve(), () => 'auto', false, resolve); });
+    expect(updateCoordinator.getState()).toMatchObject(kept);
+    // A manifest that answers with no newer shell does clear it.
+    vi.mocked(fetchManifest).mockResolvedValue({ shellVersion: '2.26.1.1.1' } as never);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().action).toBeNull();
+  });
+
+  it('an offer for UI X and server Y keeps Y offered when the apply running lands X (finding 3)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    let land!: (applied: boolean) => void;
+    vi.mocked(applyUIUpdate).mockImplementationOnce(() => new Promise<boolean>((r) => { land = r; }));
+    const applying = handleUnifiedApply(() => win() as never, { force: true });
+    await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(1));
+    // A check lands mid-apply and finds UI X and server Y. The progress stays.
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    await checkForUpdates();
+    expect(updateCoordinator.getState()).toMatchObject({ applying: 'downloading', action: null });
+    vi.mocked(getCachedVersion).mockReturnValue(uiFound.newVersion!);
+    land(true);
+    expect(await applying).toBe(true);
+    await tick(5);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', server: { status: 'ready', version: '0.26.10.7.1' }, ui: { status: 'idle' } });
+  });
+
+  it('an offer for a newer UI found while one reloads survives the reload', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    const w = win({ navigates: false });
+    const applying = handleUnifiedApply(() => w as never, { force: true });
+    await vi.waitFor(() => expect(w.loadFile).toHaveBeenCalledTimes(1));
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNext);
+    await checkForUpdates();
+    vi.mocked(getCachedVersion).mockReturnValue(uiFound.newVersion!);
+    w.emit('did-navigate');
+    w.emit('did-finish-load');
+    expect(await applying).toBe(true);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' } });
+  });
+
+  it('a Restart whose apply finds nothing clears the stale offer instead of looping (finding 4)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().action).toBe('reload');
+    // The release was withdrawn before the click: the apply downloads nothing.
+    expect(await handleUnifiedApply(() => null, { force: true })).toBe(false);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, ui: { status: 'idle' } });
+  });
+
+  it('a Restart whose download fails keeps the offer and says so, for a real retry', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce(uiFound.newVersion!);
+    expect(await handleUnifiedApply(() => null, { force: true })).toBe(false);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'failed', error: 'apply-failed', version: '2.26.10.7.1' } });
+  });
+
+  it('a check that lands during the Restart\'s server re-check leaves its progress alone, and its offer shows with the dialog', async () => {
+    const { countRunningTasks } = await import('./running-tasks');
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    // The re-check hangs until released, then finds a server update the last
+    // check did not know about, with two tasks running.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    vi.mocked(checkForServerUpdate).mockImplementationOnce(async () => { await gate; return serverFound; });
+    vi.mocked(countRunningTasks).mockResolvedValueOnce(2);
+    const request = handleUnifiedApply(() => null, {});
+    await tick();
+    expect(updateCoordinator.getState().applying).toBe('downloading');
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNext);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().applying).toBe('downloading');
+    release();
+    expect(await request).toEqual({ confirm: true, runningTasks: 2 });
+    // The dialog opens over the newest offer, not over "Updating…".
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' }, server: { status: 'ready' } });
   });
 });
