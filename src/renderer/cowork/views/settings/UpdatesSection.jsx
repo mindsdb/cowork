@@ -179,6 +179,9 @@ export default function UpdatesSection({
     // Another surface's request is still out (the sidebar's, say): this click
     // did nothing, so the card changes nothing.
     if (result === 'busy') return;
+    // The state moved on before the click landed (a newer update, say): nothing
+    // ran, and the card re-renders from the state main pushes next.
+    if (result === 'stale') { setApplyingUpdate(false); return; }
     // A restart that proceeds reloads or relaunches the app; a resolved false
     // (or a throw) returns the card to a retryable state. A retry or download
     // is not a restart, so its button never reads "Restarting…".

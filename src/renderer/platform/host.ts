@@ -22,6 +22,7 @@ import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell
 import {
   type UpdateAction,
   createUpdateCoordinator,
+  resolveApplyAction,
   shellAutoIsPending,
   type OtaStatus,
   type ShellSnapshot,
@@ -899,10 +900,30 @@ function startUpdateStateFeed(): NonNullable<typeof updateStateFeed> {
   };
   if (shellCarriesUpdateState()) {
     let cancelled = false;
+    // The mount-time pull can resolve after a push, carrying an older state.
+    // Main numbers its states; drop one older than what is already shown.
+    // A main that predates the number gets the legacy rule: a push that
+    // landed first is the newer one, and wins.
+    let pushed = false;
+    const isOlder = (state: UpdateCoordinatorState) => {
+      const last = feed.last;
+      if (!last) return false;
+      if (typeof state.revision === 'number' && typeof last.revision === 'number') return state.revision < last.revision;
+      return false;
+    };
     Promise.resolve(bridge.getUpdateState())
-      .then((state) => { if (!cancelled && state) publish(state); })
+      .then((state) => {
+        if (cancelled || !state) return;
+        if (isOlder(state)) return;
+        if (pushed && (typeof state.revision !== 'number' || typeof feed.last?.revision !== 'number')) return;
+        publish(state);
+      })
       .catch(() => {});
-    const off = bridge.onUpdateState((state: UpdateCoordinatorState) => { if (!cancelled) publish(state); });
+    const off = bridge.onUpdateState((state: UpdateCoordinatorState) => {
+      if (cancelled || isOlder(state)) return;
+      pushed = true;
+      publish(state);
+    });
     feed.stop = () => { cancelled = true; off(); };
     return feed;
   }
@@ -957,18 +978,20 @@ export async function getUpdateState(): Promise<UpdateCoordinatorState | null> {
  *  caller's own action and never reaches here. */
 export async function applyUpdates(hooks: { onProceed?: () => void; action?: UpdateAction } = {}): Promise<GuardedRestartResult> {
   if (!isElectron) return false;
-  // The banner names the action it offered. Main needs it when the manual
-  // installer notice outranks a pending reload in the ladder but the person
-  // dismissed the notice: the Restart they see is the reload's.
-  const named = hooks.action === 'reload' ? { action: 'reload' as const } : {};
+  // The banner names the action it rendered. Main runs it only if the state
+  // still offers it and answers 'stale' otherwise, so a Download or Retry
+  // click can never install and relaunch. It also lets the Restart behind a
+  // dismissed manual notice ask for the reload by name.
+  const named = hooks.action !== undefined ? { action: hooks.action } : {};
   if (typeof bridge.applyUpdates === 'function') {
     return guardRestart(options => bridge.applyUpdates({ ...options, ...named }), hooks);
   }
+  // An older shell: the same decision, from the composed state.
   const local = localUpdateState();
   const state = local.getState();
-  const reloadPending = state.pending.reload || (state.ui.status === 'failed' && state.ui.error !== 'rolled-back');
-  const action = hooks.action === 'reload' && reloadPending ? 'reload' : state.action;
-  switch (action) {
+  const step = resolveApplyAction(state, hooks.action);
+  if (step === 'stale') return 'stale';
+  switch (step) {
     case 'relaunch':
       return installShellAutoUpdate(hooks);
     case 'reload': {

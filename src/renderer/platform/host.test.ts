@@ -659,6 +659,85 @@ describe('electron mode (bridge present)', () => {
       expect((await host.getUpdateState())!.shell.manual).toBe(false);
     });
 
+    it('a mount-time pull that resolves after a push does not replace the newer state', async () => {
+      let resolvePull!: (s: unknown) => void;
+      let pushed: ((s: unknown) => void) | null = null;
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return vi.fn(); }),
+      };
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      // Main pushes revision 5 while the pull, answered at revision 4, is in flight.
+      pushed!({ action: null, applying: 'downloading', revision: 5 });
+      resolvePull({ action: 'reload', applying: null, revision: 4 });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(seen).toHaveBeenCalledTimes(1);
+      expect(seen).toHaveBeenLastCalledWith({ action: null, applying: 'downloading', revision: 5 });
+      // An older push is dropped the same way; a newer one lands.
+      pushed!({ action: 'reload', revision: 3 });
+      expect(seen).toHaveBeenCalledTimes(1);
+      pushed!({ action: 'reload', revision: 6 });
+      expect(seen).toHaveBeenLastCalledWith({ action: 'reload', revision: 6 });
+    });
+
+    it('a main without revisions keeps the legacy rule: a push that landed first wins over the pull', async () => {
+      let resolvePull!: (s: unknown) => void;
+      let pushed: ((s: unknown) => void) | null = null;
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return vi.fn(); }),
+      };
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      pushed!({ action: 'relaunch' });
+      resolvePull({ action: 'reload' });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(seen).toHaveBeenCalledTimes(1);
+      expect(seen).toHaveBeenLastCalledWith({ action: 'relaunch' });
+    });
+
+    it('sends the clicked action to main, and passes a stale answer through as nothing ran', async () => {
+      const applyUpdates = vi.fn(async () => 'stale');
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUpdateState: vi.fn(async () => ({ action: 'relaunch' })),
+        onUpdateState: vi.fn(() => vi.fn()),
+        applyUpdates,
+      };
+      const host = await importHost();
+      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
+      expect(applyUpdates).toHaveBeenCalledWith({ action: 'download' });
+      // Stale is decided by main; the guard never asks or retries it.
+      expect(applyUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('on an older shell a Download click that the state no longer offers runs nothing', async () => {
+      let shellCb: ((s: unknown) => void) | null = null;
+      const installShellAutoUpdate = vi.fn(async () => true);
+      const downloadShellAutoUpdate = vi.fn(async () => shell('downloading'));
+      (window as unknown as Record<string, unknown>).antontron = {
+        onUpdateStatus: vi.fn(() => vi.fn()),
+        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+        installShellAutoUpdate,
+        downloadShellAutoUpdate,
+      };
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      // The banner rendered Download; the snapshot reached ready-to-install first.
+      shellCb!(shell('available', { mode: 'manual', targetVersion: 'v' }));
+      shellCb!(shell('ready-to-install', { mode: 'manual', targetVersion: 'v' }));
+      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
+      expect(installShellAutoUpdate).not.toHaveBeenCalled();
+      expect(downloadShellAutoUpdate).not.toHaveBeenCalled();
+      // The Restart it now shows installs.
+      expect(await host.applyUpdates({ action: 'relaunch' })).toBe(true);
+      expect(installShellAutoUpdate).toHaveBeenCalledOnce();
+    });
+
     it('publishes nothing on web', async () => {
       const host = await importHost();
       const seen = vi.fn();

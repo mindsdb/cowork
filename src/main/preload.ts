@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import type { UpdateAction } from '../shared/update-coordinator';
 
 // ENG-439: main resolves a per-OS-user server port and passes it to the
 // renderer process via additionalArguments. Parse it once here so the host
@@ -225,7 +226,7 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.UPDATE_STATE, listener);
     return () => ipcRenderer.removeListener(IPC.UPDATE_STATE, listener);
   },
-  applyUpdates: (options?: { force?: boolean; action?: 'reload' }) => ipcRenderer.invoke(IPC.UPDATE_APPLY, options),
+  applyUpdates: (options?: { force?: boolean; action?: UpdateAction }) => ipcRenderer.invoke(IPC.UPDATE_APPLY, options),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

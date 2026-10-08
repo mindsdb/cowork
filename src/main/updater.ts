@@ -22,9 +22,11 @@ import type { UpdateCheckSummary } from '../shared/update-types';
 import type { RestartRequestResult } from '../shared/restart-confirmation';
 import {
   createUpdateCoordinator,
+  resolveApplyAction,
   serverLabel as serverLabelFor,
   type OtaStatus,
   type ServerStatus,
+  type UpdateAction,
 } from '../shared/update-coordinator';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
@@ -146,6 +148,27 @@ let applyDepth = 0;
 // `applyDepth` counts them, and they still own the status they pushed.
 let applyRequestsPending = 0;
 
+// The subset of those still waiting for the maintenance lock: another apply
+// (the boot apply, say) holds it. That apply's settle must not clear the
+// progress such a request announced; the request settles its own once it ran.
+let queuedApplyRequests = 0;
+
+/** A Restart request's place in the queue, handed to the apply it starts. */
+interface ApplyRequestTicket { entered: boolean }
+
+function leaveQueue(ticket: ApplyRequestTicket): void {
+  if (ticket.entered) return;
+  ticket.entered = true;
+  queuedApplyRequests -= 1;
+}
+
+/** Clear the OTA status only if it still says an apply is in flight, and no
+ *  queued request owns it. */
+function inFlightOtaCleared(ota: OtaStatus | null): { ota?: null } {
+  if (queuedApplyRequests > 0) return {};
+  return ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {};
+}
+
 /** The server updater's progress (app.ts wires it in). The coordinator takes
  *  it raw for the server layer, and its busy phases are mirrored onto the OTA
  *  status, through the coordinator and the legacy channel alike, so `applying`
@@ -183,7 +206,7 @@ function settleApplyStatus(): void {
   // Only what announced the apply is over. A `rolled-back` (or `error`)
   // pushed before the fallback load is the fresh renderer's to show.
   updateCoordinator.feed({
-    ...(ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {}),
+    ...inFlightOtaCleared(ota),
     ...(server?.phase === 'error' ? {} : { server: null }),
   });
   replayDeferredOffer();
@@ -284,7 +307,7 @@ function settleInFlightStatus(): void {
   if (pendingNavigationSettle) return;
   const { ota, server } = updateCoordinator.getInput();
   updateCoordinator.feed({
-    ...(ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {}),
+    ...inFlightOtaCleared(ota),
     ...(server?.phase === 'downloading' || server?.phase === 'restarting' ? { server: null } : {}),
   });
   replayDeferredOffer();
@@ -439,11 +462,26 @@ async function applyUpdatesUnlocked(
   return uiApplied || (applyServer && serverOk);
 }
 
-function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean> {
+function applyUpdates(
+  getWindow: GetWindow,
+  applyServer: boolean,
+  applyUi: boolean,
+  trigger: UpdateJournalTrigger,
+  ticket?: ApplyRequestTicket,
+): Promise<boolean> {
   return withUpdateMaintenance(async () => {
     // A reload from an earlier apply that never committed is superseded by
     // this one; its settle must not fire over this apply's status.
     pendingNavigationSettle?.cancel();
+    if (ticket && !ticket.entered) {
+      leaveQueue(ticket);
+      // The apply it waited behind may have pushed over its progress (a
+      // reload, an error). Say again that this one is under way.
+      const ota = updateCoordinator.getInput().ota;
+      if (ota?.phase !== 'downloading' && ota?.phase !== 'reloading') {
+        sendStatus(getWindow, { phase: 'downloading', version: updateCoordinator.getState().version });
+      }
+    }
     applyDepth += 1;
     try {
       return await applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger);
@@ -554,7 +592,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
     handleApplyRequest(getWindow, options)
   ));
   ipcMain.handle(IPC.UPDATE_STATE_GET, () => updateCoordinator.getState());
-  ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean; action?: 'reload' }) => (
+  ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean; action?: UpdateAction }) => (
     handleUnifiedApply(getWindow, options)
   ));
   if (!statePushWired) {
@@ -602,9 +640,14 @@ export async function handleApplyRequest(
   // below and the wait for the maintenance lock come before `applyDepth`
   // counts the apply, so count the request itself.
   applyRequestsPending += 1;
+  queuedApplyRequests += 1;
+  const ticket: ApplyRequestTicket = { entered: false };
   try {
-    return await runApplyRequest(getWindow, options, { asked, confirmed, offer, restoreOffer });
+    return await runApplyRequest(getWindow, options, { asked, confirmed, offer, restoreOffer, ticket });
   } finally {
+    // A request that returned before its apply ran (a dialog, a throw) is
+    // out of the queue too.
+    leaveQueue(ticket);
     applyRequestsPending -= 1;
     replayDeferredOffer();
   }
@@ -614,9 +657,9 @@ export async function handleApplyRequest(
 async function runApplyRequest(
   getWindow: GetWindow,
   options: { force?: boolean } | undefined,
-  ctx: { asked: boolean; confirmed: boolean; offer: OtaStatus | null; restoreOffer: () => void },
+  ctx: { asked: boolean; confirmed: boolean; offer: OtaStatus | null; restoreOffer: () => void; ticket: ApplyRequestTicket },
 ): Promise<boolean | { confirm: true; runningTasks: number | null }> {
-  const { asked, confirmed, offer, restoreOffer } = ctx;
+  const { asked, confirmed, offer, restoreOffer, ticket } = ctx;
   // A manual apply re-checks the server so it can't drift from the UI,
   // unless a check fresh enough preceded this call (the one the dialog
   // interrupted). A pending stream repair is excluded: it applies at boot,
@@ -645,7 +688,7 @@ async function runApplyRequest(
   }
   let applied = false;
   try {
-    applied = await applyUpdates(getWindow, applyServer, true, 'manual');
+    applied = await applyUpdates(getWindow, applyServer, true, 'manual', ticket);
   } catch (error) {
     // The apply itself threw. The banner must not go silent until the next
     // poll: name the failure, with the version, so it reads "Update failed"
@@ -668,20 +711,20 @@ async function runApplyRequest(
  *  and answer with the same `{ confirm, runningTasks }` report. */
 export async function handleUnifiedApply(
   getWindow: GetWindow,
-  options?: { force?: boolean; action?: 'reload' },
+  options?: { force?: boolean; action?: UpdateAction },
 ): Promise<RestartRequestResult> {
-  const state = updateCoordinator.getState();
-  // The manual installer notice outranks a pending reload in the ladder, but
-  // the renderer can dismiss that notice (it is the one dismissible banner).
-  // The Restart it then shows asks for the reload by name; honour it when a
-  // reload is in fact pending, rather than answering for the notice.
-  const reloadPending = state.pending.reload || (state.ui.status === 'failed' && state.ui.error !== 'rolled-back');
-  const action = options?.action === 'reload' && reloadPending ? 'reload' : state.action;
-  switch (action) {
+  // The renderer names the action it rendered. It runs only if the state it
+  // lands on still offers it: the banner can lag main by a push, and a
+  // Download or Retry click must never install and relaunch. A renderer
+  // older than this names nothing and gets what is offered now.
+  const step = resolveApplyAction(updateCoordinator.getState(), options?.action);
+  if (step === 'stale') return 'stale';
+  const force = options?.force ? { force: true } : {};
+  switch (step) {
     case 'relaunch':
-      return requestShellInstall(options ?? {});
+      return requestShellInstall(force);
     case 'reload':
-      return handleApplyRequest(getWindow, options);
+      return handleApplyRequest(getWindow, force);
     case 'retry': {
       const snapshot = await checkShellAutoUpdate('retry');
       return snapshot.phase !== 'failed';

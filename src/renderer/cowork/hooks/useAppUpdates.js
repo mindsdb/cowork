@@ -33,8 +33,9 @@ export function useAppUpdates() {
   // The one action. Opening the installer page is the renderer's own job;
   // everything else is main's, through the one apply, which picks reload or
   // relaunch for whatever is pending and asks first while tasks run.
-  // Resolves to main's answer, 'cancelled', or 'busy' when a request is
-  // already out. One request at a time: the banner is not disabled until
+  // Resolves to main's answer, 'cancelled', 'stale' when the clicked action
+  // was no longer on offer (nothing ran; the next state push re-renders), or
+  // 'busy' when a request is already out. One request at a time: the banner is not disabled until
   // main's progress push lands, so a double click must not send a second
   // apply behind the first, and the dropped click is not a failure.
   const applyInFlight = useRef(false);

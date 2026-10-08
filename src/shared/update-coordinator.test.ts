@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   coordinateUpdates,
   createUpdateCoordinator,
+  resolveApplyAction,
   shellAutoIsPending,
   type ShellSnapshot,
   type UpdateCoordinatorInput,
@@ -186,5 +187,89 @@ describe('createUpdateCoordinator', () => {
     c.subscribe(seen)();
     c.feed({ ota: { phase: 'available', version: 'ui' } });
     expect(seen).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveApplyAction: a click runs only what the state still offers', () => {
+  // One state per action the ladder can offer, plus an apply in flight.
+  const states = {
+    relaunch: state({ shell: shell('ready-to-install', { targetVersion: 'v' }), ota: { phase: 'available', version: 'ui' } }),
+    reload: state({ ota: { phase: 'available', version: 'ui' } }),
+    retry: state({ shell: shell('failed', { targetVersion: 'v', recoverable: true }) }),
+    download: state({ shell: shell('available', { mode: 'manual', targetVersion: 'v' }) }),
+    'open-download-page': state({ shellManual: { version: 'v' } }),
+    applying: state({ ota: { phase: 'downloading', version: 'ui' } }),
+    idle: state({}),
+  } as const;
+  const clicks = ['relaunch', 'reload', 'retry', 'download'] as const;
+
+  it('offers each state the action the ladder picks', () => {
+    expect(states.relaunch.action).toBe('relaunch');
+    expect(states.reload.action).toBe('reload');
+    expect(states.retry.action).toBe('retry');
+    expect(states.download.action).toBe('download');
+    expect(states['open-download-page'].action).toBe('open-download-page');
+    expect(states.applying.action).toBeNull();
+  });
+
+  // Rows: the state the click lands on. Columns: the clicked action.
+  const table: Record<keyof typeof states, Record<(typeof clicks)[number], string>> = {
+    relaunch:             { relaunch: 'relaunch', reload: 'reload', retry: 'stale',  download: 'stale' },
+    reload:               { relaunch: 'stale',    reload: 'reload', retry: 'stale',  download: 'stale' },
+    retry:                { relaunch: 'stale',    reload: 'stale',  retry: 'retry',  download: 'stale' },
+    download:             { relaunch: 'stale',    reload: 'stale',  retry: 'stale',  download: 'download' },
+    'open-download-page': { relaunch: 'stale',    reload: 'stale',  retry: 'stale',  download: 'stale' },
+    applying:             { relaunch: 'stale',    reload: 'stale',  retry: 'stale',  download: 'stale' },
+    idle:                 { relaunch: 'stale',    reload: 'stale',  retry: 'stale',  download: 'stale' },
+  };
+  for (const [name, row] of Object.entries(table)) {
+    for (const click of clicks) {
+      it(`a ${click} click on a ${name} state runs ${row[click]}`, () => {
+        expect(resolveApplyAction(states[name as keyof typeof states], click)).toBe(row[click]);
+      });
+    }
+  }
+
+  it('never relaunches for anything but a relaunch click', () => {
+    for (const click of ['reload', 'retry', 'download', 'open-download-page', null, 'nonsense'] as const) {
+      expect(resolveApplyAction(states.relaunch, click)).not.toBe('relaunch');
+    }
+  });
+
+  it('a renderer that names nothing gets what the state offers now', () => {
+    expect(resolveApplyAction(states.relaunch)).toBe('relaunch');
+    expect(resolveApplyAction(states.reload)).toBe('reload');
+    expect(resolveApplyAction(states['open-download-page'])).toBeNull();
+    expect(resolveApplyAction(states.idle)).toBeNull();
+  });
+
+  it('the installer page is the renderer\'s own, and an unknown action is stale', () => {
+    expect(resolveApplyAction(states['open-download-page'], 'open-download-page')).toBeNull();
+    expect(resolveApplyAction(states.reload, null)).toBeNull();
+    expect(resolveApplyAction(states.reload, 'format-disk')).toBe('stale');
+  });
+
+  it('the reload behind a dismissed manual notice still runs by name', () => {
+    const behindNotice = state({ ota: { phase: 'available', version: 'ui' }, shellManual: { version: 'v' } });
+    expect(behindNotice.action).toBe('open-download-page');
+    expect(resolveApplyAction(behindNotice, 'reload')).toBe('reload');
+  });
+});
+
+describe('createUpdateCoordinator: revision', () => {
+  it('numbers each change, and only changes', () => {
+    const c = createUpdateCoordinator();
+    const start = c.getState().revision;
+    expect(start).toBe(0);
+    c.feed({ shell: shell('checking') });
+    expect(c.getState().revision).toBe(1);
+    c.feed({ shell: shell('checking') });
+    expect(c.getState().revision).toBe(1);
+    c.feed({ ota: { phase: 'available', version: 'ui' } });
+    expect(c.getState().revision).toBe(2);
+  });
+
+  it('the pure reducer carries no revision', () => {
+    expect(state({}).revision).toBeUndefined();
   });
 });
