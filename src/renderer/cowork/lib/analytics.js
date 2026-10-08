@@ -103,8 +103,18 @@ const EVENTS = {
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
   SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  // One UI or server update outcome, journaled by main while the window
+  // reloaded and reported by the next renderer to boot (see drainUpdateJournal).
+  // `phase`: applied (live and healthy) | rolled-back (health check failed,
+  // previous version restored; a UI rollback also quarantines the bundle) |
+  // failed (nothing changed, or the rollback failed; `error_code` says which) |
+  // repaired (a reinstall that was not a version move: stream repair, venv
+  // rebuild) | skipped (withheld this pass, e.g. the UI behind a failed server
+  // update). `from`/`to` are that layer's versions. `trigger` is which check
+  // applied it. `journal_id` dedupes a rare double send.
+  UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -910,7 +920,70 @@ export async function trackBootScreenResolved(target) {
     server_deps_ready: Boolean(status?.serverDepsReady),
     build_kind: version?.buildKind ?? null,
     shell_version: version?.app || null,
+    // The running UI bundle, named explicitly beside the shell so a per-layer
+    // adoption chart reads off this one event. Same value as app_version.
+    ui_version: APP_VERSION || null,
+    // Null when the sidecar is not up yet (a boot that lands on 'auth').
+    server_version: await readServerVersion(),
   });
+}
+
+// The sidecar's version from /health, bounded and best-effort. api.js imports
+// this module, so it is loaded lazily here rather than at the top.
+async function readServerVersion() {
+  try {
+    const { fetchHealth } = await import('../api');
+    const health = await fetchHealth({ timeoutMs: 3000 });
+    return health?.server_version || null;
+  } catch {
+    return null;
+  }
+}
+
+/** One journaled UI/server update outcome (src/main/update-journal.ts).
+ *  Resolves true only when PostHog took it, so the drain can ack it. */
+export function trackUpdatePhase(entry) {
+  if (!host.isElectron || !entry) return Promise.resolve(false);
+  return capture(EVENTS.UPDATE_PHASE, {
+    channel: entry.channel,
+    phase: entry.phase,
+    from: entry.from ?? null,
+    to: entry.to ?? null,
+    error_code: entry.errorCode ?? null,
+    trigger: entry.trigger ?? null,
+    duration_ms: entry.durationMs ?? null,
+    build_kind: entry.buildKind ?? null,
+    journal_id: entry.id,
+    journaled_at: entry.at ?? null,
+  });
+}
+
+// Update outcomes happen in main and the window reloads mid-apply, so main
+// journals them and this renderer reports them on boot: one event per entry,
+// then an ack for the ones PostHog took. The rest stay in the journal for the
+// next launch (main leases them briefly so a reload mid-drain does not send
+// them twice). Runs once per renderer; a reload is a fresh renderer.
+let journalDrained = false;
+export async function drainUpdateJournal() {
+  if (!host.isElectron || journalDrained) return;
+  journalDrained = true;
+  let entries;
+  try {
+    entries = await host.drainUpdateJournal();
+  } catch {
+    return;
+  }
+  const delivered = [];
+  for (const entry of entries ?? []) {
+    if (!entry?.id) continue;
+    // One at a time: the journal is small, and a burst would race the identity
+    // resolution every capture waits on.
+    if (await trackUpdatePhase(entry).catch(() => false)) delivered.push(entry.id);
+  }
+  if (delivered.length === 0) return;
+  try {
+    await host.ackUpdateJournal(delivered);
+  } catch { /* unacked entries are re-sent next launch; journal_id dedupes */ }
 }
 
 // Auto mode skips `available`, so `downloading` counts as it. An install on quit

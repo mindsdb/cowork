@@ -6,7 +6,7 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer, type ServerUpdateCheckResult } from './server-updater';
 import { isServerRunning } from './server-process';
@@ -23,6 +23,7 @@ import {
   startShellAutoUpdatePolling,
 } from './shell-auto-update-runtime';
 import { withUpdateMaintenance } from './update-maintenance';
+import { recordUpdatePhase, serverOutcomeRecord, uiOutcomeRecord, type UiReloadOutcome, type UpdateJournalTrigger } from './update-journal';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 // How long a freshly-activated UI bundle has to finish loading before we treat
@@ -33,6 +34,11 @@ type GetWindow = () => BrowserWindow | null;
 
 // Cached so the renderer can recover the notice after an OTA reload.
 let lastShellStatus: ShellUpdateStatus = { available: false };
+
+// Whether the last UI check found a bundle to apply. A manual apply always
+// asks for the UI, so this is how its journal entry knows whether a UI apply
+// that landed nothing was a failure or just a server-only update.
+let lastUiAvailable = false;
 
 // The most recent server check, from any poll, manual check or apply. The apply
 // handler reads it to decide whether a restart will stop the sidecar BEFORE it
@@ -56,8 +62,11 @@ function serverUpdatePending(result: ServerUpdateCheckResult | undefined): boole
 // Returns whether the server is in a good state to proceed with a UI update:
 // true if it was updated cleanly or was already current, false if an update was
 // attempted and failed (in which case it has rolled back to the old server).
-async function applyServerUpdate(): Promise<boolean> {
+async function applyServerUpdate(trigger: UpdateJournalTrigger): Promise<boolean> {
+  const startedAt = Date.now();
   const result = await maybeUpdateServer();
+  const record = serverOutcomeRecord(result, trigger, Date.now() - startedAt);
+  if (record) recordUpdatePhase(record);
   if (result.updated) {
     console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
     return true;
@@ -128,43 +137,77 @@ function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
 // Reload into a freshly-activated UI bundle and verify it loads. If it doesn't,
 // roll the bundle back and reload whatever we fall back to (previous cache or
 // the app-bundled renderer) — a bad hot-update must never brick the window.
-async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
+// Returns what happened, for the journal; null when there was no window to
+// load into.
+async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOutcome | null> {
   const win = liveWindow(getWindow);
-  if (!win) return;
+  if (!win) return null;
   win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-  if (await loadAndVerify(win, getRendererPath())) return;
+  if (await loadAndVerify(win, getRendererPath())) return 'applied';
 
   console.error('[updater] new UI bundle failed to load — rolling back');
   // Don't let an exhausted-retry rollback error skip the fallback reload below —
   // the user would be stranded on a broken renderer with no status (Medium 4).
+  let outcome: UiReloadOutcome = 'rolled-back';
   try {
     await rollbackUI();
   } catch (err) {
+    outcome = 'rollback-failed';
     console.error('[updater] UI rollback failed — falling back anyway', err);
   }
   const win2 = liveWindow(getWindow);
-  if (!win2) return;
+  if (!win2) return outcome;
   win2.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'rolled-back' });
   // Best-effort: the fallback (previous cache / bundled) should always load.
   await loadAndVerify(win2, getRendererPath());
+  return outcome;
+}
+
+/** The UI version in service right now: the OTA slot, else the bundled
+ *  renderer. */
+function servedUiVersion(): string {
+  return getCachedVersion() ?? getAppDisplayVersion();
+}
+
+/** Swap in the staged bundle through the health-checked reload and journal
+ *  the outcome against the version it replaced. */
+async function activateUiAndJournal(getWindow: GetWindow, from: string, trigger: UpdateJournalTrigger, startedAt: number): Promise<void> {
+  const to = getCachedVersion();
+  const outcome = await reloadWithUiHealthCheck(getWindow);
+  if (outcome) recordUpdatePhase(uiOutcomeRecord(outcome, { from, to }, trigger, Date.now() - startedAt));
 }
 
 // Apply server (if requested) then UI, and reload if either landed. Shared by
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
-async function applyUpdatesUnlocked(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+async function applyUpdatesUnlocked(
+  getWindow: GetWindow,
+  applyServer: boolean,
+  applyUi: boolean,
+  trigger: UpdateJournalTrigger,
+): Promise<boolean> {
   // Surface progress before the multi-second, server-down reinstall so the UI
   // shows "Updating…" instead of a bare config-not-ready state (ENG-749).
   if (applyServer) sendStatus(getWindow, { phase: 'downloading' });
-  const serverOk = applyServer ? await applyServerUpdate() : true;
+  const serverOk = applyServer ? await applyServerUpdate(trigger) : true;
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
   // server is current. Defer the UI to the next pass.
-  if (applyUi && !serverOk) console.warn('[updater] server update failed — deferring UI update this pass');
+  if (applyUi && !serverOk) {
+    console.warn('[updater] server update failed — deferring UI update this pass');
+    if (lastUiAvailable) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: servedUiVersion() });
+  }
+  const uiFrom = servedUiVersion();
+  const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
+  // A UI the last check offered did not land: the download, checksum,
+  // extraction or activation failed, and ui-updater logged which.
+  if (applyUi && serverOk && !uiApplied && lastUiAvailable) {
+    recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, durationMs: Date.now() - uiStartedAt });
+  }
   if (uiApplied) {
     // A UI bundle was swapped — verify it loads and roll back if not (R4).
-    await reloadWithUiHealthCheck(getWindow);
+    await activateUiAndJournal(getWindow, uiFrom, trigger, uiStartedAt);
   } else if (applyServer && serverOk) {
     // Server-only update: reload the same (unchanged) renderer, no rollback.
     reload(getWindow);
@@ -172,15 +215,15 @@ async function applyUpdatesUnlocked(getWindow: GetWindow, applyServer: boolean, 
   return uiApplied || (applyServer && serverOk);
 }
 
-function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
-  return withUpdateMaintenance(() => applyUpdatesUnlocked(getWindow, applyServer, applyUi));
+function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean> {
+  return withUpdateMaintenance(() => applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger));
 }
 
 // Detection only. Each channel reports its own errors so a confirmed update can
 // still win when another channel is inconclusive.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const [ui, server, shell, shellAuto] = await Promise.all([
-    checkForUIUpdate(),
+    checkForUIUpdate().then((result) => { lastUiAvailable = result.updateAvailable; return result; }),
     checkServer(),
     checkForShellUpdate().catch(() => ({ available: false as const })),
     // The stateful shell updater owns background download/install. This call
@@ -252,7 +295,7 @@ export async function handleApplyRequest(
     const runningTasks = await countRunningTasks();
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
   }
-  return applyUpdates(getWindow, applyServer, true);
+  return applyUpdates(getWindow, applyServer, true, 'manual');
 }
 
 // After the boot poll (server now current), re-verify a constrained OTA cache
@@ -263,10 +306,12 @@ export async function handleApplyRequest(
 // back here; only a real renderer-load failure quarantines a bundle.
 async function settleConstrainedCache(getWindow: GetWindow): Promise<void> {
   if (isServingOta()) return; // already serving an OTA bundle (unconstrained / verified)
+  const from = servedUiVersion();
+  const startedAt = Date.now();
   const outcome = await verifyServedUiCompat();
   if (outcome === 'verified' && isServingOta()) {
     console.log('[updater] constrained OTA cache verified against server — activating with health check');
-    await reloadWithUiHealthCheck(getWindow);
+    await activateUiAndJournal(getWindow, from, 'boot', startedAt);
   }
 }
 
@@ -320,6 +365,7 @@ export function initUpdater(
   const shellBootSettled = startShellAutoUpdatePolling(rendererReady, otaBootSettled);
 
   async function poll(autoApply: boolean) {
+    const trigger: UpdateJournalTrigger = autoApply ? 'boot' : 'periodic';
     // hasInternet() probes the OTA manifest host (GitHub Pages). The server
     // update lives on different hosts (git remote / PyPI) with its own
     // fail-safe checks, so a down manifest host must only skip the UI check —
@@ -332,6 +378,7 @@ export function initUpdater(
       manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
       checkServer(),
     ]);
+    lastUiAvailable = ui.updateAvailable;
 
     // Shell notices are independent of OTA and never auto-applied. Poll the
     // ENG-849 manifest only when it's the fallback path — auto-update disabled
@@ -383,7 +430,7 @@ export function initUpdater(
 
     if (applyServer || applyUi) {
       if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
-      await applyUpdates(getWindow, applyServer, applyUi);
+      await applyUpdates(getWindow, applyServer, applyUi, trigger);
     } else {
       // The stream repair is boot-only: a downgrade pill mid-session reads as
       // the app being confused, so a pending repair is never surfaced here.

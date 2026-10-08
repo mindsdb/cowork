@@ -20,6 +20,13 @@ vi.mock('./ui-updater', () => ({
   isServingOta: vi.fn(() => false),
   verifyServedUiCompat: vi.fn(async () => 'verified'),
   fetchManifest: vi.fn(async () => null),
+  getCachedVersion: vi.fn(() => null),
+}));
+// The journal main writes for the renderer to report (update-journal.ts).
+const journal = vi.hoisted(() => ({ record: vi.fn() }));
+vi.mock('./update-journal', async (importActual) => ({
+  ...await importActual<typeof import('./update-journal')>(),
+  recordUpdatePhase: journal.record,
 }));
 type ServerCheck = { updateAvailable: boolean; latestVersion?: string; repair?: boolean };
 const serverUpdater = vi.hoisted(() => ({
@@ -52,6 +59,7 @@ const apply = (options?: { force?: boolean }) => handleApplyRequest(() => null, 
 beforeEach(() => {
   serverUpdater.check.mockClear();
   serverUpdater.apply.mockClear();
+  journal.record.mockClear();
   tasks.count.mockClear();
   tasks.count.mockResolvedValue(0);
   sidecar.running = true;
@@ -80,6 +88,12 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(serverUpdater.check).not.toHaveBeenCalled();
     expect(tasks.count).not.toHaveBeenCalled();
     expect(serverUpdater.apply).toHaveBeenCalledTimes(1);
+    // The outcome is journaled as a manual apply, with the versions it moved
+    // between, so the next renderer can report it as update_phase.
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'server', phase: 'applied', trigger: 'manual', from: '0.26.10.5.2', to: '0.26.10.7.1',
+    }));
   });
 
   it('with no task running, re-checks the server once and applies', async () => {
@@ -112,6 +126,9 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     await apply({});
     expect(tasks.count).not.toHaveBeenCalled();
     expect(serverUpdater.apply).not.toHaveBeenCalled();
+    // The last check offered no UI either, so a UI apply that lands nothing
+    // is a server-only restart, not a failed UI update.
+    expect(journal.record).not.toHaveBeenCalled();
     serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
   });
 });

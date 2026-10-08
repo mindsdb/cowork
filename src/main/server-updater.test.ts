@@ -328,7 +328,7 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
 
     const result = await maybeUpdateServer();
 
-    expect(result).toEqual({ updated: true, previousVersion: '2.26.7.27.1', newVersion: '2.26.7.27.2' });
+    expect(result).toEqual({ updated: true, previousVersion: '2.26.7.27.1', newVersion: '2.26.7.27.2', component: 'anton-agent' });
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(1);
     // Same cowork-server version; the newer anton is forced as a direct requirement.
@@ -632,7 +632,7 @@ describe('stream repair — prod install stranded on a pre-release', () => {
 
     const result = await maybeUpdateServer();
 
-    expect(result).toEqual({ updated: true, previousVersion: RC, newVersion: STABLE });
+    expect(result).toEqual({ updated: true, previousVersion: RC, newVersion: STABLE, repair: true });
     const installs = installCalls(execCalls);
     expect(installs).toHaveLength(1);
     expect(installs[0]).toContain(`cowork-server==${STABLE}`);
