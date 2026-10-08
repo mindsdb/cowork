@@ -1,12 +1,19 @@
 import { useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { Icon } from '../ui/Icon';
-import { Button } from '../ui';
+import { Badge, Button } from '../ui';
 import { cn } from '../../lib/cn';
-import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 
-function ConnectionLogo({ engine, label }) {
+function ConnectionLogo({ engine, label, custom, logoColor }) {
   const [failed, setFailed] = useState(null);
+  if (custom) {
+    return (
+      <span aria-hidden="true" className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-[13px] font-semibold" style={{ color: logoColor || 'var(--ink-2)' }}>
+        {connectorInitials(label)}
+      </span>
+    );
+  }
   // Reuse public assets without emitting a second, hashed copy. Only safe
   // connector IDs can form a local path; missing logos fall back to an initial.
   const src = /^[a-z0-9_]+$/.test(engine) ? `logos/${engine}.svg` : null;
@@ -61,12 +68,16 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
         />
       )}
       <div className="flex min-w-0 items-center gap-2.5">
-        <ConnectionLogo engine={engine} label={title} />
+        <ConnectionLogo engine={engine} label={title} custom={connection.custom} logoColor={connection.logo_color} />
         <span className="min-w-0 flex-1 truncate font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-normal text-ink">
           {title}
         </span>
+        {connection.custom && <Badge variant="accent" size="xs" className="shrink-0">Custom</Badge>}
       </div>
       <span className="truncate text-sm text-ink-3">{subtitle}</span>
+      {isLegacyEngine(engine) && (
+        <span className="text-xs text-ink-4">Saved by an older version. Disconnect it and connect again.</span>
+      )}
       <div className="flex-1" />
       <div className="flex items-center gap-2.5 border-x-0 border-b-0 border-t border-solid border-line pt-2.5">
         <span className={cn('flex min-w-0 flex-1 items-center gap-2 text-xs', needsReconnect ? 'text-warning' : 'text-ink-3')}>
