@@ -15,7 +15,7 @@ import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode } from 'react'
 import { cva } from 'class-variance-authority';
 import Ico from '../Icons';
 import { cn } from '../../lib/cn';
-import { ACTIONS_IN_FLOW_ON_TOUCH, HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
+import { ITEM_ROOT, ItemActions, ItemTitle } from './itemParts';
 import type { ItemElement, ItemSlots } from './itemParts';
 
 // Padding shared by rows, the new row, and notices.
@@ -82,7 +82,7 @@ export interface ListItemProps extends ItemSlots, Omit<HTMLAttributes<HTMLElemen
 }
 
 export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem({
-  as: As = 'div', leading, title, badges, description, meta, actions, revealActions,
+  as: As = 'div', leading, title, badges, description, meta, actions,
   onActivate, activateLabel, selected = false, busy = false, children, className, ...rest
 }, ref) {
   // Polymorphic tag; `any` sidesteps ref typing across tags (as in ui/Card).
@@ -116,8 +116,8 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
       </div>
       {/* Phone width: meta drops under the title instead of squeezing it, and
           wraps rather than widening the page; it may shrink so a long unbroken
-          name stays in the row. It goes after the actions, so actions in flow
-          stay beside the title. Desktop never wraps (shrink-0). */}
+          name stays in the row. It moves after the actions, so they stay
+          beside the title. Desktop never wraps (shrink-0). */}
       {meta && (
         <div
           className={cn(
@@ -129,26 +129,7 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
           {meta}
         </div>
       )}
-      {/* Hover-only actions overlay the meta's end (over the row's hover fill)
-          so the meta keeps the right edge at rest; the overlay's end matches
-          the row padding. Actions shown at rest (revealActions) sit in flow.
-          Hover-only ones flow in place on touch, and from sm up whenever the
-          row shows a control at rest, which they would cover. Below sm the
-          meta has its own line, so flowing there would add a blank line. */}
-      {actions && (
-        <HoverActions
-          reveal={revealActions}
-          className={cn(
-            !revealActions && [
-              'absolute inset-y-0 right-0 rounded-[inherit] bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8 pr-4',
-              ACTIONS_IN_FLOW_ON_TOUCH,
-              'sm:group-has-[[data-revealed]]/item:static sm:group-has-[[data-revealed]]/item:bg-none sm:group-has-[[data-revealed]]/item:p-0',
-            ],
-          )}
-        >
-          {actions}
-        </HoverActions>
-      )}
+      {actions && <ItemActions>{actions}</ItemActions>}
     </Comp>
   );
 });

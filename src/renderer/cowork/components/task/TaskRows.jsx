@@ -9,7 +9,7 @@ import Ico from '../Icons';
 import { Badge, Button, Tooltip } from '../ui';
 import { OverflowMenu } from '../OverflowMenu';
 import { relativeAge } from '../../lib/formatTime';
-import { HoverActions, ListItem, StatusDot } from '../collection';
+import { ItemActions, ListItem, StatusDot } from '../collection';
 
 export const ts = (raw) => {
   if (!raw) return 0;
@@ -54,7 +54,7 @@ function ProjectMeta({ label, onOpen }) {
     <span className="flex min-w-0 max-w-[16rem] items-center gap-1.5 max-sm:max-w-[8rem]">
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
       {onOpen ? (
-        <HoverActions reveal className="min-w-0 shrink">
+        <ItemActions className="min-w-0 shrink">
           <Tooltip content={`Open ${label}`}>
             <button
               type="button"
@@ -62,7 +62,7 @@ function ProjectMeta({ label, onOpen }) {
               className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2"
             >{label}</button>
           </Tooltip>
-        </HoverActions>
+        </ItemActions>
       ) : (
         <span title={label} className="min-w-0 truncate text-ink-3">{label}</span>
       )}

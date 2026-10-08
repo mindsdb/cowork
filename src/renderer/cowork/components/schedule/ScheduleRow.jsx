@@ -7,7 +7,7 @@
 import Ico from '../Icons';
 import { projectLabel } from '../../lib/projectLabel';
 import { Button, Spinner, Tooltip } from '../ui';
-import { HoverActions, ListItem, StatusDot } from '../collection';
+import { ItemActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { scheduleStatusBadge } from './ScheduleStatusBadge';
@@ -54,7 +54,7 @@ export default function ScheduleRow({
     <span className="flex min-w-0 max-w-[11rem] items-center gap-1.5 sm:max-w-[16rem]">
       <span className="inline-flex shrink-0">{Ico.folder(12)}</span>
       {projectMatch && typeof onOpenProject === 'function' ? (
-        <HoverActions reveal className="min-w-0 shrink">
+        <ItemActions className="min-w-0 shrink">
           <Tooltip content={`Open ${projectDisplay}`}>
             <button
               type="button"
@@ -62,7 +62,7 @@ export default function ScheduleRow({
               className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2"
             >{projectDisplay}</button>
           </Tooltip>
-        </HoverActions>
+        </ItemActions>
       ) : (
         <span title={projectDisplay} className="min-w-0 truncate text-ink-3">{projectDisplay}</span>
       )}
@@ -101,9 +101,6 @@ export default function ScheduleRow({
             />
           </>
       )}
-      // Run and the menu stay visible at rest: they're the page's main
-      // actions, not hover extras.
-      revealActions
       meta={(
         <>
           {project}

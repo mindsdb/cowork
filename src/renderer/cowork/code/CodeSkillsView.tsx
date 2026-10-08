@@ -13,7 +13,7 @@ import {
   FilterChips,
   FilterMenu,
   FilterRow,
-  HoverActions,
+  ItemActions,
   ListGroup,
   ListItem,
   ListNotice,
@@ -310,11 +310,11 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
       meta={<>
         <span className="max-sm:hidden">{kindLabel(item.kind)}</span>
         {item.origin === 'team' ? (
-          <HoverActions reveal>
+          <ItemActions>
             <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
               {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
             </Button>
-          </HoverActions>
+          </ItemActions>
         ) : <span>{item.enabled ? 'Available' : 'Disabled'}</span>}
       </>}
       actions={item.origin === 'personal'

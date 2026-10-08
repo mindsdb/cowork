@@ -16,7 +16,7 @@ single shell owns a page.
 | Loading, empty, no match | `CollectionState` wraps the body |
 | Cards | `CardGrid` › `ItemCard` … `NewTile` |
 | Rows | `ListGroup` › `ListItem` … `NewRow`, plus `ListNotice` for an inline line |
-| Item controls | `HoverActions` (a kebab: `<OverflowMenu size="sm">`) |
+| Item controls | `actions` (a kebab: `<OverflowMenu size="sm">`); `ItemActions` for a control in `meta` |
 | Status in meta | `StatusDot` |
 
 ## Choosing cards or rows
@@ -49,16 +49,10 @@ view === 'grid' ? <ItemCard as="article" {...slots} /> : <ListItem as="article" 
   `li` and still nest its own buttons. The button takes its name from the
   title, or from `activateLabel` when set. Omit `onActivate` while the title
   holds an input, such as an inline rename.
-- **Actions.** `actions` are hidden at rest. They appear on hover, when focus
-  is inside the item, while their menu is open, and always on touch devices
-  (no hover, or a coarse pointer). They stay in the tab order, so Tab from
-  the title reaches them. Hover-revealed actions overlay the end of the title
-  (card) or meta (row); `revealActions` keeps them visible and in flow, so they
-  never cover the title, an inline rename, or the meta. To show a control at
-  rest, such as Connectors' labelled Disconnect, put it in `meta` inside
-  `<HoverActions reveal>`. That also lifts it above the item's click area,
-  and from `sm` up a row then gives `actions` their own space instead of
-  overlaying the meta.
+- **Actions.** `actions` are always visible and sit in flow at the item's
+  end, so they never cover the title, an inline rename, or the meta. To put a
+  control in `meta`, such as Connected Apps' labelled Disconnect, wrap it in
+  `<ItemActions>` so it sits above the item's click area.
 - **`busy`** dims the item, sets `aria-busy`, and disables opening.
 - **`selected`** gives cards an accent border and rows a firmer fill.
 

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CardGrid, ItemCard } from './ItemCard';
 import { ListGroup, ListItem, ListNotice, NewRow } from './ListGroup';
-import { HoverActions } from './itemParts';
+import { ItemActions } from './itemParts';
 import { StatusDot } from './StatusDot';
 
 describe.each([
@@ -66,7 +66,7 @@ describe.each([
         title="Gmail"
         onActivate={onActivate}
         activateLabel="Manage Gmail"
-        meta={<HoverActions reveal><button type="button" onClick={onDisconnect}>Disconnect</button></HoverActions>}
+        meta={<ItemActions><button type="button" onClick={onDisconnect}>Disconnect</button></ItemActions>}
       />,
     );
     const article = screen.getByRole('article');
@@ -86,18 +86,16 @@ describe.each([
     expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled();
   });
 
-  // Positioning is pinned by class (jsdom computes no Tailwind CSS): an
-  // overlaid cluster is `absolute`, an in-flow one is not.
-  it('overlays hidden actions but keeps revealed ones in flow, so they never cover the title or meta', () => {
-    const { rerender } = render(<Item title="Weekly report" actions={<button type="button">More</button>} />);
-    const cluster = () => screen.getByRole('button', { name: 'More' }).closest('[data-item-actions]');
-    expect(cluster()).toHaveClass('absolute', '[@media(hover:none)]:static', '[@media(pointer:coarse)]:static');
-    rerender(<Item title="Weekly report" revealActions actions={<button type="button">More</button>} />);
-    expect(cluster()).not.toHaveClass('absolute');
-    expect(cluster()).not.toHaveClass('opacity-0');
+  // Pinned by class (jsdom computes no Tailwind CSS).
+  it('shows actions at rest, in flow, so they never cover the title or meta', () => {
+    render(<Item title="Weekly report" actions={<button type="button">More</button>} />);
+    const cluster = screen.getByRole('button', { name: 'More' }).closest('[data-item-actions]');
+    expect(cluster).not.toHaveClass('absolute');
+    expect(cluster).not.toHaveClass('opacity-0');
+    expect(cluster).not.toHaveClass('pointer-events-none');
   });
 
-  it('keeps hover actions in the tab order after the activator, so keyboard users reach them', async () => {
+  it('keeps actions in the tab order after the activator, so keyboard users reach them', async () => {
     const user = userEvent.setup();
     const onMenu = vi.fn();
     render(
@@ -114,32 +112,6 @@ describe.each([
     expect(more).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(onMenu).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('HoverActions', () => {
-  // jsdom computes no Tailwind CSS, so the reveal contract is pinned by the
-  // variants that implement it: focus-within, an open menu, and touch.
-  it('hides at rest and reveals on hover, focus-within, an open menu, and touch (incl. coarse pointers)', () => {
-    render(<HoverActions><button type="button">Edit</button></HoverActions>);
-    const cluster = screen.getByRole('button', { name: 'Edit' }).parentElement!;
-    expect(cluster).toHaveClass(
-      'opacity-0',
-      'pointer-events-none',
-      'group-hover/item:opacity-100',
-      'group-focus-within/item:opacity-100',
-      'group-focus-within/item:pointer-events-auto',
-      'has-[[data-popup-open]]:opacity-100',
-      '[@media(hover:none)]:opacity-100',
-      '[@media(pointer:coarse)]:opacity-100',
-    );
-  });
-
-  it('reveal keeps the cluster visible and clickable at rest', () => {
-    render(<HoverActions reveal><button type="button">Disconnect</button></HoverActions>);
-    const cluster = screen.getByRole('button', { name: 'Disconnect' }).parentElement!;
-    expect(cluster).not.toHaveClass('opacity-0');
-    expect(cluster).not.toHaveClass('pointer-events-none');
   });
 });
 

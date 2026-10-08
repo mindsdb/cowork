@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { Button } from '../ui';
-import { HoverActions, ItemCard, ListItem, StatusDot } from '../collection';
+import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
 
 function ConnectionLogo({ engine, label }) {
@@ -57,11 +57,11 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         <StatusDot tone={needsReconnect ? 'warning' : connected ? 'success' : 'muted'}>{statusLabel}</StatusDot>
         {/* Shown at rest, above the item's click area, so Disconnect never
             opens the details. */}
-        <HoverActions reveal className="ml-auto">
+        <ItemActions className="ml-auto">
           <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
             {busy ? 'Removing…' : 'Disconnect'}
           </Button>
-        </HoverActions>
+        </ItemActions>
       </>
     ),
   };
