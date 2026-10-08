@@ -1,12 +1,7 @@
-// Bubble container used by every right-rail section in chat and
-// project views. The same surface, border, radius, and header treatment
-// across both views so they read as one design family.
-//
-// Two visual variants:
-//   default — bubble with a divider between header and body.
-//   slim    — bubble keeps surface + border + radius, but drops the
-//             divider so the header reads as one continuous line above
-//             the body (used for Context per spec).
+// Section used by every right-rail block in chat and project views. The
+// rail itself is the one card, so sections are borderless: a label in the
+// sidebar's group-heading style over the body, separated by the rail's gap.
+// No box sits inside the rail's box.
 //
 // Body always has maxBodyHeight + overflow-y: auto so a long card
 // scrolls inside itself rather than pushing the rail off-screen.
@@ -17,7 +12,6 @@ import Ico from '../Icons';
 export function RailCard({
   title,
   defaultOpen = false,
-  slim = false,
   maxBodyHeight = 320,
   // When true, the header is a plain (non-clickable) label and the
   // chevron disclosure widget is dropped. The body is always shown
@@ -29,10 +23,10 @@ export function RailCard({
 }) {
   const [open, setOpen] = useState(!!defaultOpen || noChevron);
   return (
-    <div className="bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0">
+    <div className="shrink-0 min-w-0">
       {noChevron ? (
-        <div className="py-[11px] px-[14px] w-full flex items-center text-left">
-          <span className="font-body text-[13px] font-semibold text-ink tracking-[0] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        <div className="pb-2 w-full flex items-center text-left">
+          <span className="font-sans text-[13px] font-semibold text-ink-3 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
           </span>
         </div>
@@ -40,9 +34,9 @@ export function RailCard({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="cursor-pointer bg-transparent border-0 py-[11px] px-[14px] w-full flex items-center justify-between text-left [font:inherit] text-inherit"
+          className="cursor-pointer bg-transparent border-0 p-0 pb-2 w-full flex items-center justify-between text-left [font:inherit] text-inherit"
         >
-          <span className="font-body text-[13px] font-semibold text-ink tracking-[0] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+          <span className="font-sans text-[13px] font-semibold text-ink-3 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
           </span>
           <span
@@ -55,13 +49,8 @@ export function RailCard({
       )}
       {open && (
         <div
-          className="pt-1 px-[14px] pb-[14px] overflow-y-auto"
-          style={{
-            // slim drops the divider so the header reads as one
-            // continuous line above the body (Context per spec).
-            borderTop: slim ? 'none' : '1px solid var(--line)',
-            maxHeight: maxBodyHeight,
-          }}
+          className="overflow-y-auto"
+          style={{ maxHeight: maxBodyHeight }}
         >
           {children}
         </div>

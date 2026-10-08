@@ -82,7 +82,11 @@ vi.mock('./lib/analytics', async (importOriginal) => ({
 import App from './App';
 import { __resetDraftsForTests } from './lib/draftStore';
 
-const workspace = (name) => screen.findByRole('button', { name });
+// The Cowork/Code switch lives in the titlebar brand menu.
+const switchTo = async (user, name) => {
+  await user.click(await screen.findByRole('button', { name: /^Workspace:/ }));
+  await user.click(await screen.findByRole('menuitem', { name: new RegExp(name) }));
+};
 
 beforeEach(() => {
   __resetDraftsForTests();
@@ -95,17 +99,17 @@ describe('counting Code visits', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await workspace('Code'));
+    await switchTo(user, 'Code');
     await waitFor(() => expect(spies.trackCodeViewOpened).toHaveBeenCalledTimes(1));
 
     await user.click(await screen.findByRole('button', { name: /New code task/ }));
-    await user.click(await workspace('Code'));
+    await switchTo(user, 'Code');
     expect(spies.trackCodeViewOpened).toHaveBeenCalledTimes(1);
 
-    await user.click(await workspace('Cowork'));
+    await switchTo(user, 'Cowork');
     expect(spies.trackCodeViewOpened).toHaveBeenCalledTimes(1);
 
-    await user.click(await workspace('Code'));
+    await switchTo(user, 'Code');
     await waitFor(() => expect(spies.trackCodeViewOpened).toHaveBeenCalledTimes(2));
   });
 
@@ -114,7 +118,7 @@ describe('counting Code visits', () => {
     render(<App />);
 
     await screen.findByRole('button', { name: /New task/ });
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
     expect(spies.trackCodeViewOpened).not.toHaveBeenCalled();
   });
 });

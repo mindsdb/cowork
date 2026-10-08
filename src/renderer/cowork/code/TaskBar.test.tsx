@@ -147,9 +147,8 @@ describe('TaskBar', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
     expect(screen.getByText('Original folder')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show task details for original folder' }));
-    expect(screen.getByText('Task setup')).toBeInTheDocument();
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
   });
 
@@ -183,12 +182,13 @@ describe('TaskBar', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
+    expect(screen.getByText('Isolated copy')).toBeInTheDocument();
     expect(screen.getByText('codex/task-1')).toBeInTheDocument();
     expect(screen.queryByText(/worktree/i)).not.toBeInTheDocument();
   });
 
-  it('shows durable run recovery state and its owning computer', () => {
+  it('shows durable run recovery state and its owning computer', async () => {
     render(
       <TaskBar
         session={{
@@ -215,6 +215,9 @@ describe('TaskBar', () => {
     );
 
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
+    // The owning computer moved from the header line into the details menu.
+    expect(screen.queryByText('Build computer')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show task details' }));
     expect(screen.getByText('Build computer')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   });
@@ -241,11 +244,13 @@ describe('TaskBar', () => {
     const origin = { provider: 'github' as const, kind: 'issue' as const, title: 'Fix login', external_id: '#42', body: '' };
     const { rerender } = render(<TaskBar {...barProps} session={{ ...session, source_contexts: [{ ...origin, url: 'javascript:alert(1)' }] }} />);
 
-    await user.click(screen.getByRole('button', { name: 'GitHub #42' }));
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'GitHub #42' }));
     expect(openExternal).not.toHaveBeenCalled();
 
     rerender(<TaskBar {...barProps} session={{ ...session, source_contexts: [{ ...origin, url: 'https://github.com/mindsdb/cowork/issues/42' }] }} />);
-    await user.click(screen.getByRole('button', { name: 'GitHub #42' }));
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'GitHub #42' }));
     expect(openExternal).toHaveBeenCalledWith('https://github.com/mindsdb/cowork/issues/42');
   });
 
@@ -271,5 +276,15 @@ describe('TaskBar', () => {
 
     expect(screen.getByText('Reopening')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  });
+
+  it('reads as one breadcrumb line: project › task, with the project opening its task list', async () => {
+    const onOpenProjectTasks = vi.fn();
+    render(<TaskBar {...barProps} session={{ ...session, project_name: 'atlas-web' }} onOpenProjectTasks={onOpenProjectTasks} />);
+    expect(screen.getByText('Create a file')).toBeInTheDocument();
+    // Repository and working copy no longer sit on a second line under the title.
+    expect(screen.queryByText('Original folder')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'atlas-web' }));
+    expect(onOpenProjectTasks).toHaveBeenCalledOnce();
   });
 });
