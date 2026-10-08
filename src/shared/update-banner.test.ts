@@ -1,19 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { deriveUpdateBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
-import { coordinateUpdates, type ShellSnapshot, type UpdateCoordinatorInput } from './update-coordinator';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput, type OtaStatus, type ShellSnapshot } from './update-coordinator';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 // Every case drives the real reducer, so the banner is asserted against the
 // state the sidebar and Settings actually receive.
-type Loose = { ota?: Partial<UpdateCoordinatorInput['ota']> | null; shellAuto?: Partial<ShellSnapshot> | null; shellManual?: { version?: string; debInstaller?: boolean } | null };
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+type Loose = { ota?: Partial<OtaStatus> | null; shellAuto?: Partial<ShellSnapshot> | null; shellManual?: { version?: string; debInstaller?: boolean } | null };
 function bannerFor(input: Loose, options: { dismissed?: string | null } = {}) {
   const shell = input.shellAuto
     ? { mode: 'auto' as const, channel: 'prod' as const, currentVersion: '1.0.0', ...input.shellAuto } as ShellSnapshot
     : null;
   const state = coordinateUpdates({
+    ...EMPTY_UPDATE_INPUT,
+    ...legacyOtaInput((input.ota as OtaStatus | null | undefined) ?? null),
     shell,
-    ota: (input.ota as UpdateCoordinatorInput['ota']) ?? null,
-    server: null,
     shellManual: input.shellManual?.version ? { version: input.shellManual.version } : null,
   });
   return deriveUpdateBanner(state, { debInstaller: input.shellManual?.debInstaller, dismissedManualVersion: options.dismissed ?? null });

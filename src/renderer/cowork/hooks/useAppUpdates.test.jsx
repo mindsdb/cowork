@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { coordinateUpdates } from '../../../shared/update-coordinator';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput } from '../../../shared/update-coordinator';
 
 // Capture the subscriber the hook registers so tests can push states the way
 // host.watchUpdateState would.
@@ -20,7 +20,8 @@ vi.mock('../../platform/host', () => ({ host: hostMock.host }));
 
 import { useAppUpdates } from './useAppUpdates';
 
-const stateFor = (input) => coordinateUpdates({ shell: null, ota: null, server: null, shellManual: null, ...input });
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+const stateFor = ({ ota, ...input }) => coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...(ota !== undefined ? legacyOtaInput(ota) : {}), ...input });
 const shell = (phase, over = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...over });
 
 const mountFlushed = async () => {

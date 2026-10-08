@@ -46,7 +46,7 @@ vi.mock('./shell-auto-update-runtime', () => ({
   startShellAutoUpdatePolling: vi.fn(() => Promise.resolve()),
 }));
 
-import { availableStatus, handleUnifiedApply, initUpdater, updateCoordinator } from './updater';
+import { handleUnifiedApply, initUpdater, updateCoordinator } from './updater';
 import { applyUIUpdate, checkForUIUpdate } from './ui-updater';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -54,7 +54,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-  updateCoordinator.feed({ shell: null, ota: null, server: null, shellManual: null });
+  updateCoordinator.feed({ shell: null, otaOffer: null, otaApply: null, server: null, shellManual: null });
 });
 
 describe('a Restart queued behind another apply', () => {
@@ -69,7 +69,7 @@ describe('a Restart queued behind another apply', () => {
     await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(1));
 
     // Meanwhile an offer is on screen and the person clicks Restart.
-    updateCoordinator.feed({ ota: availableStatus({ updateAvailable: true, newVersion: '2.26.10.8.1' }, { updateAvailable: false }) });
+    updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.8.1' }, server: null } });
     expect(updateCoordinator.getState().action).toBe('reload');
     let releaseClick!: (applied: boolean) => void;
     vi.mocked(applyUIUpdate).mockImplementationOnce(() => new Promise<boolean>((r) => { releaseClick = r; }));
@@ -85,11 +85,12 @@ describe('a Restart queued behind another apply', () => {
     expect(updateCoordinator.getState().applying).toBe('downloading');
 
     // The click's own apply runs, lands nothing, and settles its own status:
-    // the offer comes back rather than a stuck overlay.
+    // no stuck overlay, and the offer it found stale is gone rather than
+    // offered again.
     await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(2));
     expect(updateCoordinator.getState().applying).toBe('downloading');
     releaseClick(false);
     expect(await click).toBe(false);
-    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload' });
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null });
   });
 });
