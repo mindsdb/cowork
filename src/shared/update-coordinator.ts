@@ -229,9 +229,10 @@ function otaLayers(ota: OtaStatus | null, server: ServerStatus | null): { ui: Up
     }
     case 'downloading':
     case 'reloading':
-      // The tandem apply: the server reinstall mirrors onto this channel, and
-      // the reload follows a UI swap or a server-only apply. Both layers read
-      // as applying; the window reloads before either needs telling apart.
+      // The tandem apply: the server updater's busy phases are mirrored onto
+      // this status by main (feedServerUpdateStatus), and the reload follows a
+      // UI swap or a server-only apply. Both layers read as applying; the
+      // window reloads before either needs telling apart.
       ui.status = 'applying';
       ui.version = ota.version;
       if (!serverFailed) srv.status = 'applying';
