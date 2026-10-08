@@ -292,9 +292,12 @@ describe('settings reads and writes settle in the order they started', () => {
   // A request left held after a failure would block the shared settings lock
   // for every later test in this file.
   let releaseFirstRead;
+  let releaseWrite;
   afterEach(() => {
     releaseFirstRead?.();
+    releaseWrite?.();
     releaseFirstRead = undefined;
+    releaseWrite = undefined;
     vi.unstubAllGlobals();
   });
 
@@ -329,6 +332,37 @@ describe('settings reads and writes settle in the order they started', () => {
     expect(readResult.navTitle).toBe('Hello');
     expect(writeResult.settings.navTitle).toBe('Hello World');
     expect(stored).toBe('Hello World');
+  });
+
+  it('settles a write started before a read first, so the read sees the written value', async () => {
+    let stored = 'Hello';
+    const methods = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      methods.push(method);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        if (!releaseWrite) await new Promise((resolve) => { releaseWrite = resolve; });
+        stored = JSON.parse(options.body).values.nav_title;
+        return jsonRes({ updated: ['nav_title'] });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) return jsonRes([{ key: 'nav_title', value: stored }]);
+      return jsonRes({});
+    }));
+    await fetchSettings();
+    methods.length = 0;
+
+    const settled = [];
+    const write = updateSettings({ navTitle: 'Hello World' }).then((r) => { settled.push('write'); return r; });
+    const read = fetchSettings().then((s) => { settled.push('read'); return s; });
+    await vi.waitFor(() => expect(releaseWrite).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(methods).toEqual(['PUT']);
+
+    releaseWrite();
+    const [, readResult] = await Promise.all([write, read]);
+    expect(settled).toEqual(['write', 'read']);
+    expect(readResult.navTitle).toBe('Hello World');
   });
 });
 
