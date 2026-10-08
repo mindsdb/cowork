@@ -2017,10 +2017,12 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink-3);
-  font-weight: 600;
-  /* Tighter top gap so each group reads as attached to its heading, and a
-     10px left edge lined up with the nav-list gutter for structure. */
-  padding: 12px 10px 6px;
+  font-weight: 500;
+  line-height: 16px;
+  /* More space above than below, so each heading groups with the rows it
+     introduces. The 20px inline padding (10px nav-list gutter + 10px row
+     inset) starts the text where the row icons and titles start. */
+  padding: 16px 20px 4px;
   margin: 0;
 }
 
