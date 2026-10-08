@@ -5,6 +5,7 @@ import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import CoworkApp from './CoworkApp';
 import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
+import RestartConfirmHost from './RestartConfirmHost';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
@@ -318,6 +319,11 @@ export default function App() {
     <>
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
+
+      {/* The restart confirmation behind every update Restart (ENG-3291). Mounted
+          here for the same reason as the ownership dialog: it must reach a
+          restart asked from any page, including onboarding. */}
+      <RestartConfirmHost />
 
       {ownership && (
         <AccountOwnershipModal

@@ -18,6 +18,7 @@ import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
+import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
@@ -641,9 +642,15 @@ export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
   return () => {};
 }
 
-export async function applyUpdate(): Promise<boolean> {
+// A restart that stops the sidecar ends running turns, so main may answer
+// either request below with a confirmation report instead of acting (ENG-3291).
+// `guardRestart` asks the person through RestartConfirmHost and re-sends with
+// `force` on a yes, so every button that reaches these two functions inherits
+// the dialog. Shells older than the contract return a plain boolean, which
+// passes straight through. `'cancelled'` means the person kept their tasks.
+export async function applyUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.applyUpdate === 'function') {
-    return bridge.applyUpdate();
+    return guardRestart(options => bridge.applyUpdate(options), hooks);
   }
   return false;
 }
@@ -838,9 +845,9 @@ export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot
   return DISABLED_SHELL_AUTO_UPDATE;
 }
 
-export async function installShellAutoUpdate(): Promise<boolean> {
+export async function installShellAutoUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.installShellAutoUpdate === 'function') {
-    return bridge.installShellAutoUpdate();
+    return guardRestart(options => bridge.installShellAutoUpdate(options), hooks);
   }
   return false;
 }

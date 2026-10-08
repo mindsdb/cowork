@@ -289,6 +289,38 @@ describe('transitionShellUpdate', () => {
     expect(transitionShellUpdate(complete, { type: 'DISABLED', reason: 'rollout-disabled' }).lastInstall).toEqual(lastInstall);
   });
 
+  it('re-arms an install that never left the process', () => {
+    const ready: ShellUpdateSnapshot = { ...idle(), phase: 'ready-to-install', targetVersion: '2.1.0' };
+    const installing = transitionShellUpdate(ready, { type: 'INSTALL_REQUESTED' });
+    expect(installing.phase).toBe('installing');
+    // Frozen: a newer build found by a refresh during the sidecar stop cannot
+    // move the target, and no new check starts.
+    expect(transitionShellUpdate(installing, { type: 'SUPERSEDED', targetVersion: '2.2.0' })).toBe(installing);
+    expect(transitionShellUpdate(installing, { type: 'CHECK_REQUESTED', trigger: 'periodic' })).toBe(installing);
+
+    const aborted = transitionShellUpdate(installing, {
+      type: 'INSTALL_ABORTED', code: 'update-request-failed', message: 'installer launch failed',
+    });
+    expect(aborted).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      recoverable: true,
+      errorCode: 'update-request-failed',
+      errorMessage: 'installer launch failed',
+    });
+    // Only a frozen install can be aborted.
+    expect(transitionShellUpdate(ready, { type: 'INSTALL_ABORTED', code: 'x' })).toBe(ready);
+
+    // The reason shows until the next attempt or a new target, then goes.
+    const retried = transitionShellUpdate(aborted, { type: 'INSTALL_REQUESTED' });
+    expect(retried.phase).toBe('installing');
+    expect(retried).not.toHaveProperty('errorCode');
+    expect(retried).not.toHaveProperty('errorMessage');
+    const superseded = transitionShellUpdate(aborted, { type: 'SUPERSEDED', targetVersion: '2.2.0' });
+    expect(superseded).toMatchObject({ phase: 'downloading', targetVersion: '2.2.0' });
+    expect(superseded).not.toHaveProperty('errorCode');
+  });
+
   it('fails closed when disabled', () => {
     const disabled = transitionShellUpdate(idle(), {
       type: 'DISABLED',

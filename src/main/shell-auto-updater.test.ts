@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHECK_STALL_MS,
   DOWNLOAD_STALL_MS,
-  INSTALL_STALL_MS,
   adaptElectronUpdater,
   createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
@@ -70,6 +69,7 @@ class FakeAdapter extends EventEmitter implements ShellUpdaterAdapter {
   onDownloadProgress(listener: (progress: any) => void) { this.on('progress', listener); }
   onUpdateDownloaded(listener: (version: string) => void) { this.on('downloaded', listener); }
   onError(listener: (error: Error) => void) { this.on('updater-error', listener); }
+  onQuitForUpdate(listener: () => void) { this.on('quit', listener); }
 }
 
 function deferred() {
@@ -101,6 +101,7 @@ function setup(mode: 'auto' | 'manual' = 'auto') {
     },
     onSnapshot: snapshot => snapshots.push(snapshot.phase),
     onFailure: report => failures.push(report),
+    installLaunchWindowMs: 50,
   });
   return { adapter, snapshots, failures, updater };
 }
@@ -186,7 +187,8 @@ describe('createShellAutoUpdater', () => {
       targetVersion: '2.1.0',
       refreshing: undefined,
     });
-    expect(updater.quitAndInstall()).toBe(true);
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+    expect(await updater.quitAndInstall()).toBe(true);
   });
 
   it('settles a failed refresh once, however many times it is reported', async () => {
@@ -213,7 +215,8 @@ describe('createShellAutoUpdater', () => {
     expect(failures).toHaveLength(1);
     expect(failures[0].trigger).toBe('periodic');
     expect(updater.getSnapshot().trigger).toBe('boot');
-    expect(updater.quitAndInstall()).toBe(true);
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+    expect(await updater.quitAndInstall()).toBe(true);
   });
 
   it('ignores a refresh failure that lands after the install has started', async () => {
@@ -230,9 +233,11 @@ describe('createShellAutoUpdater', () => {
     expect(updater.getSnapshot()).toMatchObject({ refreshing: true });
 
     // The user restarts while the refresh is still out on the network.
-    expect(updater.quitAndInstall()).toBe(true);
+    const install = updater.quitAndInstall();
     expect(updater.getSnapshot().phase).toBe('installing');
 
+    // The refresh's fault belongs to the refresh, not to the installer: the
+    // install stays frozen and the launch is still decided by the quit signal.
     const error = new Error('feed unreachable');
     adapter.emit('updater-error', error);
     rejectCheck(error);
@@ -241,6 +246,9 @@ describe('createShellAutoUpdater', () => {
     expect(updater.getSnapshot().phase).toBe('installing');
     expect(failures).toHaveLength(1);
     expect(failures[0].trigger).toBe('periodic');
+
+    adapter.emit('quit');
+    expect(await install).toBe(true);
   });
 
   it('publishes progress and only installs from ready-to-install', async () => {
@@ -259,16 +267,18 @@ describe('createShellAutoUpdater', () => {
       percent: 50,
       bytesPerSecond: 10,
     });
-    expect(updater.quitAndInstall()).toBe(false);
+    expect(await updater.quitAndInstall()).toBe(false);
 
     adapter.emit('downloaded', '2.1.0');
-    expect(updater.quitAndInstall()).toBe(true);
+    // The library quits on the next tick after a successful launch.
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+    expect(await updater.quitAndInstall()).toBe(true);
     expect(adapter.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(updater.getSnapshot().phase).toBe('installing');
   });
 
-  it('turns a synchronous install launch failure into a recoverable state', async () => {
-    const { adapter, updater } = setup();
+  it('re-arms the install when the installer will not launch', async () => {
+    const { adapter, updater, failures } = setup();
     await updater.check('boot');
     adapter.emit('available', '2.1.0');
     adapter.emit('downloaded', '2.1.0');
@@ -276,12 +286,166 @@ describe('createShellAutoUpdater', () => {
       throw new Error('installer launch failed');
     });
 
-    expect(updater.quitAndInstall()).toBe(false);
+    // The artifact is still on disk, so the banner's Restart stays the retry.
+    expect(await updater.quitAndInstall()).toBe(false);
     expect(updater.getSnapshot()).toMatchObject({
-      phase: 'failed',
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
       errorCode: 'update-request-failed',
       recoverable: true,
     });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ phase: 'installing', targetVersion: '2.1.0', recoverable: true });
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+    expect(await updater.quitAndInstall()).toBe(true);
+  });
+
+  // electron-updater 6.8.9 BaseUpdater.install() (out/BaseUpdater.js:42-67)
+  // catches the installer's exception, emits `error` and returns false, so
+  // quitAndInstall() (lines 13-27) returns normally without quitting. Before
+  // the fix launchInstall took that normal return as success while the error
+  // event moved the phase to `failed`, and the runtime never restored the
+  // sidecar it had just stopped.
+  it('aborts at once on an installer error while a refresh check is open, once the check clears itself', async () => {
+    const { adapter, updater, failures } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    // A refresh is out on the network when the user restarts.
+    const check = deferred();
+    adapter.checkForUpdates.mockReturnValueOnce(check.promise);
+    const refresh = updater.check('periodic');
+    expect(updater.beginInstall()).toBe(true);
+    const install = updater.launchInstall();
+
+    // The installer fails. The untyped event could be the refresh's, so the
+    // decision waits for the check's own promise: it resolves normally, which
+    // means the refresh did not fail, so the error was the installer's.
+    adapter.emit('updater-error', new Error('spawn elevate.exe ENOENT'));
+    expect(updater.getSnapshot().phase).toBe('installing');
+    check.resolve();
+    await refresh;
+    expect(await install).toBe(false);
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      errorCode: 'update-request-failed',
+    });
+    // One report, for the install, not a second one for a refresh that did not fail.
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ phase: 'installing', targetVersion: '2.1.0' });
+  });
+
+  it('treats an installer error event raised during quitAndInstall as a failed launch', async () => {
+    const { adapter, updater, failures } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+    adapter.quitAndInstall.mockImplementationOnce(() => {
+      adapter.emit('updater-error', new Error('spawn elevate.exe ENOENT'));
+    });
+
+    expect(updater.beginInstall()).toBe(true);
+    expect(await updater.launchInstall()).toBe(false);
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      errorCode: 'update-request-failed',
+      recoverable: true,
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ phase: 'installing', targetVersion: '2.1.0' });
+  });
+
+  // MacUpdater.quitAndInstall() (out/MacUpdater.js:240-254) returns at once and
+  // waits for Squirrel to fetch the staged bundle; a native failure arrives
+  // later as `error` (forwarded at lines 18-20), and the app never quits.
+  it('treats an installer error event that arrives after quitAndInstall returned as a failed launch', async () => {
+    const { adapter, updater } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+    adapter.quitAndInstall.mockImplementationOnce(() => {
+      setTimeout(() => adapter.emit('updater-error', new Error('Could not get code signature for running application')), 5);
+    });
+
+    expect(updater.beginInstall()).toBe(true);
+    const outcome = updater.launchInstall();
+    expect(updater.getSnapshot().phase).toBe('installing');
+    expect(await outcome).toBe(false);
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+  });
+
+  it('resolves a launch as soon as the app begins quitting, without waiting out the window', async () => {
+    const { adapter, updater } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+
+    expect(updater.beginInstall()).toBe(true);
+    const started = Date.now();
+    expect(await updater.launchInstall()).toBe(true);
+    expect(Date.now() - started).toBeLessThan(40);
+    expect(updater.getSnapshot().phase).toBe('installing');
+    // A late error after the quit began changes nothing.
+    adapter.emit('updater-error', new Error('late'));
+    expect(updater.getSnapshot().phase).toBe('ready-to-install');
+  });
+
+  it('fails a launch that neither quits nor errors within the launch window', async () => {
+    const { adapter, updater, failures } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    expect(updater.beginInstall()).toBe(true);
+    expect(await updater.launchInstall()).toBe(false);
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+    expect(failures[0].error.message).toMatch(/did not quit the app within 50ms/);
+  });
+
+  it('freezes a begun install so a newer build found mid-stop cannot supersede it', async () => {
+    const { adapter, updater } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    expect(updater.beginInstall()).toBe(true);
+    expect(updater.getSnapshot().phase).toBe('installing');
+    expect(updater.beginInstall()).toBe(false);
+
+    // A background refresh that was out on the network answers with a newer
+    // build while the caller is stopping the sidecar.
+    adapter.emit('available', '2.2.0');
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'installing', targetVersion: '2.1.0' });
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
+
+    adapter.quitAndInstall.mockImplementationOnce(() => { setImmediate(() => adapter.emit('quit')); });
+    expect(await updater.launchInstall()).toBe(true);
+    expect(adapter.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborting a begun install re-arms it and reports the reason', async () => {
+    const { adapter, updater, failures } = setup();
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+    expect(updater.beginInstall()).toBe(true);
+
+    updater.abortInstall(new Error('sidecar stop failed'));
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      errorCode: 'update-request-failed',
+      errorMessage: 'sidecar stop failed',
+    });
+    expect(failures).toHaveLength(1);
+    expect(adapter.quitAndInstall).not.toHaveBeenCalled();
+    // launch without a begun install does nothing
+    expect(await updater.launchInstall()).toBe(false);
+    expect(adapter.quitAndInstall).not.toHaveBeenCalled();
   });
 
   it('classifies integrity failures as terminal and network errors as recoverable', async () => {
@@ -766,30 +930,6 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
     expect(updater.getSnapshot().phase).toBe('downloading');
   });
 
-  it('releases an install that neither quit nor errored once the install stall limit passes', async () => {
-    const adapter = new FakeAdapter();
-    const { failures, updater, advance } = setupWithClock('auto', adapter);
-    adapter.checkImpl = async () => { adapter.emit('available', '2.1.0'); adapter.emit('downloaded', '2.1.0'); };
-    await updater.check('boot');
-    expect(updater.quitAndInstall('boot')).toBe(true);
-    expect(updater.getSnapshot().phase).toBe('installing');
-
-    // Short of the limit the install is left alone and no check starts.
-    advance(INSTALL_STALL_MS - 1);
-    await updater.check('periodic');
-    expect(updater.getSnapshot().phase).toBe('installing');
-    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(1);
-
-    // Past it: recoverable failure that keeps the target, then a fresh check.
-    advance(1);
-    adapter.checkImpl = async () => { adapter.emit('none'); };
-    await updater.check('periodic');
-    expect(failures.map(f => f.code)).toEqual(['install-stalled']);
-    expect(failures[0]).toMatchObject({ phase: 'installing', recoverable: true, targetVersion: '2.1.0' });
-    expect(adapter.checkForUpdates).toHaveBeenCalledTimes(2);
-    expect(updater.getSnapshot().phase).not.toBe('installing');
-  });
-
   it('drops a late error from an abandoned refresh instead of failing the armed install', async () => {
     const adapter = new FakeAdapter();
     const { failures, updater, advance } = setupWithClock('auto', adapter);
@@ -818,7 +958,8 @@ describe('createShellAutoUpdater — a stalled check or download must not starve
     await nextTick();
     expect(updater.getSnapshot()).toEqual(armed);
     expect(failures).toEqual([]);
-    expect(updater.quitAndInstall()).toBe(true);
+    expect(updater.beginInstall()).toBe(true);
+    expect(updater.getSnapshot().phase).toBe('installing');
   });
 
   it('ends a stalled background refresh without disturbing the pending install', async () => {

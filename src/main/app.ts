@@ -11,7 +11,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, SERVER_STOP_CEILING_MS } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -2092,15 +2092,16 @@ async function drainServerForQuit(): Promise<void> {
   if (!applyDrained) {
     console.warn('[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
   }
-  // Hard ceiling so a wedged python can't pin the quit indefinitely.
-  // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
-  // this window, but a misbehaving OS-level process delay could push
-  // past it; if so we'd rather quit than leave the user waiting on the
-  // dock icon. Both numbers end early the moment the child exits, so a
-  // healthy quit is still immediate.
+  // Hard ceiling so a wedged python can't pin the quit indefinitely. It is
+  // stopServer's own worst case (prepare-shutdown + SIGTERM + SIGKILL grace),
+  // so a slow but clean stop is never reaped half a second from finishing; a
+  // misbehaving OS-level process delay could still push past it, and then
+  // we'd rather quit than leave the user waiting on the dock icon. Both
+  // numbers end early the moment the child exits, so a healthy quit is still
+  // immediate.
   const stopped = await Promise.race([
     stopServer().then(() => true),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), SERVER_STOP_CEILING_MS)),
   ]);
 
   // stopServer lost the race. The usual reason is that a start still holds

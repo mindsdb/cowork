@@ -29,11 +29,6 @@ export const CHECK_STALL_MS = 10 * 60 * 1000;
  *  `ShellUpdaterAdapter.cancelDownload`). The next check finds the update again
  *  and starts a fresh download. */
 export const DOWNLOAD_STALL_MS = 30 * 60 * 1000;
-/** An `installing` phase that neither quit the app nor reported an error
- *  within this limit is abandoned as recoverable `install-stalled`, so the
- *  banner offers Retry instead of a disabled pill until relaunch. The boot
- *  install reaches this phase with no user action, so it needs a way out. */
-export const INSTALL_STALL_MS = 60 * 1000;
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -42,6 +37,12 @@ export interface ShellUpdaterAdapter {
   onDownloadProgress(listener: (progress: ProgressInfo) => void): void;
   onUpdateDownloaded(listener: (version: string) => void): void;
   onError(listener: (error: Error) => void): void;
+  /** The app has begun quitting for an update. electron-updater signals this on
+   *  the native autoUpdater as `before-quit-for-update` right before it calls
+   *  `app.quit()`; Electron's own `before-quit` is the fallback. It is the only
+   *  positive proof that `quitAndInstall()` worked: that call returns normally
+   *  when the installer fails too, and reports the failure as an `error` event. */
+  onQuitForUpdate(listener: () => void): void;
   checkForUpdates(): Promise<unknown>;
   downloadUpdate(): Promise<unknown>;
   /** Cancel the download `downloadUpdate()` started, settling its promise.
@@ -86,14 +87,40 @@ export interface ShellAutoUpdaterOptions {
   onFailure?: (report: ShellUpdateFailureReport) => void;
   /** Clock for the stall guard; tests inject a fake one. */
   now?: () => number;
+  /** How long `launchInstall` waits for the app to begin quitting before it
+   *  treats the install as failed. Defaults to INSTALL_LAUNCH_WINDOW_MS. */
+  installLaunchWindowMs?: number;
 }
+
+/** How long a launched install may take to quit the app. On Windows electron-
+ *  updater quits on the next tick; on macOS it first lets Squirrel fetch and
+ *  verify the staged bundle over a loopback proxy, which for a large bundle
+ *  takes seconds, and the library puts no bound on that wait. A minute covers
+ *  it with margin. A launch that neither quits nor errors by then is treated
+ *  as failed, so the caller can bring the backend back. */
+export const INSTALL_LAUNCH_WINDOW_MS = 60_000;
 
 export interface ShellAutoUpdater {
   getSnapshot(): ShellUpdateSnapshot;
   subscribe(listener: (snapshot: ShellUpdateSnapshot) => void): () => void;
   check(trigger: ShellUpdateTrigger): Promise<void>;
   download(): Promise<void>;
-  quitAndInstall(source?: ShellInstallSource): boolean;
+  /** Freeze the pending install: `ready-to-install` becomes `installing`, so a
+   *  background refresh can no longer supersede the target while the caller
+   *  stops the sidecar. False when no install is ready. */
+  beginInstall(source?: ShellInstallSource): boolean;
+  /** Hand the frozen install to the platform installer. Resolves true once
+   *  the app has begun quitting for the update. Resolves false, with the phase
+   *  back at `ready-to-install`, when the installer throws, reports an `error`
+   *  event, or neither quits nor errors within the launch window. A normal
+   *  return from electron-updater's `quitAndInstall()` proves nothing: its
+   *  `install()` catches installer exceptions, emits `error` and returns false. */
+  launchInstall(): Promise<boolean>;
+  /** Give up a frozen install that did not reach the installer; the phase
+   *  returns to `ready-to-install` with the reason on the snapshot. */
+  abortInstall(error: unknown): void;
+  /** `beginInstall` then `launchInstall`, for callers with nothing to do in between. */
+  quitAndInstall(source?: ShellInstallSource): Promise<boolean>;
   disable(reason: string): void;
 }
 
@@ -162,7 +189,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
    *  a background re-check behind a pending install: however that flight ends,
    *  it must never move the phase. `trigger` is the check's own, which a
    *  refresh doesn't write to the snapshot's `trigger`. */
-  type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger };
+  type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger; rejected?: boolean };
   let checkToken: UpdateFlight | null = null;
   let downloadToken: UpdateFlight | null = null;
   const now = options.now ?? Date.now;
@@ -173,6 +200,19 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // failure episode. Latches telemetry to one event per episode across retries —
   // see fail() and clearFailureLatch().
   let failureEpisode: string | null = null;
+  // The install handed to the platform installer and not yet decided. Settled
+  // true by the quit signal, false by abortInstall (an installer error event,
+  // or the launch window elapsing).
+  let pendingLaunch: { resolve: (launched: boolean) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+  const launchWindowMs = options.installLaunchWindowMs ?? INSTALL_LAUNCH_WINDOW_MS;
+
+  const settleLaunch = (launched: boolean) => {
+    const pending = pendingLaunch;
+    if (!pending) return;
+    pendingLaunch = null;
+    clearTimeout(pending.timer);
+    pending.resolve(launched);
+  };
 
   const publish = () => {
     const immutable = Object.freeze({
@@ -251,6 +291,35 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     }
   };
 
+  // An install that never left the process. Report it like any other failure
+  // (log and telemetry, phase `installing`), but re-arm the pending install
+  // instead of tearing it down: the downloaded artifact is intact, so the
+  // banner's Restart is the retry.
+  const abortInstall = (error: unknown) => {
+    // Settle any pending launch before the phase guard, so a launch can never
+    // be left hanging (and the install locks held) if the phase moved on.
+    settleLaunch(false);
+    if (snapshot.phase !== 'installing') return;
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    const classified = classifyError(normalized);
+    // Same episode latch as fail(): one report per failure code, so a fault
+    // that reached here twice (an event and a rejection, say) counts once.
+    if (classified.code !== failureEpisode) {
+      failureEpisode = classified.code;
+      options.onFailure?.({
+        error: normalized,
+        code: classified.code,
+        recoverable: true,
+        phase: snapshot.phase,
+        trigger: snapshot.trigger,
+        channel: snapshot.channel,
+        currentVersion: snapshot.currentVersion,
+        targetVersion: snapshot.targetVersion,
+      });
+    }
+    dispatch({ type: 'INSTALL_ABORTED', code: classified.code, message: normalized.message });
+  };
+
   // A clean check or a completed download ends the current failure episode, so
   // the next failure — even with the same code — reports as a new one.
   const clearFailureLatch = () => { failureEpisode = null; };
@@ -270,6 +339,8 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // returns its one pending check promise to every caller until it settles, so
   // the fresh check() below simply adopts that promise, and the library's own
   // request timeout settles it (CHECK_STALL_MS sits far above that timeout).
+  // An `installing` phase has its own way out: launchInstall's window re-arms
+  // it and lets the runtime restore the sidecar, so it is not handled here.
   const releaseStalled = () => {
     const idleFor = now() - lastChangeAt;
     if (snapshot.phase === 'ready-to-install' && snapshot.refreshing) {
@@ -280,12 +351,6 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       if (idleFor < CHECK_STALL_MS) return;
       fail(new Error(`shell update check made no progress for ${CHECK_STALL_MS}ms`), checkToken, {
         code: 'check-stalled',
-        recoverable: true,
-      });
-    } else if (snapshot.phase === 'installing') {
-      if (idleFor < INSTALL_STALL_MS) return;
-      fail(new Error(`shell update install made no progress for ${INSTALL_STALL_MS}ms`), null, {
-        code: 'install-stalled',
         recoverable: true,
       });
     } else if (snapshot.phase === 'downloading') {
@@ -377,6 +442,32 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   // rejects too, and that rejection carries the download's own flight. An error
   // with no flight open (an internal retry, say) still fails normally.
   options.adapter.onError(error => {
+    // An error while the install is frozen, with no check out on the network,
+    // is the installer failing to launch or to stage: electron-updater's
+    // install() swallows the exception, emits `error` and returns false, and
+    // MacUpdater forwards Squirrel's native error while it waits for staging.
+    // Neither quits the app, so re-arm the install (the artifact is intact)
+    // instead of tearing it down to `failed`, and let launchInstall report
+    // false so the caller restores the backend.
+    if (snapshot.phase === 'installing') {
+      if (!checkToken || !checkFlight) {
+        abortInstall(error);
+        return;
+      }
+      // A refresh check is still out on the network, and the library's
+      // untyped `error` could be its fault or the installer's. The check's
+      // own promise tells them apart: a failed check also rejects it (and
+      // fail() reports that), while an installer fault leaves it to resolve.
+      // So decide when the check settles, which its socket timeout bounds
+      // well inside the launch window: a refresh fault keeps the install
+      // frozen for the quit signal, an installer fault aborts at once.
+      const flight = checkToken;
+      void checkFlight.then(() => {
+        if (snapshot.phase !== 'installing' || flight.rejected) return;
+        abortInstall(error);
+      });
+      return;
+    }
     // A late error with no flight open while an install is armed can only
     // come from an operation the stall guard already abandoned (a refresh,
     // say). The artifact on disk is untouched, so failing the armed install
@@ -384,6 +475,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     if (!checkToken && !downloadToken && snapshot.phase === 'ready-to-install') return;
     fail(error, checkToken ?? downloadToken);
   });
+  options.adapter.onQuitForUpdate(() => settleLaunch(true));
 
   return {
     getSnapshot: () => snapshot,
@@ -406,7 +498,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       checkToken = flight;
       checkFlight = options.adapter.checkForUpdates()
         .then(() => undefined)
-        .catch(error => fail(error, flight))
+        .catch(error => {
+          flight.rejected = true;
+          fail(error, flight);
+        })
         .finally(() => {
           if (checkToken === flight) {
             checkToken = null;
@@ -418,15 +513,33 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
 
     download,
 
-    quitAndInstall(source = 'user') {
-      if (!dispatch({ type: 'INSTALL_REQUESTED', source })) return false;
+    beginInstall(source = 'user') {
+      return dispatch({ type: 'INSTALL_REQUESTED', source });
+    },
+
+    launchInstall() {
+      if (snapshot.phase !== 'installing') return Promise.resolve(false);
+      if (pendingLaunch) return Promise.resolve(false);
+      const outcome = new Promise<boolean>(resolve => {
+        const timer = setTimeout(() => {
+          abortInstall(new Error(`installer did not quit the app within ${launchWindowMs}ms`));
+        }, launchWindowMs);
+        timer.unref?.();
+        pendingLaunch = { resolve, timer };
+      });
       try {
         options.adapter.quitAndInstall();
-        return true;
       } catch (error) {
-        fail(error);
-        return false;
+        abortInstall(error);
       }
+      return outcome;
+    },
+
+    abortInstall,
+
+    quitAndInstall(source = 'user') {
+      if (!dispatch({ type: 'INSTALL_REQUESTED', source })) return Promise.resolve(false);
+      return this.launchInstall();
     },
 
     disable(reason) {
@@ -471,6 +584,14 @@ export function adaptElectronUpdater(
       updater.on('update-downloaded', info => listener(info.version));
     },
     onError: listener => { updater.on('error', listener); },
+    onQuitForUpdate: listener => {
+      // BaseUpdater emits `before-quit-for-update` on Electron's native
+      // autoUpdater right before app.quit(); Squirrel.Mac emits the same event
+      // natively. `before-quit` is the fallback for either path.
+      const electron = require('electron') as typeof import('electron');
+      electron.autoUpdater?.on?.('before-quit-for-update', listener);
+      electron.app?.once?.('before-quit', listener);
+    },
     checkForUpdates: () => updater.checkForUpdates(),
     downloadUpdate: () => {
       const token = createToken();

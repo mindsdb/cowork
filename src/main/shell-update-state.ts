@@ -64,6 +64,7 @@ export type ShellUpdateEvent =
   | { type: 'DOWNLOAD_PROGRESS'; progress: ShellUpdateProgress }
   | { type: 'DOWNLOAD_COMPLETE'; targetVersion: string }
   | { type: 'INSTALL_REQUESTED'; source?: ShellInstallSource }
+  | { type: 'INSTALL_ABORTED'; code: string; message?: string }
   | { type: 'RECONCILED'; currentVersion: string; installed: boolean }
   | { type: 'FAILED'; code: string; message?: string; recoverable: boolean }
   | { type: 'DISABLED'; reason: string };
@@ -180,14 +181,16 @@ export function transitionShellUpdate(
       if (snapshot.phase !== 'ready-to-install' || !snapshot.refreshing) return snapshot;
       return { ...snapshot, refreshing: undefined, refreshTrigger: undefined };
 
-    case 'SUPERSEDED':
+    case 'SUPERSEDED': {
       // Only the caller knows which version is newer, so this event is trusted:
       // it is dispatched solely for a strictly newer build than the pending one.
       if (snapshot.phase !== 'ready-to-install') return snapshot;
       // `bytesTransferred` carries over: a stale `true` only skips a boot
-      // install, while a stale `false` could relaunch on a fresh download.
+      // install, while a stale `false` could relaunch on a fresh download. An
+      // abort reason belonged to the old target and goes.
+      const { recoverable: _recoverable, errorCode: _errorCode, errorMessage: _errorMessage, ...armed } = snapshot;
       return {
-        ...snapshot,
+        ...armed,
         phase: 'downloading',
         refreshing: undefined,
         trigger: snapshot.refreshTrigger ?? snapshot.trigger,
@@ -195,15 +198,35 @@ export function transitionShellUpdate(
         targetVersion: event.targetVersion,
         progress: undefined,
       };
+    }
 
-    case 'INSTALL_REQUESTED':
+    case 'INSTALL_REQUESTED': {
       if (snapshot.phase !== 'ready-to-install') return snapshot;
+      // A fresh attempt clears the reason the last one was aborted, which the
+      // banner and Settings show until then.
+      const { recoverable: _recoverable, errorCode: _errorCode, errorMessage: _errorMessage, ...armed } = snapshot;
       return {
-        ...snapshot,
+        ...armed,
         phase: 'installing',
         installSource: event.source ?? 'user',
         refreshing: undefined,
         refreshTrigger: undefined,
+      };
+    }
+
+    case 'INSTALL_ABORTED':
+      // The install never left this process: the sidecar stop or the installer
+      // launch failed before the app quit. The artifact is still on disk, so
+      // the install is armed again and the banner's Restart is the retry. The
+      // code and message stay on the snapshot: the banner and the Settings
+      // card show them until the next attempt, and telemetry reports them.
+      if (snapshot.phase !== 'installing') return snapshot;
+      return {
+        ...snapshot,
+        phase: 'ready-to-install',
+        recoverable: true,
+        errorCode: event.code,
+        errorMessage: event.message,
       };
 
     case 'RECONCILED':
