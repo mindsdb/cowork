@@ -238,14 +238,17 @@ When enabled, main owns one immutable shell-update snapshot:
     `renderer-load`); a server rollback is `health-check`.
   - `failed`: nothing changed, or the rollback itself failed. `error_code` is
     `not-applied` (the UI download, checksum, extraction or activation
-    failed; the app log says which), `install` (the server reinstall
+    failed; the app log says which, and `to` is the version the apply
+    downloaded, which can be newer than the one the check offered), `install` (the server reinstall
     failed), `uv-missing`, `unknown-installed-version`, `rollback-failed` or
     `restore-failed` (rolled back, but the restored server did not start).
   - `repaired`: a reinstall that was not a version move: the server stream
     repair (`from` an rc, `to` the stable), or a venv rebuilt at boot
     (`error_code` `unsupported-python` or `broken-install`).
-  - `skipped`: an apply the orchestrator withheld this pass. Today only the
-    UI behind a failed server update (`server-update-failed`).
+  - `skipped`: a UI the check offered that this pass did not download, with
+    the offered version as `to`: held behind a failed server update
+    (`server-update-failed`), or withdrawn, quarantined or held for server
+    compatibility by the time the apply ran (`not-attempted`).
 
   The first question it answers: on a given day, how many devices applied UI
   version X, how many of those rolled back, and how many server updates

@@ -6,7 +6,7 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion, lastUiApplyAttempt } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer, type ServerUpdateCheckResult } from './server-updater';
 import { isServerRunning } from './server-process';
@@ -206,10 +206,20 @@ async function applyUpdatesUnlocked(
   }
   const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
-  // A UI the last check offered did not land: the download, checksum,
-  // extraction or activation failed, and ui-updater logged which.
-  if (applyUi && serverOk && !uiApplied && lastUiOffer !== null) {
-    recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, to: lastUiOffer || null, durationMs: Date.now() - uiStartedAt });
+  if (applyUi && serverOk && !uiApplied) {
+    // Credit the outcome to the version the apply actually tried: it re-reads
+    // the manifest, so a release published since the check is what it
+    // downloads. A download that ran and failed (download, checksum,
+    // extraction or activation; ui-updater logged which) is a failure of that
+    // version. An offer the apply never downloaded (withdrawn, quarantined, or
+    // held for server compat) is a skip of the offered version.
+    const attempted = lastUiApplyAttempt();
+    const durationMs = Date.now() - uiStartedAt;
+    if (attempted) {
+      recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, to: attempted, durationMs });
+    } else if (lastUiOffer !== null) {
+      recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'not-attempted', from: uiFrom, to: lastUiOffer || null, durationMs });
+    }
   }
   // One offer, one attempt, one entry: the next check decides again whether
   // a UI is pending, so a later apply in the same session (a server-only

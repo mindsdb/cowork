@@ -21,6 +21,7 @@ vi.mock('./ui-updater', () => ({
   verifyServedUiCompat: vi.fn(async () => 'verified'),
   fetchManifest: vi.fn(async () => null),
   getCachedVersion: vi.fn(() => null),
+  lastUiApplyAttempt: vi.fn(() => null),
 }));
 // The journal main writes for the renderer to report (update-journal.ts).
 const journal = vi.hoisted(() => ({ record: vi.fn() }));
@@ -121,11 +122,12 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
 
   it('journals one UI attempt per offer, so a later server-only restart is not a failed UI update', async () => {
     // The last check offered a UI; the apply lands nothing (a failed download).
-    const { checkForUIUpdate } = await import('./ui-updater');
+    const { checkForUIUpdate, lastUiApplyAttempt } = await import('./ui-updater');
     vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce('2.26.10.7.1');
     await checkForUpdates();
     expect(await apply({ force: true })).toBe(true);
-    // The failed row names the version the check offered, so a rollout query
+    // The failed row names the version the apply tried, so a rollout query
     // on `to` counts it.
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'failed', errorCode: 'not-applied', to: '2.26.10.7.1' }));
     journal.record.mockClear();
@@ -134,6 +136,38 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(await apply({ force: true })).toBe(true);
     expect(journal.record).toHaveBeenCalledTimes(1);
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server' }));
+  });
+
+  it('credits a failed download to the version the apply attempted, not the one the check offered', async () => {
+    // The check offered X; a release published Y before the click, and the
+    // apply re-read the manifest and failed on Y.
+    const { checkForUIUpdate, lastUiApplyAttempt } = await import('./ui-updater');
+    vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce('2.26.10.8.1');
+    await checkForUpdates();
+    await apply({ force: true });
+    const ui = journal.record.mock.calls.map(([r]) => r).filter((r: { channel: string }) => r.channel === 'ui');
+    expect(ui).toEqual([expect.objectContaining({ phase: 'failed', errorCode: 'not-applied', to: '2.26.10.8.1' })]);
+  });
+
+  it('journals an offer the apply never downloaded as skipped, naming the offered version', async () => {
+    // The manifest moved back, or the offer was quarantined or held for compat.
+    const { checkForUIUpdate, lastUiApplyAttempt } = await import('./ui-updater');
+    vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce(null);
+    await checkForUpdates();
+    await apply({ force: true });
+    const ui = journal.record.mock.calls.map(([r]) => r).filter((r: { channel: string }) => r.channel === 'ui');
+    expect(ui).toEqual([expect.objectContaining({ phase: 'skipped', errorCode: 'not-attempted', to: '2.26.10.7.1' })]);
+  });
+
+  it('journals a failed download even when the check had offered nothing', async () => {
+    // A release published after the check: the apply found and failed on it.
+    const { lastUiApplyAttempt } = await import('./ui-updater');
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce('2.26.10.8.1');
+    await checkForUpdates();
+    await apply({ force: true });
+    expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'failed', to: '2.26.10.8.1' }));
   });
 
   it('a UI deferred behind a failed server update is journaled as skipped, naming the offered version', async () => {

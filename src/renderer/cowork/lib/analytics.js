@@ -111,8 +111,8 @@ const EVENTS = {
   // previous version restored; a UI rollback also quarantines the bundle) |
   // failed (nothing changed, or the rollback failed; `error_code` says which) |
   // repaired (a reinstall that was not a version move: stream repair, venv
-  // rebuild) | skipped (withheld this pass, e.g. the UI behind a failed server
-  // update). `from`/`to` are that layer's versions. `trigger` is which check
+  // rebuild) | skipped (an offered UI this pass did not download: behind a
+  // failed server update, or withdrawn by the time it ran). `from`/`to` are that layer's versions. `trigger` is which check
   // applied it. Sent with `journal_id` as the event uuid (PostHog dedupes a
   // resend) and the outcome's time as the event time (day counts are by
   // when it happened, not when it was reported).

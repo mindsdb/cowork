@@ -36,7 +36,7 @@ export const UPDATE_JOURNAL_CAP = 200;
  *    says which.
  *  - `repaired`: a reinstall that was not a version move: the server stream
  *    repair, or a venv rebuilt at boot.
- *  - `skipped`: an apply the orchestrator withheld this pass. */
+ *  - `skipped`: an offered UI this pass did not download. */
 export type {
   UpdateJournalChannel,
   UpdateJournalPhase,
