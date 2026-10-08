@@ -156,7 +156,8 @@ describe('build-script mirrors of the channel table', () => {
       // so the packaged icon and the running window/dock icon can't drift apart.
       // Bare basename (resolved under directories.buildResources = assets/), the
       // same convention electron-builder.yml uses for `icon: icon.png`.
-      expect(id!.macIcon).toBe(CHANNELS[kind].iconName);
+      // macOS gets the .icns generated from that same PNG (generate-mac-icons.sh).
+      expect(id!.macIcon).toBe(CHANNELS[kind].iconName.replace(/\.png$/, '.icns'));
       expect(id!.winIcon).toBe(CHANNELS[kind].iconName);
       expect(id!.linuxIcon).toBe(CHANNELS[kind].iconName);
     }
