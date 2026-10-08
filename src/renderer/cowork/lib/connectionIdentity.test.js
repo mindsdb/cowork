@@ -236,6 +236,10 @@ describe('isLegacyEngine', () => {
     expect(isLegacyEngine('fm_ec163d25cf')).toBe(true);
     expect(isLegacyEngine('linkedin')).toBe(false);
     expect(isLegacyEngine('fm_notahexid')).toBe(false);
+    // A custom connector may legally be named like this; only the generated
+    // 10-digit shape is legacy.
+    expect(isLegacyEngine('fm_cafe')).toBe(false);
+    expect(isLegacyEngine('fm_ec163d25cf00')).toBe(false);
     expect(isLegacyEngine(undefined)).toBe(false);
   });
 });

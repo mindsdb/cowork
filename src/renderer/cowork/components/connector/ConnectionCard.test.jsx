@@ -113,6 +113,18 @@ describe('ConnectionCard for custom and legacy connectors', () => {
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();
   });
 
+  it('tells a screen reader the card is custom, or how to repair a legacy one', () => {
+    const { unmount } = render(<ConnectionCard
+      connection={{ engine: 'kinaxis', name: 'kinaxis-1a2b3c4d', label: 'Kinaxis', custom: true }}
+      onModify={vi.fn()}
+    />);
+    expect(screen.getByRole('button', { name: 'Manage Kinaxis (custom connector): kinaxis-1a2b3c4d' })).toBeInTheDocument();
+    unmount();
+
+    render(<ConnectionCard connection={{ engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6' }} onModify={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Disconnect it and connect again/ })).toBeInTheDocument();
+  });
+
   it('adds neither to a built-in connection', () => {
     render(<ConnectionCard connection={connection} />);
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();

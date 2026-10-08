@@ -7,15 +7,13 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Connections saved before connector ids were validated carry a generated
-// form id as their engine. It names nothing a user would recognise, and the
-// record can't be repaired, only disconnected and connected again.
+// Older servers saved some connections under a generated form id, exactly
+// "fm_" and 10 hex digits; such a record can only be disconnected and redone.
 export function isLegacyEngine(engine) {
-  return /^fm_[0-9a-f]+$/.test(String(engine || ''));
+  return /^fm_[0-9a-f]{10}$/.test(String(engine || ''));
 }
 
-// "Kinaxis RapidResponse" → "KR". A custom connector has no bundled icon, so
-// its tile and card show its own initials instead.
+// A custom connector has no bundled icon, so it shows its own initials.
 export function connectorInitials(label) {
   const words = String(label || '').trim().split(/\s+/).filter(Boolean);
   return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
