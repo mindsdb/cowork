@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
@@ -5707,6 +5708,10 @@ function AppCore() {
         onDesktopOnly={(c) => {
           setConnectorPickerOpen(false);
           setComingSoonFeature(c?.label || 'This connector');
+        }}
+        onBuildCustom={(query) => {
+          setConnectorPickerOpen(false);
+          handleSendFromHome(buildCustomConnectorRequest(query));
         }}
       />
 
