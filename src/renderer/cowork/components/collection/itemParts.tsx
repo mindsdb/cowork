@@ -1,10 +1,10 @@
-// Parts shared by <ItemCard> and <ListItem>: the stretched activation button,
-// the hover-revealed action cluster, and the menu-trigger classes.
+// Parts shared by <ItemCard> and <ListItem>: the stretched activation button
+// and the action cluster.
 //
 // Activation is a real <button> around the title whose ::after stretches over
 // the whole item, so the item itself can stay a <div>/<article>/<li> and still
 // nest its own buttons (HTML forbids buttons inside a role=button). Controls
-// that must sit above the stretched area go in <HoverActions> (always z-10).
+// that must sit above the stretched area go in <ItemActions> (always z-10).
 
 import { forwardRef } from 'react';
 import type { ReactNode } from 'react';
@@ -47,41 +47,10 @@ export const ItemActivator = forwardRef<HTMLButtonElement, ItemActivatorProps>(f
   );
 });
 
-// Hidden actions also drop pointer events, so an invisible control never
-// swallows a click meant for the item. They stay in the tab order: focusing
-// one (or the item's activator) reveals the cluster via focus-within.
-export const REVEAL_ON_HOVER = [
-  'pointer-events-none opacity-0',
-  'group-hover/item:pointer-events-auto group-hover/item:opacity-100',
-  'group-focus-within/item:pointer-events-auto group-focus-within/item:opacity-100',
-  // An open menu keeps its trigger visible after the pointer leaves.
-  'has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100',
-  'has-[[aria-expanded=true]]:pointer-events-auto has-[[aria-expanded=true]]:opacity-100',
-  // No hover on touch: always visible, or it would be unreachable. A touch
-  // laptop reports hover but a coarse pointer, so it counts as touch too.
-  '[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100',
-  '[@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100',
-].join(' ');
-
-/** Layout classes that drop an overlaid cluster back into flow on touch,
- *  where it is always visible and must not cover the item. */
-export const ACTIONS_IN_FLOW_ON_TOUCH = [
-  '[@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0',
-  '[@media(pointer:coarse)]:static [@media(pointer:coarse)]:bg-none [@media(pointer:coarse)]:p-0',
-].join(' ');
-
-export interface HoverActionsProps {
-  children: ReactNode;
-  /** Always visible (e.g. a labelled Disconnect, or a caller-owned menu is open). */
-  reveal?: boolean;
-  /** Layout only (position, padding, background behind an overlay). */
-  className?: string;
-}
-
-/** The control cluster on an item. Sits above the stretched activator. */
-export function HoverActions({ children, reveal = false, className }: HoverActionsProps) {
+/** An item's controls, always visible. Sits above the stretched activator. */
+export function ItemActions({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div data-item-actions="" data-revealed={reveal || undefined} className={cn('relative z-10 flex shrink-0 items-center gap-1', !reveal && REVEAL_ON_HOVER, className)}>
+    <div data-item-actions="" className={cn('relative z-10 flex shrink-0 items-center gap-1', className)}>
       {children}
     </div>
   );
@@ -99,13 +68,10 @@ export interface ItemSlots {
   /** One muted line (row) or up to two (card). */
   description?: ReactNode;
   /** Status and timestamps: right side of a row, footer of a card. Wrap any
-   *  control here in `<HoverActions reveal>` so it sits above the activator. */
+   *  control here in `<ItemActions>` so it sits above the activator. */
   meta?: ReactNode;
-  /** Kebab etc., revealed on hover / focus-within / open menu / touch. */
+  /** Kebab etc. Always visible, in flow at the item's end. */
   actions?: ReactNode;
-  /** Keep `actions` visible at rest. Visible actions sit in flow, so they
-   *  never cover the title or meta. */
-  revealActions?: boolean;
   /** Opens the item. Omit while the title holds an input (inline rename). */
   onActivate?: () => void;
   /** Accessible name for the activator; defaults to the title text. */

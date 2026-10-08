@@ -52,7 +52,7 @@ import {
   CollectionState,
   ListGroup,
   ListItem,
-  HoverActions,
+  ItemActions,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -466,7 +466,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
       {canOpenProject ? (
-        <HoverActions reveal className="min-w-0 shrink">
+        <ItemActions className="min-w-0 shrink">
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
             <button
               type="button"
@@ -474,7 +474,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
               className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 font-body text-xs text-ink-3 underline-offset-2 transition-colors hover:text-accent hover:underline"
             >{projectDisplay}</button>
           </Tooltip>
-        </HoverActions>
+        </ItemActions>
       ) : (
         <span title={projectDisplay} className="min-w-0 truncate text-ink-3">{projectDisplay}</span>
       )}
@@ -486,7 +486,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 // stretched open button.
 function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false }) {
   return (
-    <HoverActions reveal className="min-w-0 shrink">
+    <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
         artifact={artifact}
         phase={phase}
@@ -500,7 +500,7 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false })
         // viewer's own artifact.
         authorship={artifactAuthorship(artifact.capabilities)}
       />
-    </HoverActions>
+    </ItemActions>
   );
 }
 
@@ -640,9 +640,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
       description={<ArtifactFileName artifact={artifact} />}
       onActivate={openBest}
       actions={<ArtifactActions onOpen={openOutside} menuItems={menuItems} />}
-      // Shown at rest and in flow, like the grid card's — never hover-only,
-      // and never laid over the project link or status Try again in the meta.
-      revealActions
       meta={(
         <>
           <ArtifactStatusSlot artifact={artifact} phase={phase} onRetry={onRetry} inlineChanges />

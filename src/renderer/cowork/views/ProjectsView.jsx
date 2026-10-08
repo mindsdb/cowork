@@ -477,10 +477,8 @@ function ProjectDetail({
 
             <TaskList
               tasks={projectTasks}
-              projects={projects || []}
               schedules={scheduled || []}
               scheduleRunsIndex={scheduleRunsIndex}
-              emptyMessage={`No tasks in this project yet — type a prompt above to start one.`}
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
@@ -749,12 +747,8 @@ export default function ProjectsView({
     onOpen: handleOpen,
     onTogglePin: (proj, next) => togglePin(proj.name, next),
     onMenuOpen: (proj, rect) => setMenuFor({ project: proj, rect }),
-    isMenuOpen: menuFor?.project?.name === p.name,
     onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
     onRenameCancel: handleRenameCancel,
-    // Pin and menu are the row's only controls; nothing is gained by hiding
-    // them until the pointer arrives.
-    alwaysShowActions: true,
   });
 
   if (detailProject) {

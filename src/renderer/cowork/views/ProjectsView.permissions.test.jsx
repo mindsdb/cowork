@@ -35,7 +35,7 @@ const setViewportWidth = (width) => {
   window.dispatchEvent(new Event('resize'));
 };
 
-// The collection kit's HoverActions cluster around an item's controls.
+// The collection kit's ItemActions cluster around an item's controls.
 const actionCluster = (el) => el.closest('[data-item-actions]');
 
 const lockedProject = {

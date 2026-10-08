@@ -19,12 +19,17 @@ import {
   SearchInput,
   SortPill,
   CollectionState,
+  CardGrid,
+  ListGroup,
   NewTile,
+  NewRow,
+  ViewToggle,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -461,6 +466,7 @@ export default function CustomizeView({
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
+  const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
@@ -617,6 +623,7 @@ export default function CustomizeView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          view={<ViewToggle value={view} onValueChange={setView} />}
           counts={
             <ConnectionsCounts search={search} total={total} filtered={visible.length} />
           }
@@ -636,19 +643,23 @@ export default function CustomizeView({
           style: { flex: 1 },
         }}
       >
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 px-8 pb-[60px]">
-          {visible.map((c) => (
-            <ConnectionCard
-              key={`${c.engine}-${c.name}`}
-              connection={c}
-              onDelete={handleDelete}
-              onModify={setSelectedConn}
-            />
-          ))}
-          {/* Trailing dashed tile — same connect flow as the header's
-              "+ Connect". The empty state carries its own CTA. */}
-          <NewTile label="New connection" onClick={handleConnectNew} />
-        </div>
+        {/* The trailing new tile or row runs the header's "+ Connect" flow.
+            The empty state carries its own CTA. */}
+        {effectiveView === 'grid' ? (
+          <CardGrid className="px-8 pb-[60px]">
+            {visible.map((c) => (
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+            ))}
+            <NewTile label="New connection" onClick={handleConnectNew} />
+          </CardGrid>
+        ) : (
+          <ListGroup className="mx-8 mb-[60px]">
+            {visible.map((c) => (
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+            ))}
+            <NewRow label="New connection" onClick={handleConnectNew} />
+          </ListGroup>
+        )}
       </CollectionState>
 
       {selectedConn && (
