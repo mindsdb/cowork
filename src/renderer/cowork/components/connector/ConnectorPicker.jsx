@@ -19,7 +19,7 @@ import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
-import { Alert, Select, Tooltip } from '../ui';
+import { Alert, Badge, Button, EmptyState, Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -111,7 +111,21 @@ function iconFor(connector) {
   return Ico[name] || Ico.database;
 }
 
+// "Kinaxis RapidResponse" → "KR". A custom connector has no bundled icon,
+// so its tile shows its own initials rather than a generic category glyph.
+export function connectorInitials(label) {
+  const words = String(label || '').trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+}
+
 function ConnectorLogo({ connector, size = 22 }) {
+  if (connector.custom && !connector.logo_url && !connector.logo) {
+    return (
+      <span aria-hidden="true" className="font-[family-name:var(--font-display)] font-semibold text-[13px] leading-none">
+        {connectorInitials(connector.label || connector.id)}
+      </span>
+    );
+  }
   if (connector.logo_url) {
     return (
       <img
@@ -145,6 +159,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
       <div className="min-w-0 flex flex-col gap-1">
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0] truncate">{connector.label || connector.id}</span>
+          {connector.custom && <Badge variant="accent" size="xs" className="shrink-0">Custom</Badge>}
           {/* Spec-driven, not per-connector code: any connector that sets
               `notice` in its JSON gets the badge, and one that doesn't gets
               no extra markup at all. */}
@@ -209,7 +224,31 @@ const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 // subset — it is the whole of what works here.
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
-export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
+// Always last in the list, for people who browse instead of searching. It
+// carries no query: Anton asks which system to connect.
+function BuildCustomTile({ onBuildCustom }) {
+  return (
+    <Card
+      as="button"
+      interactive
+      padding="cozy"
+      onClick={() => onBuildCustom('')}
+      className="flex items-start gap-3"
+    >
+      <span className="inline-grid place-items-center w-[40px] h-[40px] rounded-card-row bg-surface-2 shrink-0 text-ink-3">
+        {Ico.plus(20)}
+      </span>
+      <div className="min-w-0 flex flex-col gap-1">
+        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">Build a custom connector</span>
+        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">Connect a system that isn't listed. Anton sets it up with you.</span>
+      </div>
+    </Card>
+  );
+}
+
+// `onBuildCustom(query)` starts an Anton task that builds a connector. Local
+// installs only for now; org mode never shows the entry points.
+export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
@@ -289,6 +328,9 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
     d.sort((x, y) => (x.label || x.id).localeCompare(y.label || y.id));
     return { available: a, desktopOnly: d };
   }, [filtered]);
+
+  const canBuildCustom = Boolean(onBuildCustom) && !orgMode;
+  const trimmedQuery = query.trim();
 
   return (
     <Modal
@@ -413,13 +455,24 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               {error}
             </div>
           )}
-          {!loading && !error && filtered.length === 0 && (
+          {!loading && !error && filtered.length === 0 && (canBuildCustom && trimmedQuery ? (
+            <EmptyState
+              icon={Ico.search(32)}
+              title={<>No connectors match “{trimmedQuery}”</>}
+              description="Anton can build one with you: it asks how the system is reached, then sets up and tests the connection."
+              action={(
+                <Button variant="primary" onClick={() => onBuildCustom(trimmedQuery)}>
+                  Build a custom connector for “{trimmedQuery}”
+                </Button>
+              )}
+            />
+          ) : (
             <div className="p-3 text-ink-3 text-[13px]">
               {query
                 ? <>No connectors match <strong>“{query}”</strong>.</>
                 : 'No connectors available yet.'}
             </div>
-          )}
+          ))}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.
@@ -469,6 +522,11 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
                 />
               ))}
             </>
+          )}
+          {canBuildCustom && !loading && !error && filtered.length > 0 && (
+            <div className={GRID}>
+              <BuildCustomTile onBuildCustom={onBuildCustom} />
+            </div>
           )}
           <ConnectorSection
             title={DESKTOP_ONLY_TITLE}
