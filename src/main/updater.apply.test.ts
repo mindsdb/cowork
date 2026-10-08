@@ -215,6 +215,22 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     updateCoordinator.feed({ ota: null });
   });
 
+  it('a manual apply with a server update keeps the announced version on its progress', async () => {
+    serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
+    await checkForUpdates();
+    updateCoordinator.feed({ ota: { phase: 'available', version: '2.26.10.7.1', uiUpdate: true, uiVersion: '2.26.10.7.1', serverUpdate: true, serverVersion: '0.26.10.7.1' } });
+    let seen: unknown;
+    serverUpdater.apply.mockImplementationOnce(async () => {
+      seen = updateCoordinator.getInput().ota;
+      return { updated: false, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.5.2' };
+    });
+    await apply({ force: true });
+    // The server apply's own progress push did not drop the version the click
+    // had already announced.
+    expect(seen).toEqual({ phase: 'downloading', version: '2.26.10.7.1' });
+    updateCoordinator.feed({ ota: null });
+  });
+
   it('never asks for a UI-only apply', async () => {
     serverUpdater.check.mockResolvedValue({ updateAvailable: false });
     await checkForUpdates();

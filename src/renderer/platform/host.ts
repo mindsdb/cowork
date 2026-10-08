@@ -20,6 +20,7 @@ import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import {
+  type UpdateAction,
   createUpdateCoordinator,
   shellAutoIsPending,
   type OtaStatus,
@@ -954,14 +955,20 @@ export async function getUpdateState(): Promise<UpdateCoordinatorState | null> {
  *  shell that predates UPDATE_APPLY the step is chosen here from the composed
  *  state and sent over the channel that shell has. `open-download-page` is the
  *  caller's own action and never reaches here. */
-export async function applyUpdates(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
+export async function applyUpdates(hooks: { onProceed?: () => void; action?: UpdateAction } = {}): Promise<GuardedRestartResult> {
   if (!isElectron) return false;
+  // The banner names the action it offered. Main needs it when the manual
+  // installer notice outranks a pending reload in the ladder but the person
+  // dismissed the notice: the Restart they see is the reload's.
+  const named = hooks.action === 'reload' ? { action: 'reload' as const } : {};
   if (typeof bridge.applyUpdates === 'function') {
-    return guardRestart(options => bridge.applyUpdates(options), hooks);
+    return guardRestart(options => bridge.applyUpdates({ ...options, ...named }), hooks);
   }
   const local = localUpdateState();
   const state = local.getState();
-  switch (state.action) {
+  const reloadPending = state.pending.reload || (state.ui.status === 'failed' && state.ui.error !== 'rolled-back');
+  const action = hooks.action === 'reload' && reloadPending ? 'reload' : state.action;
+  switch (action) {
     case 'relaunch':
       return installShellAutoUpdate(hooks);
     case 'reload': {

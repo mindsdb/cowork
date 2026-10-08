@@ -225,7 +225,7 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.UPDATE_STATE, listener);
     return () => ipcRenderer.removeListener(IPC.UPDATE_STATE, listener);
   },
-  applyUpdates: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.UPDATE_APPLY, options),
+  applyUpdates: (options?: { force?: boolean; action?: 'reload' }) => ipcRenderer.invoke(IPC.UPDATE_APPLY, options),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

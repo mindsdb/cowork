@@ -176,6 +176,9 @@ export default function UpdatesSection({
     // The person chose to keep their running tasks (ENG-3291): not an error,
     // the card simply offers Restart now again.
     if (result === 'cancelled') { setApplyingUpdate(false); return; }
+    // Another surface's request is still out (the sidebar's, say): this click
+    // did nothing, so the card changes nothing.
+    if (result === 'busy') return;
     // A restart that proceeds reloads or relaunches the app; a resolved false
     // (or a throw) returns the card to a retryable state. A retry or download
     // is not a restart, so its button never reads "Restarting…".

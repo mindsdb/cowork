@@ -174,8 +174,58 @@ export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
  *  this point is over too (the server updater reports no completion of its
  *  own), unless it ended in an error worth keeping. */
 function settleApplyStatus(): void {
-  const server = updateCoordinator.getInput().server;
-  updateCoordinator.feed({ ota: null, ...(server?.phase === 'error' ? {} : { server: null }) });
+  const { ota, server } = updateCoordinator.getInput();
+  // Only what announced the apply is over. A `rolled-back` (or `error`)
+  // pushed before the fallback load is the fresh renderer's to show.
+  updateCoordinator.feed({
+    ...(ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {}),
+    ...(server?.phase === 'error' ? {} : { server: null }),
+  });
+  replayDeferredOffer();
+}
+
+/** False once the window or its webContents is gone. */
+function contentsAlive(win: BrowserWindow): boolean {
+  try {
+    return !win.isDestroyed() && !win.webContents.isDestroyed();
+  } catch {
+    return false;
+  }
+}
+
+// An offer a check found while an apply was in flight. Pushing it then would
+// flip the coordinator out of `applying`: the overlay drops, the banner reads
+// "Update ready" and a second click queues another apply behind the first. It
+// waits until the apply settles and is replayed only if it still applies.
+let deferredOffer: OtaStatus | null = null;
+
+/** An apply holds the lock, or its reload has not committed yet. */
+function applyInFlight(): boolean {
+  return applyDepth > 0 || pendingNavigationSettle !== null;
+}
+
+/** Push what a check found, unless an apply is in flight; then hold it. An
+ *  `idle` (the check found nothing) is simply dropped while applying: the
+ *  settle clears the in-flight status itself. */
+function pushOffer(getWindow: GetWindow, status: OtaStatus): void {
+  if (!applyInFlight()) {
+    deferredOffer = null;
+    sendStatus(getWindow, status);
+    return;
+  }
+  deferredOffer = status.phase === 'available' ? status : null;
+}
+
+/** After an apply settles: an offer found mid-apply still stands unless the
+ *  apply landed the very UI it named, or left a failure the banner is already
+ *  showing. */
+function replayDeferredOffer(): void {
+  const offer = deferredOffer;
+  deferredOffer = null;
+  if (!offer || applyInFlight()) return;
+  if (updateCoordinator.getInput().ota) return;
+  if (offer.uiUpdate && offer.uiVersion && offer.uiVersion === servedUiVersion()) return;
+  sendStatus(windowRef, offer);
 }
 
 // A reload is in flight and the settle above is waiting for the navigation to
@@ -193,6 +243,9 @@ function settleWhenNavigated(win: BrowserWindow): void {
   const cleanup = () => {
     if (pendingNavigationSettle === entry) pendingNavigationSettle = null;
     if (timer) clearTimeout(timer);
+    // The window can close before the navigation commits (macOS keeps main
+    // alive); the health timer then fires against a destroyed webContents.
+    if (!contentsAlive(win)) return;
     win.webContents.removeListener('did-navigate', done);
     win.webContents.removeListener('did-fail-load', onFail);
   };
@@ -225,6 +278,7 @@ function settleInFlightStatus(): void {
     ...(ota?.phase === 'downloading' || ota?.phase === 'reloading' ? { ota: null } : {}),
     ...(server?.phase === 'downloading' || server?.phase === 'restarting' ? { server: null } : {}),
   });
+  replayDeferredOffer();
 }
 
 function reload(getWindow: GetWindow) {
@@ -246,8 +300,10 @@ function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      win.webContents.removeListener('did-finish-load', onOk);
-      win.webContents.removeListener('did-fail-load', onFail);
+      if (contentsAlive(win)) {
+        win.webContents.removeListener('did-finish-load', onOk);
+        win.webContents.removeListener('did-fail-load', onFail);
+      }
       resolve(ok);
     };
     const onOk = () => finish(true);
@@ -327,7 +383,13 @@ async function applyUpdatesUnlocked(
 ): Promise<boolean> {
   // Surface progress before the multi-second, server-down reinstall so the UI
   // shows "Updating…" instead of a bare config-not-ready state (ENG-749).
-  if (applyServer) sendStatus(getWindow, { phase: 'downloading' });
+  // Keep the version the manual apply already announced (or the one the
+  // coordinator derives from the pending layers), so the overlay never drops
+  // to a bare "Updating…" until the server updater reports its own.
+  if (applyServer) {
+    const version = updateCoordinator.getState().version;
+    sendStatus(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
+  }
   const serverOk = applyServer ? await applyServerUpdate(trigger) : true;
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
@@ -401,7 +463,7 @@ export function availableStatus(
     : undefined;
   return {
     phase: 'available',
-    version: ui.updateAvailable ? ui.newVersion ?? (server.updateAvailable ? serverLabel : undefined) : (server.updateAvailable ? serverLabel : undefined),
+    version: (ui.updateAvailable ? ui.newVersion : undefined) ?? serverLabel,
     uiUpdate: ui.updateAvailable,
     uiVersion: ui.updateAvailable ? ui.newVersion : undefined,
     serverUpdate: server.updateAvailable,
@@ -440,11 +502,13 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   // What the check found is what the one banner shows: a manual check that
   // finds a UI or server update feeds the same state the poll does, and one
   // that finds the install current clears a stale offer.
+  // An apply in flight keeps its status; what the check found waits for it
+  // (pushOffer), so the overlay cannot drop mid-apply.
   if (summary.ok) {
     if (summary.uiUpdateAvailable || summary.serverUpdateAvailable) {
-      sendStatus(windowRef, availableStatus(ui, { updateAvailable: surfaceServer, latestVersion: server.latestVersion, component: server.component }));
+      pushOffer(windowRef, availableStatus(ui, { updateAvailable: surfaceServer, latestVersion: server.latestVersion, component: server.component }));
     } else if (updateCoordinator.getInput().ota?.phase === 'available') {
-      sendStatus(windowRef, { phase: 'idle' });
+      pushOffer(windowRef, { phase: 'idle' });
     }
   }
   // The installer notice is the fallback for when the auto-updater is off or
@@ -481,7 +545,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
     handleApplyRequest(getWindow, options)
   ));
   ipcMain.handle(IPC.UPDATE_STATE_GET, () => updateCoordinator.getState());
-  ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean }) => (
+  ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean; action?: 'reload' }) => (
     handleUnifiedApply(getWindow, options)
   ));
   if (!statePushWired) {
@@ -570,10 +634,16 @@ export async function handleApplyRequest(
  *  and answer with the same `{ confirm, runningTasks }` report. */
 export async function handleUnifiedApply(
   getWindow: GetWindow,
-  options?: { force?: boolean },
+  options?: { force?: boolean; action?: 'reload' },
 ): Promise<RestartRequestResult> {
   const state = updateCoordinator.getState();
-  switch (state.action) {
+  // The manual installer notice outranks a pending reload in the ladder, but
+  // the renderer can dismiss that notice (it is the one dismissible banner).
+  // The Restart it then shows asks for the reload by name; honour it when a
+  // reload is in fact pending, rather than answering for the notice.
+  const reloadPending = state.pending.reload || (state.ui.status === 'failed' && state.ui.error !== 'rolled-back');
+  const action = options?.action === 'reload' && reloadPending ? 'reload' : state.action;
+  switch (action) {
     case 'relaunch':
       return requestShellInstall(options ?? {});
     case 'reload':
@@ -776,7 +846,8 @@ export function initUpdater(
     isServerRunning,
     getMode,
     applyUpdates: (applyServer, applyUi, trigger) => applyUpdates(getWindow, applyServer, applyUi, trigger),
-    pushStatus: (status) => sendStatus(getWindow, status),
+    // The poll's offer waits out an apply in flight rather than flipping it.
+    pushStatus: (status) => pushOffer(getWindow, status),
     onShellManual: rememberShellManual,
   };
   const poll = (autoApply: boolean) => runUpdatePoll(deps, autoApply);

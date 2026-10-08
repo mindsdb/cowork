@@ -33,9 +33,10 @@ export function useAppUpdates() {
   // The one action. Opening the installer page is the renderer's own job;
   // everything else is main's, through the one apply, which picks reload or
   // relaunch for whatever is pending and asks first while tasks run.
-  // Resolves to main's answer, or 'cancelled'. One request at a
-  // time: the banner is not disabled until main's progress push lands, so a
-  // double click must not send a second apply behind the first.
+  // Resolves to main's answer, 'cancelled', or 'busy' when a request is
+  // already out. One request at a time: the banner is not disabled until
+  // main's progress push lands, so a double click must not send a second
+  // apply behind the first, and the dropped click is not a failure.
   const applyInFlight = useRef(false);
   const handleUpdateAction = useCallback(async (action, hooks = {}) => {
     if (action === 'open-download-page') {
@@ -47,10 +48,11 @@ export function useAppUpdates() {
       host.openExternal(explicit || updateState?.shell?.manualDownloadUrl || SHELL_DOWNLOAD_PAGE);
       return true;
     }
-    if (!action || applyInFlight.current) return false;
+    if (!action) return false;
+    if (applyInFlight.current) return 'busy';
     applyInFlight.current = true;
     try {
-      return await host.applyUpdates({ onProceed: hooks.onProceed });
+      return await host.applyUpdates({ onProceed: hooks.onProceed, action });
     } catch (err) {
       console.error('[updates] apply failed:', err);
       return false;

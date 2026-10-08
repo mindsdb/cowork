@@ -290,6 +290,125 @@ describe('the status an apply leaves behind', () => {
     updateCoordinator.feed({ shellManual: null });
   });
 
+  it('a Restart named as the reload runs it, even while the manual installer notice owns the ladder', async () => {
+    const { checkForServerUpdate } = await import('./server-updater');
+    const { applyUIUpdate } = await import('./ui-updater');
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+    vi.mocked(applyUIUpdate).mockResolvedValue(true);
+    try {
+      updateCoordinator.feed({ shell: shell('disabled'), ota: availableStatus(uiFound, serverNone), shellManual: { version: '2.26.12.1.1', downloadUrl: null } });
+      expect(updateCoordinator.getState()).toMatchObject({ action: 'open-download-page', pending: { reload: true } });
+      // Unnamed: the notice's action is the renderer's own, so nothing applies.
+      const w1 = win();
+      expect(await handleUnifiedApply(() => w1 as never, { force: true })).toBe(false);
+      expect(w1.loadFile).not.toHaveBeenCalled();
+      // Named: the person dismissed the notice and clicked the reload's Restart.
+      const w2 = win();
+      expect(await handleUnifiedApply(() => w2 as never, { force: true, action: 'reload' })).toBe(true);
+      expect(w2.loadFile).toHaveBeenCalledTimes(1);
+      await new Promise((r) => setTimeout(r, 5));
+      // Naming a reload that is not pending changes nothing.
+      updateCoordinator.feed({ ota: null });
+      const w3 = win();
+      expect(await handleUnifiedApply(() => w3 as never, { force: true, action: 'reload' })).toBe(false);
+      expect(w3.loadFile).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(applyUIUpdate).mockResolvedValue(false);
+      updateCoordinator.feed({ shell: shell('idle'), shellManual: null, ota: null });
+    }
+  });
+
+  it('a rolled-back bundle keeps its failure after the fallback load commits', async () => {
+    const { checkForServerUpdate } = await import('./server-updater');
+    const { applyUIUpdate } = await import('./ui-updater');
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    // The new bundle fails its load check; the fallback load then commits.
+    const w = win({ navigates: false });
+    let loads = 0;
+    w.loadFile.mockImplementation(() => {
+      loads += 1;
+      if (loads === 1) setTimeout(() => w.emit('did-fail-load', null, -2, 'ERR_FAILED', 'file:///x', true), 0);
+      else setTimeout(() => { w.emit('did-navigate'); w.emit('did-finish-load'); }, 0);
+    });
+    updateCoordinator.feed({ ota: availableStatus(uiFound, serverNone) });
+    await handleUnifiedApply(() => w as never, { force: true });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(w.loadFile).toHaveBeenCalledTimes(2);
+    // The fresh renderer reads the rollback, not idle: nothing to retry, but
+    // Settings can say what happened.
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, ui: { status: 'failed', error: 'rolled-back' } });
+    updateCoordinator.feed({ ota: null });
+  });
+
+  it('an offer a check finds mid-apply waits, and comes back once the apply settles', async () => {
+    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
+    const { checkForUIUpdate } = await import('./ui-updater');
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    vi.mocked(maybeUpdateServer).mockImplementation(async () => {
+      await gate;
+      return { updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' };
+    });
+    const w = win();
+    // The last check is what a forced apply reuses: make it the one that
+    // offered the server update.
+    const { checkForUIUpdate: checkUi } = await import('./ui-updater');
+    vi.mocked(checkUi).mockResolvedValue(uiNone);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().action).toBe('reload');
+    const applying = handleUnifiedApply(() => w as never, { force: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(updateCoordinator.getState().applying).toBe('downloading');
+    // A manual check lands while the server reinstalls and finds a UI update.
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().applying).toBe('downloading');
+    expect(updateCoordinator.getState().action).toBeNull();
+    release();
+    expect(await applying).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));
+    // The reload committed and the apply settled; the UI offer it did not
+    // apply is back in front of the person.
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiNone);
+    vi.mocked(maybeUpdateServer).mockReset();
+    updateCoordinator.feed({ ota: null, server: null });
+  });
+
+  it('a window closed before its reload commits does not throw when the health window elapses', async () => {
+    const { checkForServerUpdate, maybeUpdateServer } = await import('./server-updater');
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    vi.mocked(maybeUpdateServer).mockResolvedValue({ updated: true, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.7.1' });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const w = win({ navigates: false });
+      let destroyed = false;
+      w.isDestroyed = () => destroyed;
+      const contents = w.webContents as unknown as Record<string, unknown>;
+      contents.isDestroyed = () => destroyed;
+      const removeListener = w.webContents.removeListener;
+      w.webContents.removeListener = vi.fn((...args: Parameters<typeof removeListener>) => {
+        if (destroyed) throw new Error('Object has been destroyed');
+        return removeListener(...args);
+      });
+      const { checkForUIUpdate: checkUi } = await import('./ui-updater');
+      vi.mocked(checkUi).mockResolvedValue(uiNone);
+      await checkForUpdates();
+      expect(await handleUnifiedApply(() => w as never, { force: true })).toBe(true);
+      expect(updateCoordinator.getState().applying).toBe('reloading');
+      destroyed = true;
+      // The health window elapses with the window gone: the settle must run
+      // without touching the dead webContents.
+      expect(() => vi.advanceTimersByTime(15_001)).not.toThrow();
+      expect(updateCoordinator.getState().applying).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      updateCoordinator.feed({ ota: null, server: null });
+    }
+  });
+
   it('a manual apply that lands nothing puts the offer back rather than calling it a failure', async () => {
     const { checkForServerUpdate } = await import('./server-updater');
     vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);

@@ -537,6 +537,28 @@ describe('electron mode (bridge present)', () => {
       expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'failed' } });
     });
 
+    it('on an older shell a Restart named as the reload runs it from behind a dismissed installer notice', async () => {
+      let otaCb: ((s: unknown) => void) | null = null;
+      const applyUpdate = vi.fn(async () => true);
+      (window as unknown as Record<string, unknown>).antontron = {
+        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
+        onShellAutoUpdate: vi.fn(() => vi.fn()),
+        getShellAutoUpdate: vi.fn(async () => shell('disabled')),
+        getShellUpdate: vi.fn(async () => null),
+        applyUpdate,
+      };
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      otaCb!({ phase: 'available', version: 'ui-1' });
+      otaCb!({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
+      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', pending: { reload: true } });
+      // The notice's action is the renderer's own; unnamed, nothing is sent.
+      expect(await host.applyUpdates()).toBe(false);
+      expect(applyUpdate).not.toHaveBeenCalled();
+      expect(await host.applyUpdates({ action: 'reload' })).toBe(true);
+      expect(applyUpdate).toHaveBeenCalledOnce();
+    });
+
     it('a manual check on an older shell feeds what it found into the composed state', async () => {
       (window as unknown as Record<string, unknown>).antontron = {
         checkForUpdate: vi.fn(async () => ({ updateAvailable: true, newVersion: '2.26.10.7.1' })),

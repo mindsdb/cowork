@@ -268,7 +268,7 @@ export default function Sidebar({
   onShowServerHelp,
   // The single derived update banner (deriveUpdateBanner), or null.
   updateBanner = null,
-  onUpdateAction, // (action: 'apply-ota' | 'shell-auto' | 'download-installer') => void
+  onUpdateAction, // (action: 'reload' | 'relaunch' | 'retry' | 'download' | 'open-download-page') => void
   onDismissUpdate, // dismisses the (dismissible) manual installer notice
   agentLabel,
   settingsActive = false,
