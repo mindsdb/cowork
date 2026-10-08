@@ -2288,10 +2288,10 @@ export default function SettingsView({
           )}
         </Section>
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
+          <Section title="Animated background" subtitle="Animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">
               <Switch
-                checked={settings.showDots}
+                checked={settings.showDots === true}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
                 aria-label="Animated background"
               />
@@ -2301,7 +2301,7 @@ export default function SettingsView({
           <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
             <div className="flex items-center">
               <Switch
-                checked={settings.showCounters !== false}
+                checked={settings.showCounters === true}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
                 aria-label="Nav-panel counters"
               />

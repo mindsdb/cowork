@@ -279,7 +279,7 @@ export default function Sidebar({
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
-  showCounters = true,
+  showCounters = false,
   // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,

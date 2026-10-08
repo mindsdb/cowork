@@ -1671,7 +1671,7 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = appearanceSettings.showDots !== false;
+    const visible = appearanceSettings.showDots === true;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
   }, [appearanceSettings.showDots]);
@@ -5122,7 +5122,7 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={appearanceSettings.showCounters !== false}
+          showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
           navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
