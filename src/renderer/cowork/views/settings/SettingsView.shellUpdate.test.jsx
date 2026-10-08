@@ -218,6 +218,18 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     expect(screen.getByText(/Couldn't apply the update/)).toBeInTheDocument();
   });
 
+  it('a click dropped behind another surface\'s request changes nothing', async () => {
+    // The sidebar's Restart is awaiting the running-tasks dialog; the hook
+    // answers 'busy' for this one. That is not a failure.
+    const onUpdateAction = vi.fn(async () => 'busy');
+    render(<SettingsView {...baseProps} updateState={stateFor(uiReady)} onUpdateAction={onUpdateAction} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    await waitFor(() => expect(onUpdateAction).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't apply the update/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+  });
+
   it('"Check for updates" reports up to date only when the state agrees', async () => {
     render(<SettingsView {...baseProps} updateState={stateFor({})} onUpdateAction={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));

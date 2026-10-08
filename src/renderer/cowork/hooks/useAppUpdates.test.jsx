@@ -54,14 +54,16 @@ describe('useAppUpdates', () => {
     const onProceed = vi.fn();
     let outcome;
     await act(async () => { outcome = await result.current.handleUpdateAction('reload', { onProceed }); });
-    expect(hostMock.host.applyUpdates).toHaveBeenCalledWith({ onProceed });
+    // The action rides along, so main can honour a reload the person asked
+    // for from behind a dismissed installer notice.
+    expect(hostMock.host.applyUpdates).toHaveBeenCalledWith({ onProceed, action: 'reload' });
     expect(outcome).toBe(true);
     await act(async () => { await result.current.handleUpdateAction('relaunch'); });
     await act(async () => { await result.current.handleUpdateAction('retry'); });
     expect(hostMock.host.applyUpdates).toHaveBeenCalledTimes(3);
   });
 
-  it('sends one apply at a time: a second click while the first is out is a no-op', async () => {
+  it('sends one apply at a time: a second click while the first is out is busy, not a failure', async () => {
     const { result } = await mountFlushed();
     let settle;
     hostMock.host.applyUpdates.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
@@ -69,7 +71,7 @@ describe('useAppUpdates', () => {
     act(() => { first = result.current.handleUpdateAction('reload'); });
     let second;
     await act(async () => { second = await result.current.handleUpdateAction('reload'); });
-    expect(second).toBe(false);
+    expect(second).toBe('busy');
     expect(hostMock.host.applyUpdates).toHaveBeenCalledTimes(1);
     await act(async () => { settle(true); expect(await first).toBe(true); });
     await act(async () => { await result.current.handleUpdateAction('reload'); });

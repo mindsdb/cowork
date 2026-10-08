@@ -112,7 +112,11 @@ export function deriveUpdateBanner(
       return { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Retry', action, ...base, version: shell.version };
     case 'open-download-page':
       if (shell.manual) {
-        if (options.dismissedManualVersion && options.dismissedManualVersion === shell.version) return null;
+        // Dismissal hides only the notice. A reload pending behind it in the
+        // ladder still shows, as it did before the one state existed.
+        if (options.dismissedManualVersion && options.dismissedManualVersion === shell.version) {
+          return otaBanner(ui, server);
+        }
         return {
           kind: 'shell-manual',
           tone: 'ready',
@@ -127,23 +131,31 @@ export function deriveUpdateBanner(
       }
       // A terminal auto-update failure: the installer is the way forward.
       return { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Download', action, ...base, version: shell.version };
-    case 'reload': {
-      const version = ui.status !== 'idle' && ui.version ? ui.version : serverLabel(server);
-      if (ui.status === 'failed') {
-        return { kind: 'ota-error', tone: 'error', title: `Update failed${version ? ` (${version})` : ''}`, actionLabel: 'Try again', action, ...base, version };
-      }
-      return {
-        kind: 'ota-ready',
-        tone: 'ready',
-        title: 'Update ready',
-        actionLabel: 'Restart now',
-        action,
-        ...base,
-        version,
-        hint: `Restarts the app to finish updating${version ? ` to ${version}` : ''}. It also applies on its own the next time you open the app.`,
-      };
-    }
+    case 'reload':
+      return otaBanner(ui, server);
     default:
       return null;
   }
+}
+
+/** The UI/server banner: a pending reload, a retryable failure, or nothing.
+ *  Shared by the `reload` action and the fall-through behind a dismissed
+ *  manual notice; the action it offers is always `reload`. */
+function otaBanner(ui: UpdateCoordinatorState['ui'], server: UpdateCoordinatorState['server']): UpdateBanner | null {
+  const version = ui.status !== 'idle' && ui.version ? ui.version : serverLabel(server);
+  if (ui.status === 'failed') {
+    if (ui.error === 'rolled-back') return null;
+    return { kind: 'ota-error', tone: 'error', title: `Update failed${version ? ` (${version})` : ''}`, actionLabel: 'Try again', action: 'reload', ...base, version };
+  }
+  if (ui.status !== 'ready' && server.status !== 'ready') return null;
+  return {
+    kind: 'ota-ready',
+    tone: 'ready',
+    title: 'Update ready',
+    actionLabel: 'Restart now',
+    action: 'reload',
+    ...base,
+    version,
+    hint: `Restarts the app to finish updating${version ? ` to ${version}` : ''}. It also applies on its own the next time you open the app.`,
+  };
 }
