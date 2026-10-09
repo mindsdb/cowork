@@ -5431,7 +5431,9 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
+          // Not sun/moon: this opens both controls, so it must not read as
+          // the direct theme flip.
+          icon: Ico.palette(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
