@@ -61,3 +61,24 @@ export async function copyText(value) {
     return false;
   }
 }
+
+// A selection that runs to the end of a block — a triple-click, or a drag
+// past the last word — ends at the start of whatever block follows, and
+// Chromium serializes every block boundary it crossed as a trailing newline.
+// Copying a message should copy the message, so this `copy` handler drops
+// that trailing whitespace. A selection without any leaves the default copy.
+export function trimCopiedSelection(event) {
+  const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+  if (!selection || selection.isCollapsed || !event?.clipboardData) return;
+  const text = selection.toString();
+  const trimmed = text.replace(/\s+$/, '');
+  if (!trimmed || trimmed === text) return;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', trimmed);
+  // Keep the rich copy so a paste into a doc still gets lists and emphasis.
+  const holder = document.createElement('div');
+  for (let i = 0; i < selection.rangeCount; i += 1) {
+    holder.appendChild(selection.getRangeAt(i).cloneContents());
+  }
+  event.clipboardData.setData('text/html', holder.innerHTML);
+}

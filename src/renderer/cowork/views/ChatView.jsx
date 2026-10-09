@@ -22,7 +22,7 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText } from '../lib/clipboard';
+import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
@@ -328,6 +328,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
     <div
       className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
+      onCopy={trimCopiedSelection}
     >
       <div className="user-turn-inner">
         <div className="user-turn-bubble">
