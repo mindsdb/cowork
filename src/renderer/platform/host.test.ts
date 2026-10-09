@@ -308,8 +308,28 @@ describe('web mode (no bridge)', () => {
     const host = await importHost();
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     await host.openExternal('https://example.com');
-    expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
   });
+
+  it('openExternal opens a mailto: link from chat', async () => {
+    const host = await importHost();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    open.mockClear();
+    await host.openExternal('mailto:team@example.com');
+    expect(open).toHaveBeenCalledWith('mailto:team@example.com', '_blank', 'noopener,noreferrer');
+  });
+
+  it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'data:text/html,<script>1</script>', 'not a url'])(
+    'openExternal refuses a non-http(s)/mailto URL instead of opening it: %s',
+    async (url) => {
+      const host = await importHost();
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      // Spies are not restored between tests in this file, so drop earlier calls.
+      open.mockClear();
+      await host.openExternal(url);
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
 
   it('MindsHub PKCE bridges refuse with a reason (web uses Keycloak redirect)', async () => {
     const host = await importHost();
