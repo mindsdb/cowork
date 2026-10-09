@@ -9,9 +9,14 @@ const MIN_QUERY_LENGTH = 2;
 
 const pageKey = (p) => `${p.connectionName}:${p.id}`;
 
+// The modal stays mounted while closed, when App passes no connections. A
+// `= []` default would be a new array every render, and the search effect,
+// which depends on it, would re-run and re-render forever.
+const NO_CONNECTIONS = [];
+
 // Searches every connected Notion workspace at once and lets the user pick
 // pages. Notion's search needs a query, so the list starts empty.
-export default function NotionPagePickerModal({ open, connections = [], onClose, onConfirm }) {
+export default function NotionPagePickerModal({ open, connections = NO_CONNECTIONS, onClose, onConfirm }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(() => new Map());
@@ -29,7 +34,7 @@ export default function NotionPagePickerModal({ open, connections = [], onClose,
   useEffect(() => {
     const q = query.trim();
     if (!open || q.length < MIN_QUERY_LENGTH) {
-      setResults([]);
+      setResults((prev) => (prev.length ? [] : prev));
       setLoading(false);
       setError('');
       return undefined;

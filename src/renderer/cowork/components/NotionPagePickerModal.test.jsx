@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { Profiler } from 'react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import NotionPagePickerModal from './NotionPagePickerModal';
 
 const apiMock = vi.hoisted(() => ({ searchNotionPages: vi.fn() }));
@@ -81,5 +82,28 @@ describe('NotionPagePickerModal', () => {
     search('ml');
 
     await waitFor(() => expect(screen.getByText('Notion needs to be reconnected.')).toBeInTheDocument());
+  });
+});
+
+describe('NotionPagePickerModal while closed', () => {
+  // App keeps the modal mounted while closed and passes no connections; an
+  // unstable default there re-rendered it forever and crashed the app with
+  // "Maximum update depth exceeded".
+  it('settles instead of re-rendering forever', async () => {
+    const onRender = vi.fn();
+    const { rerender } = render(
+      <Profiler id="picker" onRender={onRender}>
+        <NotionPagePickerModal open={false} onClose={vi.fn()} onConfirm={vi.fn()} />
+      </Profiler>,
+    );
+    rerender(
+      <Profiler id="picker" onRender={onRender}>
+        <NotionPagePickerModal open={false} onClose={vi.fn()} onConfirm={vi.fn()} />
+      </Profiler>,
+    );
+    await act(async () => {});
+
+    expect(onRender.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(apiMock.searchNotionPages).not.toHaveBeenCalled();
   });
 });
