@@ -28,6 +28,7 @@ import {
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
+import { useConfirm } from '../components/ConfirmModal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ function MetaRow({ label, value }) {
 }
 
 function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+  const [confirm, confirmModal] = useConfirm();
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -421,10 +423,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           {spec && (
             <Button
               variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
+              onClick={async () => {
+                if (!(await confirm({
+                  title: `Reconnect ${spec.label || connection.engine}?`,
+                  message: "The existing connection will be removed and you'll connect it again from scratch.",
+                  confirmLabel: 'Reconnect',
+                }))) return;
                 onReconnect?.(connection, spec);
               }}
               className="w-full justify-center"
@@ -435,8 +439,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           <Button
             variant="danger"
             block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
+            onClick={async () => {
+              if (!(await confirm({
+                title: `Disconnect ${connection.engine}/${connection.name}?`,
+                confirmLabel: 'Disconnect',
+                destructive: true,
+              }))) return;
               onDisconnect?.(connection, saved);
               onClose();
             }}
@@ -446,6 +454,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           </Button>
         </div>
       </div>
+      {confirmModal}
     </>
   );
 }

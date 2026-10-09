@@ -40,7 +40,7 @@ function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
 function SkillModal({ skill, open, onClose }) {
   const body = skill.instructions || skill.skill_md || '_No content._';
   return (
-    <Modal open={open} onClose={onClose} width="640px" labelledBy="skill-card-modal-title">
+    <Modal open={open} onClose={onClose} width="min(640px, 92vw)" labelledBy="skill-card-modal-title">
       <ModalHeader
         id="skill-card-modal-title"
         title={skill.name || skill.slug || 'Skill'}
