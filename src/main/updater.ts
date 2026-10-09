@@ -25,16 +25,19 @@ import type { RestartRequestResult } from '../shared/restart-confirmation';
 import {
   applyInFlight as applyStatusInFlight,
   applyProgressSettles,
+  applyRunResult,
   createUpdateCoordinator,
   dispatchApplyStep,
   legacyOfferStatus,
   manualNoticeAfterCheck,
   offerAfterApply,
   offerAfterCheck,
+  otaOfferVersion,
   pollOfferCheck,
   resolveApplyAction,
   settledApplyInput,
   type OtaApply,
+  type ApplyRunResult,
   type OtaApplyOutcome,
   type OtaCheck,
   type OtaStatus,
@@ -368,7 +371,7 @@ async function applyUpdatesUnlocked(
   applyServer: boolean,
   applyUi: boolean,
   trigger: UpdateJournalTrigger,
-): Promise<boolean> {
+): Promise<ApplyRunResult> {
   // The UI version this apply answers, before anything changes the offer.
   const answeredUi = updateCoordinator.getInput().otaOffer?.ui?.version;
   // Surface progress before the multi-second, server-down reinstall so the UI
@@ -377,7 +380,8 @@ async function applyUpdatesUnlocked(
   // coordinator derives from the pending layers), so the overlay never drops
   // to a bare "Updating…" until the server updater reports its own.
   if (applyServer) {
-    const version = updateCoordinator.getInput().otaApply?.version ?? updateCoordinator.getState().version;
+    const input = updateCoordinator.getInput();
+    const version = input.otaApply?.version ?? otaOfferVersion(input.otaOffer);
     sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
   }
   const serverResult = applyServer ? await applyServerUpdate(trigger) : { ok: true };
@@ -430,7 +434,7 @@ async function applyUpdatesUnlocked(
     reload(getWindow);
   }
   updateCoordinator.feed({ otaOffer: offerAfterApply(updateCoordinator.getInput().otaOffer, outcome) });
-  return uiApplied || (applyServer && serverOk);
+  return applyRunResult({ serverTried: applyServer, serverOk, ui: outcome.ui });
 }
 
 function applyUpdates(
@@ -439,7 +443,7 @@ function applyUpdates(
   applyUi: boolean,
   trigger: UpdateJournalTrigger,
   ticket?: ApplyRequestTicket,
-): Promise<boolean> {
+): Promise<ApplyRunResult> {
   return withUpdateMaintenance(async () => {
     // A reload from an earlier apply that never committed is superseded by
     // this one; its settle must not fire over this apply's status.
@@ -449,7 +453,8 @@ function applyUpdates(
       // The apply it waited behind may have pushed over its progress (a
       // reload, an error). Say again that this one is under way.
       if (!applyStatusInFlight(updateCoordinator.getInput().otaApply)) {
-        sendApply(getWindow, { phase: 'downloading', version: updateCoordinator.getState().version });
+        const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
+        sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
       }
     }
     applyRun.running = true;
@@ -537,9 +542,12 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
-  ipcMain.handle(IPC.UI_UPDATE_APPLY, (_event: unknown, options?: { force?: boolean }) => (
-    handleApplyRequest(getWindow, options)
-  ));
+  // The legacy channel predates `'stale'`: a renderer that old reads it as a
+  // plain no, which is what it was before.
+  ipcMain.handle(IPC.UI_UPDATE_APPLY, async (_event: unknown, options?: { force?: boolean }) => {
+    const result = await handleApplyRequest(getWindow, options);
+    return result === 'stale' ? false : result;
+  });
   ipcMain.handle(IPC.UPDATE_STATE_GET, () => updateCoordinator.getState());
   ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean; action?: UpdateAction }) => (
     handleUnifiedApply(getWindow, options)
@@ -558,7 +566,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
 export async function handleApplyRequest(
   getWindow: GetWindow,
   options?: { force?: boolean },
-): Promise<boolean | { confirm: true; runningTasks: number | null }> {
+): Promise<RestartRequestResult> {
   // A server update stops the sidecar, which ends every running turn. Unless
   // the renderer has already asked, report the count back and let it ask
   // (ENG-3291). A UI-only apply reloads the window and leaves turns running.
@@ -578,7 +586,9 @@ export async function handleApplyRequest(
   // request owns that progress until its apply starts or it returns, so it is
   // queued: no other apply's settle may clear it. The offer is untouched, so
   // a request that ends without applying only has to give the progress up.
-  const version = updateCoordinator.getState().version;
+  // Named by the OTA offer it answers, never by the banner's version, which is
+  // the shell installer's whenever a manual notice exists (dismissed or not).
+  const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
   sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
   applyRun.queued += 1;
   const ticket: ApplyRequestTicket = { entered: false };
@@ -595,7 +605,7 @@ async function runApplyRequest(
   getWindow: GetWindow,
   options: { force?: boolean } | undefined,
   ctx: { asked: boolean; confirmed: boolean; version: string | undefined; ticket: ApplyRequestTicket },
-): Promise<boolean | { confirm: true; runningTasks: number | null }> {
+): Promise<RestartRequestResult> {
   const { asked, confirmed, version, ticket } = ctx;
   // A manual apply re-checks the server so it can't drift from the UI,
   // unless a check fresh enough preceded this call (the one the dialog
@@ -620,7 +630,10 @@ async function runApplyRequest(
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
   }
   try {
-    return await applyUpdates(getWindow, applyServer, true, 'manual', ticket);
+    // An apply that ran nothing found the offer already gone; it cleared it,
+    // and the click is answered as stale, not as a failure.
+    const result = await applyUpdates(getWindow, applyServer, true, 'manual', ticket);
+    return result === 'applied' ? true : result === 'stale' ? 'stale' : false;
   } catch (error) {
     // The apply itself threw. The banner must not go silent until the next
     // poll: name the failure, with the version, so it reads "Update failed"
@@ -845,7 +858,7 @@ export function initUpdater(
     getShellSnapshot: getShellAutoUpdateSnapshot,
     isServerRunning,
     getMode,
-    applyUpdates: (applyServer, applyUi, trigger) => applyUpdates(getWindow, applyServer, applyUi, trigger),
+    applyUpdates: async (applyServer, applyUi, trigger) => (await applyUpdates(getWindow, applyServer, applyUi, trigger)) === 'applied',
     recordCheck: (check) => recordCheck(getWindow, check),
     onShellManual: (status) => rememberShellManual(status, true),
   };

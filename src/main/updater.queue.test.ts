@@ -90,7 +90,8 @@ describe('a Restart queued behind another apply', () => {
     await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(2));
     expect(updateCoordinator.getState().applying).toBe('downloading');
     releaseClick(false);
-    expect(await click).toBe(false);
+    // Nothing ran, so the click is answered as stale, not as a failure.
+    expect(await click).toBe('stale');
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null });
   });
 });
