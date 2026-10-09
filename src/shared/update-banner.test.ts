@@ -258,29 +258,25 @@ describe('deriveUpdateBanner', () => {
   });
 });
 
-describe('deriveUpdateBanner: round five', () => {
-  it('a rolled-back UI keeps the Restart for a server update pending beside it (finding 2)', () => {
-    const banner = bannerFor({ ota: { phase: 'rolled-back', version: '2.26.10.8.1' } });
-    expect(banner).toBeNull();
-    const state = coordinateUpdates({
+describe('deriveUpdateBanner: what a dismissed notice or a rollback leaves showing', () => {
+  const notice = { version: '0.26.8.2' };
+  it.each<[string, Loose, Record<string, unknown> | null]>([
+    ['a failed auto-update behind the notice offers Retry', { shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' }, shellManual: notice }, { kind: 'shell-auto', tone: 'error', actionLabel: 'Retry', action: 'retry' }],
+    ['a terminal one offers the installer', { shellAuto: { phase: 'failed', recoverable: false, errorCode: 'unsupported-install' }, shellManual: notice }, { kind: 'shell-auto', actionLabel: 'Download', action: 'open-download-page' }],
+    ['a check that produced no answer raises nothing', { shellAuto: { phase: 'failed', recoverable: true, errorCode: 'check-stalled' }, shellManual: notice }, null],
+    ['a pending OTA still wins the slot', { ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true }, shellManual: notice }, { kind: 'ota-ready', action: 'reload' }],
+  ])('%s', (_name, input, expected) => {
+    const b = bannerFor(input, { dismissed: notice.version });
+    if (expected === null) expect(b).toBeNull();
+    else expect(b).toMatchObject(expected);
+  });
+
+  it('a rolled-back UI keeps the Restart for a server update pending beside it', () => {
+    expect(bannerFor({ ota: { phase: 'rolled-back', version: '2.26.10.8.1' } })).toBeNull();
+    expect(deriveUpdateBanner(coordinateUpdates({
       ...EMPTY_UPDATE_INPUT,
       otaOffer: { ui: null, server: { version: '0.26.10.7.1' } },
       otaApply: { phase: 'rolled-back', version: '2.26.10.8.1' },
-    });
-    expect(state.action).toBe('reload');
-    expect(deriveUpdateBanner(state)).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.10.7.1' });
-  });
-
-  it('behind a dismissed notice with no OTA pending, a failed auto-update still shows (finding 6)', () => {
-    const notice = { version: '0.26.8.2' };
-    expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' }, shellManual: notice }, { dismissed: '0.26.8.2' }))
-      .toMatchObject({ kind: 'shell-auto', tone: 'error', actionLabel: 'Retry', action: 'retry' });
-    expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: false, errorCode: 'unsupported-install' }, shellManual: notice }, { dismissed: '0.26.8.2' }))
-      .toMatchObject({ kind: 'shell-auto', tone: 'error', actionLabel: 'Download', action: 'open-download-page' });
-    // A check that produced no answer still raises nothing.
-    expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'check-stalled' }, shellManual: notice }, { dismissed: '0.26.8.2' })).toBeNull();
-    // A pending OTA still wins the slot behind the dismissed notice.
-    expect(bannerFor({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true }, shellManual: notice }, { dismissed: '0.26.8.2' }))
-      .toMatchObject({ kind: 'ota-ready', action: 'reload' });
+    }))).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.10.7.1' });
   });
 });
