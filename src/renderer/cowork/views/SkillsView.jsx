@@ -542,10 +542,12 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
 
-          <FilterRow
-            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-          />
+          {(skills === null || skills.length > 0) && (
+            <FilterRow
+              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
+              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+            />
+          )}
           <CollectionState
             loading={skills === null}
             total={(skills ?? []).length}
@@ -555,9 +557,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             skeleton="group"
             skeletonClassName={LIST_CLASS}
             empty={{
-              icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
+              icon: Ico.cube(20),
               title: 'No saved skills yet',
-              style: { flex: 1 },
+              description: 'Write a skill, upload a SKILL.md, or ask Cowork to make one.',
+              action: { label: 'Write your first skill', onClick: startNew },
+              className: 'mx-8 mb-8',
             }}
           >
             <ListGroup className={LIST_CLASS}>

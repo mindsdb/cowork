@@ -200,11 +200,10 @@ export default function TasksView({
         noMatchTitle="No tasks match these filters."
         clearLabel="Clear filters"
         empty={{
-          bordered: true,
-          icon: <span className="inline-flex text-ink-4">{Ico.chats(32)}</span>,
+          icon: Ico.chats(20),
           title: 'No tasks yet',
           description: 'Start a conversation from the home screen — every chat shows up here.',
-          className: 'mx-8 my-10',
+          className: 'mx-8 mb-8',
         }}
       >
         <ListGroup className="mx-8 mb-8">

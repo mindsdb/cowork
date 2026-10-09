@@ -25,7 +25,7 @@ import {
 } from 'react-router-dom';
 import { host } from '../platform/host';
 import { fetchSessionResult } from './api';
-import { EmptyState, Button, Spinner } from './components/ui';
+import { EmptyState, Spinner } from './components/ui';
 
 // Ids that aren't yet loadable via the API (a new-chat send + the canonical id
 // the server later mints). The loader renders these from local state instead of
@@ -267,11 +267,13 @@ export function ConversationUnavailable() {
     <EmptyState
       title="This conversation didn’t load"
       description="We couldn’t reach the server. Your link is still valid — try again once you’re back online."
-      action={
-        <Button variant="primary" onClick={() => revalidator.revalidate()} disabled={retrying}>
-          {retrying ? 'Retrying…' : 'Try again'}
-        </Button>
-      }
+      action={{
+        label: retrying ? 'Retrying…' : 'Try again',
+        onClick: () => revalidator.revalidate(),
+        disabled: retrying,
+        // The only way forward on this screen, so it takes the primary weight.
+        primary: true,
+      }}
     />
   );
 }

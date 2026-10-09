@@ -31,13 +31,9 @@ import ConnectionCard, { ConnectionRow } from '../components/connector/Connectio
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
-function ConnectButton({ onClick, large = false }) {
+function ConnectButton({ onClick }) {
   return (
-    <Button
-      variant="primary"
-      onClick={onClick}
-      style={large ? { fontSize: 13.5 } : undefined}
-    >
+    <Button variant="primary" onClick={onClick}>
       {Ico.plus(14)} Connect
     </Button>
   );
@@ -634,11 +630,11 @@ export default function CustomizeView({
         query={search}
         onClear={() => setSearch('')}
         empty={{
-          icon: <span className="inline-flex text-ink-4">{Ico.link(32)}</span>,
+          icon: Ico.link(20),
           title: 'No apps connected yet',
           description: `Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`,
-          action: <ConnectButton onClick={handleConnectNew} large />,
-          style: { flex: 1 },
+          action: { label: 'Connect your first app', onClick: handleConnectNew },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (

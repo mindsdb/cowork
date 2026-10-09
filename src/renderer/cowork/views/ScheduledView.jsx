@@ -140,7 +140,7 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        subtitle={`Scheduled tasks run while MindsHub Cowork is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -189,20 +189,11 @@ export default function ScheduledView({
         query={search}
         onClear={() => setSearch('')}
         empty={{
-          bordered: true,
-          icon: (
-            <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
-              {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
-            </span>
-          ),
+          icon: Ico.schedule ? Ico.schedule(20) : Ico.clock(20),
           title: 'No scheduled tasks yet',
-          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`,
-          action: (
-            <Button variant="primary" onClick={openCreate}>
-              {Ico.plus(14)} Schedule your first task
-            </Button>
-          ),
-          className: 'mx-8 my-10',
+          description: `Have ${agentLabel} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.`,
+          action: { label: 'Schedule your first task', onClick: openCreate },
+          className: 'mx-8 mb-8',
         }}
       >
         <ListGroup className="mx-8 mb-8">

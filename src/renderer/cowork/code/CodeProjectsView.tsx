@@ -74,11 +74,12 @@ export function CodeProjectsView({
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
         actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} New project</Button>}
       />
-      <FilterRow
+      {/* Nothing to search or sort until a project exists. */}
+      {(loading || error || projects.length > 0) && <FilterRow
         search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
         view={<ViewToggle value={view} onValueChange={setView} />}
-      />
+      />}
 
       <div className="mx-8">
         {error ? <Alert variant="danger">{error}</Alert> : (
@@ -94,7 +95,7 @@ export function CodeProjectsView({
               icon: Ico.folder(20),
               title: 'No projects yet',
               description: 'Create a project to bring related repositories and folders together.',
-              action: <Button variant="subtle" onClick={onCreate}>Create project</Button>,
+              action: { label: 'Create your first project', onClick: onCreate },
             }}
           >
             {effectiveView === 'grid' ? (
