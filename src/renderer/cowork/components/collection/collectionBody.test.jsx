@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollectionState } from './CollectionState';
 import { ViewToggle, useCollectionView } from './ViewToggle';
-import { NewTile } from './NewTile';
 
 const EMPTY = { title: 'Nothing yet', description: 'Make one.' };
 
@@ -108,15 +107,5 @@ describe('ViewToggle + useCollectionView', () => {
     render(<Harness storageKey={KEY} defaultView="list" />);
     expect(screen.getByRole('status')).toHaveTextContent('list');
     expect(localStorage.getItem(KEY)).toBe('grid');
-  });
-});
-
-describe('NewTile', () => {
-  it('is a button named by its label', async () => {
-    const user = userEvent.setup();
-    const onClick = vi.fn();
-    render(<NewTile label="New project" onClick={onClick} />);
-    await user.click(screen.getByRole('button', { name: 'New project' }));
-    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

@@ -297,7 +297,7 @@ export function CodeSidebarSessions({
             onOpenChange={setArchivedOpen}
             variant="compact"
             className="code-sidebar-archived"
-            triggerClassName="px-2"
+            triggerClassName="px-2.5"
             panelClassName="code-sidebar-archived__panel"
             title="Archived"
             meta={archived.length}

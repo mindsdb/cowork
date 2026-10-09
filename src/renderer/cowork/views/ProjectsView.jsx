@@ -21,10 +21,8 @@ import {
   SortPill,
   ViewToggle,
   CollectionState,
-  NewTile,
   CardGrid,
   ListGroup,
-  NewRow,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -477,10 +475,8 @@ function ProjectDetail({
 
             <TaskList
               tasks={projectTasks}
-              projects={projects || []}
               schedules={scheduled || []}
               scheduleRunsIndex={scheduleRunsIndex}
-              emptyMessage={`No tasks in this project yet — type a prompt above to start one.`}
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
@@ -749,12 +745,8 @@ export default function ProjectsView({
     onOpen: handleOpen,
     onTogglePin: (proj, next) => togglePin(proj.name, next),
     onMenuOpen: (proj, rect) => setMenuFor({ project: proj, rect }),
-    isMenuOpen: menuFor?.project?.name === p.name,
     onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
     onRenameCancel: handleRenameCancel,
-    // Pin and menu are the row's only controls; nothing is gained by hiding
-    // them until the pointer arrives.
-    alwaysShowActions: true,
   });
 
   if (detailProject) {
@@ -867,16 +859,12 @@ export default function ProjectsView({
             {visibleProjects.map((p) => (
               <ProjectCard key={p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.name === p.name} />
             ))}
-            {/* Trailing dashed tile; opens the same NewProjectModal as the
-                header button. Hidden on phones, where the FAB is the create entry. */}
-            <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </CardGrid>
         ) : (
           <ListGroup className={LIST_CLASS}>
             {visibleProjects.map((p) => (
               <ProjectRow key={p.name || p.path} {...itemProps(p)} />
             ))}
-            <NewRow label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </ListGroup>
         )}
       </CollectionState>

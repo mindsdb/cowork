@@ -94,15 +94,17 @@ function mergeFileResource(current, fresh) {
   return merged;
 }
 
+// Hover says what the file is for, not what's in it: memory files grow
+// to pages of raw markdown, and clicking opens the editor anyway.
+const MEMORY_DESCRIPTIONS = {
+  lessons: 'What the agent has learned working here',
+  rules: 'Standing instructions the agent follows',
+  profile: 'Who you are and how you like to work',
+};
+
 function MemoryRow({ entry, onOpen }) {
-  // Single-line row — the previous version displayed
-  // `previewFirstLine(entry.content)` underneath the filename, which
-  // for the canonical files (lessons.md, rules.md, identity.md, …)
-  // is just the H1 of the file and reads as a duplicate of the
-  // filename itself. Hover/click opens the editor, which has the
-  // full content; the rail row only needs the file identity + age.
   return (
-    <Tooltip content={entry.content || labelCategory(entry.category)}>
+    <Tooltip content={MEMORY_DESCRIPTIONS[entry.category]}>
       <button
         type="button"
         onClick={onOpen}
@@ -672,7 +674,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="section-label">
               Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
             </span>
             <OverflowMenu
@@ -804,7 +806,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="section-label">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
             <Tooltip content="Attach files to this task">
@@ -967,7 +969,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            <span className="section-label px-1 mb-1">
               {/* Display label spelled out — "Project" / "Global" on
                   their own read as project metadata, not memory. The
                   vault scope (`section.scope`) is still the canonical

@@ -411,7 +411,7 @@ export default function ScheduleDetailView({
 function SummaryStat({ label, value, hint }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="font-[family-name:var(--font-body)] text-xs font-semibold text-ink-3 tracking-[0.04em] uppercase">{label}</div>
+      <div className="section-label">{label}</div>
       <div title={hint || undefined} className="font-[family-name:var(--font-display)] text-[16px] font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{value}</div>
     </div>
   );
@@ -420,7 +420,7 @@ function SummaryStat({ label, value, hint }) {
 function Metric({ label, value, color }) {
   return (
     <div className="text-right">
-      <div className="font-[family-name:var(--font-body)] text-xs text-ink-4 tracking-[0.04em] uppercase font-semibold">{label}</div>
+      <div className="section-label">{label}</div>
       <div className="font-[family-name:var(--font-display)] text-[18px] font-semibold tracking-[0] mt-[2px]" style={{
         color: color || 'var(--ink)',
       }}>{value}</div>

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// happy-dom has no layout, so whether a hover overlay steals a click needs a real browser.
+// happy-dom has no layout, so whether one control steals another's click needs a real browser.
 
 async function clickAndExpect(page: Page, name: string, event: string) {
   const control = page.getByRole('button', { name, exact: true });
@@ -24,9 +24,10 @@ test('always-visible row actions do not cover the meta', async ({ page }) => {
   await clickAndExpect(page, 'Slack menu', 'Slack menu');
 });
 
-test('hover actions still overlay plain meta and open from the row', async ({ page }) => {
+test('row actions show at rest, and the title still opens the row', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Notion', exact: true }).hover(); // reveals the hidden menu
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole('button', { name: 'Notion menu', exact: true })).toBeVisible();
   await clickAndExpect(page, 'Notion menu', 'Notion menu');
   await page.getByRole('button', { name: 'Notion', exact: true }).click();
   await expect(page.getByLabel('Events')).toHaveText(/Notion open$/);
@@ -44,33 +45,18 @@ test('a long description truncates inside the page width', async ({ page }) => {
 test.describe('phone width, hover-capable pointer', () => {
   test.use({ viewport: { width: 390, height: 800 } });
 
-  // The cluster that fades in and out is the HoverActions wrapper around the button.
-  const clusterOpacity = (page: Page, name: string) =>
-    page.getByRole('button', { name, exact: true }).evaluate((el) => getComputedStyle(el.parentElement!).opacity);
-
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     expect(await page.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(true);
   });
 
-  test('a meta control shown at rest does not push hover-only actions onto an extra line', async ({ page }) => {
+  test('a meta control does not push the row actions onto an extra line', async ({ page }) => {
     const plain = await page.getByTestId('plain-row').boundingBox();
-    const linked = await page.getByTestId('revealed-meta-row').boundingBox();
+    const linked = await page.getByTestId('meta-control-row').boundingBox();
     expect(Math.abs(linked!.height - plain!.height)).toBeLessThanOrEqual(1);
-
     await page.mouse.move(0, 0);
-    await expect.poll(() => clusterOpacity(page, 'Linked menu')).toBe('0');
-    await page.getByRole('button', { name: 'Linked task', exact: true }).hover();
-    await expect.poll(() => clusterOpacity(page, 'Linked menu')).toBe('1');
+    await expect(page.getByRole('button', { name: 'Linked menu', exact: true })).toBeVisible();
     await clickAndExpect(page, 'Linked menu', 'Linked menu');
-  });
-
-  test('actions shown at rest stay visible', async ({ page }) => {
-    await page.mouse.move(0, 0);
-    await expect.poll(() => clusterOpacity(page, 'Pinned menu')).toBe('1');
-    const menu = page.getByRole('button', { name: 'Pinned menu', exact: true });
-    expect(await menu.evaluate((el) => getComputedStyle(el.parentElement!).position)).not.toBe('absolute');
-    await clickAndExpect(page, 'Pinned menu', 'Pinned menu');
   });
 
   test('an unbreakable meta word stays inside the row and the page', async ({ page }) => {
@@ -94,11 +80,10 @@ test.describe('phone width, hover-capable pointer', () => {
 test.describe('desktop width', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
-  test('hover-only actions flow beside a meta control shown at rest', async ({ page }) => {
+  test('row actions flow beside a meta control', async ({ page }) => {
     await page.goto('/');
     const menu = page.getByRole('button', { name: 'Linked menu', exact: true });
     expect(await menu.evaluate((el) => getComputedStyle(el.parentElement!).position)).not.toBe('absolute');
-    await page.getByRole('button', { name: 'Linked task', exact: true }).hover();
     const project = await page.getByRole('button', { name: 'Linked project', exact: true }).boundingBox();
     const menuBox = await menu.boundingBox();
     expect(project!.x + project!.width).toBeLessThanOrEqual(menuBox!.x);

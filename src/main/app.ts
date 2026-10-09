@@ -13,6 +13,7 @@ import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, SERVER_STOP_CEILING_MS } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
+import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
@@ -1571,6 +1572,7 @@ function setupIPC() {
   // can check/apply in any build (dev, unpackaged, server-down). The gated
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
+  registerUpdateJournalHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -1875,6 +1877,7 @@ app.whenReady().then(async () => {
       const recreated = await recreateVenvIfUnsupportedPython();
       if (recreated) {
         console.log('[server] recreated venv on a supported Python; retrying start');
+        recordUpdatePhase({ channel: 'server', phase: 'repaired', trigger: 'boot', errorCode: 'unsupported-python' });
         result = await startServer();
       }
 
@@ -1889,6 +1892,7 @@ app.whenReady().then(async () => {
       const failureLog = getServerDiagnostics().recentLog;
       if (!result.ok && !recreated && await repairServerInstall(failureLog)) {
         console.log('[server] repaired the server environment; retrying start');
+        recordUpdatePhase({ channel: 'server', phase: 'repaired', trigger: 'boot', errorCode: 'broken-install' });
         result = await startServer();
       }
     }
