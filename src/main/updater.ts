@@ -3,13 +3,8 @@
 // Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
 // env-only escape hatch (UI_UPDATE_MODE in the Cowork home's .env), not a user
 // setting. Applied together — server first, then UI, then window reload.
-//
-// It also holds the one update coordinator (src/shared/update-coordinator.ts):
-// checks write what they found to its offer input, applies write their
-// progress to its apply input, and the server and shell updaters feed their
-// own. The renderer renders the loading screen, the sidebar banner and
-// Settings from the state it pushes on UPDATE_STATE. The three legacy status
-// channels keep emitting for renderers older than that channel.
+// Holds the update coordinator and pushes its state on UPDATE_STATE; the legacy
+// status channels keep emitting for older renderers.
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
@@ -66,11 +61,9 @@ const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
 
-/** The one aggregate update state. Exported for the IPC handlers and tests. */
 export const updateCoordinator = createUpdateCoordinator();
 
-// Where status pushes go. Set by registerUpdateHandlers and initUpdater, so a
-// manual check (which has no window of its own) can push like the poll does.
+// Lets a manual check, which has no window of its own, push like the poll.
 let windowRef: GetWindow = () => null;
 
 // Cached so the renderer can recover the notice after an OTA reload.
@@ -108,7 +101,6 @@ function serverUpdatePending(result: ServerUpdateCheckResult | undefined): boole
 // `ok` says whether the server is in a good state to proceed with a UI update:
 // true if it was updated cleanly or was already current, false if an update was
 // attempted and failed (in which case it has rolled back to the old server).
-// `landed` names the version an update installed.
 async function applyServerUpdate(trigger: UpdateJournalTrigger): Promise<{ ok: boolean; landed?: { version?: string } }> {
   const startedAt = Date.now();
   const result = await maybeUpdateServer();
@@ -135,27 +127,20 @@ function liveWindow(getWindow: GetWindow): BrowserWindow | null {
   return win && !win.isDestroyed() ? win : null;
 }
 
-/** An apply's progress, or how it ended: into the coordinator's apply input,
- *  and onto the legacy channel for renderers that predate UPDATE_STATE. */
 function sendApply(getWindow: GetWindow, apply: OtaApply) {
   updateCoordinator.feed({ otaApply: apply });
   liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, apply);
 }
 
-/** What a check found, into the coordinator's offer input. Checks never touch
- *  the apply input, so one landing mid-apply leaves its progress alone and its
- *  offer shows once the apply settles. The legacy channel, which has one slot
- *  for both, hears of it only while nothing is being applied. */
+/** The legacy channel has one slot for offer and progress, so it hears of an
+ *  offer only while nothing is being applied. */
 function recordCheck(getWindow: GetWindow, check: OtaCheck): void {
   const otaOffer = offerAfterCheck(updateCoordinator.getInput().otaOffer, check);
   updateCoordinator.feed({ otaOffer });
   if (!applyBusy()) liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, legacyOfferStatus(otaOffer));
 }
 
-// Map a server-updater notification onto the OTA status shape, so a server
-// download shows progress on the loading screen and the in-app overlay
-// (ENG-749). Only "busy" phases are mirrored: errors keep their own layer and
-// must never leave the UI stuck in a spinner. Exported for app.ts's test.
+// Only busy phases are mirrored: an error must never leave the UI in a spinner.
 export function serverPhaseToUiStatus(payload: Record<string, unknown>): OtaApply | null {
   const phase = typeof payload.phase === 'string' ? payload.phase : '';
   const version = typeof payload.to === 'string' ? payload.to : undefined;
@@ -164,20 +149,14 @@ export function serverPhaseToUiStatus(payload: Record<string, unknown>): OtaAppl
   return null;
 }
 
-// Where the applies stand. `running`: one holds the maintenance lock.
-// `queued`: Restart requests that announced progress and have not started
-// their apply yet (re-checking the server, or waiting for the lock behind
-// another apply); they own that progress, so no other apply's settle may
-// clear it. `navigation`: a reload whose navigation has not committed, which
-// settles the progress itself when it does. The decisions over these are pure
-// (applyProgressSettles); this is only the bookkeeping.
+// `queued` counts Restart requests that announced progress but have not taken
+// the lock yet; they own that progress. Decisions live in applyProgressSettles.
 const applyRun = { running: false, queued: 0, navigation: null as { cancel: () => void } | null };
 
 function applyBusy(): boolean {
   return applyRun.running || applyRun.queued > 0 || applyRun.navigation !== null;
 }
 
-/** A Restart request's place in the queue, handed to the apply it starts. */
 interface ApplyRequestTicket { entered: boolean }
 
 function leaveQueue(ticket: ApplyRequestTicket): void {
@@ -186,8 +165,6 @@ function leaveQueue(ticket: ApplyRequestTicket): void {
   applyRun.queued -= 1;
 }
 
-/** Clear the progress an apply announced, if `applyProgressSettles` says it is
- *  over at this point. */
 function settleApplyProgress(at: 'navigation' | 'apply-end' | 'request-end'): void {
   const settles = applyProgressSettles(
     { running: applyRun.running, queued: applyRun.queued, navigationPending: applyRun.navigation !== null },
@@ -196,13 +173,9 @@ function settleApplyProgress(at: 'navigation' | 'apply-end' | 'request-end'): vo
   if (settles) updateCoordinator.feed(settledApplyInput(updateCoordinator.getInput()));
 }
 
-/** The server updater's progress (app.ts wires it in). The coordinator takes
- *  it raw for the server layer, and its busy phases are mirrored onto the
- *  apply status, through the coordinator and the legacy channel alike, so
- *  `applying` reaches `reloading` during a server reinstall and the loading
- *  screen and overlay keep their copy. The server updater only runs inside an
- *  apply; outside one the mirror reaches the legacy channel alone, so nothing
- *  could leave the coordinator stuck in `applying`. */
+/** Busy phases are mirrored onto the apply so `applying` reaches `reloading`
+ *  during a server reinstall. Outside an apply only the legacy channel hears
+ *  them, so the coordinator cannot be left stuck in `applying`. */
 export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
   const phase = payload.phase;
   if (phase !== 'downloading' && phase !== 'restarting' && phase !== 'error' && phase !== 'idle') return;
@@ -219,7 +192,6 @@ export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
   else liveWindow(windowRef)?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
 }
 
-/** False once the window or its webContents is gone. */
 function contentsAlive(win: BrowserWindow): boolean {
   try {
     return !win.isDestroyed() && !win.webContents.isDestroyed();
@@ -228,11 +200,8 @@ function contentsAlive(win: BrowserWindow): boolean {
   }
 }
 
-/** Settle the apply's progress once `win`'s next main-frame navigation
- *  commits, or fails, or the health window elapses. Until then the old page is
- *  still on screen and keeps its overlay; settling early would drop it to bare
- *  UI for the moment before the new document loads. Called right before
- *  `loadFile`. A newer reload supersedes an older one still waiting. */
+/** Settles on the next main-frame commit, failure or health timeout, so the
+ *  old page keeps its overlay until the new document replaces it. */
 function settleWhenNavigated(win: BrowserWindow): void {
   applyRun.navigation?.cancel();
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -362,22 +331,16 @@ async function activateUiAndJournal(
 
 // Apply server (if requested) then UI, and reload if either landed. Shared by
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
-// already resolved against update mode + server health by the caller. What
-// landed, failed or turned out stale is written back to the offer
-// (offerAfterApply), so the banner never re-raises an offer the apply used up.
+// already resolved against update mode + server health by the caller.
 async function applyUpdatesUnlocked(
   getWindow: GetWindow,
   applyServer: boolean,
   applyUi: boolean,
   trigger: UpdateJournalTrigger,
 ): Promise<ApplyRunResult> {
-  // The UI version this apply answers, before anything changes the offer.
   const answeredUi = updateCoordinator.getInput().otaOffer?.ui?.version;
   // Surface progress before the multi-second, server-down reinstall so the UI
   // shows "Updating…" instead of a bare config-not-ready state (ENG-749).
-  // Keep the version the manual apply already announced (or the one the
-  // coordinator derives from the pending layers), so the overlay never drops
-  // to a bare "Updating…" until the server updater reports its own.
   if (applyServer) {
     const input = updateCoordinator.getInput();
     const version = input.otaApply?.version ?? otaOfferVersion(input.otaOffer);
@@ -389,7 +352,7 @@ async function applyUpdatesUnlocked(
   if (serverResult.landed) outcome.server = { landed: true, version: serverResult.landed.version };
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
-  // server is current. Defer the UI to the next pass; its offer stands.
+  // server is current. Defer the UI to the next pass.
   const uiFrom = servedUiVersion();
   if (applyUi && !serverOk) {
     console.warn('[updater] server update failed — deferring UI update this pass');
@@ -398,14 +361,9 @@ async function applyUpdatesUnlocked(
   const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
   if (applyUi && serverOk && !uiApplied) {
-    // Credit the outcome to the version the apply actually tried: it re-reads
-    // the manifest, so a release published since the check is what it
-    // downloads. A download that ran and failed (download, checksum,
-    // extraction or activation; ui-updater logged which) is a failure of that
-    // version, and the banner offers to try again. An offer the apply never
-    // downloaded (withdrawn, quarantined, or held for server compat) was
-    // stale: it is a skip of the offered version, and the offer is gone, so
-    // the next Restart does not repeat the same no-op.
+    // Credit the version the apply actually tried: it re-reads the manifest.
+    // An offer it never downloaded (withdrawn, quarantined, held for compat)
+    // was stale, so the next Restart does not repeat the same no-op.
     const attempted = lastUiApplyAttempt();
     const durationMs = Date.now() - uiStartedAt;
     if (attempted) {
@@ -444,13 +402,10 @@ function applyUpdates(
   ticket?: ApplyRequestTicket,
 ): Promise<ApplyRunResult> {
   return withUpdateMaintenance(async () => {
-    // A reload from an earlier apply that never committed is superseded by
-    // this one; its settle must not fire over this apply's status.
     applyRun.navigation?.cancel();
     if (ticket && !ticket.entered) {
       leaveQueue(ticket);
-      // The apply it waited behind may have pushed over its progress (a
-      // reload, an error). Say again that this one is under way.
+      // The apply it waited behind may have pushed over its progress.
       if (!applyStatusInFlight(updateCoordinator.getInput().otaApply)) {
         const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
         sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
@@ -461,9 +416,8 @@ function applyUpdates(
       return await applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger);
     } finally {
       applyRun.running = false;
-      // Every path, not only the reload: a failed boot server install and an
-      // apply with no live window both end without one, and the status they
-      // pushed would otherwise hold the overlay up and hide every offer.
+      // Not only after a reload: an apply with no window would otherwise hold
+      // the overlay up.
       settleApplyProgress('apply-end');
     }
   });
@@ -475,7 +429,6 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const [ui, server, shell, shellAuto] = await Promise.all([
     checkForUIUpdate().then((result) => { rememberUiOffer(result); return result; }),
     checkServer(),
-    // A thrown check is no answer; the notice it would decide stands.
     checkForShellUpdate().catch((): ShellUpdateStatus => ({ available: false, error: true })),
     // The stateful shell updater owns background download/install. This call
     // coalesces the user's manual trigger with any boot/periodic check already
@@ -497,25 +450,17 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
         ? { updateAvailable: true, version: shellAuto?.targetVersion }
         : { updateAvailable: false },
   });
-  // What the check found is what the one banner shows. Each channel decides
-  // its own layer of the offer, and a channel that errored leaves its layer
-  // as it was: one flaky host must not erase the other channel's offer.
   recordCheck(windowRef, {
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
     server: { updateAvailable: surfaceServer, latestVersion: server.latestVersion, component: server.component, error: server.error },
   });
-  // The installer notice is the fallback for when the auto-updater is off or
-  // terminally failed, the same gate the poll applies (ENG-1739). A healthy
-  // auto-updater whose feed merely lags latest.json must not raise a Download
-  // banner for an update it will install itself.
+  // A healthy auto-updater whose feed lags latest.json must not raise a
+  // Download banner for an update it will install itself.
   const autoSnap = shellAuto ?? getShellAutoUpdateSnapshot();
   rememberShellManual(shell, shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable));
   return summary;
 }
 
-/** The manual installer check decides its notice whenever it answers: a notice
- *  it no longer reports is cleared, for the coordinator and for older renderers
- *  that pull it. A check that could not reach the manifest decides nothing. */
 function rememberShellManual(shell: ShellUpdateStatus, isFallback: boolean): void {
   const notice = manualNoticeAfterCheck(updateCoordinator.getInput().shellManual, shell, isFallback);
   lastShellStatus = notice
@@ -541,8 +486,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
-  // The legacy channel predates `'stale'`: a renderer that old reads it as a
-  // plain no, which is what it was before.
+  // The legacy channel predates `'stale'`.
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async (_event: unknown, options?: { force?: boolean }) => {
     const result = await handleApplyRequest(getWindow, options);
     return result === 'stale' ? false : result;
@@ -580,13 +524,8 @@ export async function handleApplyRequest(
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
     confirmed = true;
   }
-  // The click has been answered: say the restart is going ahead now, before
-  // the remote re-check below, which can take ten seconds. From here this
-  // request owns that progress until its apply starts or it returns, so it is
-  // queued: no other apply's settle may clear it. The offer is untouched, so
-  // a request that ends without applying only has to give the progress up.
-  // Named by the OTA offer it answers, never by the banner's version, which is
-  // the shell installer's whenever a manual notice exists (dismissed or not).
+  // Announce progress before the re-check, which can take ten seconds. The
+  // request is queued from here, so no other apply's settle can clear it.
   const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
   sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
   applyRun.queued += 1;
@@ -599,7 +538,6 @@ export async function handleApplyRequest(
   }
 }
 
-/** The rest of a Restart request, once it has announced `downloading`. */
 async function runApplyRequest(
   getWindow: GetWindow,
   options: { force?: boolean } | undefined,
@@ -616,46 +554,29 @@ async function runApplyRequest(
     : null;
   const server = options?.force && reusable ? reusable : await checkServer();
   const applyServer = serverUpdatePending(server);
-  // The re-check is a check: what it says about the server is the offer now.
   recordCheck(getWindow, {
     server: { updateAvailable: applyServer, latestVersion: server.latestVersion, component: server.component, error: server.error },
   });
-  // The re-check can find a server update the last poll did not know about.
-  // That restart was never offered as one, so it still has to ask. The
-  // progress is given up on the way out, so the dialog never opens over
-  // "Updating…", and the offer the re-check made is what the banner shows.
+  // A server update the re-check found was never offered, so it still asks.
   if (applyServer && asked && !confirmed && isServerRunning()) {
     const runningTasks = await countRunningTasks();
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
   }
   try {
-    // An apply that ran nothing found the offer already gone; it cleared it,
-    // and the click is answered as stale, not as a failure.
     const result = await applyUpdates(getWindow, applyServer, true, 'manual', ticket);
     return result === 'applied' ? true : result === 'stale' ? 'stale' : false;
   } catch (error) {
-    // The apply itself threw. The banner must not go silent until the next
-    // poll: name the failure, with the version, so it reads "Update failed"
-    // and offers Try again.
+    // Name the failure so the banner offers Try again instead of going silent.
     console.error('[updater] manual apply failed:', error);
     sendApply(getWindow, { phase: 'error', ...(version ? { version } : {}) });
     return false;
   }
 }
 
-/** The one apply: whatever is pending, resolved by the minimal
- *  sufficient step. A ready shell download installs and relaunches, which
- *  also applies any pending OTA at the next boot; otherwise the OTA applies
- *  with a reload. Both routes inherit the running-tasks confirmation
- *  and answer with the same `{ confirm, runningTasks }` report. */
 export async function handleUnifiedApply(
   getWindow: GetWindow,
   options?: { force?: boolean; action?: UpdateAction },
 ): Promise<RestartRequestResult> {
-  // The renderer names the action it rendered. It runs only if the state it
-  // lands on still offers it: the banner can lag main by a push, and a
-  // Download or Retry click must never install and relaunch. A renderer
-  // older than this names nothing and gets what is offered now.
   const step = resolveApplyAction(updateCoordinator.getState(), options?.action);
   const force = options?.force ? { force: true } : {};
   return dispatchApplyStep<RestartRequestResult>(step, {
@@ -688,7 +609,7 @@ export interface ShellUpdateStatus {
   currentVersion?: string; // installed shell (Electron app) CalVer
   latestVersion?: string;  // newest published shell CalVer
   downloadUrl?: string | null; // platform/channel installer URL, null if none
-  /** The check could not complete (manifest unreachable): no answer either way. */
+  /** The manifest was unreachable: no answer either way. */
   error?: boolean;
 }
 
@@ -700,8 +621,7 @@ export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
   if (kind !== 'prod') return { available: false };
 
   const manifest = await fetchManifest();
-  // fetchManifest() swallows network and parse errors to null: that is no
-  // answer, not "no newer shell", and must not clear a standing notice.
+  // fetchManifest() turns network errors into null: no answer, not "no update".
   if (!manifest) return { available: false, error: true };
   const latestVersion = manifest.shellVersion;
   if (!latestVersion) return { available: false };
@@ -712,9 +632,6 @@ export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
   return { available: true, currentVersion, latestVersion, downloadUrl: shellDownloadUrl(process.platform, kind, process.arch) };
 }
 
-/** What one boot or periodic poll needs. Production wires the real
- *  transports (initUpdater); tests inject the three checkers and read the
- *  coordinator state the poll leaves behind. */
 export interface UpdatePollDeps {
   hasInternet(): Promise<boolean>;
   checkUi(): Promise<UpdateCheckResult>;
@@ -723,19 +640,12 @@ export interface UpdatePollDeps {
   getShellSnapshot(): Pick<ShellUpdateSnapshot, 'phase' | 'recoverable'>;
   isServerRunning(): boolean;
   getMode(): 'auto' | 'manual';
-  /** Apply what the poll decided; `trigger` is the journal's boot/periodic label. */
   applyUpdates(applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean>;
-  /** What the poll found, for the offer (`pollOfferCheck`). */
   recordCheck(check: OtaCheck): void;
-  /** The manual installer check answered, or failed (`error`); only called
-   *  while the auto-updater is the fallback. */
   onShellManual(status: ShellUpdateStatus): void;
 }
 
-/** One poll: detect on every channel, then auto-apply (boot) or offer
- *  (periodic). The decision table is `decideUpdateApply`; this is the
- *  orchestration around it, kept free of module state so it can run under a
- *  scenario table. */
+/** Boot polls auto-apply; periodic polls only offer (`decideUpdateApply`). */
 export async function runUpdatePoll(deps: UpdatePollDeps, autoApply: boolean): Promise<void> {
   // hasInternet() probes the OTA manifest host (GitHub Pages). The server
   // update lives on different hosts (git remote / PyPI) with its own
@@ -749,9 +659,6 @@ export async function runUpdatePoll(deps: UpdatePollDeps, autoApply: boolean): P
     manifestReachable ? deps.checkUi() : Promise.resolve(uiSkipped),
     deps.checkServer(),
   ]);
-  // The journal credits a failed or skipped UI apply to the version this
-  // check offered; a manual apply re-reads the manifest and has no other
-  // record of it.
   rememberUiOffer(ui);
 
   // Shell notices are independent of OTA and never auto-applied. Poll the
@@ -761,7 +668,6 @@ export async function runUpdatePoll(deps: UpdatePollDeps, autoApply: boolean): P
   // a second redundant boot+4h check on prod (ENG-1739).
   const autoSnap = deps.getShellSnapshot();
   if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
-    // A thrown check is no answer: the notice it would decide stands.
     const shell = await deps.checkShellManual().catch((): ShellUpdateStatus => ({ available: false, error: true }));
     deps.onShellManual(shell);
     if (shell.available) console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
@@ -780,8 +686,7 @@ export async function runUpdatePoll(deps: UpdatePollDeps, autoApply: boolean): P
 
   if (!ui.updateAvailable && !server.updateAvailable) {
     console.log('[updater] everything up to date');
-    // Nothing found is an answer too: an offer the manifest has withdrawn
-    // since the last check goes.
+    // A withdrawn release clears its offer.
     report(false, false);
     return;
   }
@@ -838,8 +743,6 @@ export function initUpdater(
     getWindow,
     getMode,
   });
-  // The shell updater's snapshot is one of the coordinator's inputs; the
-  // renderer reads the result, not the snapshot, for its banner and overlay.
   onShellAutoUpdateSnapshot((snapshot) => updateCoordinator.feed({ shell: snapshot }));
   // The loading gate also waits on the shell boot check, so a stranded update
   // installs before the app is shown (ENG-2764). That install quits the app,

@@ -1,14 +1,6 @@
-// Which update banner, if any, the user sees. Rendered from the coordinator
-// state (update-coordinator.ts), so the sidebar and Settings → Updates show
-// the same banner with the same action and cannot disagree. The coordinator
-// already decided the shell-first ladder (a pending shell relaunch also
-// applies any OTA at boot, so it owns the slot) and the one action; this
-// module turns that into copy.
-//
-// Copy is layer-agnostic: "Update ready — Restart now" whether the
-// restart is a renderer reload or an app relaunch. The one exception is the
-// manual installer fallback, which is a genuinely different action
-// ("Download") and keeps its own words.
+// Turns the coordinator state into banner copy, shared by the sidebar and
+// Settings so they cannot disagree. Copy is layer-agnostic except the manual
+// installer fallback, which keeps "Download".
 
 import type { UpdateAction, UpdateCoordinatorState } from './update-coordinator';
 import { serverLabel } from './update-coordinator';
@@ -17,8 +9,6 @@ export { SHELL_AUTO_BANNER_PHASES, CHECK_ONLY_FAILURE_CODES } from './update-ban
 
 export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error';
 export type UpdateBannerTone = 'ready' | 'progress' | 'error';
-/** Which coordinator action the banner's click performs. `null` while work is
- *  in flight (download/install), where the banner is display-only. */
 export type UpdateBannerAction = UpdateAction;
 
 export interface UpdateBanner {
@@ -43,10 +33,8 @@ export interface UpdateBanner {
 }
 
 export interface UpdateBannerOptions {
-  /** The manual installer notice the user dismissed, by version. Settings
-   *  passes nothing: it always reflects the true state. */
+  /** Settings passes nothing: it always reflects the true state. */
   dismissedManualVersion?: string | null;
-  /** The installer is a .deb (Linux). */
   debInstaller?: boolean;
 }
 
@@ -67,7 +55,6 @@ export function debInstallStep(version?: string): string {
 
 const base = { disabled: false, dismissible: false } as const;
 
-/** The one banner to show, or null when nothing is pending. */
 export function deriveUpdateBanner(
   state: UpdateCoordinatorState | null | undefined,
   options: UpdateBannerOptions = {},
@@ -75,8 +62,7 @@ export function deriveUpdateBanner(
   if (!state) return null;
   const { shell, ui, server, action } = state;
 
-  // In flight: display only. The boot overlay owns an OTA apply, so only the
-  // shell's own download and install show here.
+  // The boot overlay owns an OTA apply, so only shell progress shows here.
   if (shell.status === 'downloading' && !shell.manual) {
     const pct = shell.progress?.percent;
     const title = pct != null ? `Downloading update (${Math.round(pct)}%)` : 'Downloading update…';
@@ -88,10 +74,7 @@ export function deriveUpdateBanner(
 
   switch (action) {
     case 'relaunch':
-      // An install that never left the process (the sidecar stop or the
-      // installer failed) re-arms with its reason on the snapshot. Say so, or
-      // the pill flips from "Installing…" back to "Update ready" with no
-      // explanation (ENG-3291).
+      // An aborted install re-arms with its reason; say so.
       if (shell.errorCode) {
         return {
           kind: 'shell-auto', tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action, ...base, version: shell.version,
@@ -112,8 +95,7 @@ export function deriveUpdateBanner(
       return { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Retry', action, ...base, version: shell.version };
     case 'open-download-page':
       if (shell.manual) {
-        // Dismissal hides only the notice. A reload pending behind it in the
-        // ladder still shows, as it did before the one state existed.
+        // Dismissal hides only the notice, not what is pending behind it.
         if (options.dismissedManualVersion && options.dismissedManualVersion === shell.version) {
           return otaBanner(ui, server) ?? shellFailureBehindNotice(state);
         }
@@ -138,10 +120,7 @@ export function deriveUpdateBanner(
   }
 }
 
-/** Behind a dismissed manual notice with no OTA pending, a failed auto-update
- *  the notice stood in for still shows, as it did before the one state
- *  existed: Retry when it can be retried, the installer otherwise. A check
- *  that produced no answer still raises nothing. */
+/** A failed auto-update behind a dismissed notice still shows. */
 function shellFailureBehindNotice(state: UpdateCoordinatorState): UpdateBanner | null {
   const { shell } = state;
   if (shell.phase !== 'failed' || state.silentShellFailure) return null;
@@ -151,14 +130,10 @@ function shellFailureBehindNotice(state: UpdateCoordinatorState): UpdateBanner |
     : { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Download', action: 'open-download-page', ...base, version };
 }
 
-/** The UI/server banner: a pending reload, a retryable failure, or nothing.
- *  Shared by the `reload` action and the fall-through behind a dismissed
- *  manual notice; the action it offers is always `reload`. */
 function otaBanner(ui: UpdateCoordinatorState['ui'], server: UpdateCoordinatorState['server']): UpdateBanner | null {
   const version = ui.status !== 'idle' && ui.version ? ui.version : serverLabel(server);
   if (ui.status === 'failed') {
-    // A rolled-back bundle is quarantined and has nothing to retry, but a
-    // server update pending beside it still has its Restart.
+    // A rolled-back bundle has nothing to retry, but a pending server update does.
     if (ui.error === 'rolled-back') return server.status === 'ready' ? otaReadyBanner(serverLabel(server)) : null;
     return { kind: 'ota-error', tone: 'error', title: `Update failed${version ? ` (${version})` : ''}`, actionLabel: 'Try again', action: 'reload', ...base, version };
   }

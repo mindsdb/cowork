@@ -55,12 +55,9 @@ interface DownloadedTargetEvidence {
 type GetWindow = () => BrowserWindow | null;
 
 let controller: ShellAutoUpdater | null = null;
-// Main-process readers of the snapshot (the update coordinator), beside the
-// renderer push. Fed on every change and on configure.
 const snapshotListeners = new Set<(snapshot: ShellUpdateSnapshot) => void>();
 
-/** Subscribe main-side to every snapshot change. Called at once with the
- *  current snapshot. */
+/** Called at once with the current snapshot, then on every change. */
 export function onShellAutoUpdateSnapshot(listener: (snapshot: ShellUpdateSnapshot) => void): () => void {
   snapshotListeners.add(listener);
   listener(getShellAutoUpdateSnapshot());

@@ -56,10 +56,8 @@ export function confirmRestart(report: RestartConfirmation): Promise<boolean> {
   });
 }
 
-/** What a guarded restart resolved to: main's boolean, `'cancelled'` when
- *  the person kept their tasks running, or `'stale'` when the clicked action
- *  was no longer on offer and nothing ran. Neither is a failure, so callers
- *  that show an error on `false` must not show one for them. */
+/** `'cancelled'` and `'stale'` are not failures: callers that show an error on
+ *  `false` must not show one for them. */
 export type GuardedRestartResult = boolean | 'cancelled' | 'stale';
 
 /** Run a restart request through the confirmation. `invoke` sends the request
@@ -83,7 +81,6 @@ export async function guardRestart(
   if (!confirmed) return 'cancelled';
   hooks.onProceed?.();
   const second = await invoke({ force: true });
-  // The state moved while the dialog was open: nothing ran.
   if (second === 'stale') return 'stale';
   // Main does not ask twice when forced; a report here means an older shell
   // that ignores `force`, and the safe reading of that is "not restarted".

@@ -1863,10 +1863,6 @@ function AppCore() {
 
   const toastManager = useToastManager();
   useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
-  // The one update state over OTA, server and shell, the one banner derived
-  // from it (shell-first, dismissal-filtered), and the one action: all in
-  // useAppUpdates. Settings renders from the same state, so the two surfaces
-  // cannot disagree.
   const {
     updateState,
     updateBanner,

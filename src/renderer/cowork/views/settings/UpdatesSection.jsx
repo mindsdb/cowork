@@ -33,13 +33,8 @@ const BUILD_KIND_LABELS = {
   prod: 'prod',
 };
 
-// The Updates settings section: current-version readout plus the on-demand
-// update check and the one pending-update card. The card is the same banner
-// the sidebar shows (deriveUpdateBanner over the one update state), with the
-// same action, so the two surfaces cannot disagree and at most one restart is
-// ever offered. The section owns the rest of its state (versions,
-// the check result, in-flight flags), so nothing here leaks into the rest of
-// SettingsView. The Save `footer` is rendered by the parent and passed through.
+// The Updates settings section. Its pending-update card is the sidebar's
+// banner, from the same state, so the two cannot disagree.
 export default function UpdatesSection({
   footer,
   serverOnline = false,
@@ -61,8 +56,7 @@ export default function UpdatesSection({
   const [versionCopyState, setVersionCopyState] = useState('idle');
   // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
   // summary { ok, offline, updateAvailable, … } from host.checkForUpdates().
-  // It drives only the status line: what the check found feeds the one update
-  // state, and the card below renders from that.
+  // It drives only the status line; the card renders from the update state.
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [checkResult, setCheckResult] = useState(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
@@ -159,14 +153,11 @@ export default function UpdatesSection({
   const handleAction = async (banner) => {
     if (!onUpdateAction || !banner?.action) return;
     if (banner.kind === 'shell-manual') {
-      // A hand-off to the browser: there is no end to detect, so the card
-      // flips to the quit-and-open guidance for this version at once.
+      // A browser hand-off has no end to detect, so show the guidance now.
       if (banner.version) setShellDownloadedVersion(banner.version);
       await onUpdateAction(banner.action, { url: updateState?.shell?.manualDownloadUrl });
       return;
     }
-    // One request at a time is the hook's rule (useAppUpdates): a second
-    // click, here or in the sidebar, answers 'busy' below and changes nothing.
     setApplyError(false);
     // The button reads "Restarting…" only once the restart proceeds, not
     // while the running-tasks dialog is open (ENG-3291).
@@ -174,15 +165,9 @@ export default function UpdatesSection({
     // The person chose to keep their running tasks (ENG-3291): not an error,
     // the card simply offers Restart now again.
     if (result === 'cancelled') { setApplyingUpdate(false); return; }
-    // Another surface's request is still out (the sidebar's, say): this click
-    // did nothing, so the card changes nothing.
     if (result === 'busy') return;
-    // The state moved on before the click landed (a newer update, say): nothing
-    // ran, and the card re-renders from the state main pushes next.
     if (result === 'stale') { setApplyingUpdate(false); return; }
-    // A restart that proceeds reloads or relaunches the app; a resolved false
-    // (or a throw) returns the card to a retryable state. A retry or download
-    // is not a restart, so its button never reads "Restarting…".
+    // A retry or download is not a restart, so it never reads "Restarting…".
     const restart = banner.action === 'reload' || banner.action === 'relaunch';
     setApplyingUpdate(restart && result === true);
     setApplyError(restart && result !== true);
@@ -329,8 +314,7 @@ export default function UpdatesSection({
               // Linux ships a .deb, which is installed rather than launched, so
               // the last step of the copy changes.
               const debInstaller = host.getPlatform() === 'linux';
-              // The same banner the sidebar shows, from the same state. Settings
-              // never filters the manual notice by dismissal.
+              // Settings never filters the manual notice by dismissal.
               const banner = deriveUpdateBanner(updateState, { debInstaller });
               const shell = updateState?.shell;
               const shellDownloadStarted = banner?.kind === 'shell-manual' && !!banner.version && shellDownloadedVersion === banner.version;
@@ -348,9 +332,6 @@ export default function UpdatesSection({
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable && !banner;
               const busy = checkingUpdates || applyingUpdate;
-              // Which layers the one restart applies, named under the title. A
-              // relaunch applies any pending OTA at boot too, so both lists read
-              // from the same state.
               const parts = [];
               if (updateState?.server?.status === 'ready') {
                 // An anton-only server update (ENG-1094) carries the agent's
@@ -380,8 +361,7 @@ export default function UpdatesSection({
                   case 'shell-auto':
                   default:
                     if (banner.action === 'relaunch') {
-                      // The last Restart never left the process (ENG-3291): say why,
-                      // or the card just reads "ready" again.
+                      // Say why the last Restart did not finish.
                       body = banner.hint && shell?.errorCode
                         ? banner.hint
                         : `Restart Cowork to finish installing the downloaded update${parts.length > 0 ? ` (${parts.join(', ')})` : ''}.`;

@@ -1971,9 +1971,6 @@ app.whenReady().then(async () => {
     // maybeUpdateServer rolls back automatically if the new version also fails
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
-      // The coordinator takes the server layer raw and mirrors its busy
-      // phases onto the OTA status, so the loading screen and in-app overlay
-      // show progress during a server download (ENG-749).
       feedServerUpdateStatus(payload);
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
     });

@@ -823,8 +823,6 @@ function mergeShellUpdate(
   };
 }
 
-/** The shell auto-updater snapshot as the renderer sees it: the shared shape
- *  the update coordinator reads. Older shells omit the newer optional fields. */
 export type ShellAutoUpdateSnapshot = ShellSnapshot;
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
@@ -870,13 +868,8 @@ export async function installShellAutoUpdate(hooks: { onProceed?: () => void } =
   return false;
 }
 
-// ---- The one update state --------------------------------------------------
-//
-// Main holds the coordinator and pushes its state on UPDATE_STATE. A renderer
-// on a shell older than that channel composes the same state here from the
-// channels that shell does have (the OTA status, the shell snapshot and the
-// manual notice), through the same reducer, so every surface still renders
-// one answer. Web has no updater: nothing is ever published.
+// On a shell older than UPDATE_STATE, compose the same state here from the
+// legacy channels, through the same reducer.
 
 let fallbackCoordinator: UpdateCoordinator | null = null;
 function localUpdateState(): UpdateCoordinator {
@@ -888,10 +881,7 @@ function shellCarriesUpdateState(): boolean {
   return isElectron && typeof bridge.getUpdateState === 'function' && typeof bridge.onUpdateState === 'function';
 }
 
-// One bridge subscription, however many watchers. App.tsx (loading screen,
-// telemetry) and the chat app's hook both watch; without this each would pull
-// over IPC and, on a shell without UPDATE_STATE, register its own set of
-// legacy listeners, feeding the composed state twice per push.
+// One bridge subscription shared by every watcher.
 type UpdateStateListener = (state: UpdateCoordinatorState) => void;
 let updateStateFeed: { listeners: Set<UpdateStateListener>; last: UpdateCoordinatorState | null; stop: () => void } | null = null;
 
@@ -904,10 +894,8 @@ function startUpdateStateFeed(): NonNullable<typeof updateStateFeed> {
   };
   if (shellCarriesUpdateState()) {
     let cancelled = false;
-    // The mount-time pull can resolve after a push, carrying an older state.
-    // Main numbers its states; drop one older than what is already shown.
-    // A main that predates the number gets the legacy rule: a push that
-    // landed first is the newer one, and wins.
+    // The mount-time pull can resolve after a push. Drop older revisions; a
+    // main without revisions lets a push that landed first win.
     let pushed = false;
     const isOlder = (state: UpdateCoordinatorState) => {
       const last = feed.last;
@@ -933,8 +921,7 @@ function startUpdateStateFeed(): NonNullable<typeof updateStateFeed> {
   }
   const local = localUpdateState();
   const offOta = onUpdateStatus((status) => local.feed({ ota: status as OtaStatus }));
-  // The mount-time pull recovers the snapshot after a reload; a push that
-  // lands first is newer than what the pull answers with, and wins.
+  // A push that lands before the mount-time pull is newer, and wins.
   let shellPushed = false;
   const offShell = onShellAutoUpdate((snapshot) => { shellPushed = true; local.feed({ shell: snapshot }); });
   getShellAutoUpdate().then((snapshot) => { if (!shellPushed) local.feed({ shell: snapshot }); }).catch(() => {});
@@ -949,8 +936,6 @@ function startUpdateStateFeed(): NonNullable<typeof updateStateFeed> {
   return feed;
 }
 
-/** Watch the one update state. Called with the current state first (as soon
- *  as one is known), then on every change. Returns the unsubscribe. */
 export function watchUpdateState(cb: UpdateStateListener): () => void {
   if (!isElectron) return () => {};
   if (!updateStateFeed) updateStateFeed = startUpdateStateFeed();
@@ -966,30 +951,18 @@ export function watchUpdateState(cb: UpdateStateListener): () => void {
   };
 }
 
-/** The one apply: resolves whatever is pending by the minimal sufficient step,
- *  and inherits the running-tasks confirmation. On a
- *  shell that predates UPDATE_APPLY the step is chosen here from the composed
- *  state and sent over the channel that shell has. `open-download-page` is the
- *  caller's own action and never reaches here. */
+/** On a shell without UPDATE_APPLY the step is chosen here from the composed
+ *  state and sent over that shell's own channels. */
 export async function applyUpdates(hooks: { onProceed?: () => void; action?: UpdateAction } = {}): Promise<GuardedRestartResult> {
   if (!isElectron) return false;
-  // The banner names the action it rendered. Main runs it only if the state
-  // still offers it and answers 'stale' otherwise, so a Download or Retry
-  // click can never install and relaunch. It also lets the Restart behind a
-  // dismissed manual notice ask for the reload by name.
   const named = hooks.action !== undefined ? { action: hooks.action } : {};
   if (typeof bridge.applyUpdates === 'function') {
     return guardRestart(options => bridge.applyUpdates({ ...options, ...named }), hooks);
   }
-  // An older shell: the same decision, from the composed state.
   const local = localUpdateState();
   const state = local.getState();
-  // The same step decision and the same dispatch as main's UPDATE_APPLY
-  // (handleUnifiedApply), over this shell's own channels.
   return dispatchApplyStep<GuardedRestartResult>(resolveApplyAction(state, hooks.action), {
     relaunch: () => installShellAutoUpdate(hooks),
-    // Named by the OTA offer, not the banner version, which is the shell
-    // installer's whenever a manual notice exists.
     reload: () => reloadOnOlderShell(local, otaOfferVersion(local.getInput().otaOffer), state.server.status === 'ready', hooks),
     retry: async () => {
       const snapshot = await checkShellAutoUpdate();
@@ -1004,11 +977,8 @@ export async function applyUpdates(hooks: { onProceed?: () => void; action?: Upd
   });
 }
 
-/** A reload on a shell that predates UPDATE_APPLY. Its main pushes
- *  `downloading` only for a server apply, so the composed state shows the
- *  progress from here: at once for a UI-only reload, which never asks, and
- *  from the guard's onProceed otherwise. The offer is untouched; a cancel
- *  only takes the progress back. */
+/** That shell's main pushes `downloading` only for a server apply, so the
+ *  composed state shows the progress from here. */
 async function reloadOnOlderShell(
   local: UpdateCoordinator,
   version: string | undefined,
@@ -1028,20 +998,12 @@ async function reloadOnOlderShell(
   }
 }
 
-/** On a shell that predates UPDATE_STATE, what a manual check found is fed
- *  into the composed state here, as a newer main does itself. */
 function feedCheckSummary(summary: UpdateCheckSummary): void {
   if (shellCarriesUpdateState() || !summary.ok) return;
   const local = localUpdateState();
-  // The same offer rule main applies, over what this shell's summary can say
-  // (checkFromSummary): a channel it cannot vouch for keeps its offer.
   local.feed({ otaOffer: offerAfterCheck(local.getInput().otaOffer, checkFromSummary(summary)) });
-  // The summary's shell flag also stands for an auto-updater download in
-  // flight on this shell (a version and no installer URL). That is the
-  // auto-updater's to finish, not a reinstall to offer; feeding it as the
-  // manual notice would outlive the download and dangle as a stale
-  // "Download" once the snapshot moves on. A check that reports no shell
-  // update clears the notice, as main's does.
+  // The summary's shell flag also covers an auto-updater download in flight,
+  // which must not become a stale manual "Download" notice.
   if (summary.shellUpdateAvailable && summary.shellVersion && !shellAutoIsPending(local.getInput().shell)) {
     local.feed({ shellManual: { version: summary.shellVersion, downloadUrl: summary.shellDownloadUrl ?? null } });
   } else if (!summary.shellUpdateAvailable || shellAutoIsPending(local.getInput().shell)) {
@@ -1049,11 +1011,7 @@ function feedCheckSummary(summary: UpdateCheckSummary): void {
   }
 }
 
-// On-demand check for a newer UI, server, or shell version. Detection only —
-// never applies; call applyUpdates() to resolve what it found. Electron-only:
-// the web app has no updater (hosted instances update via redeploy, ENG-852),
-// so it resolves to a benign "up to date" and the Settings control is hidden
-// there.
+// Detection only. The web app has no updater, so it resolves to "up to date".
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const summary = await checkForUpdatesUnfed();
   feedCheckSummary(summary);

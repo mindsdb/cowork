@@ -737,10 +737,6 @@ export default function SettingsView({
   // from the section list (the top-bar back control drills out to it first).
   mobile = false,
   onClose,
-  // The one update state (src/shared/update-coordinator.ts) and its one
-  // action. Updates renders the same banner the sidebar does, regardless of
-  // banner dismissal: Settings is a deliberate visit, so it always reflects
-  // the true state.
   updateState = null,
   onUpdateAction,
 }) {

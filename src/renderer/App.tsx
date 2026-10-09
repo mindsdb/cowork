@@ -79,9 +79,6 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // The one update state: the loading screen's progress line, the
-  // too-old notice's shell snapshot and the shell telemetry all read it. The
-  // sidebar banner and Settings subscribe to the same state in CoworkApp.
   const [updateState, setUpdateState] = useState<UpdateCoordinatorState | null>(null);
   // ENG-749: progress line under the welcome orb while the loading screen is
   // held open through a boot-time update: an OTA, or the boot install of a
@@ -133,10 +130,8 @@ export default function App() {
     applyArcadePreset(skin);
   }, [theme, skin]);
 
-  // Mounted for the app's lifetime so the loading-screen line is live while
-  // init() holds on the gate (ENG-749), and so shell auto-update milestones
-  // reach PostHog from the first screen onward, onboarding included. The
-  // subscription pulls the current state first, so a reload recovers it.
+  // Mounted for the app's lifetime so shell milestones reach PostHog from the
+  // first screen, onboarding included.
   useEffect(() => {
     return host.watchUpdateState((state) => {
       setUpdateState(state);
