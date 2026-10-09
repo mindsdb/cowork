@@ -180,6 +180,38 @@ describe('fetchAccountIdentity — HubSpot MCP identity bridge', () => {
   });
 });
 
+describe('fetchAccountIdentity — Notion MCP identity bridge', () => {
+  it('forwards the workspace from the token response to the identity bridge', async () => {
+    let calledUrl = '';
+    let calledBody: unknown;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calledUrl = typeof url === 'string' ? url : url.toString();
+      calledBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return new Response(
+        JSON.stringify({ account_email: 'user@acme.com:ws-1', account_name: 'Acme Wiki' }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('notion', 'tok-123', {
+      workspace_id: 'ws-1', workspace_name: 'Acme Wiki', bot_id: 'ignored',
+    });
+
+    expect(new URL(calledUrl).pathname).toBe('/api/v1/connectors/oauth/notion/mcp/identity');
+    expect(calledBody).toEqual({ access_token: 'tok-123', workspace_id: 'ws-1', workspace_name: 'Acme Wiki' });
+    expect(identity).toEqual({ email: 'user@acme.com:ws-1', name: 'Acme Wiki' });
+  });
+
+  it('surfaces the bridge error detail, e.g. an admin-restricted workspace', async () => {
+    const detail = 'Your Notion workspace only allows AI apps your admin has approved. Ask your Notion admin to approve MindsHub Cowork, then connect again.';
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ detail }), { status: 403 })) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('notion', 'tok-123', { workspace_id: 'ws-1' });
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe(detail);
+  });
+});
+
 describe('buildRevokeRequest', () => {
   it('builds the generic RFC-7009 form-encoded shape by default', () => {
     const req = buildRevokeRequest('linear', 'refresh-tok', 'cid', 'secret');

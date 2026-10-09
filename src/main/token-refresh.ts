@@ -118,7 +118,13 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
 
   const refreshToken = await getRefreshToken(engine, accountEmail);
   if (!refreshToken) {
-    console.error(`[token-refresh] no refresh token in keychain for ${key}`);
+    // A provider can legitimately omit the refresh token (Notion sometimes
+    // does), so once the access token has expired the connection is dead.
+    if (state.expiresAt <= Date.now()) {
+      await patchToken(engine, state.name, { status: 'needs_reconnect' });
+      notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
+      stopRefreshLoop(engine, accountEmail);
+    }
     return;
   }
 
@@ -143,12 +149,21 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       if (clientSecret) refreshBody.set('client_secret', clientSecret);
     }
 
-    const res = await fetch(state.tokenUrl, {
+    const postRefresh = () => fetch(state.tokenUrl, {
       method: 'POST',
       headers: refreshHeaders,
       body: refreshBody.toString(),
     });
-
+    // Providers that rotate refresh tokens (Notion) accept the previous one
+    // only briefly, and replaying it later revokes the whole grant. So when
+    // the request fails with no response, retry once now, not next tick.
+    let res: Response;
+    try {
+      res = await postRefresh();
+    } catch (err) {
+      console.warn(`[token-refresh] refresh request failed for ${key}, retrying once:`, err);
+      res = await postRefresh();
+    }
 
     // Google's token endpoint returns 400 { error: "invalid_grant" } for a
     // revoked/expired refresh token (RFC 6749) — 401 is what its resource
