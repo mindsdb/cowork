@@ -5,6 +5,7 @@ import { Alert, Button, Card, Field, EmptyState, Select, Input, Textarea } from 
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
+import { host } from '../../platform/host';
 import {
   deleteDatasource,
   deleteMemory,
@@ -568,7 +569,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => host.openExternal(artifact.publishedUrl)}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
       )) : <EmptyState size="sm" title="No HTML artifacts found in output folders." />}
