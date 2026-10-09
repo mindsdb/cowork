@@ -599,7 +599,7 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
     <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label="Parallel Codex work">
       <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}</span>
       <div>
-        <small>Parallel work</small>
+        <small className="section-label">Parallel work</small>
         <strong>{event.title || 'Codex worker'}</strong>
         {typeof detail === 'string' && <p>{detail}</p>}
       </div>

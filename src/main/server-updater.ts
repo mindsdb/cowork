@@ -76,6 +76,13 @@ export interface ServerUpdateResult {
   previousVersion?: string;
   newVersion?: string;
   error?: string;
+  /** What a failed health check led to. Absent when nothing was changed on
+   *  disk, so the caller can tell a rollback from an install that never ran. */
+  outcome?: 'rolled-back' | 'rollback-failed' | 'restore-failed';
+  /** The move was the stream repair (a deliberate downgrade), not an update. */
+  repair?: boolean;
+  /** The move was an anton-only release; the versions name anton-agent. */
+  component?: 'anton-agent';
 }
 
 /** uv tools directory (mirrors server-deps.getUvToolsDir). */
@@ -741,7 +748,7 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     if (!upgrade.ok) {
       console.error('[server-updater] git reinstall failed:', upgrade.stderr);
       if (wasRunning) await startServer();
-      return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
+      return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: upgrade.stderr };
     }
 
     _notify?.({ phase: 'restarting' });
@@ -752,17 +759,20 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       console.error(`[server-updater] new commit failed health check (${reason}), rolling back...`);
       // Rollback by pinning the exact prior commits.
       const rollback = await installGit(uv, prevCowork, prevAnton);
+      let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
+          outcome = 'rolled-back';
           console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
         } else {
+          outcome = 'restore-failed';
           _notify?.({ phase: 'error', critical: true, error: `Server update failed; rolled back to cowork@${prevCowork.slice(0, 7)} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
         }
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update failed and rollback also failed (${rollback.stderr}). Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: prevCowork, error: `New commit failed to start: ${reason}` };
+      return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: `New commit failed to start: ${reason}`, outcome };
     }
 
     console.log('[server-updater] git update applied successfully');
@@ -815,6 +825,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
 
   // decision.action === 'update' — from/to are the non-null versions.
   const { from, to } = decision;
+  const repairFlag = repair.action === 'repair' ? { repair: true as const } : {};
   console.log(`[server-updater] update available: ${from} → ${to}`);
   return withServerMaintenance(async () => {
     const wasRunning = isServerRunning();
@@ -838,7 +849,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     if (!upgrade.ok) {
       console.error('[server-updater] upgrade failed:', upgrade.stderr);
       if (wasRunning) await startServer();
-      return { updated: false, previousVersion: from, error: upgrade.stderr };
+      return { updated: false, previousVersion: from, newVersion: to, error: upgrade.stderr, ...repairFlag };
     }
 
     _notify?.({ phase: 'restarting' });
@@ -848,21 +859,24 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
       console.error(`[server-updater] new version failed health check (${reason}), rolling back...`);
       const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
+      let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
+          outcome = 'rolled-back';
           console.log(`[server-updater] rolled back to ${from}`);
         } else {
+          outcome = 'restore-failed';
           _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed; rolled back to ${from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
         }
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed and rollback to ${from} also failed. Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${reason}` };
+      return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${reason}`, outcome, ...repairFlag };
     }
 
     console.log(`[server-updater] successfully updated to ${to}`);
-    return { updated: true, previousVersion: from, newVersion: to };
+    return { updated: true, previousVersion: from, newVersion: to, ...repairFlag };
   });
 }
 
@@ -887,7 +901,7 @@ async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from
     if (!install.ok) {
       console.error('[server-updater] anton upgrade failed:', install.stderr);
       if (wasRunning) await startServer();
-      return { updated: false, previousVersion: anton.from, error: install.stderr };
+      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: install.stderr, component: 'anton-agent' };
     }
 
     const result = await startServer();
@@ -899,20 +913,23 @@ async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from
         'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
         coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.from}`,
       ]);
+      let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
+          outcome = 'rolled-back';
           console.log(`[server-updater] rolled back to anton-agent ${anton.from}`);
         } else {
+          outcome = 'restore-failed';
           _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed; rolled back to ${anton.from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
         }
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed and rollback to ${anton.from} also failed. Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${reason}` };
+      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${reason}`, outcome, component: 'anton-agent' };
     }
 
     console.log(`[server-updater] successfully updated anton-agent to ${anton.to}`);
-    return { updated: true, previousVersion: anton.from, newVersion: anton.to };
+    return { updated: true, previousVersion: anton.from, newVersion: anton.to, component: 'anton-agent' };
   });
 }

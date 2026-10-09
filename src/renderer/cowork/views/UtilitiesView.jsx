@@ -219,7 +219,9 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
-      <div className="h-[14px]" />
+      {/* shrink-0: a flex child of the page column — without it the spacer
+          collapses when the content below needs the height. */}
+      <div className="h-[14px] shrink-0" />
       <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
@@ -324,10 +326,10 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
     <div className="flex flex-col gap-px">
-      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
+      <div className="section-label px-1 pb-1 flex items-center gap-[6px]">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-[10.5px]">· active</span>}
-        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
+        {isActive && <span className="text-accent">· active</span>}
+        <span className="ml-auto text-ink-4 tabular-nums">{files.length}</span>
       </div>
       {files.length === 0 ? (
         <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
