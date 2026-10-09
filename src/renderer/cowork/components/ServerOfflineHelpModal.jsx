@@ -239,7 +239,7 @@ export default function ServerOfflineHelpModal({
               backend isn't running, otherwise it's irrelevant noise.
               The grid auto-fits whichever tiles are present. */}
           <div
-            className="grid gap-[10px] font-[family-name:var(--font-mono)] text-xs"
+            className="grid gap-[10px] text-xs tabular-nums"
             style={{ gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))` }}
           >
             <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">

@@ -73,7 +73,7 @@ function MetaRow({ label, value }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="w-[100px] shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{label}</span>
-      <span className="truncate font-[family-name:var(--font-mono)] text-[12px] text-ink">{value || '—'}</span>
+      <span className="truncate text-[12px] text-ink">{value || '—'}</span>
     </div>
   );
 }

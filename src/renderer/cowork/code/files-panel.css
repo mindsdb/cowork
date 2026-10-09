@@ -45,9 +45,9 @@
 .code-files__pagination { min-height: 42px; padding: 5px 8px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; border-top: 1px solid var(--line); background: var(--surface); }
 .code-files__pagination .btn:first-child { justify-self: start; }
 .code-files__pagination .btn:last-child { justify-self: end; }
-.code-files__pagination > span { color: var(--ink-5); font: 9.5px var(--font-mono); }
+.code-files__pagination > span { color: var(--ink-5); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .code-files__footer { min-height: 52px; padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); background: var(--surface); }
-.code-files__footer > span { color: var(--ink-4); font: 10px var(--font-mono); }
+.code-files__footer > span { color: var(--ink-4); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
 body:has(.code-files) .floating-toggle-row { opacity: 0; pointer-events: none; }
 

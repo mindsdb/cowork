@@ -385,7 +385,7 @@ function ProjectDetail({
               {deleting && (
                 <span
                   aria-live="polite"
-                  className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0"
+                  className="text-xs text-ink-4 shrink-0"
                 >
                   Deleting…
                 </span>

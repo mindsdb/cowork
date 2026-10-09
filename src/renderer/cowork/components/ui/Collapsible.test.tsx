@@ -149,7 +149,8 @@ describe('Collapsible', () => {
     const trigger = screen.getByRole('button', { name: 'Checks 2' });
     const meta = screen.getByText('2');
     expect(trigger.contains(meta)).toBe(true);
-    expect(meta.className).toContain('font-mono');
+    expect(meta.className).toContain('text-2xs');
+    expect(meta.className).not.toContain('font-mono');
     rerender(
       <Collapsible title="Included guidance" meta="2 of 3">
         <p>body</p>

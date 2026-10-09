@@ -2142,10 +2142,8 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   50%      { opacity: 0.45; transform: scale(0.85); }
 }
 .status-text {
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
-  letter-spacing: 0.02em;
 }
 /* Both halves of the pill text now read from the pill-level CSS vars
    so the whole label shifts together with the on/off/busy state. */
@@ -3701,9 +3699,7 @@ body[data-theme="dark"] .phase-check-done {
 .turn-meta {
   margin-left: auto;
   margin-top: 4px; /* matches .turn-actions so both sit on one baseline */
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
   white-space: nowrap;
   color: var(--ink-4);
   opacity: 0;
@@ -3805,8 +3801,7 @@ body[data-theme="dark"] .phase-check-done {
 }
 .user-turn-attachment-name { color: var(--ink); }
 .user-turn-attachment-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-4);
 }
 

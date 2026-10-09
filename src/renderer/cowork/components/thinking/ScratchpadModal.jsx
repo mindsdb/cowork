@@ -159,7 +159,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   <Badge
                     variant={active ? 'accent' : 'muted'}
                     size="xs"
-                    className="min-w-[18px] justify-center font-mono tabular-nums"
+                    className="min-w-[18px] justify-center tabular-nums"
                   >{t.cells.length}</Badge>
                   {active && (
                     <span aria-hidden className="absolute left-2 right-2 bottom-[-1px] h-[2px] rounded-[1px] bg-accent" />
@@ -284,7 +284,7 @@ function CellView({ cell, index, total, focused = false }) {
           a single column (see globals.css) so output/code fill the
           full width. */}
       <div className="scratchpad-cell-grid grid items-start grid-cols-[auto_1fr] gap-x-3">
-        <span className="font-mono text-[10.5px] tracking-wider text-ink-4 pt-[2px]">
+        <span className="text-xs tabular-nums text-ink-4 pt-[2px]">
           step {index}/{total}
         </span>
 
@@ -306,13 +306,13 @@ function CellView({ cell, index, total, focused = false }) {
               missing — a "—" placeholder reads as "no data" without
               the meta strip going missing entirely. */}
           {!isToolCall && (
-            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+            <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
               <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
               <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
           {isToolCall && executionMs != null && (
-            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+            <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
               <span>duration: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
@@ -326,7 +326,7 @@ function CellView({ cell, index, total, focused = false }) {
               label={isToolCall ? 'Arguments' : 'Code'}
               right={!isToolCall && Array.isArray(data.packages) && data.packages.length > 0 ? (
                 <span
-                  className="font-mono text-[10.5px] text-ink-4 truncate max-w-[60%]"
+                  className="text-xs text-ink-4 truncate max-w-[60%]"
                   title={data.packages.join(', ')}
                 >
                   pkgs: <span className="text-ink-3">{data.packages.join(', ')}</span>

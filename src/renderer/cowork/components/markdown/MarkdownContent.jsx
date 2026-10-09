@@ -787,7 +787,7 @@ export function MarkdownContent({
       if (href.startsWith('engram:')) {
         return (
           <span
-            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-xs text-ink-3 leading-[1.4] no-underline"
             // Strip the children's <a> wrapper styling — react-markdown
             // hands us the linkified text as plain text children, so
             // we render straight into the chip.
