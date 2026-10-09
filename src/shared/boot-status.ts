@@ -3,12 +3,9 @@
 // an OTA, or a shell update an earlier launch downloaded and this launch
 // installs. The gate never applies a shell download in flight, so naming one
 // here announced an update the app then asked the user to apply by hand. The
-// copy is never completion-shaped, so it can't contradict a pending shell
-// update.
+// copy is never completion-shaped.
 //
-// Presentation only — it never decides *whether* to update. Reads the
-// coordinator state (update-coordinator.ts), the same one the sidebar banner
-// and Settings render from.
+// Presentation only — it never decides *whether* to update.
 
 import type { UpdateCoordinatorState } from './update-coordinator';
 
