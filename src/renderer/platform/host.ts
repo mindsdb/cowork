@@ -19,6 +19,7 @@ import type { UpdateCheckSummary } from '../../shared/update-types';
 import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
+import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
@@ -230,7 +231,11 @@ export async function openExternal(url: string): Promise<void> {
     await bridge.openExternal(url);
     return;
   }
-  window.open(url, '_blank', 'noopener,noreferrer');
+  // Same rule the Electron main process applies: callers pass URLs read from
+  // agent-writable files (an artifact's .published.json), so only http(s) may
+  // reach window.open.
+  const browserUrl = normalizeExternalBrowserUrl(url);
+  if (browserUrl) window.open(browserUrl, '_blank', 'noopener,noreferrer');
 }
 
 export async function openPath(path: string): Promise<{ ok: boolean; reason?: string }> {
