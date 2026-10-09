@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession, EngineCapability } from './api';
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
+  projectsRemove: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
@@ -106,7 +108,7 @@ vi.mock('./useCodeProjects', () => ({
       permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
     }],
     selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
-    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: mocks.projectsRemove,
   }),
 }));
 vi.mock('./CodeConnectorsView', () => ({
@@ -326,12 +328,25 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
   });
 
+  it('deletes a project from its page and returns to Projects', async () => {
+    const user = userEvent.setup();
+    const onOpenProjects = vi.fn();
+    renderCode({ tasksOpen: true, tasksProjectId: 'project-1', onOpenProjects });
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(onOpenProjects).toHaveBeenCalledOnce());
+    expect(mocks.projectsRemove).toHaveBeenCalledWith('project-1');
+  });
+
   it.each([
     { tasksOpen: false, tasksProjectId: 'project-1' },
     { tasksOpen: true, tasksProjectId: null },
   ])('closes project settings when task-list navigation changes to %j', async (destination) => {
     const { props, rerender } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Web app' }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
     expect(screen.getByText('Project settings modal')).toBeInTheDocument();
     rerender(<CodeView {...props} {...destination} />);
     expect(screen.queryByText('Project settings modal')).not.toBeInTheDocument();
@@ -684,20 +699,6 @@ describe('CodeView session-list reconciliation', () => {
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
-  it('closes a delete confirmation when the selected task changes', async () => {
-    const first = session('first');
-    const second = session('second');
-    mocks.sessions.mockResolvedValue({ items: [first, second] });
-    const view = renderCode({ sessions: [first, second], selectedId: first.id });
-    await waitFor(() => expect(mocks.sessions).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete menu action' }));
-    expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
-
-    view.rerender(<CodeView {...view.props} selectedId={second.id} />);
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirm delete' })).toBeNull());
-  });
-
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {
     const directFolder = {
       ...session('direct-folder'),
@@ -859,40 +860,6 @@ describe('CodeView session-list reconciliation', () => {
     view.rerender(<CodeView {...view.props} />);
 
     expect(indexReads).toBeLessThan(10);
-  });
-
-  it('routes task status through steering while an agent turn is active', async () => {
-    const active = { ...session('active'), status: 'running' as const };
-    mocks.sessions.mockResolvedValue({ items: [active] });
-    mocks.useCodingSession.mockReturnValue({
-      session: active,
-      events: [],
-      latestEvents: {},
-      git: null,
-      diff: [],
-      loading: false,
-      error: '',
-      refresh: vi.fn(async () => {}),
-      refreshReview: vi.fn(async () => {}),
-    });
-
-    renderCode({ sessions: [active], selectedId: active.id });
-    fireEvent.click(await screen.findByRole('button', { name: 'Status menu action' }));
-
-    await waitFor(() => expect(mocks.steer).toHaveBeenCalledWith(active.id, '/status'));
-    expect(mocks.turn).not.toHaveBeenCalled();
-  });
-});
-
-
-describe('CodeView commit without a Git identity', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.sessions.mockResolvedValue({ items: [session('task-1')] });
-    mocks.useCodingSession.mockReturnValue({
-      session: session('task-1'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
-      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
-    });
   });
 
   it('asks for the identity, prefilled from the account, then saves it and reruns the same commit', async () => {

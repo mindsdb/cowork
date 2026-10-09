@@ -34,6 +34,7 @@ import {
   Settings,
   UsersRound,
 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import Menu from './ui/Menu';
 import Spinner from './ui/Spinner';
 import { useToastManager } from './ui/Toast';
@@ -49,12 +50,13 @@ import {
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
+  consoleUrlFor,
 } from '../../lib/mindsUrls';
 
-const icon = (I) => <I size={14} strokeWidth={1.5} aria-hidden="true" />;
+const icon = (I) => <Icon of={I} size={14} />;
 
 // Right-aligned ↗ on items that leave the app for the OS browser.
-const EXTERNAL_HINT = <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />;
+const EXTERNAL_HINT = <Icon of={ArrowUpRight} size={12} />;
 const OPENS_IN_BROWSER = 'Opens in your browser';
 
 // `beforeOpen` runs just before the jump out, for the one destination that is
@@ -118,6 +120,14 @@ export function UserMenu({ user, onOpenSettings }) {
   // directly here is what made the row paint `Personal` and then swap to auth's
   // long `<email>'s organization` (ENG-2109).
   const activeOrgName = organizationLabel(activeOrg) || user.org || null;
+  /* Console links say which organization and account they were opened for
+     (ENG-3274), so the browser lands on this organization's page rather than
+     whatever its own session has active. The listing's id is the one the
+     switch uses; the token claim is the fallback before it lands. */
+  const consoleLink = (url) => consoleUrlFor(url, {
+    organizationId: activeOrg?.id ?? user.orgId ?? null,
+    subject: user.sub ?? null,
+  });
   // The console heads its menu with the email; fall back to whatever else names
   // the account so the header is never empty.
   const identity = user.email || user.username || user.name || null;
@@ -157,10 +167,10 @@ export function UserMenu({ user, onOpenSettings }) {
   };
 
   const sectionHeading = (text) => (
-    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+    <div className="section-label">{text}</div>
   );
 
-  const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+  const activeRowHint = <Icon of={Check} size={14} className="text-accent" />;
   // Same slot as the check, so the row acknowledges the click in the place the
   // answer will appear. Labelled for screen readers, which the check is not:
   // the check reads from the row it sits on, where this reports a state.
@@ -247,13 +257,13 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL, () => trackBillingOpened('nav')),
-    externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
+    externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
     externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a
     // browser anyway. Shown whenever there is an organization to manage.
-    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', MINDS_GENERAL_URL)] : []),
+    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', consoleLink(MINDS_GENERAL_URL))] : []),
     // Logout on both shells: Electron clears the refresh token + stored keys via
     // the bridge; web ends the Keycloak browser session (host.logout()). Both
     // funnel through useLogout() and the ConfirmModal below.
@@ -288,7 +298,7 @@ export function UserMenu({ user, onOpenSettings }) {
         )}
       </span>
       <span className="inline-flex shrink-0 text-ink-3">
-        <EllipsisVertical size={15} strokeWidth={1.5} aria-hidden="true" />
+        <Icon of={EllipsisVertical} size={16} />
       </span>
     </button>
   );

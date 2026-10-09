@@ -30,6 +30,7 @@ import {
   shellAutoUpdateIsActive,
   shellManualNoticeIsFallback,
   summarizeUpdateCheck,
+  decideBootShellInstall,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -1074,5 +1075,44 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
       shellUpdateAvailable: true,
       shellVersion: '2.26.7.20.1',
     });
+  });
+});
+
+describe('decideBootShellInstall (ENG-2764)', () => {
+  const stranded = {
+    phase: 'ready-to-install',
+    mode: 'auto',
+    targetVersion: '25.9.2',
+    bytesTransferred: false,
+    priorAttemptTarget: null,
+  };
+
+  it('installs a stranded update: ready, auto, and no bytes moved this launch', () => {
+    expect(decideBootShellInstall(stranded)).toBe(true);
+    expect(decideBootShellInstall({ phase: 'ready-to-install', mode: 'auto' })).toBe(true);
+  });
+
+  it('never fires before the download is ready', () => {
+    for (const phase of ['idle', 'checking', 'available', 'downloading', 'installing', 'complete', 'failed', 'disabled']) {
+      expect(decideBootShellInstall({ ...stranded, phase })).toBe(false);
+    }
+  });
+
+  it('leaves an update downloaded during this launch to the banner', () => {
+    expect(decideBootShellInstall({ ...stranded, bytesTransferred: true })).toBe(false);
+  });
+
+  it('respects manual mode as an explicit "never act on your own"', () => {
+    expect(decideBootShellInstall({ ...stranded, mode: 'manual' })).toBe(false);
+  });
+
+  it('does not relaunch into the same failed install twice', () => {
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '25.9.2' })).toBe(false);
+  });
+
+  it('does retry once a newer target supersedes the failed one', () => {
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '25.9.1' })).toBe(true);
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '' })).toBe(true);
+    expect(decideBootShellInstall({ ...stranded, targetVersion: undefined, priorAttemptTarget: '25.9.2' })).toBe(true);
   });
 });

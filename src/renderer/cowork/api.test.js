@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -286,6 +286,86 @@ describe('updateSettings', () => {
   });
 });
 
+// App merges every settings read into its state. A read that settled after a
+// later write would put the pre-write value back once the editor's draft clears.
+describe('settings reads and writes settle in the order they started', () => {
+  // A request left held after a failure would block the shared settings lock
+  // for every later test in this file.
+  let releaseFirstRead;
+  let releaseWrite;
+  afterEach(() => {
+    releaseFirstRead?.();
+    releaseWrite?.();
+    releaseFirstRead = undefined;
+    releaseWrite = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  it('settles a read started before a write first, with the pre-write value', async () => {
+    let stored = 'Hello';
+    const methods = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      methods.push(method);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        stored = JSON.parse(options.body).values.nav_title;
+        return jsonRes({ updated: ['nav_title'] });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        if (!releaseFirstRead) await new Promise((resolve) => { releaseFirstRead = resolve; });
+        return jsonRes([{ key: 'nav_title', value: stored }]);
+      }
+      return jsonRes({});
+    }));
+
+    const settled = [];
+    const read = fetchSettings().then((s) => { settled.push('read'); return s; });
+    const write = updateSettings({ navTitle: 'Hello World' }).then((r) => { settled.push('write'); return r; });
+    await vi.waitFor(() => expect(releaseFirstRead).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(methods).not.toContain('PUT');
+
+    releaseFirstRead();
+    const [readResult, writeResult] = await Promise.all([read, write]);
+    expect(settled).toEqual(['read', 'write']);
+    expect(readResult.navTitle).toBe('Hello');
+    expect(writeResult.settings.navTitle).toBe('Hello World');
+    expect(stored).toBe('Hello World');
+  });
+
+  it('settles a write started before a read first, so the read sees the written value', async () => {
+    let stored = 'Hello';
+    const methods = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      methods.push(method);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        if (!releaseWrite) await new Promise((resolve) => { releaseWrite = resolve; });
+        stored = JSON.parse(options.body).values.nav_title;
+        return jsonRes({ updated: ['nav_title'] });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) return jsonRes([{ key: 'nav_title', value: stored }]);
+      return jsonRes({});
+    }));
+    await fetchSettings();
+    methods.length = 0;
+
+    const settled = [];
+    const write = updateSettings({ navTitle: 'Hello World' }).then((r) => { settled.push('write'); return r; });
+    const read = fetchSettings().then((s) => { settled.push('read'); return s; });
+    await vi.waitFor(() => expect(releaseWrite).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(methods).toEqual(['PUT']);
+
+    releaseWrite();
+    const [, readResult] = await Promise.all([write, read]);
+    expect(settled).toEqual(['write', 'read']);
+    expect(readResult.navTitle).toBe('Hello World');
+  });
+});
+
 // A MindsHub key the user typed must not be stored by the sidecar at all. The
 // Settings form writes it twice from one keystroke — the `minds_api_key` row
 // and the raw value inside the provider card — so both halves have to be
@@ -497,7 +577,8 @@ describe('fetchSession error hydration (ENG-1304)', () => {
   const stubEndpoints = (items) => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const u = String(url);
-      const body = u.endsWith('/items') ? items : conversationMeta;
+      // Not endsWith: fetchSession now appends a query string (?limit=…).
+      const body = u.includes('/items') ? items : conversationMeta;
       return {
         ok: true,
         status: 200,
@@ -535,6 +616,15 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err).toBeTruthy();
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
+  });
+
+  it.each(['model_timeout', 'stalled'])('keeps a %s failure as an error row with its code', async (code) => {
+    stubEndpoints(failedTurn(code, 'The turn ended.'));
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err).toBeTruthy();
+    expect(err.code).toBe(code);
   });
 
   it('carries the request id onto a generic error row', async () => {
@@ -675,6 +765,165 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
+/* A question refused before the stream starts: cowork-server answers 503 when
+   no database connection frees in time, and 409 when the conversation already
+   has a running turn. The failure has to keep the status, the body's code and
+   Retry-After, so the chat can show the busy card's countdown, and the body's
+   sentence in whatever shape it arrives. Real Response objects, because the
+   body can only be read once. */
+describe('streamNewSession: a refusal before the stream', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body, headers = {}) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    {
+      status,
+      headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json', ...headers },
+    },
+  ));
+
+  const failure = () => new Promise((resolve) => {
+    streamNewSession('hi', {
+      onDone: () => resolve(null),
+      onError: (message, event) => resolve({ message, event }),
+    });
+  });
+
+  it("keeps a busy refusal's status, code and delay-seconds Retry-After", async () => {
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    const before = Date.now();
+    const { message, event } = await failure();
+    const after = Date.now();
+
+    expect(message).toBe(BUSY);
+    expect(event).toMatchObject({ code: 'server_busy', http_status: 503, retry_after: 5 });
+    const retryAt = Date.parse(event.retry_at);
+    expect(retryAt).toBeGreaterThanOrEqual(before + 5000);
+    expect(retryAt).toBeLessThanOrEqual(after + 5000);
+  });
+
+  it('reads an HTTP-date Retry-After as the instant itself', async () => {
+    // An HTTP-date has whole seconds only.
+    const at = new Date(Math.ceil(Date.now() / 1000) * 1000 + 30_000);
+    vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': at.toUTCString() }));
+
+    const before = Date.now();
+    const { event } = await failure();
+    const after = Date.now();
+
+    expect(event.retry_at).toBe(at.toISOString());
+    expect(event.retry_after).toBeGreaterThanOrEqual(Math.ceil((at.getTime() - after) / 1000));
+    expect(event.retry_after).toBeLessThanOrEqual(Math.ceil((at.getTime() - before) / 1000));
+  });
+
+  it("keeps a second question's 409 and its sentence, with no wait to count down", async () => {
+    vi.stubGlobal('fetch', refuse(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe(SECOND);
+    expect(event).toEqual({ code: 'turn_in_progress', http_status: 409, retry_after: null, retry_at: null });
+  });
+
+  it("shows an object detail's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', refuse(403, {
+      detail: { code: 'permission_denied', message: 'Your current role does not allow this action.' },
+    }));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Your current role does not allow this action.');
+    expect(event).toMatchObject({ code: 'permission_denied', http_status: 403 });
+  });
+
+  it('shows a plain-text error body instead of the status-line fallback', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('Internal Server Error');
+    expect(event).toMatchObject({ code: 'stream_error', http_status: 500 });
+  });
+});
+
+/* cowork-server answers a permission refusal with detail {code, message}. Every
+   request that throws on a refusal shows that message, never [object Object],
+   and keeps the status for callers that branch on it. */
+describe('a refused request with an object detail', () => {
+  const DENIED = 'Your current role does not allow this action.';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const refuse = (status, body) => vi.fn(async () => new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    { status, headers: { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json' } },
+  ));
+  const denied = () => refuse(403, { detail: { code: 'permission_denied', message: DENIED } });
+
+  it("deleteArtifact shows the 403's message, not [object Object]", async () => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe('permission_denied');
+  });
+
+  it.each([
+    ['unpublishArtifact', () => unpublishArtifact('/tmp/general/dash')],
+    ['deleteProject', () => deleteProject({ id: 'proj-1', name: 'general' })],
+    ['writeProjectFile', () => writeProjectFile('general', 'notes.md', 'hi')],
+    ['uploadProjectFiles', () => uploadProjectFiles('general', [new File(['x'], 'a.txt')])],
+    ['deleteProjectFile', () => deleteProjectFile('general', 'notes.md')],
+    ['deleteConversationTurn', () => deleteConversationTurn('conv-1', 0)],
+    ['deleteConversation', () => deleteConversation('conv-1')],
+    ['req (deleteAttachment)', () => deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' })],
+  ])("%s shows the 403's message and keeps its status", async (_name, call) => {
+    vi.stubGlobal('fetch', denied());
+
+    const err = await call().catch((e) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe(DENIED);
+    expect(err.status).toBe(403);
+  });
+
+  it('req shows a plain-text error body, which a JSON read used to consume', async () => {
+    vi.stubGlobal('fetch', refuse(500, 'Internal Server Error'));
+
+    const err = await deleteAttachment('att-1', { projectName: 'general', sessionId: 'conv-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Internal Server Error');
+    expect(err.status).toBe(500);
+  });
+
+  it("req joins a validation list's messages", async () => {
+    vi.stubGlobal('fetch', refuse(422, { detail: [{ msg: 'field required' }, { msg: 'not a number' }] }));
+
+    const err = await deleteAttachment('att-1').catch((e) => e);
+
+    expect(err.message).toBe('field required, not a number');
+    expect(err.status).toBe(422);
+  });
+
+  it('falls back to the status line when the body says nothing', async () => {
+    vi.stubGlobal('fetch', refuse(502, ''));
+
+    const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
+
+    expect(err.message).toBe('Delete failed (502)');
+  });
+});
+
 // The connection can close cleanly (no thrown error) with no
 // response.completed/failed — that used to fire onDone, rendering a
 // partial answer as finished.
@@ -769,6 +1018,61 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
   });
 });
 
+/* Every send waits on this check first. With no bound, a server that holds
+   the request open leaves Send busy with no message, for every tester at once. */
+describe('fetchHealth gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('reports offline after SHORT_REQUEST_TIMEOUT_MS instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    const fetchMock = _abortAwareFetch(10 * 60_000, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
+  });
+
+  /* An expired token waits for its refresh, and a stalled Keycloak never
+     finishes it, so the deadline has to cover the token wait too. */
+  it('reports offline at SHORT_REQUEST_TIMEOUT_MS while the access token never arrives', async () => {
+    vi.useFakeTimers();
+    hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(settled).toEqual({ status: 'offline', anton_available: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers normally when a valid token arrives inside the deadline', async () => {
+    vi.useFakeTimers();
+    __resetOrganizationRequestBoundaryForTests();
+    const token = accessToken(ORGANIZATION_A);
+    hostMock.getAccessToken.mockImplementationOnce(
+      () => new Promise((resolve) => { setTimeout(() => resolve(token), SHORT_REQUEST_TIMEOUT_MS - 1_000); }),
+    );
+    const fetchMock = _abortAwareFetch(0, { status: 'ok' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let settled = null;
+    fetchHealth().then((health) => { settled = health; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(settled).toEqual({ status: 'ok' });
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${token}`);
+  });
+});
+
 describe('fetchHealth is not affected by an analytics failure (ENG-1689)', () => {
   it('still reports a healthy server when the analytics setter throws', async () => {
     // The setter runs inside fetchHealth's try, so without isolation an
@@ -846,7 +1150,8 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
         }));
     const metaFn = mk(metaSpec);
     const itemsFn = mk(itemsSpec);
-    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).endsWith('/items') ? itemsFn() : metaFn())));
+    // Not endsWith: fetchSessionResult now appends a query string (?limit=…).
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).includes('/items') ? itemsFn() : metaFn())));
   };
 
   afterEach(() => vi.unstubAllGlobals());
@@ -960,6 +1265,46 @@ describe('cancelResponse', () => {
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
   });
+
+  /* Stop sends no reason, so the server keeps saving it as a Stop. A caller
+   * that passes a reason gets it in the body; the idle stall sends no cancel. */
+  const cancelBody = async (...args) => {
+    const fetchMock = vi.fn(async () => jsonRes({ cancelled: true, conversation_id: 'conv-a' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await cancelResponse(...args);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/responses\/cancel$/);
+    expect(options.method).toBe('POST');
+    return JSON.parse(options.body);
+  };
+
+  it('sends only the conversation id when no reason is given, as Stop does', async () => {
+    expect(await cancelBody('conv-a')).toEqual({ conversation_id: 'conv-a' });
+    expect(await cancelBody('conv-a', {})).toEqual({ conversation_id: 'conv-a' });
+  });
+
+  it('adds the reason to the body when one is given', async () => {
+    expect(await cancelBody('conv-a', { reason: 'stalled' })).toEqual({
+      conversation_id: 'conv-a', reason: 'stalled',
+    });
+  });
+});
+
+describe('cancelScratchpad', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('gives up instead of hanging forever on a connection that never settles', async () => {
+    // Stop awaits this before it drops the stopped turn's queue and live row,
+    // so a hung request left that conversation marked as stopping for good.
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(60_000, { ok: true }));
+
+    const resultPromise = cancelScratchpad('pad-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'gone', name: 'pad-a' });
+  });
 });
 
 // The 10s bound is opt-in, not a blanket default — some endpoints have their
@@ -997,7 +1342,7 @@ describe('req() timeout scoping', () => {
   it('fetchSession does not time out by default either', async () => {
     vi.useFakeTimers();
     const delayed = _abortAwareFetch(12_000, { id: 'c1' });
-    vi.stubGlobal('fetch', vi.fn((url, options) => String(url).endsWith('/items')
+    vi.stubGlobal('fetch', vi.fn((url, options) => String(url).includes('/items')
       ? _abortAwareFetch(12_000, [])(url, options)
       : delayed(url, options)));
 
@@ -1010,7 +1355,7 @@ describe('req() timeout scoping', () => {
   it('does not replace history with an empty transcript when only the items request times out', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((url, options) => {
-      if (!String(url).endsWith('/items')) return Promise.resolve(jsonRes({ id: 'c1' }));
+      if (!String(url).includes('/items')) return Promise.resolve(jsonRes({ id: 'c1' }));
       return new Promise((_resolve, reject) => {
         options.signal.addEventListener('abort', () => {
           const err = new Error('aborted');
@@ -1154,5 +1499,137 @@ describe('fetchArtifactStatus', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain('/artifacts/status?path=');
     expect(out.publishedUrl).toBe('https://x/a');
+  });
+});
+
+// ─── /items pagination — fetchSession/fetchSessionResult opt into
+// the cursor-paginated envelope via `limit`, and fetchOlderMessages walks
+// further back. The server response is normalized either way: the paginated
+// envelope ({items, hasMore, nextBefore}), or (a version-skewed server, or
+// any other unparameterized caller's shape) a bare array treated as complete.
+describe('paginated /items', () => {
+  const meta = { id: 'c1', title: 'T', project: null };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('fetchSession requests /items with a limit param', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? { items: [], hasMore: false, nextBefore: null } : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    await fetchSession('c1');
+
+    const itemsCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/items'));
+    expect(itemsCall).toBeTruthy();
+    expect(String(itemsCall[0])).toMatch(/\/items\?.*limit=\d+/);
+  });
+
+  it('fetchSession carries hasMoreMessages/messagesCursor from the envelope', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [{ role: 'user', content: 'hi' }], hasMore: true, nextBefore: 'cursor-1' }
+        : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    const task = await fetchSession('c1');
+
+    expect(task.hasMoreMessages).toBe(true);
+    expect(task.messagesCursor).toBe('cursor-1');
+    expect(task.messages).toHaveLength(1);
+  });
+
+  it('fetchSession falls back to a bare array as a complete, non-paginated result', async () => {
+    // Back-compat: a version-skewed server (or the no-params shape) during a
+    // rolling deploy. Must not silently read as an empty transcript.
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? [{ role: 'user', content: 'hi' }] : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    const task = await fetchSession('c1');
+
+    expect(task.messages).toHaveLength(1);
+    expect(task.hasMoreMessages).toBe(false);
+    expect(task.messagesCursor).toBeNull();
+  });
+
+  it('fetchSessionResult carries hasMoreMessages/messagesCursor through too', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [{ role: 'user', content: 'hi' }], hasMore: true, nextBefore: 'cursor-9' }
+        : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSessionResult } = await import('./api');
+
+    const res = await fetchSessionResult('c1');
+
+    expect(res.status).toBe('ok');
+    expect(res.task.hasMoreMessages).toBe(true);
+    expect(res.task.messagesCursor).toBe('cursor-9');
+  });
+
+  it('fetchOlderMessages requests the given cursor and returns the next page', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({
+      items: [{ role: 'user', content: 'older' }], hasMore: false, nextBefore: null,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchOlderMessages } = await import('./api');
+
+    const page = await fetchOlderMessages('c1', 'cursor-1');
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/items\?.*before=cursor-1/);
+    expect(page.messages).toEqual([{ role: 'user', content: 'older' }]);
+    expect(page.hasMoreMessages).toBe(false);
+    expect(page.messagesCursor).toBeNull();
+  });
+
+  it('fetchOlderMessages returns null without a cursor (nothing more to load)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchOlderMessages } = await import('./api');
+
+    expect(await fetchOlderMessages('c1', null)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fetchOlderMessages returns null on a failed request', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const { fetchOlderMessages } = await import('./api');
+
+    expect(await fetchOlderMessages('c1', 'cursor-1')).toBeNull();
+  });
+});
+
+describe('updateSettings committed result', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns accepted values when the post-write read fails without offline defaults', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      if ((options.method || 'GET') === 'PUT') return jsonRes({ updated: ['greeting'] });
+      return jsonRes({ detail: 'offline' }, false, 503);
+    }));
+    const result = await updateSettings({ greeting: 'Confirmed greeting', tone: 'ignored' });
+    expect(result.status).toBe('ok');
+    expect(result.settings).toBeNull();
+    expect(result.committedPatch).toEqual({ greeting: 'Confirmed greeting' });
+  });
+
+  it('returns canonical values without requiring successful verification', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const u = String(url);
+      if ((options.method || 'GET') === 'PUT') return jsonRes({ updated: ['greeting'] });
+      if (u.endsWith('/settings/')) return jsonRes([{ key: 'greeting', value: 'Canonical greeting' }]);
+      if (u.includes('/settings/validate')) return jsonRes({ detail: 'validation unavailable' }, false, 503);
+      return jsonRes({});
+    }));
+    const result = await updateSettings({ greeting: 'Submitted greeting' });
+    expect(result.status).toBe('ok');
+    expect(result.settings.greeting).toBe('Canonical greeting');
   });
 });

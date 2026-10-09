@@ -1,18 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { Icon, type IconSize } from './cowork/components/ui/Icon';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import CoworkApp from './CoworkApp';
 import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
+import RestartConfirmHost from './RestartConfirmHost';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
+import { ShellTooOldNotice } from './ShellTooOldNotice';
+import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
-import { trackBootScreenResolved, trackShellUpdatePhase } from './cowork/lib/analytics';
+import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
@@ -52,12 +56,12 @@ function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
 }
 
-function SunIcon({ size = 15 }: { size?: number }) {
-  return <Sun size={size} strokeWidth={1.5} aria-hidden="true" />;
+function SunIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Sun} size={size} />;
 }
 
-function MoonIcon({ size = 15 }: { size?: number }) {
-  return <Moon size={size} strokeWidth={1.5} aria-hidden="true" />;
+function MoonIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Moon} size={size} />;
 }
 
 export default function App() {
@@ -74,20 +78,26 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // ENG-749/ENG-2296: progress line under the welcome orb while the loading
-  // screen is held open through a boot-time update, so a download isn't a silent
-  // stall. Derived from the OTA phase, the shell-auto phase, and the manual
-  // shell-reinstall notice (deriveBootStatus) so the overlay never shows the
-  // completion-ish "Almost ready…" while a shell update still needs a relaunch
-  // to take effect.
+  // ENG-749: progress line under the welcome orb while the loading screen is
+  // held open through a boot-time update: an OTA, or the boot install of a
+  // stranded shell update.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const [shellPhase, setShellPhase] = useState<string | null>(null);
-  const [manualShellPending, setManualShellPending] = useState(false);
-  const bootStatus = deriveBootStatus({
-    ota: { phase: otaPhase },
-    shell: { phase: shellPhase },
-    manualShellPending,
-  });
+  const [shellAuto, setShellAuto] = useState<ShellAutoUpdateSnapshot | null>(null);
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } });
+  // ENG-1047: is the installed shell inside the supported desktop window? The
+  // UI hot-updates while the shell waits for a relaunch, so a newer UI on a
+  // shell weeks old is routine — and until now silent. Resolved once per
+  // launch from the bridge and the live manifest; null means show nothing.
+  // Dismissal is this mount's state only, so the notice is back next launch.
+  const [shellSupport, setShellSupport] = useState<ShellSupportVerdict | null>(null);
+  const [tooOldDismissed, setTooOldDismissed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellSupport()
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -122,43 +132,28 @@ export default function App() {
 
   // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
   // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` isn't an OTA phase but the manual shell-reinstall notice
-  // (ENG-849), so route it to the pending flag — never claim completion while a
-  // reinstall is outstanding — rather than the OTA phase (ENG-2296).
+  // `shell-available` is the manual reinstall notice (ENG-849), which the
+  // sidebar banner owns.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') { setManualShellPending(true); return; }
+      if (status?.phase === 'shell-available') return;
       setOtaPhase(status?.phase ?? null);
     });
   }, []);
 
-  // Also reflect shell auto-update progress (ENG-2296): the boot line was
-  // previously blind to the shell channel and could claim "Almost ready…" while
-  // a shell relaunch was still pending. Pull once for reload recovery, then
-  // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  // Report shell auto-update milestones to PostHog, and feed the boot line.
+  // Pull once for reload recovery, then subscribe. No-ops in web.
   // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;
     const receive = (snapshot: ShellAutoUpdateSnapshot) => {
       if (cancelled) return;
-      setShellPhase(snapshot?.phase ?? null);
+      setShellAuto(snapshot ?? null);
       trackShellUpdatePhase(snapshot);
     };
     host.getShellAutoUpdate().then(receive).catch(() => {});
     const unsubscribe = host.onShellAutoUpdate(receive);
     return () => { cancelled = true; unsubscribe(); };
-  }, []);
-
-  // Recover the manual shell-reinstall notice after an OTA reload drops the
-  // original `shell-available` push, and surface it on old shells that never
-  // push it at all (ENG-1103 manifest fallback in getShellUpdate). Latch-only:
-  // a null result never clears a notice a push already established.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate()
-      .then((update) => { if (!cancelled && update) setManualShellPending(true); })
-      .catch(() => {});
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -199,6 +194,9 @@ export default function App() {
       // healthy server is measurable (app_installed only fires once the server
       // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
       void trackBootScreenResolved(target);
+      // The UI/server update outcomes of the launch that just reloaded into
+      // this renderer. After the boot gate, so a boot-time apply is in it.
+      void drainUpdateJournal();
       // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
       // start — but skip that floor on a web refresh, where it was pure latency
       // on every reload (ENG-1232).
@@ -325,6 +323,11 @@ export default function App() {
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
 
+      {/* The restart confirmation behind every update Restart (ENG-3291). Mounted
+          here for the same reason as the ownership dialog: it must reach a
+          restart asked from any page, including onboarding. */}
+      <RestartConfirmHost />
+
       {ownership && (
         <AccountOwnershipModal
           open
@@ -336,6 +339,20 @@ export default function App() {
       )}
 
       {page === 'loading' && <WelcomeLoading status={bootStatus} />}
+
+      {/* Too-old shell notice (ENG-1047). Mounted here, like the ownership
+          dialog above, so it reaches the first screen after launch whether
+          that is onboarding or the chat app. Hidden only while the welcome
+          orb is up, and on web, stable and preview, where the verdict is
+          never `too-old`. */}
+      {page !== 'loading' && shellSupport?.status === 'too-old' && !tooOldDismissed && (
+        <ShellTooOldNotice
+          verdict={shellSupport}
+          shellAuto={shellAuto}
+          onDismiss={() => setTooOldDismissed(true)}
+          topOffset={isMac ? 40 : 12}
+        />
+      )}
 
       {page === 'auth' && (
         <OnboardingScreen onComplete={handleAuthComplete} />
@@ -382,7 +399,7 @@ export default function App() {
             className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
-            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            {theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
           </button>
         </Tooltip>
       )}

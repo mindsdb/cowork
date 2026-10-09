@@ -679,6 +679,23 @@ function backfillProviders(result) {
  *  transient UI-only state (e.g. provider test results). */
 const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons']);
 
+// Accepted values remain usable if the canonical post-write read fails. Only
+// acknowledged keys enter shared state, and credentials keep the read-side mask.
+export function committedSettingsPatch(patch, serverKeys) {
+  const confirmed = {};
+  for (const serverKey of serverKeys) {
+    const key = SETTINGS_KEY_MAP[serverKey];
+    if (!key || !(key in patch) || WRITE_SKIP.has(key)) continue;
+    const value = patch[key];
+    if (key.endsWith('ApiKey')) confirmed[key] = value ? '***' : '';
+    else if (key === 'providers' && Array.isArray(value)) {
+      confirmed[key] = value.map((p) => ({ ...p, apiKey: p.apiKey ? '***' : '' }));
+    } else confirmed[key] = value;
+  }
+  if ('planningModel' in confirmed) confirmed.defaultModel = confirmed.planningModel;
+  return confirmed;
+}
+
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {

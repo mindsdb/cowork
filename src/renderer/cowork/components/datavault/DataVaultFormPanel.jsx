@@ -574,7 +574,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // route via `wireMethodId` so modify-flow submissions
           // resolve to the saved method's real id, not the
           // synthetic `__edit_current__`.
-          onSubmit({
+          await onSubmit({
             formId: spec.form_id,
             formSpec: wireMethodId
               ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
@@ -615,7 +615,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       // The agent does the validation / save / patch decisions
       // server-side without round-tripping through the LLM.
       if (onSubmit) {
-        onSubmit({
+        await onSubmit({
           formId: spec.form_id,
           // Spread the chosen auth_method into the spec we send so
           // the server-side agent reads it from `spec.auth_method`
@@ -633,9 +633,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           name: connectionName,
           method: wireMethodId || null,
         });
-        // Don't await — the stream pumps events into ChatView state
-        // directly. We can drop the local busy flag; the Composer's
-        // streaming indicator picks up from here.
+        // The stream itself is not awaited; it pumps events into ChatView
+        // state directly. Only a submission the host holds back returns a
+        // promise, and the panel stays busy until that one has started.
       } else {
         // Legacy fallback — used by any host that hasn't wired
         // onSubmit (older tests, embeds). Stages the values without
@@ -719,8 +719,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         boxShadow: highlighted
           ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
           : 'none',
-        transition: 'box-shadow 180ms ease',
-        animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+        transition: 'box-shadow var(--dur-hover) ease',
+        animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
       }}
     >
       {/* Header bar — during the connect flow it's the
@@ -741,7 +741,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             style={{
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
-              transition: 'background 120ms ease',
+              transition: 'background var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -765,11 +765,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onClick={handleClose}
             aria-label="Close form"
             className="shrink-0 w-[38px] self-stretch bg-transparent border-0 text-ink-4 inline-grid place-items-center cursor-pointer"
-            style={{ transition: 'color 140ms ease, background 140ms ease' }}
+            style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
           >
-            {Ico.close ? Ico.close(13) : <span className="text-[16px] leading-none">×</span>}
+            {Ico.close ? Ico.close(14) : <span className="text-[16px] leading-none">×</span>}
           </button>
         </Tooltip>
       </div>
@@ -851,7 +851,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 style={{
                   background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
                   border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+                  animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
                 }}
               >
                 <span
@@ -872,11 +872,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     onClick={() => setDismissedStatus(spec.status_text)}
                     aria-label="Dismiss status"
                     className="w-[20px] h-[20px] rounded-[5px] bg-transparent border-0 p-0 text-ink-4 inline-grid place-items-center cursor-pointer flex-[0_0_20px]"
-                    style={{ transition: 'color 120ms ease, background 120ms ease' }}
+                    style={{ transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease' }}
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
-                    {Ico.close ? Ico.close(11) : <span className="text-base leading-none">×</span>}
+                    {Ico.close ? Ico.close(12) : <span className="text-base leading-none">×</span>}
                   </button>
                 </Tooltip>
               </div>

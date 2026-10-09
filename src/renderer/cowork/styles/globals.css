@@ -86,7 +86,7 @@
 
   /* ─── Type scale ─────────────────────────────────────────────────────── */
   --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
-  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-xs:   11px;   /* small meta text */
   --text-sm:   12.5px; /* secondary body, captions, helper text */
   --text-base: 14px;   /* primary body, buttons, form inputs */
   --text-md:   15px;   /* slightly emphasized body, composer */
@@ -249,6 +249,47 @@ body, body[data-theme="light"] {
   --stone-400: var(--ink-4);
 }
 
+/* ─── Motion tokens ──────────────────────────────────────────────────────
+   Every transition and animation duration in the app reads one of these,
+   in Cowork and Code Mode alike. Hovers, presses, tooltips and popover
+   exits are instant. A glow halo is the one hover cue that blooms: a soft
+   shadow that cuts in at 0ms reads as a flicker, so it takes --dur-glow.
+   Every property that changes in the same hover as a glow (its fill,
+   border, ink) takes --dur-glow too, so the control moves as one piece
+   instead of a border that snaps under a halo that follows. Popovers and modals fade
+   in briefly so a new surface reads as arriving rather than cutting in. Layout motion (height,
+   drawers, panel and content entrances) keeps a short glide. Ambient
+   loops (spinners, pulses, shimmers) keep their own cadence. Keep these
+   on :root, never in the themed body blocks: a body declaration would
+   shadow them for every element. */
+:root {
+  --dur-press:       0ms;     /* button :active nudge */
+  --dur-hover:       0ms;     /* color, background, border, shadow, small reveals */
+  --dur-glow:        120ms;   /* a hover that includes a soft halo, as one piece */
+  --dur-popover-in:  80ms;    /* menu, select, combobox and toast open */
+  --dur-popover-out: 0ms;     /* popover close, toast exit */
+  --dur-modal:       150ms;   /* modal backdrop and popup fade */
+  --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
+  --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
+  --tooltip-delay:   0ms;     /* hover wait before a tooltip opens (ui/Tooltip) */
+  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in:         cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reduced motion (WCAG 2.3.3): popover, modal and layout motion and
+   staggers go instant too, so every token-driven transition and entrance
+   is instant. Ambient loops are halted separately below. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-glow: 0ms;
+    --dur-popover-in: 0ms;
+    --dur-modal: 0ms;
+    --dur-layout: 0ms;
+    --dur-stagger: 0ms;
+  }
+}
+
 /* ─── Dark mode ──────────────────────────────────────────────────────────
    Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
    cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
@@ -402,9 +443,9 @@ textarea,
 .btn,
 .meta-pill,
 .artifact-card {
-  transition: background 0.15s ease, color 0.15s ease,
-              border-color 0.15s ease, box-shadow 0.15s ease,
-              opacity 0.15s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease,
+              border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
+              opacity var(--dur-hover) ease;
 }
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
@@ -459,7 +500,6 @@ a[href],
 .composer-wrap,
 .composer-textarea,
 .modal,
-.search-modal,
 .scroll-clean,
 .field-input,
 .field-textarea,
@@ -621,7 +661,7 @@ a[href],
   to   { opacity: 1; }
 }
 .stream-word {
-  animation: stream-word-fade 0.18s ease-out both;
+  animation: stream-word-fade var(--dur-layout) ease-out both;
 }
 
 /* Block-level (code, tables, blockquotes, hrs): fade in on first appearance;
@@ -631,24 +671,20 @@ a[href],
   to   { opacity: 1; }
 }
 .markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
-  animation: stream-block-fade 0.24s ease-out both;
+  animation: stream-block-fade var(--dur-layout) ease-out both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stream-word { animation: none !important; }
-  .markdown-content.is-streaming > * { animation: none !important; }
-}
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 
 /* WCAG 2.3.3 Animation from Interactions — users with vestibular
    sensitivity get every infinite/looping animation halted (state still
    reaches its end value so the UI stays informative). One-shot
-   transitions/entrance animations are left untouched so the UI doesn't
-   feel broken. */
+   transitions and entrances are already instant via the zeroed motion
+   tokens at the top of this file. */
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
-  .proj-shimmer,
+  .collection-shimmer,
   .composer-icon.listening,
   .spinner,
   .status-dot.busy,
@@ -658,14 +694,14 @@ a[href],
   }
 }
 
-/* Projects-page skeleton card — soft horizontal shimmer over the
-   placeholder boxes while the projects list loads. Driven via the
-   `proj-shimmer` className on each placeholder shape. */
-@keyframes proj-shimmer {
+/* Collection skeleton (CollectionState) — soft horizontal shimmer over the
+   placeholder boxes while a collection loads. Driven via the
+   `collection-shimmer` className on each placeholder shape. */
+@keyframes collection-shimmer {
   0%   { background-position: -240px 0; }
   100% { background-position: 240px 0; }
 }
-.proj-shimmer {
+.collection-shimmer {
   background-image: linear-gradient(
     90deg,
     var(--surface-2) 0%,
@@ -674,7 +710,7 @@ a[href],
   );
   background-size: 240px 100%;
   background-repeat: no-repeat;
-  animation: proj-shimmer 1.4s linear infinite;
+  animation: collection-shimmer 1.4s linear infinite;
 }
 
 /* ─── Nav / Sidebar ──────────────────────────────────────────────────────── */
@@ -682,7 +718,7 @@ a[href],
   display: flex; align-items: center; gap: 10px;
   height: 28px; padding: 0 10px; border-radius: var(--r);
   font-size: 13px; color: var(--frost-800);
-  transition: background .12s;
+  transition: background var(--dur-hover);
   border: 0; background: transparent;
   width: 100%; text-align: left;
 }
@@ -695,7 +731,7 @@ a[href],
   display: flex; align-items: center; gap: 8px;
   height: 26px; padding: 0 10px; border-radius: var(--r);
   font-size: var(--text-sm); color: var(--frost-700);
-  transition: background .12s;
+  transition: background var(--dur-hover);
   width: 100%; white-space: nowrap; overflow: hidden;
   border: 0; background: transparent;
   text-align: left;
@@ -703,17 +739,23 @@ a[href],
 .recent-item:hover { background: var(--stone-100); color: var(--text-strong); }
 .recent-item.active { background: var(--stone-150); color: var(--text-strong); }
 
+/* Subheading and group label everywhere: sidebar groups, page sections,
+   settings groups, menu groups, detail labels. Sentence case on the text
+   scale; hierarchy comes from weight and colour, not spaced caps. Layout
+   (padding, margin) belongs to the caller. */
 .section-label {
-  font-size: var(--text-xs); font-weight: 600;
-  color: var(--frost-600); letter-spacing: 0.02em;
-  padding: 12px 12px 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .icon-btn {
   width: 28px; height: 26px; border-radius: var(--r);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: var(--frost-700);
-  transition: background .12s, color .12s;
+  transition: background var(--dur-hover), color var(--dur-hover);
   cursor: pointer;
 }
 /* Make the SVG icon a passthrough for pointer events — events fire on the
@@ -726,7 +768,7 @@ a[href],
 
 /* Lightweight hover utilities for inline-styled buttons that only need
    a tinted background on hover without a full component class. */
-.hover-tint { transition: background .12s, color .12s; }
+.hover-tint { transition: background var(--dur-hover), color var(--dur-hover); }
 .hover-tint:hover { background: color-mix(in srgb, var(--ink) 5%, transparent) !important; }
 .hover-tint-text:hover { color: var(--ink) !important; }
 
@@ -747,7 +789,7 @@ a[href],
      shadow instead of a bespoke double-drop. */
   border-radius: var(--r-xl);
   box-shadow: var(--sh-1);
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
 }
 .composer-wrap.focused {
   /* Quiet focus: the border simply shifts to the accent — no 3px teal
@@ -897,17 +939,6 @@ a[href],
 }
 .composer-textarea-overlay::-webkit-scrollbar { display: none; }
 
-/* WCAG 2.3.3 Animation from Interactions — users who prefer reduced
-   motion shouldn't see the Copy button hover/focus colour ease or the
-   composer focus-ring transition. Static state changes still apply;
-   only the transition timing is removed. */
-@media (prefers-reduced-motion: reduce) {
-  .anton-code-block-copy,
-  .composer-wrap,
-  .composer-textarea-overlay {
-    transition: none !important;
-  }
-}
 
 body[data-theme="light"] .overlay-fence-marker {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -959,7 +990,7 @@ body[data-theme="light"] .overlay-inline-code {
   width: 32px; height: 32px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent;
-  color: var(--frost-700); transition: background .12s, color .12s;
+  color: var(--frost-700); transition: background var(--dur-hover), color var(--dur-hover);
   cursor: pointer;
 }
 .composer-icon:hover { background: var(--stone-100); color: var(--text-strong); }
@@ -984,7 +1015,7 @@ body[data-theme="light"] .overlay-inline-code {
   border: 1px solid transparent; background: transparent;
   color: var(--frost-700);
   font-family: var(--font-sans); font-size: 13px;
-  transition: background .12s, border-color .12s, color .12s;
+  transition: background var(--dur-hover), border-color var(--dur-hover), color var(--dur-hover);
 }
 button.meta-pill { cursor: pointer; }
 /* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
@@ -1000,7 +1031,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   width: 30px; height: 30px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: var(--accent); color: #fff;
-  transition: background .15s, transform .1s;
+  transition: background var(--dur-hover), transform var(--dur-hover);
   box-shadow: none;
 }
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
@@ -1022,17 +1053,17 @@ button.meta-pill:active { background: var(--ghost-press); }
   border: 1px solid var(--border-01); border-radius: var(--r-lg);
   box-shadow: var(--sh-popup);
   padding: 6px; min-width: 200px; z-index: 50;
-  animation: fadein-up .14s ease-out;
+  animation: fadein-up var(--dur-popover-in) ease-out;
 }
 .menu.menu--drop-down {
-  animation: fadein-down .14s ease-out;
+  animation: fadein-down var(--dur-popover-in) ease-out;
 }
 
 /* Connectors row inside the attach (+) menu — smooth expand/collapse */
 .menu-connectors-accordion {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: grid-template-rows var(--dur-layout) var(--ease-in-out);
 }
 .menu-connectors-accordion.is-open {
   grid-template-rows: 1fr;
@@ -1048,712 +1079,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   margin-top: 4px;
   padding-top: 4px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .menu-connectors-accordion {
-    transition: none;
-  }
-}
 
-/* ─── Customize ───────────────────────────────────────────────────────────── */
-.customize-view {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  color: var(--ink);
-  overflow: hidden;
-}
-
-.customize-header {
-  height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  flex-shrink: 0;
-}
-
-.customize-header-title {
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.customize-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* Two-pane variant — connectors list on the left, credentials /
-   connect form on the right. Used when the workflow renders inside
-   the Connect Apps and Data page (no left-rail subnav needed). */
-.customize-two-pane {
-  height: 100%;
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  background: var(--bg);
-  min-width: 0;
-}
-
-.customize-heading {
-  /* Was a Times New Roman serif — the one heading off the Inter system.
-     Now on the display font so it reads as part of the app (ENG-1038). */
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.customize-subnav {
-  background: var(--bg);
-  border-right: 1px solid var(--line);
-  padding: 18px 14px;
-  display: flex;
-  flex-direction: column;
-}
-
-.customize-subnav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  border: 0;
-  border-radius: var(--r-8);
-  background: transparent;
-  color: var(--ink);
-  font-size: var(--text-base);
-  text-align: left;
-}
-
-.customize-subnav-item:hover {
-  background: var(--surface-2);
-}
-
-.customize-subnav-item.active {
-  background: var(--surface-3);
-  font-weight: 600;
-}
-
-.customize-subnav-section {
-  margin-top: 22px;
-}
-
-.customize-subnav-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 8px;
-  color: var(--ink-3);
-  font-size: 13px;
-}
-
-.customize-subnav-empty {
-  text-align: center;
-  padding: 18px 14px 6px;
-}
-
-.customize-subnav-empty p {
-  margin: 0 0 14px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--ink-3);
-}
-
-.customize-home-main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 24px;
-  overflow-y: auto;
-}
-
-.customize-home-content {
-  width: 100%;
-  max-width: 640px;
-  text-align: center;
-}
-
-.customize-home-mark {
-  width: 96px;
-  height: 96px;
-  margin: 0 auto 24px;
-  color: var(--ink);
-}
-
-.customize-home-mark svg {
-  width: 100%;
-  height: 100%;
-}
-
-.customize-home-content h1 {
-  margin: 0 0 14px;
-  font-size: 34px;
-}
-
-.customize-home-subtitle {
-  margin: 0 0 36px;
-  font-size: var(--text-md);
-  color: var(--ink-3);
-}
-
-.customize-home-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.customize-home-card {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 18px 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-12);
-  background: var(--surface);
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-}
-
-.customize-home-card:hover {
-  background: var(--bg);
-}
-
-.customize-home-card.active {
-  /* Selected = accent border only (ENG-791: no bespoke double-ring). */
-  border-color: var(--accent);
-  background: var(--accent-bg);
-}
-
-.customize-home-card-icon {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink);
-}
-
-.customize-home-card-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.customize-home-card-copy strong {
-  font-size: var(--text-md);
-}
-
-.customize-home-card-copy span:last-child {
-  font-size: var(--text-base);
-  color: var(--ink-3);
-}
-
-.customize-middle-pane,
-.customize-detail-pane {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-}
-
-.customize-middle-pane {
-  border-right: 1px solid var(--line);
-}
-
-.customize-pane-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px 14px;
-  flex-shrink: 0;
-}
-
-.customize-pane-title {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.customize-pane-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.customize-middle-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.customize-middle-scroll {
-  padding: 0 14px 18px;
-}
-
-.customize-group-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 8px;
-  font-size: 13px;
-  color: var(--ink-3);
-}
-
-.customize-group-head .icon-btn {
-  margin-left: auto;
-  width: 24px;
-  height: 24px;
-}
-
-.customize-connector-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--card-radius-row);
-  background: transparent;
-  font-size: var(--text-base);
-  color: var(--ink);
-  text-align: left;
-}
-
-.customize-connector-row:hover {
-  background: var(--surface-2);
-}
-
-.customize-connector-row.selected {
-  background: var(--surface-3);
-}
-
-.customize-connector-name {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.customize-inline-tag {
-  margin-left: 8px;
-  font-size: var(--text-xs);
-  color: var(--ink-3);
-  font-weight: 500;
-}
-
-.customize-org-mode-note {
-  margin: 10px 8px 4px;
-  padding: 10px 12px;
-  border-radius: var(--card-radius-row);
-  background: var(--surface-2);
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
-
-.customize-inline-link {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--accent, var(--ink));
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.customize-detail-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: 14px 22px;
-  flex-shrink: 0;
-}
-
-.customize-empty-detail {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  padding: 32px;
-  text-align: center;
-}
-
-.customize-empty-title {
-  font-size: var(--text-lg);
-  color: var(--ink);
-  max-width: 440px;
-}
-
-.customize-empty-note {
-  max-width: 380px;
-  font-size: 13px;
-  color: var(--ink-3);
-  line-height: 1.45;
-}
-
-.customize-search-input input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  color: var(--ink);
-  padding: 0 12px;
-  font-size: var(--text-base);
-  outline: 0;
-}
-
-.customize-search-input input:focus {
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-.customize-search-input input:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
-.customize-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 24px;
-  z-index: 30;
-}
-
-.customize-modal {
-  width: min(1280px, 100%);
-  height: min(calc(100% - 24px), 880px);
-  background: var(--bg);
-  border-radius: var(--r-xl);
-  box-shadow: var(--sh-modal);
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  overflow: hidden;
-}
-
-.customize-modal-header {
-  grid-column: 1 / span 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 30px 36px 18px;
-}
-
-.customize-modal-header h2 {
-  margin: 0;
-  font-size: var(--text-3xl);
-}
-
-.customize-modal-side {
-  padding: 8px 16px 24px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.customize-modal-side-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border: 0;
-  border-radius: var(--r-lg);
-  background: transparent;
-  font-size: var(--text-base);
-  color: var(--ink);
-  text-align: left;
-}
-
-.customize-modal-side-item:hover {
-  background: var(--surface-2);
-}
-
-.customize-modal-side-item.active {
-  background: var(--surface-3);
-  font-weight: 600;
-}
-
-.customize-modal-content {
-  padding: 8px 36px 36px 12px;
-  overflow-y: auto;
-}
-
-.customize-search-input {
-  position: relative;
-  display: block;
-  margin-bottom: 22px;
-}
-
-.customize-search-input svg {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--ink-4);
-}
-
-.customize-search-input input {
-  padding-left: 46px;
-  background: var(--surface);
-}
-
-.customize-modal-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.customize-chip-filter,
-.customize-tab {
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
-  font-size: var(--text-base);
-}
-
-.customize-chip-filter {
-  background: var(--surface-3);
-  color: var(--ink);
-  border-radius: var(--r-lg);
-  padding: 9px 16px;
-  font-size: var(--text-base);
-  font-weight: 500;
-}
-
-.customize-select-row,
-.customize-tabset {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.customize-tab {
-  padding: 9px 4px;
-  font-weight: 500;
-}
-
-.customize-tab.active {
-  background: var(--surface-3);
-  color: var(--ink);
-  border-radius: var(--r-lg);
-  padding: 9px 16px;
-  font-weight: 600;
-}
-
-.customize-section-copy {
-  margin: 0 0 14px;
-  font-size: var(--text-base);
-  color: var(--ink-3);
-}
-
-.customize-directory-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.customize-directory-card {
-  /* Variant C — aligned to the canonical interactive card (ENG-791). */
-  padding: 18px 20px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  background: var(--card-surface);
-  box-shadow: var(--card-shadow-rest);
-  cursor: pointer;
-  transition: var(--card-transition);
-}
-
-.customize-directory-card:hover {
-  box-shadow: var(--card-shadow-hover);
-  transform: translateY(var(--card-lift));
-}
-
-.customize-directory-card:active {
-  box-shadow: var(--card-shadow-rest);
-  transform: translateY(0);
-}
-
-.customize-directory-card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.customize-directory-card-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.customize-directory-card-name {
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.customize-directory-card-meta {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--ink-3);
-}
-
-.customize-directory-card p {
-  margin: 14px 0 0;
-  font-size: var(--text-base);
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-.customize-logo,
-.customize-plugin-logo {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--r-8);
-  border: 1px solid var(--line);
-  background: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--ink-2);
-  overflow: hidden;
-}
-
-.customize-logo.large {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--r-12);
-}
-
-.customize-logo svg,
-.customize-plugin-logo svg {
-  width: 20px;
-  height: 20px;
-}
-
-.customize-logo.large svg,
-.customize-plugin-logo.large svg {
-  width: 26px;
-  height: 26px;
-}
-
-.customize-plugin-logo {
-  background: var(--surface-2);
-  color: var(--ink-4);
-}
-
-.customize-logo.github {
-  background: #1a1a1a;
-  color: #fff;
-}
-
-.customize-logo.miro {
-  background: #ffd02f;
-  color: #050038;
-}
-
-.customize-logo.anton,
-.customize-logo.filesystem {
-  background: var(--surface-2);
-}
-
-.customize-logo.hubspot {
-  background: #fff;
-}
-
-.customize-logo.linear,
-.customize-logo.gmail,
-.customize-logo.google-drive,
-.customize-logo.calendar,
-.customize-logo.figma,
-.customize-logo.notion,
-.customize-logo.posthog,
-.customize-logo.slack,
-.customize-logo.supabase,
-.customize-logo.cloudflare,
-.customize-logo.chrome,
-.customize-logo.zoominfo,
-.customize-logo.generic {
-  background: #fff;
-}
-
-.customize-logo-text {
-  font-size: var(--text-base);
-  font-weight: 700;
-}
-
-.customize-logo.filesystem .customize-logo-text {
-  color: var(--ink-2);
-}
-
-.customize-logo.zoominfo .customize-logo-text {
-  color: #e7352c;
-}
-
-.customize-asana-mark {
-  width: 22px;
-  height: 22px;
-  position: relative;
-}
-
-.customize-asana-mark span {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #f06a6a;
-}
-
-.customize-asana-mark.large {
-  width: 42px;
-  height: 42px;
-}
-
-.customize-asana-mark.large span {
-  width: 16px;
-  height: 16px;
-}
-
-.customize-asana-mark span:nth-child(1) {
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.customize-asana-mark span:nth-child(2) {
-  bottom: 0;
-  left: 0;
-}
-
-.customize-asana-mark span:nth-child(3) {
-  bottom: 0;
-  right: 0;
-}
-
-@media (max-width: 820px) {
-
-  .customize-directory-grid {
-    grid-template-columns: 1fr;
-  }
-}
 .menu-item {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border-radius: var(--r);
@@ -1767,7 +1093,7 @@ button.meta-pill:active { background: var(--ghost-press); }
 .task-row {
   display: flex; align-items: flex-start; gap: 12px;
   padding: 12px 14px; border-radius: var(--r-lg);
-  cursor: pointer; transition: background .12s;
+  cursor: pointer; transition: background var(--dur-hover);
 }
 .task-row:hover { background: var(--stone-100); }
 
@@ -1799,7 +1125,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   background: var(--stone-50);
 }
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
-.bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
+.bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width var(--dur-layout) ease; }
 
 /* ─── Page header ──────────────────────────────────────────────────────────
    Page headers now render via components/collection/PageHeader (title + trail
@@ -1825,7 +1151,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-hover);
   z-index: 200;
   font-family: var(--font-sans);
   font-weight: 400;
@@ -1866,11 +1192,12 @@ button.meta-pill:active { background: var(--ghost-press); }
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease,
-    border-color .12s ease,
-    box-shadow .12s ease,
-    transform .04s ease,
-    color .12s ease;
+    background-color var(--dur-glow) ease,
+    border-color var(--dur-glow) ease,
+    box-shadow var(--dur-glow) ease,
+    text-shadow var(--dur-glow) ease,
+    transform var(--dur-press) ease,
+    color var(--dur-glow) ease;
 }
 .btn:hover {
   background: var(--bg-h);
@@ -1962,8 +1289,8 @@ body[data-theme="dark"] .btn.default:active {
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, transform .04s ease, color .12s ease;
+    background-color var(--dur-glow) ease, border-color var(--dur-glow) ease,
+    box-shadow var(--dur-glow) ease, transform var(--dur-press) ease, color var(--dur-glow) ease;
 }
 .btn.primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
@@ -2174,7 +1501,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
    Inter's variable opsz axis already tightens large sizes, so the inherited
    negative tracking stacked into cramped display type. Now on the "loose" scale —
    near-neutral, only a whisper of tightening at the top, H3 sits at 0.
-   Operable text (=0) and .t-special branding are unaffected. */
+   Operable text (=0) is unaffected. */
 .s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.010em; font-weight: 600; color: var(--ink); }
 .s-h1          { font-family: var(--font-sans); font-size: var(--text-2xl); line-height: 1.15; letter-spacing: -0.007em; font-weight: 600; color: var(--ink); }
 .s-h2          { font-family: var(--font-sans); font-size: var(--text-xl);  line-height: 1.2;  letter-spacing: -0.004em; font-weight: 600; color: var(--ink); }
@@ -2183,16 +1510,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 .s-body-strong { font-family: var(--font-sans); font-size: var(--text-base); line-height: 1.55; font-weight: 500; color: var(--ink); }
 .s-small       { font-family: var(--font-sans); font-size: 13px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
 .s-caption     { font-family: var(--font-sans); font-size: 12px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
-.s-overline    { font-family: var(--font-mono); font-size: var(--text-xs);  line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
-
-/* ─── Special title — Inter (display only) ─────────────────────── */
-.t-special {
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  color: var(--ink);
-  line-height: 1.05;
-}
 
 /* ─── Form fields ──────────────────────────────────────────────────────── */
 .field-input,
@@ -2209,7 +1527,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   letter-spacing: 0;
   padding: 8px 12px;
   outline: 0;
-  transition: border-color .12s ease, box-shadow .15s ease, background .12s ease;
+  transition: border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease, background var(--dur-hover) ease;
 }
 .field-input  { height: 34px; }
 .field-textarea { min-height: 84px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
@@ -2316,9 +1634,10 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 /* ─── Card system (ENG-791) ─────────────────────────────────────────────
    One card look for the whole app. Compound modifiers (matching the existing
    .card.flat / .card.compact convention) let the <Card> primitive build a
-   class string like "card interactive selected cozy". The single hover/active
-   animation is ELEVATION ONLY — lift + soft shadow, neutral border. Accent is
-   reserved for the selected state, never hover.
+   class string like "card interactive selected cozy". The single hover cue is
+   a SURFACE TINT — no lift, no shadow change, neutral border — the same cue
+   list rows use, so cards and rows read as one system. Accent is reserved
+   for the selected state, never hover.
 
    Semantic aliases over the themed primitives. Declared on `body` (NOT :root)
    so the inner var()s resolve against body's per-theme --surface/--line/--sh-*
@@ -2331,11 +1650,10 @@ body {
   --card-pad-x:         16px;          /* canonical interactive list/grid pad */
   --card-surface:       var(--surface);
   --card-border:        var(--line);
-  --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
-  --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
-  --card-lift:          -1px;
-  --card-transition:    border-color .15s ease, box-shadow .15s ease,
-                        transform .15s ease, background-color .15s ease;
+  --card-surface-hover: var(--surface-2);
+  --card-shadow-rest:   var(--sh-1);
+  --card-transition:    border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
+                        background-color var(--dur-hover) ease;
 }
 
 .card {
@@ -2355,10 +1673,9 @@ body {
 /* When the card element is a <button>, neutralize the UA button styling. */
 button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 
-/* Interactive — the single hover/active animation. */
+/* Interactive — the single hover cue: tint the surface. */
 .card.interactive { cursor: pointer; transition: var(--card-transition); }
-.card.interactive:hover  { box-shadow: var(--card-shadow-hover); transform: translateY(var(--card-lift)); }
-.card.interactive:active { box-shadow: var(--card-shadow-rest); transform: translateY(0); }
+.card.interactive:hover  { background: var(--card-surface-hover); }
 .card.interactive:focus-visible { outline: none; box-shadow: var(--ring), var(--card-shadow-rest); }
 
 /* Selected/active — accent is the selection cue; persists under hover. */
@@ -2379,9 +1696,9 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   box-shadow: none;
   border: 1px dashed var(--line-2);
 }
+.card.dashed.interactive { color: var(--ink-3); }   /* quiet CTA label at rest */
 .card.dashed.interactive:hover {   /* drop-target CTA keeps an accent cue */
-  transform: none;
-  box-shadow: none;
+  background: transparent;
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -2396,20 +1713,35 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   color: inherit;
   font: inherit;
   text-align: left;
-  transition: background-color .12s ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
-/* Grouped row — a faint accent resting tint marks it as a distinct unit. */
-.card-row.grouped        { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.card-row.grouped:hover  { background: var(--surface-2); }
 
-@media (prefers-reduced-motion: reduce) {
-  .card.interactive:hover,
-  .card.interactive:active,
-  .customize-directory-card:hover,
-  .customize-directory-card:active { transform: none; }
+/* Railed — a card with a footer strip (`.card__rail`): the artifact and skill
+   cards. The surface tint would swallow the rail, so hover firms the edge,
+   deepens the shadow and warms the rail instead, together on the glow curve
+   because a glowing primary button usually sits in the head. */
+.card.railed { padding: 0; overflow: hidden; box-shadow: var(--card-shadow-rest); }
+.card.railed.interactive { transition: border-color var(--dur-glow) ease, box-shadow var(--dur-glow) ease; }
+.card.railed.interactive:hover {
+  background: var(--card-surface);
+  border-color: var(--line-2);
+  box-shadow: var(--sh-2);
+}
+/* The hover rule outranks the shared focus rule, so a focused card would
+   lose its ring the moment the pointer crossed it. Keep the ring over
+   either shadow. */
+.card.railed.interactive:focus-visible { box-shadow: var(--ring), var(--card-shadow-rest); }
+.card.railed.interactive:focus-visible:hover { box-shadow: var(--ring), var(--sh-2); }
+.card__rail {
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  transition: background-color var(--dur-glow) ease;
+}
+.card.railed.interactive:hover .card__rail {
+  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface-2));
 }
 
 /* Bubble — floating glassy container; slightly translucent so the
@@ -2421,17 +1753,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
   box-shadow: var(--sh-2);
-}
-
-/* Eyebrow — uppercase mono label sitting above headings (per guideline) */
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-4);
-  margin: 0 0 8px;
-  display: inline-block;
 }
 
 /* Hairline divider */
@@ -2520,20 +1841,20 @@ body[data-theme="dark"] .onboarding-card {
 /* Collapsible sidebar tracker header — hover affordance in CSS (not React
    state) so it can't get stuck and costs no re-render. Base lives here too
    so the button's inline styles don't out-specify the :hover rule. */
-.onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
+.onboarding-collapse-toggle { background: transparent; transition: background var(--dur-hover) ease; }
 .onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
 /* Checklist step rows. Ink-tinted hover works on any card background
    (darkens in light mode, lightens in dark). Done rows collapse their
    description and reveal it again on hover via the 0fr→1fr grid idiom. */
-.onboarding-step-row { background: transparent; transition: background 140ms ease; }
+.onboarding-step-row { background: transparent; transition: background var(--dur-hover) ease; }
 .onboarding-step-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .onboarding-step-desc {
   display: grid;
   min-height: 0;
   grid-template-rows: 1fr;
   opacity: 1;
-  transition: grid-template-rows 200ms ease, opacity 200ms ease;
+  transition: grid-template-rows var(--dur-layout) ease, opacity var(--dur-layout) ease;
 }
 .onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
 .onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
@@ -2657,7 +1978,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   width: 100%;
   text-align: left;
   /* Snappy hover — the rail should react to the cursor immediately. */
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .app-sidebar .nav-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -2675,17 +1996,10 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* Section labels */
 .app-sidebar .section-label {
-  /* Group headers (Pinned, Recent tasks, Agent, Code tasks) are a quiet label
-     on the text scale, not a spaced-caps overline. */
-  font-family: var(--font-sans);
-  font-size: 12px;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-3);
-  font-weight: 600;
-  /* Tighter top gap so each group reads as attached to its heading, and a
-     10px left edge lined up with the nav-list gutter for structure. */
-  padding: 12px 10px 6px;
+  /* More space above than below, so each heading groups with the rows it
+     introduces. The 20px inline padding (10px nav-list gutter + 10px row
+     inset) starts the text where the row icons and titles start. */
+  padding: 16px 20px 4px;
   margin: 0;
 }
 
@@ -2699,9 +2013,9 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .recents-heading .recents-viewall {
   color: var(--ink-3);
   transition:
-    opacity 160ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 140ms ease;
+    opacity var(--dur-hover) var(--ease-out),
+    transform var(--dur-layout) var(--ease-out),
+    color var(--dur-hover) ease;
 }
 .recents-heading .recents-viewall:hover {
   color: var(--accent);
@@ -2722,7 +2036,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .app-sidebar .recent-item:hover {
@@ -2773,7 +2087,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 }
 /* Clickable variant — hovers brighten the surface a touch so the user
    senses the affordance without the pill changing shape. */
-.backend-status-control.is-clickable { cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
+.backend-status-control.is-clickable { cursor: pointer; transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease; }
 .backend-status-control.is-clickable:hover {
   background: var(--surface-3);
   border-color: var(--line-2);
@@ -2863,7 +2177,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   font-family: var(--font-body);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
   text-align: left;
 }
 .anton-sidebar__footer-settings:hover {
@@ -2886,7 +2200,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   border-radius: var(--r);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background .12s, color .12s, box-shadow .15s;
+  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
 }
 .chrome-btn--small:hover {
   color: var(--ink);
@@ -2945,11 +2259,11 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--ink-2);
   cursor: pointer;
   box-shadow: var(--sh-1);
-  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
 }
 .floating-toggle:hover {
   color: var(--ink);
-  transform: translateY(-1px);
+  background: var(--ghost-hover);
 }
 body[data-theme="dark"] .floating-toggle:hover {
   color: var(--accent);
@@ -2969,7 +2283,7 @@ body[data-theme="dark"] .floating-toggle:hover {
   border: 0;
   color: var(--ink-4);
   cursor: pointer;
-  transition: color .15s, opacity .15s;
+  transition: color var(--dur-hover), opacity var(--dur-hover);
 }
 .coding-mode-toggle:hover {
   color: var(--ink-2);
@@ -3005,13 +2319,13 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .toggle {
   width: 38px; height: 22px; border-radius: var(--r-12);
   background: var(--stone-300); border: 0; padding: 2px;
-  position: relative; transition: background .15s;
+  position: relative; transition: background var(--dur-hover);
 }
 .toggle.on { background: var(--primary-700); }
 .toggle-thumb {
   position: absolute; top: 2px; left: 2px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; transition: left .15s;
+  background: #fff; transition: left var(--dur-hover);
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 .toggle.on .toggle-thumb { left: 18px; }
@@ -3229,36 +2543,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 
 /* ─── Search / Pins / Rail ──────────────────────────────────────────────── */
 
-.modal-backdrop {
-  position: fixed; inset: 0; z-index: 500;
-  background: rgba(8,11,12,0.18);
-  display: flex; justify-content: center; align-items: flex-start;
-  padding-top: min(14vh, 120px);
-}
-.search-modal {
-  width: min(620px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 80px));
-  background: var(--surface-0); border: 1px solid var(--border-01);
-  border-radius: var(--r-12); box-shadow: 0 30px 80px -30px rgba(0,0,0,0.45);
-  overflow: hidden;
-}
-.search-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border-0);
-  color: var(--frost-600);
-}
-.search-head input {
-  flex: 1; border: 0; outline: 0; font-size: var(--text-md);
-  color: var(--text-strong); background: transparent;
-}
-/* WCAG 2.4.7 — borderless inputs still need a visible keyboard-focus
-   cue. The parent `.search-head` already has a divider; the focus-
-   within rule promotes that divider's colour so keyboard users can see
-   the active field without the search modal getting noisy for mouse
-   users. */
-.search-head:focus-within {
-  box-shadow: inset 0 -2px 0 0 var(--accent);
-}
-
 /* Generic focus-within ring — apply to any parent that hosts a
    borderless input whose `outline:0` is enforced by inline styles
    (e.g. labels wrapping a search field). The ring lands on the
@@ -3267,34 +2551,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .focus-within-ring:focus-within {
   outline: 0;
   box-shadow: 0 0 0 1px var(--accent);
-}
-.search-results {
-  max-height: 560px; overflow: auto; padding: 8px;
-}
-.search-result {
-  width: 100%; display: flex; align-items: center; gap: 10px;
-  padding: 10px; border: 0; border-radius: var(--r-8);
-  background: transparent; text-align: left;
-}
-.search-result:hover { background: var(--stone-100); }
-.search-result-icon {
-  width: 30px; height: 30px; border-radius: var(--r-8);
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--stone-100); color: var(--frost-700); flex: 0 0 auto;
-}
-.search-result-body {
-  display: flex; flex-direction: column; min-width: 0; flex: 1;
-}
-.search-result-body strong {
-  font-size: var(--text-base); color: var(--text-strong);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.search-result-body small {
-  font-size: var(--text-xs); color: var(--frost-600);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.search-empty {
-  padding: 18px 12px; color: var(--frost-600); font-size: 13px;
 }
 
 /* ─── Chat experience — handoff from docs/design-guidelines/chat.html ────────
@@ -3454,7 +2710,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   color: var(--text-default);
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
 
@@ -3473,7 +2729,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   gap: 5px;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell__hamburger:active { background: var(--surface-2); }
 .mshell__hamburger span {
@@ -3484,9 +2740,9 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   border-radius: var(--r-2);
   transform-origin: center;
   transition:
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease,
-    width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform var(--dur-layout) var(--ease-out),
+    opacity var(--dur-layout) ease,
+    width var(--dur-layout) var(--ease-out);
 }
 .mshell__hamburger.is-open span:nth-child(1) {
   transform: translateY(6.5px) rotate(45deg);
@@ -3521,7 +2777,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   opacity: 0;
   pointer-events: none;
   z-index: 50;
-  transition: opacity 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: opacity var(--dur-layout) var(--ease-out);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -3537,7 +2793,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   border-right: 1px solid var(--border-subtle);
   box-shadow: 4px 0 28px rgba(0, 0, 0, 0.22);
   transform: translateX(-105%);
-  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-layout) var(--ease-out);
   z-index: 51;
   display: flex;
   flex-direction: column;
@@ -3617,7 +2873,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   cursor: pointer;
   font: inherit;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
   min-height: 48px;
 }
 .mshell-row:active { background: var(--surface-2); }
@@ -3669,7 +2925,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-strong);
   -webkit-tap-highlight-color: transparent;
   border-radius: var(--r-12);
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell-accordion__head:active { background: var(--surface-2); }
 .mshell-accordion__label {
@@ -3695,13 +2951,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   display: inline-flex;
   color: var(--text-muted);
   transform: rotate(0deg);
-  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-layout) var(--ease-out);
 }
 .mshell-accordion__chev.is-open { transform: rotate(90deg); }
 .mshell-accordion__body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-rows var(--dur-layout) var(--ease-out);
 }
 .mshell-accordion__body.is-open { grid-template-rows: 1fr; }
 .mshell-accordion__inner {
@@ -3752,7 +3008,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-strong);
   border-radius: var(--r-12);
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .settings-mobile__back:active { background: var(--surface-2); }
 .settings-mobile__title {
@@ -3802,7 +3058,7 @@ body[data-theme="dark"] .mshell__drawer-title {
     0 6px 18px rgba(0, 0, 0, 0.22),
     0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
   -webkit-tap-highlight-color: transparent;
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
+  transition: transform var(--dur-layout) var(--ease-out), background-color var(--dur-hover) ease;
   z-index: 5;
 }
 .mshell__fab:active {
@@ -3826,13 +3082,19 @@ body[data-theme="dark"] .mshell__drawer-title {
   z-index: 4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 200ms ease;
+  transition: opacity var(--dur-popover-out) ease;
 }
-.mshell__fab-scrim.is-open { opacity: 1; pointer-events: auto; }
+.mshell__fab-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transition-duration: var(--dur-popover-in);
+}
 
 /* Popover anchored to bottom-right above the FAB. Sized to its
    content; slides up + fades in. Pointer-events suppressed when
-   collapsed so it doesn't block content underneath. */
+   collapsed so it doesn't block content underneath. It is a menu, so it
+   rides the popover tokens: the base rule times the close, .is-open the
+   open. */
 .mshell__fab-menu {
   position: absolute;
   right: 18px;
@@ -3854,13 +3116,16 @@ body[data-theme="dark"] .mshell__drawer-title {
   transform: translateY(8px) scale(0.96);
   transform-origin: 100% 100%;
   transition:
-    opacity 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--dur-popover-out) var(--ease-in),
+    transform var(--dur-popover-out) var(--ease-in);
 }
 .mshell__fab-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
+  transition:
+    opacity var(--dur-popover-in) var(--ease-out),
+    transform var(--dur-popover-in) var(--ease-out);
 }
 .mshell__fab-menu-item {
   display: flex;
@@ -3875,7 +3140,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-default);
   text-align: left;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
   min-height: 44px;
 }
 .mshell__fab-menu-item:active { background: var(--surface-2); }
@@ -4031,18 +3296,9 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
 
   /* The mobile FAB menu is the single create entry on phone — hide
-     the in-page "+ New project" header button and the trailing
-     dashed tile in the projects grid so we don't show three "+"
-     affordances stacked on one screen. */
-  .proj-new-action,
-  .proj-new-tile { display: none !important; }
-
-  /* Grid/list view toggle — list mode breaks at phone widths
-     (5-column row), and the toggle takes up header space we don't
-     have. Force grid (see effectiveView in ProjectsView /
-     ArtifactsView) and hide the switch. */
-  .proj-view-toggle,
-  .artifacts-view-toggle { display: none !important; }
+     the in-page "+ New project" header button so we don't show two
+     "+" affordances on one screen. */
+  .proj-new-action { display: none !important; }
 
   /* Artifacts grid — desktop uses 32px horizontal gutters which
      waste half the screen on a phone. Tighten to 14px and reserve
@@ -4320,9 +3576,18 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-weight: 500;
   color: var(--ink-3);
   cursor: pointer;
-  transition: color 120ms ease;
+  transition: color var(--dur-hover) ease;
 }
 .user-turn-more:hover { color: var(--ink); }
+
+/* In-chat card actions are compact (`sm`, 28px) for a mouse. Touch needs a
+   real target, so on a coarse pointer the control itself grows to the 44px
+   minimum the rest of the mobile shell uses. */
+@media (hover: none), (pointer: coarse) {
+  .chat-card-shell .btn,
+  .chat-artifact-card__actions .btn,
+  .chat-artifact-card__tools .btn { min-height: 44px; }
+}
 
 /* ─── Inline artifact card in the transcript ─────────────────────────────
    Laid out from the chat column's width, not the window's. With the right
@@ -4330,90 +3595,73 @@ body[data-theme="dark"] .mshell__drawer-title {
    a phone — so a viewport breakpoint would leave the action row overflowing
    on exactly the desktop case it was reported on. */
 .chat-transcript-col { container: chat-col / inline-size; }
-.chat-artifact-card {
+/* A small window onto the artifact, on the railed card treatment: the head
+   cells carry their own inset, and the footer cells are the rail. */
+.card.chat-artifact-card {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "tile text actions"
+    "loc  loc  tools";
   align-items: center;
-  gap: 16px;
 }
-.chat-artifact-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
+/* Head spacing lives on the cells, not a grid gap, so the footer cells meet
+   with no seam of card surface between them. */
+.chat-artifact-card__tile    { grid-area: tile;    margin: 12px 12px 10px; }
+.chat-artifact-card__text    { grid-area: text;    margin: 12px 12px 10px 0; }
+.chat-artifact-card__actions { grid-area: actions; margin: 12px 12px 10px 0; min-width: 0; }
+/* Footer — the path as a location bar, with the secondary actions at its end.
+   Each cell is a `.card__rail` so the strip reads as one. */
+.chat-artifact-card__loc,
+.chat-artifact-card__status,
+.chat-artifact-card__tools {
+  min-height: 34px;
+  box-sizing: border-box;
 }
-/* Below this the actions and a readable filename stop fitting on one line:
-   the three-button row measures 246px and the filename needs ~120px. The
-   actions take their own full-width row rather than crushing the title. */
-@container chat-col (max-width: 560px) {
-  .chat-artifact-card { grid-template-columns: 64px minmax(0, 1fr); }
-  .chat-artifact-card__actions { grid-column: 1 / -1; }
-}
-/* The action status gets a row of its own rather than a slot in the button
-   row. Sharing that row made a long message crush the filename track beside
-   it, and any rule that reacted to the message instead would restructure the
-   card for the second or two it is on screen. */
+.chat-artifact-card__loc,
 .chat-artifact-card__status {
-  grid-column: 1 / -1;
-  justify-self: end;
+  grid-area: loc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  padding: 0 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.chat-artifact-card__loc svg { flex: none; color: var(--ink-4); }
+/* No secondary actions: the bar runs the full width. */
+.chat-artifact-card__loc:last-child,
+.chat-artifact-card__status:last-child { grid-column: 1 / -1; }
+.chat-artifact-card__tools {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px 0 0;
+  min-width: 0;
+}
+/* The title truncates before the primary action moves. Only below this does
+   the head stop holding a readable title beside the button, and it drops
+   under the title in the text column, so the tile column stays a column
+   instead of leaving a hole beside a right-aligned button. */
+@container chat-col (max-width: 400px) {
+  .card.chat-artifact-card {
+    grid-template-areas:
+      "tile text    text"
+      "tile actions actions"
+      "loc  loc     tools";
+    align-items: start;
+  }
+  .chat-artifact-card__text    { margin-bottom: 0; }
+  .chat-artifact-card__actions { margin: 8px 12px 10px 0; }
+}
 
 /* ─── Chat-view accent damping ───────────────────────────────────────────────
-   Two spots hard-filled the raw bright --accent and read as glare in dark mode
-   (the inline artifact-card CTA and the Progress-panel done markers). Both now
-   follow the canonical primary logic: opaque accent in light, a quiet accent
-   glass / deeper accent in dark. */
-
-/* Artifact-card action buttons (Export / reveal / Open). Small-size siblings;
-   the primary "Open" mirrors .btn.primary rather than a flat --accent fill. */
-.chat-card-btn {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 7px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  transition: background 120ms ease, border-color 120ms ease;
-}
-.chat-card-btn:hover:not(:disabled) { background: var(--surface-2); }
-.chat-card-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chat-card-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-.chat-card-btn--primary {
-  font-weight: 600;
-  background: var(--accent-solid);
-  color: var(--accent-solid-ink);
-  border-color: var(--accent-solid);
-}
-.chat-card-btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
-}
-body[data-theme="dark"] .chat-card-btn--primary {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-body[data-theme="dark"] .chat-card-btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-}
-/* Touch needs a real target, and `all: unset` above resets `position`, so an
-   absolutely-placed overlay would escape to some other ancestor. Growing the
-   control itself avoids that and is honest about where the button is. */
-@media (hover: none), (pointer: coarse) {
-  .chat-card-btn { min-height: 44px; }
-}
+   The Progress-panel done markers hard-filled the raw bright --accent and read
+   as glare in dark mode. They now follow the canonical primary logic: opaque
+   accent in light, a deeper accent in dark. */
 
 /* Progress-panel done marker: keep the brand --accent fill in light, but in
    dark drop to the deeper --accent-3 so a column of checks reads as a quiet
@@ -4432,7 +3680,7 @@ body[data-theme="dark"] .phase-check-done {
   margin-top: 4px;
   color: var(--ink-4);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--dur-hover) ease;
 }
 .turn-actions.is-last { opacity: 1; }
 .user-turn:hover .turn-actions,
@@ -4459,7 +3707,7 @@ body[data-theme="dark"] .phase-check-done {
   white-space: nowrap;
   color: var(--ink-4);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--dur-hover) ease;
   user-select: none;
 }
 .answer-turn:hover .turn-meta,
@@ -4523,7 +3771,7 @@ body[data-theme="dark"] .phase-check-done {
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .turn-action-btn:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -4661,7 +3909,7 @@ body[data-theme="light"] .anton-inline-code {
   font-size: var(--text-xs);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover);
 }
 .anton-code-block-copy:hover {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -4834,7 +4082,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   appearance: none; border: 0; background: transparent; cursor: pointer;
   color: var(--ink-3, #6b6b6b); font: inherit; font-size: 12px; font-weight: 500;
   text-transform: capitalize; padding: 4px 14px; border-radius: var(--r-8);
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
 .channels-agent-tab.is-active { background: var(--accent, #1a1916); color: var(--accent-fg, #fff); }
@@ -4844,7 +4092,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-fields { display: flex; flex-direction: column; gap: 10px; }
 
 
-.channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color .12s ease, box-shadow .15s ease; }
+.channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease; }
 .channels-input:hover { border-color: var(--line-2); }
 .channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .channels-input:focus-visible { outline: 0; box-shadow: 0 0 0 1px var(--accent); }

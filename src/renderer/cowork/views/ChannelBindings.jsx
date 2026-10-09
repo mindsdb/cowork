@@ -134,7 +134,7 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
           ]}
         />
         <Button variant="primary" onClick={addRow}>
-          {Ico.plus(15)}<span>Add</span>
+          {Ico.plus(14)}<span>Add</span>
         </Button>
       </div>
 

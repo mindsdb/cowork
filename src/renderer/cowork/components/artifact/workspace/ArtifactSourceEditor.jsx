@@ -60,7 +60,7 @@ export function ArtifactSourceEditor({
   return (
     <div className={`artifact-source-workbench ${isMarkdown ? 'is-split' : ''}`}>
       <section className="artifact-source-pane" aria-label="Artifact source">
-        <div className="artifact-pane-label">
+        <div className="artifact-pane-label section-label">
           <span>Source</span>
           <code>{source.path}</code>
         </div>
@@ -76,7 +76,7 @@ export function ArtifactSourceEditor({
       </section>
       {isMarkdown && (
         <section className="artifact-render-pane" aria-label="Markdown preview">
-          <div className="artifact-pane-label"><span>Preview</span><em>Updates as you type</em></div>
+          <div className="artifact-pane-label section-label"><span>Preview</span><em>Updates as you type</em></div>
           <div className="artifact-markdown-preview">
             <MarkdownContent text={value} id={`${source.artifactId}:draft`} />
           </div>

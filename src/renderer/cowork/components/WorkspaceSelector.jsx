@@ -29,6 +29,7 @@
 
 import { useCallback } from 'react';
 import { ArrowUpRight, Check, ChevronDown, Settings2 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import Menu from './ui/Menu';
 import { useToastManager } from './ui/Toast';
 import { useHubWorkspaces } from '../hooks/useHubWorkspaces';
@@ -119,7 +120,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     {
       id: 'workspace-group',
       heading: (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
+        <div className="section-label">
           Workspace
         </div>
       ),
@@ -146,7 +147,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
         // signal is the row being disabled. lucide marks its own icons
         // `aria-hidden` when no other a11y prop is passed, so there is nothing
         // to add here.
-        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
+        hint: isActive ? <Icon of={Check} size={14} className="text-accent" /> : undefined,
         // The active row is not a destination, and a second click during an
         // in-flight switch would race the first.
         disabled: isActive || switching,
@@ -156,9 +157,9 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     { divider: true },
     {
       id: 'manage-workspaces',
-      icon: <Settings2 size={14} strokeWidth={1.5} aria-hidden="true" />,
+      icon: <Icon of={Settings2} size={14} />,
       label: 'Manage workspaces',
-      hint: <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />,
+      hint: <Icon of={ArrowUpRight} size={12} />,
       title: 'Opens in your browser',
       onClick: () => openExternal(MINDS_WORKSPACES_URL),
     },
@@ -177,7 +178,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
       <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-ink" title={activeName}>
         {activeName}
       </span>
-      <ChevronDown size={14} strokeWidth={1.5} aria-hidden="true" className="shrink-0 text-ink-3" />
+      <Icon of={ChevronDown} size={14} className="shrink-0 text-ink-3" />
     </button>
   );
 

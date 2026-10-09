@@ -8,15 +8,16 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
+import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -28,16 +29,18 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -75,9 +78,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO    = "var(--font-mono)";
-const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
@@ -102,7 +103,7 @@ function formatMetaTime(value) {
 // fade in on hover of the parent turn, but stay visible when `isLast`
 // is true (matching Claude's pattern where the most recent exchange
 // always shows its toolbar).
-const ICON_SZ = 15;
+const ICON_SZ = 16;
 function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
@@ -195,7 +196,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
           onMouseEnter={() => onHoverChange?.(true)}
           onMouseLeave={() => onHoverChange?.(false)}
-          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
@@ -257,14 +258,14 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-hover ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
           : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
       }`}
     >
       <span className="inline-flex items-center">
-        {typeof renderIcon === 'function' ? renderIcon(13) : null}
+        {typeof renderIcon === 'function' ? renderIcon(14) : null}
       </span>
       {label}
     </button>
@@ -273,9 +274,9 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
 
 function userTurnAttachmentIcon(a) {
   const src = a.source || a.kind || 'file';
-  if (src === 'connector') return Ico.link(13);
-  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(13);
-  return Ico.doc(13);
+  if (src === 'connector') return Ico.link(14);
+  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(14);
+  return Ico.doc(14);
 }
 
 function userTurnAttachmentMeta(a) {
@@ -326,7 +327,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   }, [content]);
   return (
     <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       <div className="user-turn-inner">
@@ -433,7 +434,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       {children}
@@ -521,7 +522,26 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
 // carries the in-flight header (orb slot, live thought, working label) —
 // `liveSegmentIndex` puts it above a pending card and below an answered one.
 // Every other segment is a finished, collapsed block.
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null }) {
+// Step ids repeat across turns (`step-1` in every turn); prefixed with the
+// turn's key they are unique across the conversation.
+const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+
+// A tool's message to the user, rendered like an agent message. Memoised: the
+// live turn re-renders on every progress line, the message never changes.
+const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) {
+  return (
+    <MarkdownContent
+      text={markdown}
+      id={id}
+      complete
+      conversationId={conversationId}
+      isAssistant
+      enableForms={false}
+    />
+  );
+});
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive }),
     [steps, startedAt, conversationLive],
@@ -530,12 +550,28 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
   // The live segment sits right before a pending question, if there is one.
   const next = live ? segments[liveIdx + 1] : null;
   const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
-  // splitTurnSegments returns a single steps segment when there is no question.
-  const hasQuestion = segments.length > 1;
+  // Any boundary — a question card or a tool's message — keeps the live
+  // header up for the rest of the turn: without it the working indicator
+  // vanishes while the segment below the boundary is still empty.
+  const hasBoundary = segments.length > 1;
 
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'message') {
+      out.push(
+        // Same spacing as a question card: the message is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <ToolMessage
+            markdown={seg.step.data?.markdown || ''}
+            id={prefixId(idPrefix, seg.step.id)}
+            conversationId={conversationId}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'question') {
       out.push(
         // Spacing: 4px under a block, 12px between consecutive cards.
@@ -565,9 +601,10 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         || live.currentThought?.text
         || (live.isActive && !live.hasBodyText)
         || pendingQuestion
-        || (live.isActive && hasQuestion);
+        || (live.isActive && hasBoundary);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
+      // When collapsed, ThinkingBlock appends the model-wait status after it.
       // While a question waits, it is the question's label, as before this
       // split (the AskUser step was the last in-progress step).
       const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
@@ -621,7 +658,7 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -632,20 +669,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
-  // Close the export menu on any outside click. Clicks on the menu/toggle
-  // stopPropagation, so this only fires for clicks elsewhere.
-  useEffect(() => {
-    if (!exportOpen) return undefined;
-    const close = () => setExportOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -716,36 +743,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const noDestinationReason = orgMode && !openTarget
     ? 'This artifact cannot be previewed and has no shared link yet.'
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
-  const canExport = false;
-  const handleExport = async (fmt) => {
-    setExportOpen(false);
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    setExporting(true);
-    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
-    try {
-      const res = await exportArtifact(path, fmt);
-      showStatus('ok', `Exported ${res.filename}`);
-      // Desktop: open the result in the OS. Web: it's saved in the artifact
-      // folder and shows in the Artifacts panel.
-      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-export] failed', e);
-      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
-      revalidateAfterFailure();
-    }
-    finally {
-      setExporting(false);
-    }
-  };
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
@@ -889,6 +886,21 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * the shared page and a second button would point at the same place.
    */
   const showSharedLink = orgMode && published && openTarget === 'preview';
+  /*
+   * Org mode: every artifact with a primary file can be saved through its
+   * draft URL, previewable ones included, unless Download already IS the
+   * primary action (ENG-2044). The shared link, when there is one, is the
+   * visible secondary and Download moves behind "…"; otherwise Download is
+   * the secondary.
+   */
+  const sharedLinkAction = !deleted && showSharedLink
+    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    : null;
+  const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
+    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    : null;
+  const primaryDisabled = !orgMode && !canAct;
+  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -908,165 +920,99 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     <Card
       as="div"
       interactive={canActivate}
-      padding="cozy"
+      flat
+      padding="none"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="chat-artifact-card"
+      className="railed chat-artifact-card"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
-        style={{ opacity: deleted ? 0.7 : 1 }}
+        className={cn(
+          'chat-artifact-card__tile grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent-bg text-accent',
+          deleted && 'opacity-70',
+        )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
         ) : (
-          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+          isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
+      <div className="chat-artifact-card__text flex min-w-0 flex-col gap-0.5">
+        {/* The title is a keyboard stop of its own: it opens what the card
+            opens, and carries the reason in `title` when there is nowhere to
+            go. Preflight is off, so the native button chrome is reset here. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
-           */
-          style={{
-            all: 'unset',
-            cursor: canActivate ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
-            opacity: canActivate ? 1 : 0.7,
-          }}
-          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
-          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
-          {artifact.kind || 'live artifact'}
+        <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
+          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
         </span>
-        {previewText && (
-          <span
-            title={previewText}
-            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            {previewText}
-          </span>
+        {/* A disabled button takes no hover, so its reason is said here, in
+            the text column: beside the button it would widen the actions
+            track and squeeze the title to nothing. */}
+        {!deleted && primaryAction && primaryReason && (
+          <span className="font-body text-xs text-ink-4">{primaryReason}</span>
         )}
       </div>
-      <div className="chat-artifact-card__actions">
-        {canExport && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content="Export to another format">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <SmallBtn
-                disabled={!canAct || exporting}
-                onClick={() => setExportOpen((v) => !v)}
-                title={(!canAct || exporting) ? 'Export to another format' : undefined}
-              >
-                Export ▾
-              </SmallBtn>
-            </Tooltip>
-            {exportOpen && (
-              <div
-                role="menu"
-                // No border — floats on --sh-popup alone (ENG-790).
-                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
-              >
-                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    role="menuitem"
-                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
-                    style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
-                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >{label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {!deleted && showSharedLink && (
-          <Tooltip content="Open the shared artifact in a new tab">
-            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
-        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
-          <Tooltip content="Save this artifact's file">
-            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && primaryAction && (
-          <Tooltip content={primaryAction.tooltip}>
-            <SmallBtn
-              primary
-              disabled={!orgMode && !canAct}
-              onClick={primaryAction.onClick}
-              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
-            >
-              {primaryAction.label}
-            </SmallBtn>
-          </Tooltip>
-        )}
+      {/* The card is role="button" with a whole-surface click and Enter/Space
+          handler. Actions, and the overflow menu whose events React bubbles
+          through its portal, must not also open the preview. Only Enter and
+          Space stop here: other keys (Cmd+K, Cmd+N, Escape) must still reach
+          the window-level shortcut listeners. */}
+      <div
+        className="chat-artifact-card__actions"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+      >
+        <ActionBar
+          size="sm"
+          align="start"
+          className="flex-wrap"
+          primary={!deleted && primaryAction
+            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+            : null}
+        />
       </div>
-      {status && (
+      {/* The footer is the artifact's location bar: the path at rest, and the
+          result of an action for the moment it is on screen. One or the
+          other, so a long message never crushes the path beside it. */}
+      {status ? (
         <span
-          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
+      ) : (
+        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+          {Ico.folder(12)}
+          <span className="min-w-0 truncate">{previewText}</span>
+        </span>
+      )}
+      {(sharedLinkAction || downloadAction) && (
+        <div
+          className="card__rail chat-artifact-card__tools"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+        >
+          <ActionBar
+            size="xs"
+            secondary={sharedLinkAction || downloadAction}
+            overflow={[sharedLinkAction && downloadAction]}
+          />
+        </div>
       )}
     </Card>
     </>
   );
 }
-
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
-const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
-      title={title}
-      disabled={disabled}
-      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
-      {...rest}
-    >{children}</button>
-  );
-});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1107,42 +1053,19 @@ async function waitForServerReady(timeoutMs = 8000) {
 //
 // ── ActionCard: the shared shell for inline "actionable error" cards ───────
 // One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
+// cards (ENG-650), drawn by ChatCardShell. Callers own copy, button wiring and
+// the `kind` named in the card's top row (Billing, Model, …); the shell owns
+// layout and the action hierarchy (`cardActions`: the button marked `primary`
+// is the filled action, the next is the quiet secondary, any further ones go
+// behind "…").
+// buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
+// the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
-        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
-        <div className="s-h3">
-          {title}
-        </div>
-        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
-          {body}
-        </div>
-        {buttons.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {buttons.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={b.onClick}
-                disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
-                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
-                style={b.style}
-              >{b.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+        {body}
+      </ChatCardShell>
     </AnswerTurn>
   );
 }
@@ -1188,6 +1111,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
+      kind="Billing"
       title="Task stopped"
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={[
@@ -1285,6 +1209,7 @@ export function BalanceEmptyCard({
       agentLabel={agentLabel}
       // A billing failure ends the turn; there is no resume,
       // so this is "stopped", never "paused".
+      kind="Billing"
       title="Task stopped"
       body={body}
       buttons={buttons}
@@ -1313,6 +1238,7 @@ export function FreeServingPausedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free MindsHub Air is paused"
       body={freeServingPausedCopy(resetAt)}
       buttons={[
@@ -1338,6 +1264,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
     <ActionCard
       deleting={deleting}
       time={time}
+      kind="Connection"
       title="Connect a provider to start chatting"
       body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
       buttons={[
@@ -1380,6 +1307,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Usage"
         title="Free Air allowance running low"
         body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1391,6 +1319,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Billing"
         title="Auto top up failed"
         body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
         buttons={[
@@ -1404,6 +1333,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <ActionCard
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free Air allowance used up"
       body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1429,7 +1359,13 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
 // from a broken card (ENG-1537 review).
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
-function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = false }) {
+/* `kind` and `title` default to the rate limit's. A busy server (`server_busy`)
+   passes its own: the same wait-then-retry gate, but a cause the user's own
+   requests didn't create. */
+function RateLimitedCard({
+  time, agentLabel, body, retryAt, onRetry, deleting = false,
+  kind = 'Rate limit', title = 'Too many requests too quickly',
+}) {
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1466,15 +1402,28 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       }]
     : [];
 
+  /* A screen reader announces the refusal through this alert region. It mounts
+     empty and fills on the next commit, because a live region announces content
+     changes, not the text it mounts with. The countdown button stays outside
+     it, so its ticking label is not read out every second. */
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    setAnnouncement(body ? `${title}. ${body}` : title);
+  }, [title, body]);
+
   return (
-    <ActionCard
-      deleting={deleting}
-      time={time}
-      agentLabel={agentLabel}
-      title="Too many requests too quickly"
-      body={body}
-      buttons={buttons}
-    />
+    <>
+      <div className="sr-only" role="alert">{announcement}</div>
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind={kind}
+        title={title}
+        body={body}
+        buttons={buttons}
+      />
+    </>
   );
 }
 
@@ -1550,6 +1499,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Connection"
       title={title}
       body={body}
       buttons={done ? [] : [
@@ -1557,8 +1507,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
           primary: true,
-          disabled: busy,
-          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+          busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
@@ -1616,6 +1565,7 @@ export function ModelUnavailableCard({
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
+        kind="Model"
         title={`${label} is restricted`}
         body="An admin in your organization restricted this model. Choose another model in Settings."
         buttons={[
@@ -1647,6 +1597,7 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Model"
       title={title}
       body={denied
         ? "You don't have enough credits for this model. Top up your balance to use it."
@@ -1699,6 +1650,7 @@ function ProviderOverloadedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Provider"
       title={`${who} is having a temporary issue`}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
@@ -1706,14 +1658,20 @@ function ProviderOverloadedCard({
   );
 }
 
-// Most recent user text before index `i` — the message whose turn failed.
-// Used by failure cards whose action is "resend the failed message".
-function lastUserTextBefore(visibleMessages, i) {
+/* Most recent user message before index `i`, the message whose turn failed,
+   as `{ text, attachments }`, or null when there is none. Used by failure cards
+   whose action is "resend the failed message". `attachments` is the message's
+   own list, [] when it had none: a resend passes it to onSend so the files and
+   Drive references go with the question again, and an empty list keeps the
+   composer's staged files out of the resend. */
+function lastUserMessageBefore(visibleMessages, i) {
   for (let j = i - 1; j >= 0; j--) {
-    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-    if (typeof c === 'string' && c) return c;
+    const m = visibleMessages[j];
+    if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
+      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [] };
+    }
   }
-  return '';
+  return null;
 }
 
 /**
@@ -1772,9 +1730,16 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // User-input index of the turn whose delete is on the wire, or null. The
-  // same index this view hands to onDeleteTurn.
-  deletingTurnIndex = null,
+  // "Load earlier messages": present only when the task's most recent page
+  // doesn't cover its whole history. Fired both by scrolling to the top of
+  // the transcript and by the explicit button. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see either
+  // affordance — task.hasMoreMessages is falsy for them.
+  onLoadEarlierMessages,
+  loadingEarlierMessages,
+  // Anchor id of the turn whose delete is on the wire, or null. The same id
+  // this view hands to onDeleteTurn.
+  deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1985,12 +1950,25 @@ export default function ChatView({
   // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
   // the FIRST match, which can be the wrong message's step. Prefixing
   // makes the pool unique and keeps focus correlation tight.
-  const messageKey = (m, i) =>
-    `m:${m?.id || `idx-${i}`}`;
+  // A row without an id keys off the nearest id-bearing row before it, so
+  // prepending an older page leaves its key, and its local state, alone.
+  const rowKeys = [];
+  let keyAnchorId = null;
+  let idlessSinceAnchor = 0;
+  visibleMessages.forEach((m, i) => {
+    if (m?.id) {
+      keyAnchorId = m.id;
+      idlessSinceAnchor = 0;
+      rowKeys.push(`m:${m.id}`);
+      return;
+    }
+    idlessSinceAnchor += 1;
+    rowKeys.push(keyAnchorId ? `after:${keyAnchorId}:${m?.role}:${idlessSinceAnchor}` : `m:idx-${i}`);
+  });
+  const messageKey = (_m, i) => rowKeys[i];
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
-  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
   const railMsgKey = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -2028,9 +2006,71 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [task.messages.length, isStreaming]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+      taskId: task.id,
+      messages: visibleMessages,
+      previousAnchor: scrollAnchorRef.current,
+      scrollHeight: el.scrollHeight,
+    });
+    // Loading an older page prepends content above what's on screen —
+    // shifting scrollTop by the same delta keeps the reader's position
+    // steady instead of yanking them to the bottom.
+    if (isPrepend) {
+      el.scrollTop += scrollHeightDelta;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    scrollAnchorRef.current = anchor;
+    // visibleMessages is a fresh array every render (task.messages.filter(...),
+    // not memoized) — depending on task.messages.length instead keeps this
+    // effect firing only when the count actually changes, same as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.messages.length, isStreaming]);
+
+  // Content can grow while the message count stays put, and the prepend delta
+  // is measured from this snapshot, so it tracks that growth. It never scrolls.
+  useEffect(() => {
+    const col = scrollRef.current?.querySelector('.chat-transcript-col');
+    if (!col) return undefined;
+    const ro = new ResizeObserver(() => {
+      const el = scrollRef.current;
+      const anchor = scrollAnchorRef.current;
+      if (!el || anchor?.taskId !== task.id) return;
+      scrollAnchorRef.current = { ...anchor, scrollHeight: el.scrollHeight };
+    });
+    ro.observe(col);
+    return () => ro.disconnect();
+  }, [task.id]);
+
+  // Inverted infinite scroll: reaching the top of the transcript pulls the
+  // next older page in, which is the behaviour a long conversation is
+  // expected to have. The button below stays as the explicit affordance and
+  // as the fallback wherever IntersectionObserver is unavailable.
+  //
+  // Firing repeatedly is safe: onLoadEarlierMessages guards its own dispatch
+  // against a fetch already in flight and against there being nothing more to
+  // load. Re-running once a load settles re-checks a reader who is still
+  // parked at the top and needs the page after this one.
+  const loadEarlierSentinelRef = useRef(null);
+  useEffect(() => {
+    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const root = scrollRef.current;
+    const sentinel = loadEarlierSentinelRef.current;
+    if (!root || !sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
+      // Start the fetch slightly before the top is actually reached, so the
+      // page is usually already there by the time the reader gets there.
+      { root, rootMargin: '200px 0px 0px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -2057,7 +2097,7 @@ export default function ChatView({
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
-  const deleteInFlight = deletingTurnIndex != null;
+  const deleteInFlight = deletingTurnMessageId != null;
 
   return (
     <div
@@ -2074,7 +2114,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2110,12 +2150,12 @@ export default function ChatView({
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
               pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
               transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
-            {Ico.panelExpandLeft(15)}
+            {Ico.panelExpandLeft(16)}
           </button>
         </Tooltip>
 
@@ -2130,7 +2170,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2238,7 +2278,7 @@ export default function ChatView({
               )}
               {task.pinned && !titleEditing && (
                 <span aria-hidden className="inline-flex flex-shrink-0 text-accent">
-                  {Ico.pin(11)}
+                  {Ico.pin(12)}
                 </span>
               )}
               {!titleEditing && (
@@ -2264,9 +2304,9 @@ export default function ChatView({
                       opacity: titleControlsShown ? 1 : 0,
                       pointerEvents: titleControlsShown ? 'auto' : 'none',
                     }}
-                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
-                    {Ico.moreVert(13)}
+                    {Ico.moreVert(14)}
                   </button>
                 </Tooltip>
               )}
@@ -2336,21 +2376,42 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+            {task.hasMoreMessages && (
+              // Adapted from Sidebar's dashed-pill "Show more" idiom.
+              <button
+                type="button"
+                ref={loadEarlierSentinelRef}
+                onClick={() => onLoadEarlierMessages?.()}
+                disabled={loadingEarlierMessages}
+                className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
+              >
+                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+              </button>
+            )}
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
-              let assistantTurnIdx = -1;
-              let userInputIdx = -1;
               // Skip + orphan rules live together in lib/turnVisibility so a
               // user message whose only assistant bubble is skipped keeps the
               // delete affordance the hidden bubble used to carry (ENG-1304,
               // PR #580 review).
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
+              // The id this turn hands to onDeleteTurn: its assistant reply,
+              // or the user row itself when nothing answered it. Resolved from
+              // any row in the turn, so an activity or error card dims with the
+              // exchange it belongs to rather than on its own.
+              const turnAnchorIdAt = (atIdx) => {
+                let start = atIdx;
+                while (start > 0 && visibleMessages[start]?.role !== 'user') start -= 1;
+                if (visibleMessages[start]?.role !== 'user') return null;
+                if (isOrphanUser(start)) return visibleMessages[start].id ?? null;
+                for (let k = start + 1; k < visibleMessages.length; k++) {
+                  if (visibleMessages[k]?.role === 'user') break;
+                  // A reply with no id was never persisted, so the user row still anchors the turn.
+                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? visibleMessages[start].id ?? null;
+                }
+                return visibleMessages[start].id ?? null;
+              };
+              const isTurnBeingDeleted = (atIdx) => deletingTurnMessageId != null
+                && turnAnchorIdAt(atIdx) === deletingTurnMessageId;
               // Index of the last user or assistant message that renders —
               // its actions stay always-visible (Claude pattern: most recent
               // exchange shows its toolbar). Skipped failed-assistant bubbles
@@ -2360,12 +2421,17 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
-                userInputIdx += 1;
-                const turnIdxForThisUser = userInputIdx;
                 const orphan = isOrphanUser(i);
+                // A question the server never saw has no id; it is removed
+                // locally, by the row itself, once nothing is streaming.
+                const neverSent = !m.id && !isStreaming
+                  && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
+                let deleteThisTurn = null;
+                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
+                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
                 return (
                   <UserTurn
-                    key={i}
+                    key={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2375,11 +2441,10 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    // No turn offers a delete while one is out: every other
-                    // turn's index is about to shift when the server reindexes
-                    // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
-                    deleting={deletingTurnIndex === turnIdxForThisUser}
+                    // A row the server has seen is hidden until it has an id, not
+                    // sent to 422; no turn offers a delete while one is out.
+                    onDelete={deleteThisTurn}
+                    deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
@@ -2394,9 +2459,9 @@ export default function ChatView({
                   />
                 );
               }
-              // Past the user branch, userInputIdx names the turn this
-              // message belongs to, whatever kind of row it renders as.
-              const deletingThisTurn = deletingTurnIndex === userInputIdx;
+              // Every row of a turn dims together, so this resolves the
+              // turn's own anchor id from whatever kind of row this is.
+              const deletingThisTurn = isTurnBeingDeleted(i);
               if (m.role === 'activity') {
                 // Activity rows normally live in the rail's Progress
                 // only. Exception: when this is the just-sent
@@ -2408,7 +2473,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                    <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
                       <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
@@ -2432,7 +2497,7 @@ export default function ChatView({
                   : undefined;
                 return (
                   <ConnectIntroBubble
-                    key={i}
+                    key={messageKey(m, i)}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
@@ -2458,10 +2523,10 @@ export default function ChatView({
                 // Single CTA on purpose (ENG-1169): the out-of-credits
                 // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
-                  const balancePrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const balanceResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <BalanceEmptyCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2471,8 +2536,8 @@ export default function ChatView({
                          needs one to resend, and a task already on Air has
                          nothing to switch to. */
                       onSwitchToAir={
-                        onSwitchToAirAndResend && balancePrevUserText && taskModelId !== MINDSHUB_AIR_MODEL_ID
-                          ? () => onSwitchToAirAndResend(balancePrevUserText)
+                        onSwitchToAirAndResend && balanceResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments)
                           : undefined
                       }
                     />
@@ -2483,7 +2548,7 @@ export default function ChatView({
                 if (m.code === 'free_serving_paused') {
                   return (
                     <FreeServingPausedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2497,7 +2562,7 @@ export default function ChatView({
                 if (m.code === 'provider_auth') {
                   return (
                     <ReconnectCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2516,10 +2581,10 @@ export default function ChatView({
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
-                  const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2528,8 +2593,8 @@ export default function ChatView({
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
                       onSwitchToAir={
-                        onSwitchToAirAndResend && deniedPrevUserText
-                          ? () => onSwitchToAirAndResend(deniedPrevUserText)
+                        onSwitchToAirAndResend && deniedResend
+                          ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
                           : undefined
                       }
                     />
@@ -2539,15 +2604,15 @@ export default function ChatView({
                 // budget → Retry (resend the last user message), plus a MindsHub
                 // failover nudge for BYOK users (ENG-673).
                 if (m.code === 'provider_overloaded') {
-                  const prevUserText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      onRetry={resend ? () => onSend?.(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2577,10 +2642,11 @@ export default function ChatView({
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
@@ -2604,10 +2670,11 @@ export default function ChatView({
                 if (m.code === 'image_format') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image couldn't be read"
                       body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
                     />
@@ -2622,17 +2689,18 @@ export default function ChatView({
                 // nothing here, so the card offers "Try again" instead —
                 // the same message now sends clean.
                 if (m.code === 'content_recovery') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2656,10 +2724,11 @@ export default function ChatView({
                 if (m.code === 'content_too_large') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image is too large"
                       body={m.content}
                     />
@@ -2669,17 +2738,18 @@ export default function ChatView({
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
                 if (m.code === 'policy_unavailable') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Billing"
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2693,17 +2763,67 @@ export default function ChatView({
                  * so it can be improved OTA, same as the other retryable cards
                  * (ENG-2126). */
                 if (m.code === 'worker_unresponsive') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The agent didn't start"
+                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The model call sent nothing until its deadline
+                 * (`model_timeout`), so the server ended the turn. The provider
+                 * is the likely cause, not the request: a retry often works,
+                 * and if it keeps happening another model is the way out. */
+                if (m.code === 'model_timeout') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="The agent didn't start"
-                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      kind="Agent"
+                      title="The model didn't respond"
+                      body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
+                      buttons={[
+                        ...(resend
+                          ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                          : []),
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                      ]}
+                    />
+                  );
+                }
+                /* The UI heard nothing from the turn for its idle window
+                 * (`stalled`). The tab ends only its own reader and sends no
+                 * cancel, so the turn may still be running on the server. A
+                 * saved `stalled` record, from an older client's tagged
+                 * cancel, renders the same card after a reload. Try again
+                 * waits until the conversation has no live turn, as the copy
+                 * asks. */
+                if (m.code === 'stalled') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  const turnMayBeRunning = isStreaming || !!inFlightSet?.has(task.id);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The response stalled"
+                      body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
+                      buttons={resend && !turnMayBeRunning
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2715,7 +2835,7 @@ export default function ChatView({
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <AllowanceExhaustedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2729,16 +2849,37 @@ export default function ChatView({
                 // the fix, so the card says so and offers a time-gated Retry —
                 // never a top-up, which is what this used to show (ENG-1537).
                 if (m.code === 'rate_limited') {
-                  const rlRetryText = lastUserTextBefore(visibleMessages, i);
+                  const rlResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={rlResend ? () => onSend?.(rlResend.text, rlResend.attachments) : undefined}
+                    />
+                  );
+                }
+                /* No database connection freed in time on cowork-server
+                   (`server_busy`), refused before the stream with a 503 or
+                   ended inside it with response.failed. Waiting is the fix, so
+                   it shares the rate limit's Retry gate, counted down to the
+                   server's Retry-After, under its own title. */
+                if (m.code === 'server_busy') {
+                  const busyResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
+                      onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
                     />
                   );
                 }
@@ -2756,8 +2897,11 @@ export default function ChatView({
                 // the user what to do, so a raw id there would be noise, not
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
+                /* A second question refused with a 409 (`turn_in_progress`)
+                   lands here too: the server's sentence tells the user to wait
+                   for the running answer, and nothing resends it for them. */
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
+                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
@@ -2772,37 +2916,32 @@ export default function ChatView({
               if (m.role === 'provider_required') {
                 return (
                   <ConnectProviderCard
-                    key={i}
+                    key={messageKey(m, i)}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
                     onOpenSettings={onOpenSettings}
                   />
                 );
               }
-              assistantTurnIdx += 1;
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Same predicate keeps isOrphanUser's delete affordance honest.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
-              const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
-                  key={i}
+                  key={messageKey(m, i)}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
                   // start time supplies this — and a replay with no steps has
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={deleteInFlight ? null : () => onDeleteTurn?.(turnIdxForThisBubble)}
+                  // Anchored on this assistant message's own id; hidden, not
+                  // disabled, without one. A partial kept after a transport
+                  // failure whose recovery also failed has none until reload.
+                  onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
@@ -2821,6 +2960,7 @@ export default function ChatView({
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    idPrefix={messageKey(m, i)}
                   />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
@@ -2869,6 +3009,7 @@ export default function ChatView({
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                   onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -2922,8 +3063,8 @@ export default function ChatView({
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
-              <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
+              <div className="section-label text-accent flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
               </div>
@@ -2932,7 +3073,7 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <Tooltip content="Remove from queue">
@@ -2941,7 +3082,7 @@ export default function ChatView({
                         onClick={() => onRemoveFromQueue?.(q.id)}
                         aria-label="Remove from queue"
                         className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
-                      >{Ico.close(11)}</button>
+                      >{Ico.close(12)}</button>
                     </Tooltip>
                   </span>
                 ))}
@@ -2989,7 +3130,7 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
@@ -3001,8 +3142,8 @@ export default function ChatView({
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
@@ -3036,7 +3177,7 @@ export default function ChatView({
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
             >
-              {Ico.panelCollapseRight(15)}
+              {Ico.panelCollapseRight(16)}
             </button>
           </Tooltip>
         </div>

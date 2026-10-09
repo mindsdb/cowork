@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
+import type { IconSize } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -205,7 +206,7 @@ function activityRows(events: CodingEvent[]): ActivityRow[] {
 }
 
 
-const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
+const STEP_ICON: Record<StepIcon, (size: IconSize) => ReactNode> = {
   read: Ico.doc,
   search: Ico.search,
   list: Ico.folder,
@@ -224,7 +225,7 @@ const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
 function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb: string; target: string; failed?: boolean; extra?: ReactNode }) {
   return (
     <>
-      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](13)}</span>
+      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](14)}</span>
       <span className="code-step__label">
         {verb && <span className="code-step__verb">{verb}</span>}
         {verb && target ? ' ' : ''}
@@ -248,7 +249,7 @@ function Step({ head, failed = false, detail }: { head: ReactNode; failed?: bool
     <div className={`${className}${open ? ' is-open' : ''}`}>
       <button type="button" className="code-step__head" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
         {head}
-        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(11)}</span>
+        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(12)}</span>
       </button>
       {open && <div className="code-step__detail">{detail()}</div>}
     </div>
@@ -360,7 +361,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
       <summary>
         {copy}
         {failed && <small>{failures} failed</small>}
-        <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
+        <span className="code-activity-group__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {open && (
         <div className="code-activity-group__body">
@@ -464,7 +465,7 @@ function WorkedSummary({ label, children }: { label: string; children: () => Rea
     <details className="code-worked" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
         <span>{label}</span>
-        <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
+        <span className="code-activity-group__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {open && <div className="code-worked__body">{children()}</div>}
     </details>
@@ -483,7 +484,7 @@ function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?:
   return (
     <section className="code-turn-changes" aria-label="Files changed in this turn">
       <header>
-        <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(13)}</span>
+        <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(14)}</span>
         <strong>Edited {files.length} {files.length === 1 ? 'file' : 'files'}</strong>
         <LineCounts additions={additions} deletions={deletions} />
         {onOpenReview && <Button size="sm" variant="subtle" className="ml-auto" onClick={onOpenReview}>Review</Button>}
@@ -596,9 +597,9 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
     .find((value) => typeof value === 'string' && value !== event.title);
   return (
     <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label="Parallel Codex work">
-      <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(11) : Ico.check(11)}</span>
+      <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}</span>
       <div>
-        <small>Parallel work</small>
+        <small className="section-label">Parallel work</small>
         <strong>{event.title || 'Codex worker'}</strong>
         {typeof detail === 'string' && <p>{detail}</p>}
       </div>
@@ -667,7 +668,7 @@ function TaskOutcome({
   const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   return (
     <section className={`code-task-outcome is-${status.tone}`}>
-      <span className="code-task-outcome__icon">{Ico.stop(11)}</span>
+      <span className="code-task-outcome__icon">{Ico.stop(12)}</span>
       <div className="code-task-outcome__copy">
         <strong>{status.label}</strong>
         {errorDetail && session.status === 'failed' && (

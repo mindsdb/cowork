@@ -21,7 +21,7 @@ function Choice({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_120ms,border-color_120ms,color_120ms]"
+      className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_var(--dur-hover),border-color_var(--dur-hover),color_var(--dur-hover)]"
       style={{
         // Active-state accent uses the 8-bit skin's --gf-* vars, so it stays inline.
         border: active

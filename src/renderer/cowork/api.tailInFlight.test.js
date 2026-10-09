@@ -23,6 +23,36 @@ import { tailInFlight } from './api';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A body that yields each scripted frame after its delay, then goes silent
+// until the caller aborts. Every wait rejects on abort, like a real reader.
+const scriptedBody = (getSignal, script) => {
+  const enc = new TextEncoder();
+  let i = 0;
+  return {
+    getReader: () => ({
+      read: () => new Promise((resolve, reject) => {
+        const signal = getSignal();
+        const abort = () => {
+          clearTimeout(timer);
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        };
+        let timer = null;
+        if (signal.aborted) return abort();
+        signal.addEventListener('abort', abort, { once: true });
+        const step = script[i];
+        if (!step) return;
+        i += 1;
+        timer = setTimeout(() => {
+          signal.removeEventListener('abort', abort);
+          resolve({ done: false, value: enc.encode(`data: ${JSON.stringify(step.frame)}\n\n`) });
+        }, step.after);
+      }),
+    }),
+  };
+};
+
 // A body reader that never yields a frame and rejects only once the caller
 // aborts — mirroring a real body stream reader on ctrl.abort().
 const silentBody = (getSignal) => ({
@@ -119,6 +149,52 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     expect(result.kind).toBe('error');
     expect(result.message).toMatch(/stalled/i);
     expect(result.event?.code).toBe('stalled');
+  });
+
+  it('ends a stalled tail locally, without stopping the turn it watches', async () => {
+    /* A tail replays whatever turn is running in the conversation, here
+       another tester's. A Stop names the whole conversation, so sending one
+       would end that tester's answer. */
+    const enc = new TextEncoder();
+    const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"someone-else"}\n\n';
+    const cancels = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancels.push(JSON.parse(options.body));
+        return { ok: true, status: 200, json: async () => ({ cancelled: true }) };
+      }
+      const { signal } = options;
+      const silent = silentBody(() => signal).getReader();
+      let sentCreated = false;
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (sentCreated) return silent.read();
+              sentCreated = true;
+              return Promise.resolve({ done: false, value: enc.encode(CREATED) });
+            },
+          }),
+        },
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event).toEqual({ code: 'stalled', user_message_id: 'someone-else' });
+    expect(result.message).toContain('may still be running');
+    expect(result.message).not.toContain('was ended');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancels).toEqual([]);
   });
 
   it('reports a reconnect_error code when the reader fails for a reason other than the idle timeout', async () => {
@@ -297,5 +373,146 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     await delay(20);
 
     expect(onError).not.toHaveBeenCalled();
+  });
+  // The server blocks an unanswered ask_user card for its own deadline, which
+  // used to equal the idle window — the client then cancelled a healthy turn
+  // as stalled just before the server's timeout frame arrived.
+  it('waits out a pending ask_user past the normal idle window', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.08, conversation_id: 'conv-1' } },
+          // Silent for 3x the 20ms idle window, inside the question's 80ms deadline.
+          { after: 60, frame: { type: 'response.ask_user_answered', question_id: 'q1', status: 'timeout' } },
+          { after: 0, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+  });
+
+  it('still reports a stall when nothing arrives after the ask_user deadline', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.03, conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const started = Date.now();
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event?.code).toBe('stalled');
+    // The 30ms deadline plus the 20ms idle window, not the bare idle window.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(45);
+  });
+});
+
+/* An idle stall ends only this tab's reader and sends no cancel, tagged or
+ * not: the cancel names only a conversation, so it could stop a newer or
+ * another tester's turn. The tab still reports the stalled code for its card. */
+describe('tailInFlight idle-stall cancel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps a silent model call alive on model_wait ticks and sends no cancel', async () => {
+    /* The server's still-working frames are ordinary data frames, so each one
+     * restarts the idle cut. A quiet call that outlasts the window several
+     * times over still completes, and nothing asks the server to cancel. */
+    let signal;
+    const cancelBodies = [];
+    const tick = {
+      type: 'response.in_progress', thought_role: 'thought.progress', phase: 'model_wait',
+      message: 'Waiting for the model (20s)', conversation_id: 'conv-1',
+    };
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.created', conversation_id: 'conv-1' } },
+          ...Array.from({ length: 8 }, () => ({ after: 10, frame: tick })),
+          { after: 10, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 50,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+    expect(cancelBodies).toEqual([]);
+  });
+
+  it('reports the stalled code and sends no cancel, with or without a reason', async () => {
+    let signal;
+    const cancelBodies = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return { ok: true, status: 200, body: silentBody(() => signal) };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.event?.code).toBe('stalled');
+    expect(result.message).toContain('may still be running');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancelBodies).toEqual([]);
   });
 });

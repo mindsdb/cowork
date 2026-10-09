@@ -12,16 +12,23 @@
 // queue should drain next. The finishing task is preferred so its own
 // follow-up messages keep FIFO order; a queue whose task no longer
 // exists (deleted or merged mid-flight) is skipped rather than wedging
-// the drain loop.
-export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
-  const exists = existingTaskIds instanceof Set
-    ? (id) => existingTaskIds.has(id)
-    : (id) => Array.isArray(existingTaskIds) && existingTaskIds.includes(id);
+// the drain loop. A task in `runningTaskIds` (a set or list) is skipped
+// too: its turn is still running, so its follow-up waits for that turn's
+// own end instead of replacing it.
+export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId, runningTaskIds) {
+  const exists = (id) => includesId(existingTaskIds, id);
   const hasQueue = (id) =>
-    Array.isArray(queues?.[id]) && queues[id].length > 0 && exists(id);
+    Array.isArray(queues?.[id]) && queues[id].length > 0 && exists(id)
+    && !includesId(runningTaskIds, id);
 
   if (preferredTaskId && hasQueue(preferredTaskId)) return preferredTaskId;
   return Object.keys(queues || {}).find(hasQueue) || null;
+}
+
+// Membership in a Set or an array of ids; anything else holds nothing.
+function includesId(ids, id) {
+  if (ids instanceof Set) return ids.has(id);
+  return Array.isArray(ids) && ids.includes(id);
 }
 
 // Decide whether the single app-wide stream slot is stranded and must be

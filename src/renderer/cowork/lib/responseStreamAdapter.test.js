@@ -218,6 +218,132 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
   });
 });
 
+describe('model_wait: the still-working line while a model call is silent', () => {
+  const now = () => 1000;
+  const tick = (message, at_ms) => ({
+    type: 'response.in_progress',
+    thought_role: 'thought.progress',
+    phase: 'model_wait',
+    message,
+    content: `Still working: ${message}`,
+    eta_seconds: 60,
+    at_ms,
+  });
+  const reasoning = (content, at_ms) => ({
+    type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content, at_ms,
+  });
+  const waiting = { text: 'Waiting for the model (1m 0s)', startedAt: 100, kind: 'model_wait' };
+
+  it('shows the server\'s message as a live line and adds no step', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      tick('Waiting for the model (1m 0s)', 100),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual(waiting);
+    expect(state.steps).toEqual([]);
+    expect(state.status).not.toBe('error');
+  });
+
+  it('falls back to a generic line when the frame has no message', () => {
+    const state = reduceStream(initialStreamState(), { ...tick('', 100), message: undefined }, now);
+    expect(state.currentThought).toEqual({ text: 'Waiting for the model', startedAt: 100, kind: 'model_wait' });
+  });
+
+  it('replaces the line on the next tick instead of appending to it', () => {
+    const state = reduceAll([
+      tick('Waiting for the model (1m 0s)', 100),
+      tick('The model is still writing (1m 20s)', 120),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'The model is still writing (1m 20s)', startedAt: 120, kind: 'model_wait',
+    });
+  });
+
+  it('shows the line during a tool call\'s arguments after narration already streamed', () => {
+    /* The wire order of a non-scratchpad tool: narration, then the
+     * formatter's phase-less tool-start progress, then nothing but ticks while
+     * the arguments stream. The tick is the only live sign of work there. */
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'Building the deck.' },
+      { type: 'response.in_progress', thought_role: 'thought.progress', content: 'generate_artifact', at_ms: 110 },
+      tick('The model is still writing (1m 0s)', 120),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'The model is still writing (1m 0s)', startedAt: 120, kind: 'model_wait',
+    });
+    expect(state.bodyText).toBe('Building the deck.');
+    expect(state.status).toBe('streaming');
+  });
+
+  it('a later reasoning delta replaces the line instead of appending to it', () => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    const state = reduceAll([reasoning('Comparing ', 200), reasoning('the options.', 210)], afterTick, now);
+    expect(state.currentThought).toEqual({ text: 'Comparing the options.', startedAt: 200 });
+  });
+
+  /* The tool call start, tool progress and scratchpad start cases pin
+   * clearing those branches already did (reclassifyPreambleOnToolStart);
+   * the other cases fail without the model-wait clear rule. */
+  it.each([
+    ['a tool call start', { thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' }],
+    ['a tool progress line', { thought_role: 'thought.tool_call.progress', tool_use_id: 'a', tool_name: 'generate_artifact', content: 'Writing the page' }],
+    ['a scratchpad start', { thought_role: 'thought.scratchpad.start', tool_use_id: 'a' }],
+    ['a scratchpad result', { thought_role: 'thought.scratchpad.result', tool_use_id: 'a', content: '{}' }],
+    ['a context compaction notice', { thought_role: 'thought.context_compacted', content: 'Compacted' }],
+    ['another progress phase', { thought_role: 'thought.progress', phase: 'reasoning_start' }],
+  ])('%s clears the line', (_name, frame) => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    const state = reduceStream(afterTick, { type: 'response.in_progress', at_ms: 200, ...frame }, now);
+    expect(state.currentThought).toBeNull();
+  });
+
+  it.each([
+    ['answer text', { type: 'response.output_text.delta', delta: 'Here' }],
+    ['response.completed', { type: 'response.completed' }],
+    ['response.failed', { type: 'response.failed', error: 'boom', code: 'model_timeout' }],
+  ])('%s clears the line', (_name, frame) => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    expect(reduceStream(afterTick, frame, now).currentThought).toBeNull();
+  });
+
+  it('an ask_user question clears the line, and its answer leaves it cleared', () => {
+    const afterTick = reduceAll([
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'a', tool_name: 'generate_artifact', content: 'Preparing a short brief', at_ms: 50 },
+      tick('Waiting for the model (40s)', 100),
+    ], initialStreamState(), now);
+    expect(afterTick.currentThought).toEqual({ text: 'Waiting for the model (40s)', startedAt: 100, kind: 'model_wait' });
+
+    const asked = reduceStream(afterTick, {
+      type: 'response.ask_user', question_id: 'q1', prompt: 'Which one?', options: ['A', 'B'], at_ms: 200,
+    }, now);
+    expect(asked.currentThought).toBeNull();
+    expect(asked.steps.at(-1)).toMatchObject({ badge: 'AskUser', status: 'in_progress' });
+
+    const answered = reduceStream(asked, {
+      type: 'response.ask_user_answered', question_id: 'q1', status: 'answered', values: ['A'], at_ms: 300,
+    }, now);
+    expect(answered.currentThought).toBeNull();
+  });
+
+  it('leaves a reasoning burst alone when another progress phase arrives', () => {
+    const state = reduceAll([
+      reasoning('Thinking it through.', 100),
+      { type: 'response.in_progress', thought_role: 'thought.progress', phase: 'reasoning_start', at_ms: 200 },
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({ text: 'Thinking it through.', startedAt: 100 });
+  });
+});
+
 describe('preamble reclassification (ENG-1108 — narration before a tool call is not the answer)', () => {
   const now = () => 1000;
 
@@ -629,6 +755,62 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
     ]);
     expect(thinking.currentThought).not.toBeNull();
     expect(reduceStream(thinking, RESET).currentThought).toBeNull();
+  });
+});
+
+// The persisted assistant message id rides response.completed/
+// response.failed at the frame ROOT (not nested under `response`) — same
+// placement as conversation_id/harness on response.created.
+describe('assistantMessageId', () => {
+  it('starts null', () => {
+    expect(initialStreamState().assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.completed', () => {
+    const state = reduceAll([
+      { type: 'response.completed', assistant_message_id: 'msg-123' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-123');
+  });
+
+  it('stays null when response.completed omits the field (an empty turn persisted nothing)', () => {
+    const state = reduceAll([{ type: 'response.completed' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.failed when a partial row was persisted', () => {
+    const state = reduceAll([
+      { type: 'response.failed', error: 'boom', assistant_message_id: 'msg-456' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-456');
+  });
+
+  it('stays null when response.failed omits the field (nothing persisted)', () => {
+    const state = reduceAll([{ type: 'response.failed', error: 'boom' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('does not read event.response.id — the field is root-level, not nested', () => {
+    const state = reduceAll([
+      { type: 'response.completed', response: { id: 'resp-not-this-one' } },
+    ]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('captures the user message id from response.created', () => {
+    // The user's own row is appended optimistically on send and has no id
+    // until this frame supplies one.
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1', user_message_id: 'u-real',
+    });
+    expect(state.userMessageId).toBe('u-real');
+  });
+
+  it('leaves the user message id null when the frame omits it', () => {
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1',
+    });
+    expect(state.userMessageId).toBeNull();
   });
 });
 

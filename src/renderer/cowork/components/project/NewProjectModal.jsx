@@ -40,7 +40,7 @@ function FileList({ files, onRemove }) {
           key={`${f.name}-${i}`}
           className="flex items-center gap-2 py-[6px] px-[10px] rounded-[6px] bg-surface-2 border border-solid border-line font-[family-name:var(--font-body)] text-sm text-ink-2"
         >
-          <span className="inline-flex text-ink-3">{Ico.doc(13)}</span>
+          <span className="inline-flex text-ink-3">{Ico.doc(14)}</span>
           <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
           <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
             {Math.ceil(f.size / 1024)} KB
@@ -321,7 +321,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               onDragLeave={() => setDragActive(false)}
               onDrop={onDrop}
               onClick={() => !busy && fileInputRef.current?.click()}
-              className="py-[22px] px-4 rounded-[9px] text-ink-3 font-[family-name:var(--font-body)] text-[13px] text-center [transition:border-color_120ms_ease,background_120ms_ease,color_120ms_ease]"
+              className="py-[22px] px-4 rounded-[9px] text-ink-3 font-[family-name:var(--font-body)] text-[13px] text-center [transition:border-color_var(--dur-hover)_ease,background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
               style={{
                 // Dynamic (dragActive / busy) — the fill, dashed border colour,
                 // and cursor all depend on drag + busy state.

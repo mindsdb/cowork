@@ -46,15 +46,16 @@
 import { useMemo } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
+import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
-const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CARET_UP_DOWN = <Icon of={ChevronsUpDown} size={12} />;
 
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={12} />;
 
-const SEARCH = <Search size={14} strokeWidth={1.5} aria-hidden="true" />;
+const SEARCH = <Icon of={Search} size={14} />;
 
 export function Combobox({
   value,

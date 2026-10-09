@@ -954,7 +954,7 @@ export function ArtifactViewer({
           className="artifact-feedback-notice"
           onClick={() => workspace.setMode('review')}
         >
-          {Ico.chats(15)} <span>{feedbackNotice}</span>
+          {Ico.chats(14)} <span>{feedbackNotice}</span>
         </button>
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather

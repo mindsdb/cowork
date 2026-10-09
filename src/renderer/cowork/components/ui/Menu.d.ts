@@ -15,6 +15,8 @@ export interface MenuItem {
   separator?: boolean;
   submenu?: MenuItem[];
   heading?: ReactNode;
+  /** Spread onto the item, e.g. `{ role: 'menuitemradio', 'aria-checked': true }`. */
+  aria?: Record<string, unknown>;
 }
 
 export interface MenuProps {
@@ -29,6 +31,7 @@ export interface MenuProps {
   sideOffset?: number;
   width?: number;
   ariaLabel?: string;
+  tooltip?: ReactNode;
   onOpenChange?: (open: boolean, details?: unknown) => void;
 }
 

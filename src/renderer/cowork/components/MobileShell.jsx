@@ -283,7 +283,7 @@ export default function MobileShell({
             aria-haspopup="menu"
             onClick={() => setFabMenuOpen((v) => !v)}
           >
-            {Ico.plus(22)}
+            {Ico.plus(20)}
           </button>
         </>
       )}
