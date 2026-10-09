@@ -115,7 +115,7 @@ export function deriveUpdateBanner(
         // Dismissal hides only the notice. A reload pending behind it in the
         // ladder still shows, as it did before the one state existed.
         if (options.dismissedManualVersion && options.dismissedManualVersion === shell.version) {
-          return otaBanner(ui, server);
+          return otaBanner(ui, server) ?? shellFailureBehindNotice(state);
         }
         return {
           kind: 'shell-manual',
@@ -138,16 +138,35 @@ export function deriveUpdateBanner(
   }
 }
 
+/** Behind a dismissed manual notice with no OTA pending, a failed auto-update
+ *  the notice stood in for still shows, as it did before the one state
+ *  existed: Retry when it can be retried, the installer otherwise. A check
+ *  that produced no answer still raises nothing. */
+function shellFailureBehindNotice(state: UpdateCoordinatorState): UpdateBanner | null {
+  const { shell } = state;
+  if (shell.phase !== 'failed' || state.silentShellFailure) return null;
+  const version = shell.snapshot?.targetVersion;
+  return shell.recoverable
+    ? { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Retry', action: 'retry', ...base, version }
+    : { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Download', action: 'open-download-page', ...base, version };
+}
+
 /** The UI/server banner: a pending reload, a retryable failure, or nothing.
  *  Shared by the `reload` action and the fall-through behind a dismissed
  *  manual notice; the action it offers is always `reload`. */
 function otaBanner(ui: UpdateCoordinatorState['ui'], server: UpdateCoordinatorState['server']): UpdateBanner | null {
   const version = ui.status !== 'idle' && ui.version ? ui.version : serverLabel(server);
   if (ui.status === 'failed') {
-    if (ui.error === 'rolled-back') return null;
+    // A rolled-back bundle is quarantined and has nothing to retry, but a
+    // server update pending beside it still has its Restart.
+    if (ui.error === 'rolled-back') return server.status === 'ready' ? otaReadyBanner(serverLabel(server)) : null;
     return { kind: 'ota-error', tone: 'error', title: `Update failed${version ? ` (${version})` : ''}`, actionLabel: 'Try again', action: 'reload', ...base, version };
   }
   if (ui.status !== 'ready' && server.status !== 'ready') return null;
+  return otaReadyBanner(version);
+}
+
+function otaReadyBanner(version: string | undefined): UpdateBanner {
   return {
     kind: 'ota-ready',
     tone: 'ready',

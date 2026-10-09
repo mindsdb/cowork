@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   EMPTY_UPDATE_INPUT,
   applyProgressSettles,
+  applyRunResult,
   availableStatus,
   checkFromSummary,
   coordinateUpdates,
@@ -13,11 +14,14 @@ import {
   manualNoticeAfterCheck,
   offerAfterApply,
   offerAfterCheck,
+  otaOfferVersion,
   pollOfferCheck,
   renderedStateKey,
   resolveApplyAction,
   settledApplyInput,
   shellAutoIsPending,
+  versionReaches,
+  isNewerVersion,
   type OtaOffer,
   type OtaStatus,
   type ShellSnapshot,
@@ -601,5 +605,69 @@ describe('change detection: only what the surfaces render', () => {
     const b = state({ shell: downloading(41.4, 9000) });
     expect(renderedStateKey(a)).toBe(renderedStateKey(b));
     expect(renderedStateKey(a)).not.toBe(renderedStateKey(state({ shell: downloading(43, 1000) })));
+  });
+});
+
+describe('round five: a layer is matched by version order, not by exact version', () => {
+  const X = '2.26.10.7.1';
+  const Y = '2.26.10.8.1';
+  const Z = '2.26.10.9.1';
+
+  it('orders CalVer, and falls back to equality for versions it cannot order', () => {
+    expect(versionReaches(Y, X)).toBe(true);
+    expect(versionReaches(X, X)).toBe(true);
+    expect(versionReaches(X, Y)).toBe(false);
+    expect(versionReaches(undefined, X)).toBe(false);
+    expect(versionReaches(X, undefined)).toBe(true);
+    expect(versionReaches('A', 'B')).toBe(false);
+    expect(isNewerVersion(Y, X)).toBe(true);
+    expect(isNewerVersion(X, X)).toBe(false);
+    expect(isNewerVersion(X, Y)).toBe(false);
+    expect(isNewerVersion('B', 'A')).toBe(true);
+    expect(isNewerVersion(undefined, X)).toBe(false);
+  });
+
+  it('a newer release that landed clears the older offer it answered (finding 1)', () => {
+    expect(offerAfterApply(offer(X), { ui: { result: 'landed', version: Y } })).toBeNull();
+    expect(offerAfterApply(offer(null, '0.26.10.6.1'), { server: { landed: true, version: '0.26.10.7.1' } })).toBeNull();
+    // An offer newer than what landed is a check made meanwhile, and stands.
+    expect(offerAfterApply(offer(Z), { ui: { result: 'landed', version: Y } })).toEqual(offer(Z));
+    // A rolled-back newer release quarantines the older offer too.
+    expect(offerAfterApply(offer(X), { ui: { result: 'rolled-back', version: Y } })).toBeNull();
+  });
+
+  it('a failed download of a release newer than the offer shows as a failure with a retry (finding 4)', () => {
+    const failed = state({ otaOffer: offer(X), otaApply: { phase: 'error', version: Y } });
+    expect(failed).toMatchObject({ action: 'reload', ui: { status: 'failed', error: 'apply-failed', version: Y } });
+    // Only an offer for a newer release than the failure replaces it.
+    expect(state({ otaOffer: offer(Z), otaApply: { phase: 'error', version: Y } })).toMatchObject({ action: 'reload', ui: { status: 'ready', version: Z } });
+  });
+
+  it('OTA progress and failures are named by the offer, not the banner version (finding 3)', () => {
+    expect(otaOfferVersion(offer(X, '0.26.10.7.1'))).toBe(X);
+    expect(otaOfferVersion(offer(null, '0.26.10.7.1'))).toBe('0.26.10.7.1');
+    expect(otaOfferVersion(offer(null, '0.26.10.7.1', 'anton-agent'))).toBe('anton-agent 0.26.10.7.1');
+    expect(otaOfferVersion(null)).toBeUndefined();
+    // With a manual notice the banner names the installer; the offer still names the UI.
+    const s = state({ otaOffer: offer(X), shellManual: { version: '2.26.12.1.1' } });
+    expect(s.version).toBe('2.26.12.1.1');
+    expect(s.ui).toMatchObject({ status: 'ready', version: X });
+  });
+
+  it('a failed auto-update behind a manual notice can still be retried by name (finding 6)', () => {
+    const s = state({ shell: shell('failed', { recoverable: true }), shellManual: { version: 'v' } });
+    expect(s.shell.manual).toBe(true);
+    expect(resolveApplyAction(s, 'retry')).toBe('retry');
+    expect(resolveApplyAction(state({ shell: shell('failed', { recoverable: false }), shellManual: { version: 'v' } }), 'retry')).toBe('stale');
+  });
+
+  it('an apply that ran nothing is stale; a landed server applies even beside a failed UI (finding 5)', () => {
+    expect(applyRunResult({ serverTried: false, serverOk: true, ui: { result: 'nothing', version: X } })).toBe('stale');
+    expect(applyRunResult({ serverTried: false, serverOk: true })).toBe('stale');
+    expect(applyRunResult({ serverTried: false, serverOk: true, ui: { result: 'failed', version: X } })).toBe('failed');
+    expect(applyRunResult({ serverTried: false, serverOk: true, ui: { result: 'landed', version: X } })).toBe('applied');
+    expect(applyRunResult({ serverTried: false, serverOk: true, ui: { result: 'rolled-back', version: X } })).toBe('applied');
+    expect(applyRunResult({ serverTried: true, serverOk: false })).toBe('failed');
+    expect(applyRunResult({ serverTried: true, serverOk: true, ui: { result: 'failed', version: X } })).toBe('applied');
   });
 });

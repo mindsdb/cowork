@@ -419,8 +419,9 @@ describe('round four: the offer through main\'s entry points', () => {
     vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
     await checkForUpdates();
     expect(updateCoordinator.getState().action).toBe('reload');
-    // The release was withdrawn before the click: the apply downloads nothing.
-    expect(await handleUnifiedApply(() => null, { force: true })).toBe(false);
+    // The release was withdrawn before the click: the apply downloads nothing,
+    // which answers stale (nothing ran), not a failure.
+    expect(await handleUnifiedApply(() => null, { force: true })).toBe('stale');
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, ui: { status: 'idle' } });
   });
 
@@ -452,5 +453,50 @@ describe('round four: the offer through main\'s entry points', () => {
     expect(await request).toEqual({ confirm: true, runningTasks: 2 });
     // The dialog opens over the newest offer, not over "Updating…".
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'ready', version: '2.26.10.8.1' }, server: { status: 'ready' } });
+  });
+});
+
+describe('round five: the offer through main\'s entry points', () => {
+  it('an apply that lands a release newer than the offer clears the offer (finding 1)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    // The manifest moved on before the click: the apply lands Y, not X.
+    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    vi.mocked(getCachedVersion).mockReturnValue(uiNext.newVersion!);
+    expect(await handleUnifiedApply(() => win() as never, { force: true })).toBe(true);
+    await tick(5);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, ui: { status: 'idle' } });
+  });
+
+  it('a failed download of a release newer than the offer reads as failed, not "Update ready" (finding 4)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    vi.mocked(lastUiApplyAttempt).mockReturnValueOnce(uiNext.newVersion!);
+    expect(await handleUnifiedApply(() => null, { force: true })).toBe(false);
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'failed', error: 'apply-failed', version: uiNext.newVersion } });
+  });
+
+  it('behind a manual notice, a reload\'s progress and failure are named by the UI offer (finding 3)', async () => {
+    vi.mocked(checkForUIUpdate).mockResolvedValue(uiFound);
+    await checkForUpdates();
+    updateCoordinator.feed({ shellManual: { version: '2.26.12.1.1' } });
+    expect(updateCoordinator.getState().version).toBe('2.26.12.1.1');
+    let announced: string | undefined;
+    vi.mocked(applyUIUpdate).mockImplementationOnce(async () => { announced = updateCoordinator.getInput().otaApply?.version; throw new Error('boom'); });
+    expect(await handleUnifiedApply(() => null, { force: true, action: 'reload' })).toBe(false);
+    expect(announced).toBe(uiFound.newVersion);
+    expect(updateCoordinator.getInput().otaApply).toEqual({ phase: 'error', version: uiFound.newVersion });
+    expect(updateCoordinator.getState().ui).toMatchObject({ status: 'failed', version: uiFound.newVersion });
+  });
+
+  it('a Restart whose server-only offer is gone at the re-check answers stale, not a failure (finding 5)', async () => {
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverFound);
+    await checkForUpdates();
+    expect(updateCoordinator.getState().action).toBe('reload');
+    // The re-check at the click finds nothing, and the UI has nothing either.
+    vi.mocked(checkForServerUpdate).mockResolvedValue(serverNone);
+    expect(await handleUnifiedApply(() => null, {})).toBe('stale');
+    expect(maybeUpdateServer).not.toHaveBeenCalled();
+    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null, server: { status: 'idle' } });
   });
 });
