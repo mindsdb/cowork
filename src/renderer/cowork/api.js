@@ -1913,6 +1913,17 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
+// Merges entries into a connection's persisted `_picked_files` list and
+// returns the merged list. Drive saves through host.pickDriveFiles; Notion
+// pages call this directly, since there is no picker grant to record.
+export async function savePickedFiles(engine, name, files) {
+  const data = await req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`, {
+    method: 'PATCH',
+    body: JSON.stringify({ files }),
+  });
+  return Array.isArray(data?.files) ? data.files : [];
+}
+
 // Untags one file from `project` in a connection's persisted
 // `_picked_files` grant — the "un-pick" counterpart to the PATCH the
 // Google Picker flow calls. Used by the Project files rail to remove a
@@ -1921,6 +1932,17 @@ export async function deleteDatasource(engine, name) {
 export async function deletePickedFile(engine, name, fileId, project) {
   const qs = new URLSearchParams({ project });
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
+// Pages and databases matching `query` in one Notion connection's workspace,
+// for the chat's "Add pages from Notion" picker.
+export async function searchNotionPages(name, query, { signal } = {}) {
+  const data = await req('/connectors/notion/search', {
+    method: 'POST',
+    body: JSON.stringify({ name, query }),
+    signal,
+  });
+  return Array.isArray(data?.results) ? data.results : [];
 }
 
 // Modify-flow read: returns the saved connection as

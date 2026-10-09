@@ -727,3 +727,54 @@ describe('ContextCard — truncated project file listings', () => {
     expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
   });
 });
+
+describe('ContextCard — Notion pages in Project files', () => {
+  const PAGE = { id: 'p1', name: 'ML Research', url: 'https://www.notion.so/p1', projects: ['general'], _connectionName: 'mindsdb-ws' };
+
+  async function renderWithPages(props = {}) {
+    const onFetchNotionPages = vi.fn().mockResolvedValue({ files: [PAGE] });
+    await act(async () => {
+      render(
+        <ContextCard
+          project={{ name: 'general' }}
+          conversationId={null}
+          onFetchNotionPages={onFetchNotionPages}
+          {...props}
+        />,
+      );
+    });
+    return onFetchNotionPages;
+  }
+
+  it("lists the project's Notion pages alongside its files", async () => {
+    apiMock.listProjectFiles.mockResolvedValue({ files: [{ path: 'notes.md', name: 'notes.md' }] });
+    const onFetchNotionPages = await renderWithPages();
+
+    expect(onFetchNotionPages).toHaveBeenCalledWith('general');
+    expect(screen.getByTitle('Open "ML Research" in Notion')).toBeTruthy();
+    expect(screen.getByText(/Project files · 2/)).toBeTruthy();
+  });
+
+  it('removing a page asks first, then untags it from the project', async () => {
+    const onRemoveNotionPage = vi.fn().mockResolvedValue({ ok: true });
+    await renderWithPages({ onRemoveNotionPage });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove ML Research from project files' }));
+    expect(onRemoveNotionPage).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove' })); });
+
+    expect(onRemoveNotionPage).toHaveBeenCalledWith('p1', 'mindsdb-ws', 'general');
+    expect(screen.queryByTitle('Open "ML Research" in Notion')).toBeNull();
+  });
+
+  it('"Add pages from Notion" adds to this project and reloads the list', async () => {
+    const onAddNotionPages = vi.fn().mockResolvedValue(undefined);
+    const onFetchNotionPages = await renderWithPages({ onAddNotionPages });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add files to this project' }));
+    await act(async () => { fireEvent.click(screen.getByText('Add pages from Notion')); });
+
+    expect(onAddNotionPages).toHaveBeenCalledWith('general');
+    await waitFor(() => expect(onFetchNotionPages).toHaveBeenCalledTimes(2));
+  });
+});

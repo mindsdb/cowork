@@ -11,7 +11,7 @@ vi.mock('./keychain-service', () => ({
   setRefreshToken: vi.fn(),
 }));
 
-import { getRefreshToken } from './keychain-service';
+import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { parseAppIdFromClientId, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
 
 describe('parseAppIdFromClientId', () => {
@@ -86,5 +86,89 @@ describe('tick — refresh request body', () => {
     const body = await runOneTick({ client_id: 'cid-123', client_secret: 'csecret-456' });
     const params = new URLSearchParams(body);
     expect(params.get('client_secret')).toBe('csecret-456');
+  });
+});
+
+describe('tick — refresh outcomes', () => {
+  afterEach(() => {
+    stopAllRefreshLoops();
+    vi.restoreAllMocks();
+  });
+
+  const TOKEN_URL = 'https://token.example.com/token';
+
+  // Records every token-endpoint call and every PATCH /token body, and lets
+  // a test script the token endpoint's behaviour call by call.
+  function mockServer(tokenEndpoint: Array<() => Response>) {
+    const tokenCalls: string[] = [];
+    const patches: Record<string, string>[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.includes('/credentials')) {
+        return new Response(JSON.stringify({ client_id: 'cid', client_secret: '' }), { status: 200 });
+      }
+      if (href.endsWith('/token') && init?.method === 'PATCH') {
+        patches.push(JSON.parse(init.body as string));
+        return new Response('{}', { status: 200 });
+      }
+      if (href === TOKEN_URL) {
+        const next = tokenEndpoint[tokenCalls.length];
+        tokenCalls.push(init?.body as string);
+        if (!next) throw new Error('token endpoint called too many times');
+        return next();
+      }
+      throw new Error(`unexpected fetch: ${href}`);
+    }) as unknown as typeof fetch;
+    return { tokenCalls, patches };
+  }
+
+  it('marks an expired connection with no refresh token needs_reconnect', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue(null);
+    const { tokenCalls, patches } = mockServer([]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(0);
+  });
+
+  it('leaves a not-yet-expired connection with no refresh token alone', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue(null);
+    const { patches } = mockServer([]);
+
+    // Inside the pre-refresh window, but not expired.
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() + 60_000).toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(vi.mocked(getRefreshToken)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
+  });
+
+  it('retries once immediately with the same token after a network failure', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => { throw new TypeError('fetch failed'); },
+      () => new Response(JSON.stringify({ access_token: 'at-2', expires_in: 3600, refresh_token: 'rt-2' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(tokenCalls).toHaveLength(2);
+    expect(new URLSearchParams(tokenCalls[1]).get('refresh_token')).toBe('rt-1');
+    expect(patches[0].access_token).toBe('at-2');
+    expect(vi.mocked(setRefreshToken)).toHaveBeenCalledWith('notion', 'user@example.com:ws-1', 'rt-2');
+  });
+
+  it('does not retry an invalid_grant', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(1);
   });
 });
