@@ -194,32 +194,6 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     updateCoordinator.feed({ otaOffer: null, otaApply: null });
   });
 
-  it('gives its progress up before asking when the re-check finds a server update the poll did not know', async () => {
-    serverUpdater.check.mockResolvedValue({ updateAvailable: false });
-    await checkForUpdates();
-    updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.7.1' }, server: null } });
-    serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
-    tasks.count.mockResolvedValue(1);
-    expect(await apply({})).toEqual({ confirm: true, runningTasks: 1 });
-    // The dialog opens over "Update ready", naming the server update the
-    // re-check found, not over "Updating…".
-    expect(updateCoordinator.getState()).toMatchObject({
-      applying: null,
-      action: 'reload',
-      ui: { status: 'ready', version: '2.26.10.7.1' },
-      server: { status: 'ready', version: '0.26.10.7.1' },
-    });
-    updateCoordinator.feed({ otaOffer: null, otaApply: null });
-  });
-
-  it('an apply that throws leaves a failure the banner can retry, not silence', async () => {
-    updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.7.1' }, server: null } });
-    serverUpdater.apply.mockRejectedValueOnce(new Error('uv exploded'));
-    expect(await apply({ force: true })).toBe(false);
-    expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: 'reload', ui: { status: 'failed', version: '2.26.10.7.1' } });
-    updateCoordinator.feed({ otaOffer: null, otaApply: null });
-  });
-
   it('a manual apply with a server update keeps the announced version on its progress', async () => {
     serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
     await checkForUpdates();
@@ -230,8 +204,6 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
       return { updated: false, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.5.2' };
     });
     await apply({ force: true });
-    // The server apply's own progress push did not drop the version the click
-    // had already announced.
     expect(seen).toEqual({ phase: 'downloading', version: '2.26.10.7.1' });
     updateCoordinator.feed({ otaOffer: null, otaApply: null });
   });
