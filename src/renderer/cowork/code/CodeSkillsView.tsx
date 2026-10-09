@@ -87,7 +87,7 @@ function AddSkillSourceModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="add-skill-source-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="add-skill-source-title" dismissible={!busy}>
       <ModalHeader
         id="add-skill-source-title"
         title="Add team source"
@@ -108,8 +108,7 @@ function AddSkillSourceModal({
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={() => void submit()} disabled={busy || !repository.trim()}>{busy ? 'Adding…' : 'Add source'}</Button>
       </ModalFooter>
     </Modal>
@@ -138,7 +137,7 @@ function SkillProjectsModal({
     setSelected(new Set(item?.enabled_project_ids || []));
   }, [item]);
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-projects-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-projects-title" dismissible={!busy}>
       <ModalHeader
         id="skill-projects-title"
         title={item?.name || 'Choose projects'}
@@ -161,8 +160,7 @@ function SkillProjectsModal({
         </div>
         {error && <div className="code-skill-modal-error"><Alert variant="danger">{error}</Alert></div>}
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={() => void onSave([...selected])} disabled={busy || !projects.length}>{busy ? 'Saving…' : 'Save'}</Button>
       </ModalFooter>
     </Modal>

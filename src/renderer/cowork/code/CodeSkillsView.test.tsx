@@ -212,6 +212,23 @@ describe('CodeSkillsView', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('cannot be closed from the X while project assignment is saving', async () => {
+    let finish: () => void = () => {};
+    setSkillSourceProjects.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+    const user = userEvent.setup();
+    renderSkills();
+    await user.click(await screen.findByRole('button', { name: '1 project' }));
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: /Inference/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('button', { name: 'Saving…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+    finish();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('shows source usage without presenting it as a destructive error', async () => {
     const user = userEvent.setup();
     renderSkills();
