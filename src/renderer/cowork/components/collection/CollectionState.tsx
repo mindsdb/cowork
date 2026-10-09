@@ -21,7 +21,6 @@
 
 import type { ReactNode } from 'react';
 import Ico from '../Icons';
-import Button from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import type { EmptyStateProps } from '../ui/EmptyState';
 import { cn } from '../../lib/cn';
@@ -135,9 +134,9 @@ export function CollectionState({
     const q = query.trim();
     return (
       <EmptyState
-        icon={<span className="inline-flex text-ink-4">{Ico.search(20)}</span>}
+        icon={Ico.search(20)}
         title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
-        action={onClear && <Button variant="subtle" onClick={onClear}>{clearLabel}</Button>}
+        action={onClear && { label: clearLabel, onClick: onClear }}
         style={{ minHeight: 240 }}
       />
     );

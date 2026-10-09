@@ -363,10 +363,10 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
                 icon: Ico.cube(20),
                 title: 'No personal skills yet',
                 description: 'Write instructions or import a SKILL.md. No Git repository needed.',
-                action: <Button variant="subtle" onClick={() => setPersonalEditor({})}>Add your first skill</Button>,
+                action: { label: 'Add your first skill', onClick: () => setPersonalEditor({}) },
               }
             : filter === 'team'
-              ? { title: 'No team sources yet', description: 'Connect a Git repository to share engineering standards across projects.' }
+              ? { icon: Ico.link(20), title: 'No team sources yet', description: 'Connect a Git repository to share engineering standards across projects.' }
               : { title: 'No skills in this view.' }}
         >
           {showTeam && library.sources.map((source) => {

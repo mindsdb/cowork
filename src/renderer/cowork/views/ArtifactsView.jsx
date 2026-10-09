@@ -956,7 +956,7 @@ export default function ArtifactsView({
         skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
         skeletonGridClassName="artifacts-grid"
         empty={{
-          icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
+          icon: Ico.sparkle(20),
           title: 'No artifacts yet',
           // Second line (ENG-2169): the two apps keep separate artifacts, so
           // someone looking for work made in the other one is told where it is.
