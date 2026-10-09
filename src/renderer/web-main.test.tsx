@@ -15,7 +15,7 @@
 // The module runs its work as a top-level side effect, so each case needs a
 // fresh `window.location.hostname` + `vi.resetModules()` before importing it.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { act } from 'react';
 
 const rendered = {
@@ -28,16 +28,23 @@ const rendered = {
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
-const keycloakState = { initialized: true };
+const keycloakState = {
+  initialized: true,
+  onEvent: null as ((event: string, error?: unknown) => void) | null,
+  onTokens: null as ((tokens: { token?: string }) => void) | null,
+};
 const skinState = { skin: 'normal' };
 
 vi.mock('@react-keycloak/web', () => ({
-  ReactKeycloakProvider: ({ children, onTokens, LoadingComponent }: {
+  ReactKeycloakProvider: ({ children, onTokens, onEvent, LoadingComponent }: {
     children?: unknown;
     onTokens?: (tokens: { token?: string }) => void;
+    onEvent?: (event: string, error?: unknown) => void;
     LoadingComponent?: unknown;
   }) => {
     rendered.provider = true;
+    keycloakState.onEvent = onEvent ?? null;
+    keycloakState.onTokens = onTokens ?? null;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
@@ -45,8 +52,11 @@ vi.mock('@react-keycloak/web', () => ({
   },
 }));
 
+const appState = { throws: false };
+
 vi.mock('./App', () => ({
   default: () => {
+    if (appState.throws) throw new Error('render crash');
     rendered.app = true;
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
     return null;
@@ -57,19 +67,50 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
   requireWebOrganizationCacheIdentity: () => { rendered.identityRequired = true; },
   pinWebOrganizationCacheIdentity: (token?: string) => {
     rendered.identityToken = token ?? null;
-    return 'pinned';
+    return token === OTHER_ORGANIZATION_TOKEN ? 'changed' : 'pinned';
   },
 }));
 
+const transitionState = vi.hoisted(() => ({
+  reloadBlocked: false,
+  assertClear: { mock: null as null | (() => void) },
+  prepareForOrganizationReload: null as null | ((...args: unknown[]) => void),
+}));
+transitionState.prepareForOrganizationReload = vi.fn();
+
 vi.mock('./cowork/lib/organizationTransition', () => ({
-  prepareForOrganizationReload: vi.fn(),
+  prepareForOrganizationReload: (...args: unknown[]) => transitionState.prepareForOrganizationReload?.(...args),
+  assertOrganizationTransitionClear: () => transitionState.assertClear.mock?.(),
+  isOrganizationReloadBlocked: () => transitionState.reloadBlocked,
+  subscribeOrganizationReloadBlocked: () => () => {},
 }));
 
 // Constructing the real Keycloak client reaches for browser APIs happy-dom
 // doesn't fully provide, and this test is about the wrapper choice, not the
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
-vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
+const OTHER_ORGANIZATION_TOKEN = 'other-organization-token';
+const keycloakClient = vi.hoisted(() => ({
+  onAuthError: null,
+  authenticated: false,
+  updateToken: (_minValidity: number): Promise<boolean> => Promise.resolve(true),
+}));
+vi.mock('./lib/keycloak', () => ({ keycloak: keycloakClient }));
+
+// Each case imports web-main afresh, which mounts a new root. Unmount the last
+// one first so its effects clean up instead of piling listeners onto window.
+const mountedRoots = vi.hoisted(() => [] as Array<{ unmount: () => void }>);
+vi.mock('react-dom/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-dom/client')>();
+  return {
+    ...actual,
+    createRoot: (...args: Parameters<typeof actual.createRoot>) => {
+      const created = actual.createRoot(...args);
+      mountedRoots.push(created);
+      return created;
+    },
+  };
+});
 vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
@@ -88,12 +129,16 @@ async function renderOnHost(hostname: string, search = '') {
   Object.defineProperty(window, 'location', {
     configurable: true,
     writable: true,
-    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search },
+    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search, reload: vi.fn() },
   });
 
   const root = document.createElement('div');
   root.id = 'root';
   document.body.appendChild(root);
+
+  act(() => {
+    for (const mounted of mountedRoots.splice(0)) mounted.unmount();
+  });
 
   // createRoot().render() is asynchronous in React 19 — without act() the
   // import resolves before the tree has been committed and nothing is recorded.
@@ -203,6 +248,233 @@ describe('web-main loading view while Keycloak initializes', () => {
     keycloakState.initialized = false;
     await renderOnHost('cowork.mindshub.ai');
     expect(document.body.dataset.arcadePreset).toBe(preset);
+  });
+});
+
+describe('web-main Keycloak init failure', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = false;
+    keycloakState.onEvent = null;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  const rootText = () => document.getElementById('root')?.textContent ?? '';
+
+  // A forced organization reload that cannot finish signing in must not sit on
+  // the loading view forever.
+  it('offers a reload when init rejects', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+    expect(rootText()).toContain('Welcome to MindsHub Cowork');
+
+    await act(async () => {
+      keycloakState.onEvent?.('onInitError', { error: 'network', error_description: 'failed' });
+    });
+
+    expect(rootText()).toContain("Couldn't sign you in");
+    expect(rendered.app).toBe(false);
+    const button = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Reload');
+    expect(button).toBeDefined();
+    await act(async () => { button?.click(); });
+    expect(window.location.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores refresh errors after init', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+
+    await act(async () => {
+      keycloakState.onEvent?.('onAuthRefreshError', { error: 'network', error_description: 'failed' });
+      keycloakState.onEvent?.('onAuthError', { error: 'network', error_description: 'failed' });
+    });
+
+    expect(rootText()).toContain('Welcome to MindsHub Cowork');
+    expect(rootText()).not.toContain("Couldn't sign you in");
+  });
+});
+
+describe('web-main render error', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    appState.throws = true;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    appState.throws = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['the canonical host', 'cowork.mindshub.ai'],
+    ['a legacy cw- host', 'cw-9a9e789c.4nton.ai'],
+  ])('shows a reload notice, not an empty root, on %s', async (_label, host) => {
+    await renderOnHost(host);
+    expect(document.getElementById('root')?.textContent).toContain('Something went wrong');
+  });
+});
+
+describe('web-main reload budget prompt', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    transitionState.reloadBlocked = true;
+  });
+
+  afterEach(() => {
+    transitionState.reloadBlocked = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+  });
+
+  it.each([
+    ['the canonical host', 'cowork.mindshub.ai'],
+    ['a legacy cw- host', 'cw-9a9e789c.4nton.ai'],
+  ])('shows the prompt instead of the app on %s once the budget is spent', async (_label, host) => {
+    await renderOnHost(host);
+    expect(rendered.app).toBe(false);
+    expect(document.getElementById('root')?.textContent).toContain('Your organization changed');
+  });
+});
+
+describe('web-main focus token refresh', () => {
+  const realLocation = window.location;
+  let now = 1_000_000;
+  let updateToken: Mock<(minValidity: number) => Promise<boolean>>;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    updateToken = vi.fn((_minValidity: number) => Promise.resolve(true));
+    keycloakClient.authenticated = true;
+    keycloakClient.updateToken = updateToken;
+    transitionState.assertClear.mock = null;
+    transitionState.prepareForOrganizationReload = vi.fn();
+    now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    keycloakClient.authenticated = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  const focus = async () => {
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+  };
+
+  it('forces one refresh on focus and waits a minute before the next', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+    expect(updateToken).toHaveBeenCalledWith(-1);
+
+    now += 59_000;
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+
+    now += 2_000;
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads when the refreshed token names another organization', async () => {
+    updateToken.mockImplementation(() => {
+      keycloakState.onTokens?.({ token: OTHER_ORGANIZATION_TOKEN });
+      return Promise.resolve(true);
+    });
+    await renderOnHost('cowork.mindshub.ai');
+    expect(transitionState.prepareForOrganizationReload).not.toHaveBeenCalled();
+
+    await focus();
+
+    expect(transitionState.prepareForOrganizationReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh while an organization transition holds tokens', async () => {
+    transitionState.assertClear.mock = () => { throw new Error('Organization change is in progress'); };
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+
+    expect(updateToken).not.toHaveBeenCalled();
+  });
+
+  it('refreshes on the next focus once a held transition clears', async () => {
+    transitionState.assertClear.mock = () => { throw new Error('Organization change is in progress'); };
+    await renderOnHost('cowork.mindshub.ai');
+    await focus();
+    expect(updateToken).not.toHaveBeenCalled();
+
+    transitionState.assertClear.mock = null;
+    now += 5_000;
+    await focus();
+
+    expect(updateToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes when the tab becomes visible, not when it is hidden', async () => {
+    let visibility: DocumentVisibilityState = 'hidden';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    await renderOnHost('cowork.mindshub.ai');
+    const visibilityChange = async () => {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    };
+
+    await visibilityChange();
+    expect(updateToken).not.toHaveBeenCalled();
+
+    visibility = 'visible';
+    await visibilityChange();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('survives a failed refresh', async () => {
+    updateToken.mockImplementation(() => Promise.reject(new Error('network')));
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+
+    expect(updateToken).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith('[organization] focus token refresh failed', expect.any(Error));
+  });
+
+  it('does not refresh on a legacy cw- host, which has no Keycloak login', async () => {
+    await renderOnHost('cw-9a9e789c.4nton.ai');
+
+    await focus();
+
+    expect(updateToken).not.toHaveBeenCalled();
   });
 });
 
