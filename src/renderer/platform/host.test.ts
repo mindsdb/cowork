@@ -461,291 +461,180 @@ describe('electron mode (bridge present)', () => {
 
   describe('the one update state (ENG-2296)', () => {
     const shell = (phase: string, over: Record<string, unknown> = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...over });
-
-    it('subscribes through the bridge when the shell carries UPDATE_STATE, pulling the current state first', async () => {
-      const state = { action: 'relaunch', shell: { status: 'ready' } };
-      let pushed: ((s: unknown) => void) | null = null;
-      const off = vi.fn();
-      (window as unknown as Record<string, unknown>).antontron = {
-        getUpdateState: vi.fn(async () => state),
-        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return off; }),
-        applyUpdates: vi.fn(async () => true),
-        // The legacy channels must not be touched on a shell that has the new one.
+    type Fn = ReturnType<typeof vi.fn>;
+    const setBridge = (bridge: Record<string, unknown>) => {
+      (window as unknown as Record<string, unknown>).antontron = bridge;
+      return bridge as Record<string, Fn>;
+    };
+    /** A shell with UPDATE_STATE; `push` delivers a state from main. */
+    const newerShell = (over: Record<string, unknown> = {}) => {
+      const ctl = { push: (_s: unknown) => {}, off: vi.fn() };
+      const bridge = setBridge({
+        getUpdateState: vi.fn(async () => ({ action: null })),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { ctl.push = cb; return ctl.off; }),
         onUpdateStatus: vi.fn(),
         onShellAutoUpdate: vi.fn(),
-      };
-      const host = await importHost();
-      const seen = vi.fn();
-      const unsubscribe = host.watchUpdateState(seen);
-      await vi.waitFor(() => expect(seen).toHaveBeenCalledWith(state));
-      pushed!({ action: 'reload' });
-      expect(seen).toHaveBeenLastCalledWith({ action: 'reload' });
-      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
-      expect(bridge.onUpdateStatus).not.toHaveBeenCalled();
-      expect(bridge.onShellAutoUpdate).not.toHaveBeenCalled();
-      await host.applyUpdates();
-      expect(bridge.applyUpdates).toHaveBeenCalledWith({});
-      unsubscribe();
-      expect(off).toHaveBeenCalledOnce();
-    });
-
-    it('composes the same state from the old channels on a shell that predates UPDATE_STATE', async () => {
-      // A newer OTA renderer on an older shell: the shell pushes its snapshot
-      // and the OTA status separately, and the renderer must still render one
-      // answer from them (shell-first: the relaunch owns the action).
-      let otaCb: ((s: unknown) => void) | null = null;
-      let shellCb: ((s: unknown) => void) | null = null;
-      (window as unknown as Record<string, unknown>).antontron = {
-        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
-        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
-        getShellAutoUpdate: vi.fn(async () => shell('idle')),
-        getShellUpdate: vi.fn(async () => ({ available: false })),
-        applyUpdate: vi.fn(async () => true),
-        installShellAutoUpdate: vi.fn(async () => true),
-      };
-      const host = await importHost();
-      const seen = vi.fn();
-      host.watchUpdateState(seen);
-      expect(seen).toHaveBeenCalledTimes(1);
-      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, applying: null });
-      otaCb!({ phase: 'available', version: '2.26.10.7.1' });
-      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
-      shellCb!(shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
-      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', ui: { status: 'ready' } });
-      // The one apply picks the shell install on that shell's own channel.
-      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
-      await host.applyUpdates();
-      expect(bridge.installShellAutoUpdate).toHaveBeenCalledWith({});
-      expect(bridge.applyUpdate).not.toHaveBeenCalled();
-      // The legacy manual notice reaches the composed state too.
-      otaCb!({ phase: 'shell-available', version: '2.26.10.9.1', downloadUrl: 'https://x/y.pkg' });
-      expect(stateNow(host)!.shell.manual).toBe(false); // the ready download still wins
-      shellCb!(shell('idle'));
-      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
-    });
-
-    it('on an older shell a manual OTA apply shows progress and reports a failure from the composed state', async () => {
-      let otaCb: ((s: unknown) => void) | null = null;
-      const applyUpdate = vi.fn(async () => false);
-      (window as unknown as Record<string, unknown>).antontron = {
-        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
-        onShellAutoUpdate: vi.fn(() => vi.fn()),
+        ...over,
+      });
+      return { ...ctl, bridge, push: (s: unknown) => ctl.push(s) };
+    };
+    /** A shell that predates UPDATE_STATE: the renderer composes the state from
+     *  its OTA status and shell snapshot channels. */
+    const olderShell = (over: Record<string, unknown> = {}) => {
+      const cb: { ota: (s: unknown) => void; shell: (s: unknown) => void } = { ota: () => {}, shell: () => {} };
+      const offs = { ota: vi.fn(), shell: vi.fn() };
+      const bridge = setBridge({
+        onUpdateStatus: vi.fn((fn: (s: unknown) => void) => { cb.ota = fn; return offs.ota; }),
+        onShellAutoUpdate: vi.fn((fn: (s: unknown) => void) => { cb.shell = fn; return offs.shell; }),
         getShellAutoUpdate: vi.fn(async () => shell('idle')),
         getShellUpdate: vi.fn(async () => null),
-        applyUpdate,
-      };
-      const host = await importHost();
-      const seen = vi.fn();
-      host.watchUpdateState(seen);
-      otaCb!({ phase: 'available', version: 'ui-1' });
-      const result = await host.applyUpdates();
-      expect(applyUpdate).toHaveBeenCalledOnce();
-      expect(result).toBe(false);
-      // Progress was shown while the apply ran, then the failure offers a retry.
-      const phases = seen.mock.calls.map((c) => (c[0] as { ui: { status: string } }).ui.status);
-      expect(phases).toContain('applying');
-      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'failed' } });
-    });
+        ...over,
+      });
+      return { bridge, offs, ota: (s: unknown) => cb.ota(s), shell: (s: unknown) => cb.shell(s) };
+    };
 
-    it('on an older shell a Restart named as the reload runs it from behind a dismissed installer notice', async () => {
-      let otaCb: ((s: unknown) => void) | null = null;
-      const applyUpdate = vi.fn(async () => true);
-      (window as unknown as Record<string, unknown>).antontron = {
-        onUpdateStatus: vi.fn((cb: (s: unknown) => void) => { otaCb = cb; return vi.fn(); }),
-        onShellAutoUpdate: vi.fn(() => vi.fn()),
-        getShellAutoUpdate: vi.fn(async () => shell('disabled')),
-        getShellUpdate: vi.fn(async () => null),
-        applyUpdate,
-      };
+    it('shares one bridge subscription across watchers on a newer shell, and tears it down with the last', async () => {
+      const main = newerShell({ getUpdateState: vi.fn(async () => ({ action: 'relaunch' })), applyUpdates: vi.fn(async () => true) });
       const host = await importHost();
-      host.watchUpdateState(vi.fn());
-      otaCb!({ phase: 'available', version: 'ui-1' });
-      otaCb!({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
-      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', ui: { status: 'ready' } });
-      // The notice's action is the renderer's own; unnamed, nothing is sent.
-      expect(await host.applyUpdates()).toBe(false);
-      expect(applyUpdate).not.toHaveBeenCalled();
-      expect(await host.applyUpdates({ action: 'reload' })).toBe(true);
-      expect(applyUpdate).toHaveBeenCalledOnce();
-    });
-
-    it('a manual check on an older shell feeds what it found into the composed state', async () => {
-      (window as unknown as Record<string, unknown>).antontron = {
-        checkForUpdate: vi.fn(async () => ({ updateAvailable: true, newVersion: '2.26.10.7.1' })),
-        onUpdateStatus: vi.fn(() => vi.fn()),
-        onShellAutoUpdate: vi.fn(() => vi.fn()),
-        getShellAutoUpdate: vi.fn(async () => shell('idle')),
-        getShellUpdate: vi.fn(async () => null),
-      };
-      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
-      const host = await importHost();
-      await host.checkForUpdates();
-      expect(stateNow(host)!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
-    });
-
-    it('shares one bridge subscription across watchers, and tears it down with the last', async () => {
-      const state = { action: null, shell: { status: 'idle' } };
-      let pushed: ((s: unknown) => void) | null = null;
-      const off = vi.fn();
-      (window as unknown as Record<string, unknown>).antontron = {
-        getUpdateState: vi.fn(async () => state),
-        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return off; }),
-      };
-      const host = await importHost();
-      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
       const first = vi.fn();
       const second = vi.fn();
       const offFirst = host.watchUpdateState(first);
       const offSecond = host.watchUpdateState(second);
-      await vi.waitFor(() => expect(first).toHaveBeenCalledWith(state));
-      // A late watcher is caught up from the shared last value, with no second pull.
-      expect(second).toHaveBeenCalledWith(state);
-      expect(bridge.getUpdateState).toHaveBeenCalledTimes(1);
-      expect(bridge.onUpdateState).toHaveBeenCalledTimes(1);
-      pushed!({ action: 'reload' });
-      expect(first).toHaveBeenLastCalledWith({ action: 'reload' });
-      expect(second).toHaveBeenLastCalledWith({ action: 'reload' });
+      await vi.waitFor(() => expect(first).toHaveBeenCalledWith({ action: 'relaunch' }));
+      expect(second).toHaveBeenCalledWith({ action: 'relaunch' });
+      expect(main.bridge.getUpdateState).toHaveBeenCalledTimes(1);
+      expect(main.bridge.onUpdateState).toHaveBeenCalledTimes(1);
+      expect(main.bridge.onUpdateStatus).not.toHaveBeenCalled();
+      expect(main.bridge.onShellAutoUpdate).not.toHaveBeenCalled();
       offFirst();
-      expect(off).not.toHaveBeenCalled();
-      pushed!({ action: 'relaunch' });
-      expect(first).not.toHaveBeenLastCalledWith({ action: 'relaunch' });
-      expect(second).toHaveBeenLastCalledWith({ action: 'relaunch' });
+      main.push({ action: 'reload' });
+      expect(first).not.toHaveBeenLastCalledWith({ action: 'reload' });
+      expect(second).toHaveBeenLastCalledWith({ action: 'reload' });
       offSecond();
-      expect(off).toHaveBeenCalledOnce();
-      // A fresh watch after teardown subscribes anew.
+      expect(main.off).toHaveBeenCalledOnce();
       host.watchUpdateState(vi.fn());
-      expect(bridge.onUpdateState).toHaveBeenCalledTimes(2);
+      expect(main.bridge.onUpdateState).toHaveBeenCalledTimes(2);
     });
 
-    it('on an older shell, two watchers register the legacy listeners once', async () => {
-      (window as unknown as Record<string, unknown>).antontron = {
-        onUpdateStatus: vi.fn(() => vi.fn()),
-        onShellAutoUpdate: vi.fn(() => vi.fn()),
-        getShellAutoUpdate: vi.fn(async () => shell('idle')),
-        getShellUpdate: vi.fn(async () => null),
-      };
-      const host = await importHost();
-      host.watchUpdateState(vi.fn());
-      host.watchUpdateState(vi.fn());
-      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
-      expect(bridge.onUpdateStatus).toHaveBeenCalledTimes(1);
-      expect(bridge.onShellAutoUpdate).toHaveBeenCalledTimes(1);
-      expect(bridge.getShellAutoUpdate).toHaveBeenCalledTimes(1);
-      expect(bridge.getShellUpdate).toHaveBeenCalledTimes(1);
-    });
-
-    it('on an older shell, a manual check does not turn an active auto-updater download into a stale installer notice', async () => {
-      // A shell with the unified check summary but no UPDATE_STATE channel:
-      // its summary flags the shell update the auto-updater is downloading
-      // (a version, no installer URL).
-      let shellCb: ((s: unknown) => void) | null = null;
-      (window as unknown as Record<string, unknown>).antontron = {
-        checkForUpdate: vi.fn(async () => ({
-          ok: true, offline: false, updateAvailable: true,
-          uiUpdateAvailable: false, serverUpdateAvailable: false,
-          shellUpdateAvailable: true, shellVersion: '2.26.10.9.1',
-        })),
-        onUpdateStatus: vi.fn(() => vi.fn()),
-        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
-        getShellAutoUpdate: vi.fn(async () => shell('idle')),
-        getShellUpdate: vi.fn(async () => null),
-      };
-      const host = await importHost();
-      host.watchUpdateState(vi.fn());
-      shellCb!(shell('downloading', { targetVersion: '2.26.10.9.1' }));
-      await host.checkForUpdates();
-      expect(stateNow(host)!.shell.manual).toBe(false);
-      // The download later fails with no target: nothing stale falls through.
-      shellCb!(shell('failed', { recoverable: true, errorCode: 'check-stalled' }));
-      expect(stateNow(host)!.shell.manual).toBe(false);
-      // With the auto-updater out of the picture, the same summary is the notice,
-      // and a negative check clears it again.
-      shellCb!(shell('disabled'));
-      await host.checkForUpdates();
-      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true } });
-      const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
-      bridge.checkForUpdate.mockResolvedValue({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-      await host.checkForUpdates();
-      expect(stateNow(host)!.shell.manual).toBe(false);
-    });
-
-    it('a mount-time pull that resolves after a push does not replace the newer state', async () => {
+    it.each<[string, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>]>([
+      ['revisions order them', { action: null, applying: 'downloading', revision: 5 }, { action: 'reload', applying: null, revision: 4 }, { action: null, applying: 'downloading', revision: 5 }],
+      ['without revisions the push that landed first wins', { action: 'relaunch' }, { action: 'reload' }, { action: 'relaunch' }],
+    ])('a mount-time pull that resolves after a push does not replace it: %s', async (_name, pushed, pulled, expected) => {
       let resolvePull!: (s: unknown) => void;
-      let pushed: ((s: unknown) => void) | null = null;
-      (window as unknown as Record<string, unknown>).antontron = {
-        getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })),
-        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return vi.fn(); }),
-      };
+      const main = newerShell({ getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })) });
       const host = await importHost();
       const seen = vi.fn();
       host.watchUpdateState(seen);
-      // Main pushes revision 5 while the pull, answered at revision 4, is in flight.
-      pushed!({ action: null, applying: 'downloading', revision: 5 });
-      resolvePull({ action: 'reload', applying: null, revision: 4 });
+      main.push(pushed);
+      resolvePull(pulled);
       await new Promise((r) => setTimeout(r, 0));
       expect(seen).toHaveBeenCalledTimes(1);
-      expect(seen).toHaveBeenLastCalledWith({ action: null, applying: 'downloading', revision: 5 });
-      // An older push is dropped the same way; a newer one lands.
-      pushed!({ action: 'reload', revision: 3 });
-      expect(seen).toHaveBeenCalledTimes(1);
-      pushed!({ action: 'reload', revision: 6 });
-      expect(seen).toHaveBeenLastCalledWith({ action: 'reload', revision: 6 });
+      expect(seen).toHaveBeenLastCalledWith(expected);
+      if (typeof pushed.revision === 'number') {
+        main.push({ action: 'reload', revision: 3 });
+        expect(seen).toHaveBeenCalledTimes(1);
+        main.push({ action: 'reload', revision: 6 });
+        expect(seen).toHaveBeenLastCalledWith({ action: 'reload', revision: 6 });
+      }
     });
 
-    it('a main without revisions keeps the legacy rule: a push that landed first wins over the pull', async () => {
-      let resolvePull!: (s: unknown) => void;
-      let pushed: ((s: unknown) => void) | null = null;
-      (window as unknown as Record<string, unknown>).antontron = {
-        getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })),
-        onUpdateState: vi.fn((cb: (s: unknown) => void) => { pushed = cb; return vi.fn(); }),
-      };
+    it('sends the clicked action to main and passes a stale answer through', async () => {
+      const main = newerShell({ applyUpdates: vi.fn(async () => 'stale') });
+      const host = await importHost();
+      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
+      expect(main.bridge.applyUpdates).toHaveBeenCalledWith({ action: 'download' });
+      expect(main.bridge.applyUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('composes the same state on an older shell, registering its legacy listeners once and removing them with the last watcher', async () => {
+      const old = olderShell({ applyUpdate: vi.fn(async () => true), installShellAutoUpdate: vi.fn(async () => true) });
+      const host = await importHost();
+      const seen = vi.fn();
+      const offFirst = host.watchUpdateState(seen);
+      const offSecond = host.watchUpdateState(vi.fn());
+      expect(old.bridge.onUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(old.bridge.onShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(old.bridge.getShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(old.bridge.getShellUpdate).toHaveBeenCalledTimes(1);
+      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, applying: null });
+      old.ota({ phase: 'available', version: '2.26.10.7.1' });
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      old.shell(shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', ui: { status: 'ready' } });
+      await host.applyUpdates();
+      expect(old.bridge.installShellAutoUpdate).toHaveBeenCalledWith({});
+      expect(old.bridge.applyUpdate).not.toHaveBeenCalled();
+      old.ota({ phase: 'shell-available', version: '2.26.10.9.1', downloadUrl: 'https://x/y.pkg' });
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      old.shell(shell('idle'));
+      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
+      offFirst();
+      expect(old.offs.ota).not.toHaveBeenCalled();
+      offSecond();
+      expect(old.offs.ota).toHaveBeenCalledOnce();
+      expect(old.offs.shell).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a reload shows progress and reports a failure from the composed state', async () => {
+      const old = olderShell({ applyUpdate: vi.fn(async () => false) });
       const host = await importHost();
       const seen = vi.fn();
       host.watchUpdateState(seen);
-      pushed!({ action: 'relaunch' });
-      resolvePull({ action: 'reload' });
-      await new Promise((r) => setTimeout(r, 0));
-      expect(seen).toHaveBeenCalledTimes(1);
-      expect(seen).toHaveBeenLastCalledWith({ action: 'relaunch' });
+      old.ota({ phase: 'available', version: 'ui-1' });
+      expect(await host.applyUpdates()).toBe(false);
+      expect(old.bridge.applyUpdate).toHaveBeenCalledOnce();
+      expect(seen.mock.calls.map((c) => (c[0] as { ui: { status: string } }).ui.status)).toContain('applying');
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'failed' } });
     });
 
-    it('sends the clicked action to main, and passes a stale answer through as nothing ran', async () => {
-      const applyUpdates = vi.fn(async () => 'stale');
-      (window as unknown as Record<string, unknown>).antontron = {
-        getUpdateState: vi.fn(async () => ({ action: 'relaunch' })),
-        onUpdateState: vi.fn(() => vi.fn()),
-        applyUpdates,
-      };
-      const host = await importHost();
-      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
-      expect(applyUpdates).toHaveBeenCalledWith({ action: 'download' });
-      // Stale is decided by main; the guard never asks or retries it.
-      expect(applyUpdates).toHaveBeenCalledTimes(1);
-    });
-
-    it('on an older shell a Download click that the state no longer offers runs nothing', async () => {
-      let shellCb: ((s: unknown) => void) | null = null;
-      const installShellAutoUpdate = vi.fn(async () => true);
-      const downloadShellAutoUpdate = vi.fn(async () => shell('downloading'));
-      (window as unknown as Record<string, unknown>).antontron = {
-        onUpdateStatus: vi.fn(() => vi.fn()),
-        onShellAutoUpdate: vi.fn((cb: (s: unknown) => void) => { shellCb = cb; return vi.fn(); }),
-        getShellAutoUpdate: vi.fn(async () => shell('idle')),
-        getShellUpdate: vi.fn(async () => null),
-        installShellAutoUpdate,
-        downloadShellAutoUpdate,
-      };
+    it('on an older shell the reload behind an installer notice runs only when named', async () => {
+      const old = olderShell({ getShellAutoUpdate: vi.fn(async () => shell('disabled')), applyUpdate: vi.fn(async () => true) });
       const host = await importHost();
       host.watchUpdateState(vi.fn());
-      // The banner rendered Download; the snapshot reached ready-to-install first.
-      shellCb!(shell('available', { mode: 'manual', targetVersion: 'v' }));
-      shellCb!(shell('ready-to-install', { mode: 'manual', targetVersion: 'v' }));
+      old.ota({ phase: 'available', version: 'ui-1' });
+      old.ota({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
+      expect(await host.applyUpdates()).toBe(false);
+      expect(old.bridge.applyUpdate).not.toHaveBeenCalled();
+      expect(await host.applyUpdates({ action: 'reload' })).toBe(true);
+      expect(old.bridge.applyUpdate).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a Download click the state no longer offers runs nothing', async () => {
+      const old = olderShell({ installShellAutoUpdate: vi.fn(async () => true), downloadShellAutoUpdate: vi.fn(async () => shell('downloading')) });
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      old.shell(shell('available', { mode: 'manual', targetVersion: 'v' }));
+      old.shell(shell('ready-to-install', { mode: 'manual', targetVersion: 'v' }));
       expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
-      expect(installShellAutoUpdate).not.toHaveBeenCalled();
-      expect(downloadShellAutoUpdate).not.toHaveBeenCalled();
-      // The Restart it now shows installs.
+      expect(old.bridge.installShellAutoUpdate).not.toHaveBeenCalled();
+      expect(old.bridge.downloadShellAutoUpdate).not.toHaveBeenCalled();
       expect(await host.applyUpdates({ action: 'relaunch' })).toBe(true);
-      expect(installShellAutoUpdate).toHaveBeenCalledOnce();
+      expect(old.bridge.installShellAutoUpdate).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a manual check feeds the offer, but never turns an auto-updater download into a stale notice', async () => {
+      const summary = (over: Record<string, unknown>) => ({ ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false, ...over });
+      const old = olderShell({ checkForUpdate: vi.fn(async () => ({ updateAvailable: true, newVersion: '2.26.10.7.1' })) });
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      // A shell old enough to answer with the UI-only reply.
+      await host.checkForUpdates();
+      expect(stateNow(host)!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      // The summary flags the shell update the auto-updater is downloading.
+      old.bridge.checkForUpdate.mockResolvedValue(summary({ shellUpdateAvailable: true, shellVersion: '2.26.10.9.1' }));
+      old.shell(shell('downloading', { targetVersion: '2.26.10.9.1' }));
+      await host.checkForUpdates();
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      old.shell(shell('failed', { recoverable: true, errorCode: 'check-stalled' }));
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      // With the auto-updater out of the picture the summary is the notice, and a no clears it.
+      old.shell(shell('disabled'));
+      await host.checkForUpdates();
+      expect(stateNow(host)!).toMatchObject({ shell: { manual: true } });
+      old.bridge.checkForUpdate.mockResolvedValue(summary({ updateAvailable: false }));
+      await host.checkForUpdates();
+      expect(stateNow(host)!.shell.manual).toBe(false);
     });
 
     it('publishes nothing on web', async () => {

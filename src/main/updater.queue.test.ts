@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// A Restart click that waits for the maintenance lock behind another apply
-// (the boot apply, here) owns the progress it announced. The apply it waits
-// behind must not clear that progress when it settles, or the queued apply
-// runs with nothing on screen. Unlike the other updater suites, this one keeps
-// the real maintenance lock, since the queue is the point.
+// Keeps the real maintenance lock, since the queue is the point.
 
 vi.mock('electron', () => ({
   app: { getVersion: () => '2.260928.1', isPackaged: true, on: vi.fn() },
@@ -59,7 +55,6 @@ beforeEach(() => {
 
 describe('a Restart queued behind another apply', () => {
   it('keeps its progress when the apply ahead of it settles, and settles its own when it ran', async () => {
-    // The boot apply finds a UI update and holds the lock while it downloads.
     let releaseBoot!: (applied: boolean) => void;
     vi.mocked(checkForUIUpdate).mockResolvedValueOnce({ updateAvailable: true, applied: false, newVersion: '2.26.10.7.1' });
     vi.mocked(applyUIUpdate).mockImplementationOnce(() => new Promise<boolean>((r) => { releaseBoot = r; }));
@@ -68,7 +63,6 @@ describe('a Restart queued behind another apply', () => {
     });
     await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(1));
 
-    // Meanwhile an offer is on screen and the person clicks Restart.
     updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.8.1' }, server: null } });
     expect(updateCoordinator.getState().action).toBe('reload');
     let releaseClick!: (applied: boolean) => void;
@@ -77,20 +71,15 @@ describe('a Restart queued behind another apply', () => {
     await tick();
     expect(updateCoordinator.getState().applying).toBe('downloading');
 
-    // The boot apply lands nothing and settles. The click is still queued:
-    // its progress stays on screen.
+    // The boot apply settles while the click is still queued.
     releaseBoot(false);
     await bootDone;
     await tick();
     expect(updateCoordinator.getState().applying).toBe('downloading');
 
-    // The click's own apply runs, lands nothing, and settles its own status:
-    // no stuck overlay, and the offer it found stale is gone rather than
-    // offered again.
     await vi.waitFor(() => expect(applyUIUpdate).toHaveBeenCalledTimes(2));
     expect(updateCoordinator.getState().applying).toBe('downloading');
     releaseClick(false);
-    // Nothing ran, so the click is answered as stale, not as a failure.
     expect(await click).toBe('stale');
     expect(updateCoordinator.getState()).toMatchObject({ applying: null, action: null });
   });

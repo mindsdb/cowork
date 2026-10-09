@@ -51,9 +51,6 @@ const baseProps = {
   onSectionChange: vi.fn(),
 };
 
-// Every case renders from the one update state (src/shared/update-coordinator.ts)
-// the way App.jsx hands it down, and routes the one action through a stub of
-// useAppUpdates' handler.
 // `ota` is a legacy-channel status, split into the offer and apply inputs.
 const stateFor = ({ ota, ...input }) => coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...(ota !== undefined ? legacyOtaInput(ota) : {}), ...input });
 const shell = (phase, over = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', ...over });
@@ -219,22 +216,11 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     expect(screen.getByText(/Couldn't apply the update/)).toBeInTheDocument();
   });
 
-  it('a click dropped behind another surface\'s request changes nothing', async () => {
-    // The sidebar's Restart is awaiting the running-tasks dialog; the hook
-    // answers 'busy' for this one. That is not a failure.
-    const onUpdateAction = vi.fn(async () => 'busy');
-    render(<SettingsView {...baseProps} updateState={stateFor(uiReady)} onUpdateAction={onUpdateAction} />);
-    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
-    await waitFor(() => expect(onUpdateAction).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    expect(screen.queryByText(/Couldn't apply the update/)).toBeNull();
-    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
-  });
-
-  it('a click the state no longer offers is not a failure', async () => {
-    // Main answered 'stale': the banner lagged a push, nothing ran, and the
-    // card re-renders from the state main pushes next.
-    const onUpdateAction = vi.fn(async () => 'stale');
+  it.each([
+    ['dropped behind another surface\'s request', 'busy'],
+    ['the state no longer offers', 'stale'],
+  ])('a click %s is not a failure', async (_name, answer) => {
+    const onUpdateAction = vi.fn(async () => answer);
     render(<SettingsView {...baseProps} updateState={stateFor(uiReady)} onUpdateAction={onUpdateAction} />);
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     await waitFor(() => expect(onUpdateAction).toHaveBeenCalledTimes(1));
@@ -272,17 +258,21 @@ describe('SettingsView desktop — confirm before a restart ends running tasks (
   afterEach(() => resetRestartConfirmationForTests());
 
   const readyShell = stateFor({ shell: shell('ready-to-install', { targetVersion: '2.260720.1' }) });
-  const guarded = (main) => (action, hooks = {}) => guardRestart(main, hooks);
-
-  it('asks before "Update ready" Restart now while tasks run, and Cancel keeps the update ready', async () => {
-    const main = fakeMain({ runningTasks: 2 });
+  /** Render Settings behind the real guard and dialog, with a fake main, and click Restart now. */
+  const clickRestart = (runningTasks, updateState = readyShell) => {
+    const main = fakeMain({ runningTasks });
     render(
       <>
         <RestartConfirmHost />
-        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
+        <SettingsView {...baseProps} updateState={updateState} onUpdateAction={(action, hooks = {}) => guardRestart(main, hooks)} />
       </>
     );
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    return main;
+  };
+
+  it('asks before "Update ready" Restart now while tasks run, and Cancel keeps the update ready', async () => {
+    const main = clickRestart(2);
     expect(await screen.findByText('Stop 2 running tasks and restart?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
     await screen.findByRole('button', { name: /Restart now/ });
@@ -293,57 +283,25 @@ describe('SettingsView desktop — confirm before a restart ends running tasks (
   });
 
   it('restarts after Restart anyway', async () => {
-    const main = fakeMain({ runningTasks: 1 });
-    render(
-      <>
-        <RestartConfirmHost />
-        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
-      </>
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    const main = clickRestart(1);
     expect(await screen.findByText('Stop 1 running task and restart?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Restart anyway/ }));
     await waitFor(() => expect(main).toHaveBeenCalledWith({ force: true }));
   });
 
   it('restarts at once with no task running, with a single install call', async () => {
-    const main = fakeMain({ runningTasks: 0 });
-    render(
-      <>
-        <RestartConfirmHost />
-        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
-      </>
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    const main = clickRestart(0);
     await waitFor(() => expect(main).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/and restart\?/)).toBeNull();
   });
 
   it('still asks when the sidecar does not answer, and says it cannot tell', async () => {
-    const main = fakeMain({ runningTasks: null });
-    render(
-      <>
-        <RestartConfirmHost />
-        <SettingsView {...baseProps} updateState={readyShell} onUpdateAction={guarded(main)} />
-      </>
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    clickRestart(null);
     expect(await screen.findByText(/cannot tell whether any tasks are running/)).toBeInTheDocument();
   });
 
   it('asks before an "Update ready" Restart now that includes a server update, and never reads "Restarting…" under the dialog', async () => {
-    const main = fakeMain({ runningTasks: 3 });
-    render(
-      <>
-        <RestartConfirmHost />
-        <SettingsView
-          {...baseProps}
-          updateState={stateFor({ ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, serverUpdate: true, serverVersion: '0.26.7.20.1' } })}
-          onUpdateAction={guarded(main)}
-        />
-      </>
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    clickRestart(3, stateFor({ ota: { phase: 'available', version: '2.26.7.20.1', uiUpdate: true, serverUpdate: true, serverVersion: '0.26.7.20.1' } }));
     expect(await screen.findByText('Stop 3 running tasks and restart?')).toBeInTheDocument();
     // The dialog is open and the card has not flipped to "Restarting…".
     expect(screen.queryByText(/Restarting…/)).toBeNull();
