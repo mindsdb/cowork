@@ -311,8 +311,16 @@ describe('web mode (no bridge)', () => {
     expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
   });
 
+  it('openExternal opens a mailto: link from chat', async () => {
+    const host = await importHost();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    open.mockClear();
+    await host.openExternal('mailto:team@example.com');
+    expect(open).toHaveBeenCalledWith('mailto:team@example.com', '_blank', 'noopener,noreferrer');
+  });
+
   it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'data:text/html,<script>1</script>', 'not a url'])(
-    'openExternal refuses a non-http(s) URL instead of opening it: %s',
+    'openExternal refuses a non-http(s)/mailto URL instead of opening it: %s',
     async (url) => {
       const host = await importHost();
       const open = vi.spyOn(window, 'open').mockReturnValue(null);
