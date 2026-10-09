@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import ScheduleCard, { taskMenuItems } from './ScheduleCard';
+import ScheduleRow, { taskMenuItems } from './ScheduleRow';
 
-// ENG-1255: the card displays the schedule's project by resolving the stored
+// ENG-1255: the row displays the schedule's project by resolving the stored
 // `task.projectId` (a UUID the server returns as `projectId`) against the
 // `projects` list — the server never sends a project name on the schedule, so
 // the name has to come from the resolved project. These tests pin that
@@ -19,11 +19,11 @@ const baseTask = {
   nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
 };
 
-describe('ScheduleCard — project display (ENG-1255)', () => {
+describe('ScheduleRow — project display (ENG-1255)', () => {
   it('resolves projectId to the project name and links it when openable', () => {
     const onOpenProject = vi.fn();
     render(
-      <ScheduleCard
+      <ScheduleRow
         task={{ ...baseTask, projectId: 'proj-metrics' }}
         projects={PROJECTS}
         onOpenProject={onOpenProject}
@@ -42,7 +42,7 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
 
   it('shows no project label when the projectId does not resolve', () => {
     render(
-      <ScheduleCard
+      <ScheduleRow
         task={{ ...baseTask, projectId: 'proj-unknown' }}
         projects={PROJECTS}
         onOpenProject={vi.fn()}
@@ -55,13 +55,13 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
   });
 
   it('shows no project label when the task has no projectId (pre-fix schedules)', () => {
-    render(<ScheduleCard task={baseTask} projects={PROJECTS} onOpenProject={vi.fn()} />);
+    render(<ScheduleRow task={baseTask} projects={PROJECTS} onOpenProject={vi.fn()} />);
 
     expect(screen.queryByText(/project:/i)).not.toBeInTheDocument();
   });
 });
 
-// The overflow-menu composition shared by the grid card and list row
+// The overflow-menu composition on each row
 // (ENG-1245). Delete moved out of the edit form into this menu; it must route
 // to the caller's confirm flow (onDelete) rather than deleting inline.
 describe('taskMenuItems', () => {

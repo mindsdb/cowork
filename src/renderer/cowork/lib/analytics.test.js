@@ -13,10 +13,13 @@ import { fileURLToPath } from 'node:url';
 // hostState.isElectron is a hoisted mutable so a test can flip the surface to
 // web before importAnalytics() (SURFACE/LIB are read at import time); getters
 // keep the mock reading the current value on each fresh import.
-const { getAccessToken, checkInstall, getVersionInfo, hostState } = vi.hoisted(() => ({
+const { getAccessToken, checkInstall, getVersionInfo, drainUpdateJournal, ackUpdateJournal, fetchHealth, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   checkInstall: vi.fn(),
   getVersionInfo: vi.fn(),
+  drainUpdateJournal: vi.fn(async () => []),
+  ackUpdateJournal: vi.fn(async () => {}),
+  fetchHealth: vi.fn(async () => null),
   hostState: { isElectron: true },
 }));
 vi.mock('../../platform/host', () => ({
@@ -27,6 +30,8 @@ vi.mock('../../platform/host', () => ({
     getAccessToken,
     checkInstall,
     getVersionInfo,
+    drainUpdateJournal,
+    ackUpdateJournal,
   },
   get isElectron() {
     return hostState.isElectron;
@@ -35,6 +40,10 @@ vi.mock('../../platform/host', () => ({
     return !hostState.isElectron;
   },
 }));
+
+// trackBootScreenResolved reads the sidecar version through api.js, which
+// imports this module; the lazy import is mocked so no health request is made.
+vi.mock('../api', () => ({ fetchHealth }));
 
 async function importAnalytics() {
   vi.resetModules();
@@ -469,6 +478,147 @@ describe('trackShellUpdatePhase', () => {
     trackShellUpdatePhase(snapshot({ phase: 'available', targetVersion: '2.260930.1' }));
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('boot_screen_resolved per-layer versions', () => {
+  it('names the running UI and server versions beside the shell', async () => {
+    vi.stubGlobal('__APP_VERSION__', '2.26.10.7.1');
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockResolvedValue({ app: '2.26.10.1.1', ui: '2.26.10.7.1', source: 'ota', buildKind: 'prod' });
+    fetchHealth.mockResolvedValueOnce({ server_version: '0.26.10.7.1' });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties).toMatchObject({
+      shell_version: '2.26.10.1.1',
+      ui_version: '2.26.10.7.1',
+      app_version: '2.26.10.7.1',
+      server_version: '0.26.10.7.1',
+      build_kind: 'prod',
+    });
+  });
+
+  it('reports a server that has not answered as null, not as a dropped event', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    fetchHealth.mockRejectedValueOnce(new Error('offline'));
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('auth');
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.server_version).toBeNull();
+  });
+});
+
+describe('update_phase journal drain', () => {
+  const entry = (id, over = {}) => ({
+    id, at: '2026-10-07T01:02:03.000Z', channel: 'ui', phase: 'applied', trigger: 'boot',
+    from: '2.26.10.1.1', to: '2.26.10.7.1', buildKind: 'prod', durationMs: 420, ...over,
+  });
+  const sent = (fetchMock) => fetchMock.mock.calls
+    .map((c) => JSON.parse(c[1].body))
+    .filter((b) => b.event === 'update_phase')
+    .map((b) => b.properties);
+
+  beforeEach(() => {
+    drainUpdateJournal.mockReset().mockResolvedValue([]);
+    ackUpdateJournal.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('sends one event per entry with the documented shape, then acks them', async () => {
+    drainUpdateJournal.mockResolvedValue([
+      entry('a'),
+      entry('b', { channel: 'server', phase: 'rolled-back', trigger: 'manual', errorCode: 'health-check', from: '0.3.1', to: '0.3.2' }),
+    ]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    expect(sent(fetchMock)).toEqual([
+      expect.objectContaining({ channel: 'ui', phase: 'applied', from: '2.26.10.1.1', to: '2.26.10.7.1', error_code: null, trigger: 'boot', duration_ms: 420, build_kind: 'prod', journal_id: 'a', journaled_at: '2026-10-07T01:02:03.000Z' }),
+      expect.objectContaining({ channel: 'server', phase: 'rolled-back', error_code: 'health-check', trigger: 'manual', journal_id: 'b' }),
+    ]);
+    expect(ackUpdateJournal).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('sends the journal id as the event uuid and the outcome time as the event time', async () => {
+    const id = '0f9a1d2e-3b4c-4d5e-8f60-718293a4b5c6';
+    drainUpdateJournal.mockResolvedValue([entry(id, { at: '2026-10-05T09:00:00.000Z' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    // PostHog dedupes on uuid, so a resend after a lost ack is one event, and
+    // buckets by timestamp, so it counts on the day of the outcome.
+    expect(body.uuid).toBe(id);
+    expect(body.timestamp).toBe('2026-10-05T09:00:00.000Z');
+  });
+
+  it('falls back to send time and no uuid for a malformed journal entry', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('not-a-uuid', { at: 'not a date' })]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    const body = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === 'update_phase');
+    expect(body).not.toHaveProperty('uuid');
+    expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
+    expect(body.properties.journal_id).toBe('not-a-uuid');
+  });
+
+  it('drains once per renderer, so a second call sends nothing', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('a')]);
+    const fetchMock = mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+    await drain();
+
+    expect(drainUpdateJournal).toHaveBeenCalledTimes(1);
+    expect(sent(fetchMock)).toHaveLength(1);
+  });
+
+  it('acks only what PostHog took, so a failed send stays for the next launch', async () => {
+    drainUpdateJournal.mockResolvedValue([entry('a'), entry('b'), entry('c')]);
+    const fetchMock = mockFetch();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockRejectedValueOnce(new Error('network'));
+    const { drainUpdateJournal: drain } = await importAnalytics();
+
+    await drain();
+
+    expect(sent(fetchMock).map((p) => p.journal_id)).toEqual(['a', 'b', 'c']);
+    expect(ackUpdateJournal).toHaveBeenCalledWith(['a']);
+  });
+
+  it('acks nothing when nothing was delivered, and never throws', async () => {
+    drainUpdateJournal.mockRejectedValue(new Error('old shell'));
+    mockFetch();
+    const { drainUpdateJournal: drain } = await importAnalytics();
+    await expect(drain()).resolves.toBeUndefined();
+    expect(ackUpdateJournal).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op on web', async () => {
+    hostState.isElectron = false;
+    try {
+      drainUpdateJournal.mockResolvedValue([entry('a')]);
+      const { drainUpdateJournal: drain } = await importAnalytics();
+      await drain();
+      expect(drainUpdateJournal).not.toHaveBeenCalled();
+    } finally {
+      hostState.isElectron = true;
+    }
   });
 });
 

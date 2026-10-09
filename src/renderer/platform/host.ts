@@ -16,6 +16,7 @@
 import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
+import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
@@ -653,6 +654,26 @@ export async function applyUpdate(hooks: { onProceed?: () => void } = {}): Promi
     return guardRestart(options => bridge.applyUpdate(options), hooks);
   }
   return false;
+}
+
+// UI/server update outcomes main journaled on disk (src/main/update-journal.ts).
+// Each is reported once as a PostHog `update_phase` event, then acked. Shells
+// older than the journal hand out nothing, and the ack is a no-op there.
+export type { UpdatePhaseEntry } from '../../shared/update-journal-types';
+
+export async function drainUpdateJournal(): Promise<UpdatePhaseEntry[]> {
+  if (isElectron && typeof bridge.drainUpdateJournal === 'function') {
+    const entries = await bridge.drainUpdateJournal();
+    return Array.isArray(entries) ? entries : [];
+  }
+  return [];
+}
+
+export async function ackUpdateJournal(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  if (isElectron && typeof bridge.ackUpdateJournal === 'function') {
+    await bridge.ackUpdateJournal(ids);
+  }
 }
 
 export interface ShellUpdate {
@@ -1691,6 +1712,8 @@ export const host = {
   onInstallCancelled,
   onUpdateStatus,
   applyUpdate,
+  drainUpdateJournal,
+  ackUpdateJournal,
   checkForUpdates,
   getShellUpdate,
   getShellSupport,

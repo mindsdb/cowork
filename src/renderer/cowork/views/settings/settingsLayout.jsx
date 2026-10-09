@@ -16,8 +16,7 @@ export const SettingsLayoutContext = createContext({ mobile: false });
 export function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const headingClass =
-    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const headingClass = 'section-label m-0';
   const heading = collapsible ? (
     <button
       type="button"

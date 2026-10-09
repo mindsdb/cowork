@@ -154,7 +154,7 @@ export default function ContextFileModal({
   isAntonMd,       // optional override; otherwise derived from filePath
   // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
-  subtitle,        // optional uppercase label after the title (e.g. "Project · acme")
+  subtitle,        // optional label after the title (e.g. "Project · acme")
   initialContent,  // optional preview from the listing — saves a fetch on open
   loader,          // optional async () => string. Falls back to readProjectFile.
   saver,           // optional async (content) => void. Falls back to writeProjectFile.
@@ -436,7 +436,7 @@ export default function ContextFileModal({
           <div className="min-w-0 flex-1 flex items-baseline gap-[10px]">
             <h2 className="s-h3 m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{headerTitle}</h2>
             {headerSubtitle && (
-              <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.06em] uppercase">{headerSubtitle}</span>
+              <span className="section-label">{headerSubtitle}</span>
             )}
           </div>
           <div className="flex items-center gap-[6px]">

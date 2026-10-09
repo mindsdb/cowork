@@ -181,7 +181,7 @@ export function ArtifactHtmlVisualEditor({
 
       {showSource ? (
         <section className="artifact-source-pane artifact-html-source-pane" aria-label="Artifact HTML source">
-          <div className="artifact-pane-label">
+          <div className="artifact-pane-label section-label">
             <span>HTML source</span>
             <code>{source.path}</code>
           </div>

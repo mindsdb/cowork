@@ -78,7 +78,7 @@ export function SourceUpdateSection({
             <article className="code-source-update" key={`${context.provider}:${context.url}`}>
               <div className="code-source-update__summary">
                 <SafeCodeExternalLink className="code-source-update__link" value={context.url}>
-                  <span>{sourceProviderLabel(context.provider)}</span>
+                  <span className="section-label">{sourceProviderLabel(context.provider)}</span>
                   <strong>{sourceContextLabel(context)} · {context.title}</strong>
                   {Ico.externalLink(12)}
                 </SafeCodeExternalLink>

@@ -167,7 +167,7 @@ export function UserMenu({ user, onOpenSettings }) {
   };
 
   const sectionHeading = (text) => (
-    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+    <div className="section-label">{text}</div>
   );
 
   const activeRowHint = <Icon of={Check} size={14} className="text-accent" />;

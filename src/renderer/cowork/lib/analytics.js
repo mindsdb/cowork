@@ -103,8 +103,20 @@ const EVENTS = {
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
   SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  // One UI or server update outcome, journaled by main while the window
+  // reloaded and reported by the next renderer to boot (see drainUpdateJournal).
+  // `phase`: applied (live and healthy) | rolled-back (health check failed,
+  // previous version restored; a UI rollback also quarantines the bundle) |
+  // failed (nothing changed, or the rollback failed; `error_code` says which) |
+  // repaired (a reinstall that was not a version move: stream repair, venv
+  // rebuild) | skipped (an offered UI this pass did not download: behind a
+  // failed server update, or withdrawn by the time it ran). `from`/`to` are that layer's versions. `trigger` is which check
+  // applied it. Sent with `journal_id` as the event uuid (PostHog dedupes a
+  // resend) and the outcome's time as the event time (day counts are by
+  // when it happened, not when it was reported).
+  UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, component, repair, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -408,13 +420,20 @@ async function getDistinctId() {
 // when the POST actually succeeded (2xx). Both capture() and the `$identify`
 // merge go through here so the request shape and error handling stay in one
 // place. `keepalive` lets an event fired just before quit/navigation flush.
-function postCapture(event, distinctId, properties) {
+// `envelope` lets a caller fix the event's identity and time instead of the
+// send's. PostHog dedupes on `uuid`, so a resend with the same one is one
+// event, and buckets by `timestamp`, so a late send lands on the day the
+// thing happened.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function postCapture(event, distinctId, properties, envelope = {}) {
+  const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
     api_key: POSTHOG_KEY,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
-    timestamp: new Date().toISOString(),
+    timestamp: at && !Number.isNaN(at.getTime()) ? at.toISOString() : new Date().toISOString(),
+    ...(typeof envelope.uuid === 'string' && UUID_RE.test(envelope.uuid) ? { uuid: envelope.uuid } : {}),
   });
   return fetch(`${POSTHOG_HOST}/capture/`, {
     method: 'POST',
@@ -475,10 +494,12 @@ function mergeAnonIntoAccount(sub) {
  * Fire-and-forget capture of one product event. Never throws, never blocks.
  * @param {string} event one of the EVENTS values.
  * @param {object} [properties] event-specific props (see EVENTS for the shape).
+ * @param {{ uuid?: string, timestamp?: string }} [envelope] a stable event id
+ *   and the time the event happened, for events sent later than they occur.
  * @returns {Promise<boolean>} true only when the POST actually succeeded, so
  *   one-shot callers (trackAppInstalled, trackFirstQuery) can gate on delivery.
  */
-function capture(event, properties = {}) {
+function capture(event, properties = {}, envelope = {}) {
   if (!POSTHOG_KEY) {
     dlog('skip', event, '— no POSTHOG_KEY (VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN unset)');
     return Promise.resolve(false);
@@ -565,7 +586,7 @@ function capture(event, properties = {}) {
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps);
+      return postCapture(event, captureId, eventProps, envelope);
     })
     .catch((err) => {
       dlog('capture failed for', event, err);
@@ -910,7 +931,79 @@ export async function trackBootScreenResolved(target) {
     server_deps_ready: Boolean(status?.serverDepsReady),
     build_kind: version?.buildKind ?? null,
     shell_version: version?.app || null,
+    // The running UI bundle, named explicitly beside the shell so a per-layer
+    // adoption chart reads off this one event. Same value as app_version.
+    ui_version: APP_VERSION || null,
+    // Null when the sidecar is not up yet (a boot that lands on 'auth').
+    server_version: await readServerVersion(),
   });
+}
+
+// The sidecar's version from /health, bounded and best-effort. api.js imports
+// this module, so it is loaded lazily here rather than at the top.
+async function readServerVersion() {
+  try {
+    const { fetchHealth } = await import('../api');
+    const health = await fetchHealth({ timeoutMs: 3000 });
+    return health?.server_version || null;
+  } catch {
+    return null;
+  }
+}
+
+/** One journaled UI/server update outcome (src/main/update-journal.ts).
+ *  Resolves true only when PostHog took it, so the drain can ack it. The
+ *  journal id is the event's uuid, so a resend after a lost ack is one event,
+ *  and the outcome's own time is the event's, so a late send counts on the
+ *  day the update happened. */
+export function trackUpdatePhase(entry) {
+  if (!host.isElectron || !entry) return Promise.resolve(false);
+  return capture(EVENTS.UPDATE_PHASE, {
+    channel: entry.channel,
+    phase: entry.phase,
+    from: entry.from ?? null,
+    to: entry.to ?? null,
+    error_code: entry.errorCode ?? null,
+    trigger: entry.trigger ?? null,
+    duration_ms: entry.durationMs ?? null,
+    build_kind: entry.buildKind ?? null,
+    // Server channel: which component the versions name (an anton-only
+    // release shares cowork-server's number), and whether the move was the
+    // stream repair, whatever its outcome.
+    component: entry.component ?? null,
+    repair: Boolean(entry.repair),
+    journal_id: entry.id,
+    journaled_at: entry.at ?? null,
+  }, { uuid: entry.id, timestamp: entry.at });
+}
+
+// Update outcomes happen in main and the window reloads mid-apply, so main
+// journals them and this renderer reports them on boot: one event per entry,
+// then an ack for the ones PostHog took. The rest stay in the journal for the
+// next launch (main leases them briefly so a reload mid-drain does not send
+// them twice, and the stable uuid dedupes a resend whose ack was lost). Runs
+// once per renderer; a reload is a fresh renderer.
+let journalDrained = false;
+export async function drainUpdateJournal() {
+  if (!host.isElectron || journalDrained) return;
+  journalDrained = true;
+  let entries;
+  try {
+    entries = await host.drainUpdateJournal();
+  } catch {
+    return;
+  }
+  const delivered = [];
+  for (const entry of entries ?? []) {
+    if (!entry?.id) continue;
+    // One at a time: the journal is small, and a burst would race the identity
+    // resolution every capture waits on.
+    if (await trackUpdatePhase(entry).catch(() => false)) delivered.push(entry.id);
+  }
+  if (delivered.length === 0) return;
+  try {
+    await host.ackUpdateJournal(delivered);
+  } catch { /* unacked entries are re-sent next launch under the same uuid */ }
 }
 
 // Auto mode skips `available`, so `downloading` counts as it. An install on quit

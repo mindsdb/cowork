@@ -45,6 +45,12 @@ describe('CodeTasksView', () => {
     expect(props.onOpen).toHaveBeenCalledWith('Older task');
   });
 
+  it('shows a status only when the task needs noticing', () => {
+    setup();
+    expect(screen.getByText('Needs approval')).toBeInTheDocument();
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  });
+
   it('scopes project tasks by ID even when project names match; offers new task and settings separately', async () => {
     const { user, props } = setup({ projectId: 'p1' });
     expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();

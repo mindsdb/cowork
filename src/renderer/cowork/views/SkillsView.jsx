@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState, useCollectionView,
+  PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
   ListGroup, ListItem,
 } from '../components/collection';
-import { Menu, Badge, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
+import { Menu, Badge, Button, Field, Select, Input, Textarea } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -31,64 +31,8 @@ import {
 const ALL_PROJECTS = '__all_projects__';
 
 
-function SkillGridCard({ skill, onClick, projects = [] }) {
-  const age = relativeAge(skill.updatedAt);
-  // `skill.projects` holds project *names*, not objects, so the slug has to be
-  // resolved against the list before a person sees it (ENG-1676).
-  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
-  return (
-    <Card
-      as="button"
-      interactive
-      padding="none"
-      className="railed"
-      onClick={() => onClick(skill)}
-      style={{
-        paddingTop: 12,
-        display: 'flex', flexDirection: 'column', gap: 12,
-      }}
-    >
-      {/* Top content */}
-      <div className="flex-1 px-3 flex flex-col gap-1">
-        <div className="flex items-center gap-[6px] min-w-0">
-          {/* Slash badge */}
-          <span className="inline-flex items-center justify-center shrink-0 w-5 h-5 rounded-[4px] shadow-sh-1 font-mono text-[12px] font-medium text-ink-3">/</span>
-          <span className="flex-1 min-w-0 font-[family-name:var(--font-body)] text-base font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
-          {skill.enabled === false && (
-            <span className="shrink-0 inline-flex items-center h-5 px-[6px] rounded-[4px] border border-solid border-line text-ink-3 font-[family-name:var(--font-body)] text-xs font-medium" style={{
-              background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
-            }}>Disabled</span>
-          )}
-          {skill.isBuiltin && (
-            <span className="shrink-0 inline-flex items-center h-5 px-[6px] rounded-[4px] border border-solid border-line text-ink-3 font-[family-name:var(--font-body)] text-xs font-medium">
-              Built-in
-            </span>
-          )}
-        </div>
-        <span
-          // Matches the page-header subtitle (13.5 / 1.5) so the card copy
-          // reads as the same "muted body" voice, not a looser 14/24 block.
-          className="font-[family-name:var(--font-body)] text-[13.5px] leading-[1.5] text-ink-3 line-clamp-2"
-        >
-          {skill.description || skill.declarative?.slice(0, 120) || '—'}
-        </span>
-        <SharedResourceAttribution resource={skill} className="mt-1" />
-      </div>
-
-      {/* Footer */}
-      <div className="card__rail flex items-center justify-between px-3 py-2 font-[family-name:var(--font-body)] text-[12px] text-ink-3">
-        <span className="inline-flex items-center gap-1">
-          {Ico.folder(14)}
-          <span>{project}</span>
-        </span>
-        {age && <span>Updated {age}</span>}
-      </div>
-    </Card>
-  );
-}
-
-// The list view is a kit row: name, description, and inline meta (project,
-// stable creator, last update). The grid keeps its railed SkillGridCard.
+// A kit row: name, description, and inline meta (project, stable creator,
+// last update).
 function SkillRow({ skill, onClick, projects = [] }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
@@ -398,7 +342,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [sortBy, setSortBy]           = useState('name');
   // Rows by default: skills are a catalogue you scan and manage. Phones get
   // rows too.
-  const { view, setView, effectiveView } = useCollectionView('anton:skills-view', { defaultView: 'list' });
   // Skill awaiting the remove confirmation.
   const [removing, setRemoving]       = useState(null);
   const searchRef = useRef(null);
@@ -463,7 +406,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   };
   const closeModal = () => setModalSkill(null);
 
-  // ── Grid list ─────────────────────────────────────────────────────────────
+  // ── List ──────────────────────────────────────────────────────────────────
   const filtered = (skills ?? []).filter((s) => {
     if (search) {
       const q = search.toLowerCase();
@@ -591,7 +534,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         </div>
         </>
       ) : (
-        // ── Grid ───────────────────────────────────────────────────────────
+        // ── List ───────────────────────────────────────────────────────────
         <>
           <PageHeader
             title="Skills"
@@ -602,7 +545,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <FilterRow
             search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
             sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            view={<ViewToggle value={view} onValueChange={setView} />}
           />
           <CollectionState
             loading={skills === null}
@@ -610,29 +552,19 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             shown={sorted.length}
             query={search}
             onClear={() => setSearch('')}
-            // Each skeleton takes its loaded layout's own wrapper classes.
-            skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
-            skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
-            skeletonGridClassName="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
+            skeleton="group"
+            skeletonClassName={LIST_CLASS}
             empty={{
               icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
               title: 'No saved skills yet',
               style: { flex: 1 },
             }}
           >
-            {effectiveView === 'list' ? (
-              <ListGroup className={LIST_CLASS}>
-                {sorted.map((skill) => (
-                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
-                ))}
-              </ListGroup>
-            ) : (
-              <div className="px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
-                {sorted.map((skill) => (
-                  <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
-                ))}
-              </div>
-            )}
+            <ListGroup className={LIST_CLASS}>
+              {sorted.map((skill) => (
+                <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
+              ))}
+            </ListGroup>
           </CollectionState>
         </>
       )}

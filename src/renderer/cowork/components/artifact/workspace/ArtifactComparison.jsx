@@ -108,7 +108,7 @@ export function ArtifactComparison({
       <header className="artifact-compare-header">
         <div>
           <div className="artifact-compare-kicker">
-            <span className="artifact-compare-eyebrow">{isAgent ? 'Agent suggestion' : 'Revision history'}</span>
+            <span className="section-label">{isAgent ? 'Agent suggestion' : 'Revision history'}</span>
             {changeCount > 0 && <span className="artifact-compare-change-count">{changeLabel}</span>}
           </div>
           <h3 id="artifact-compare-title">
@@ -140,7 +140,7 @@ export function ArtifactComparison({
       ) : (
         <div className="artifact-compare-grid">
           <section>
-            <div className="artifact-compare-label">Before · {beforeLabel}</div>
+            <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
             <DiffSource
               lines={changes.before}
               start={changes.beforeStart}
@@ -149,7 +149,7 @@ export function ArtifactComparison({
             />
           </section>
           <section>
-            <div className="artifact-compare-label">After · {afterLabel}</div>
+            <div className="artifact-compare-label section-label">After · {afterLabel}</div>
             <DiffSource
               lines={changes.after}
               start={changes.afterStart}

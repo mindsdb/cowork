@@ -50,11 +50,18 @@ RUN npm run build:web
 # Stage 2: runtime. nginx serving the static SPA, non-root on 8080.
 # Pinned to the current stable line on Alpine 3.24. The older 1.27-alpine tag is
 # stuck on Alpine 3.21 with known CVEs. Bump this tag when a newer stable release
-# lands rather than patching packages in-image.
+# lands; apply targeted security updates while upstream image rebuilds lag.
 # -slim, not -alpine: the full tag adds xslt/geoip/image-filter/njs, which this
 # config never loads and which pull gd -> fontconfig -> expat. Keep it slim
 # unless a directive here needs a dynamic module.
 FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
+
+# SNYK-ALPINE324-ZLIB-20541555 is fixed in 1.3.2-r1. Enforce the patched
+# minimum even when the base image still contains 1.3.2-r0, then restore nginx's
+# unprivileged runtime user.
+USER root
+RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1'
+USER 101
 
 LABEL org.opencontainers.image.title="cowork-frontend"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"

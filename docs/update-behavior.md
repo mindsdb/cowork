@@ -207,9 +207,55 @@ When enabled, main owns one immutable shell-update snapshot:
   fires once per install attempt: a launch that reports it rewrites the
   evidence as reported, so later launches still on the old shell stay quiet. An install on normal quit sends no `installing`; it appears only as
   the next launch's `relaunched`. Checks that find nothing send nothing.
-- `boot_screen_resolved` carries `shell_version` and `build_kind` on every
-  launch. Use them for shell adoption, not `app_version`: that is the running
-  UI bundle, which OTA moves independently of the shell.
+- `boot_screen_resolved` carries `shell_version`, `ui_version`,
+  `server_version` and `build_kind` on every launch: one row names the
+  running version of each layer, so adoption per layer is a count on this
+  event with no join. `server_version` is null when the sidecar had not
+  answered `/health` by the time the first screen resolved. Use
+  `shell_version` for shell adoption, not `app_version`: that is the running
+  UI bundle (the same value as `ui_version`), which OTA moves independently
+  of the shell.
+- `update_phase` records each UI and server update outcome, one event per
+  outcome. The outcome happens in main while the window reloads, so main
+  journals it (`update-journal.json`, beside `shell-update-target.json`) and
+  the next renderer to boot reports it and acks what landed. Events therefore
+  arrive one launch late, but each carries the time of the outcome, not of
+  the send, so a daily count lands on the day the update happened. An entry
+  whose send failed is retried at the next launch under the same event
+  `uuid` (its `journal_id`), so PostHog keeps one event even when the first
+  send landed and only its ack was lost. Properties:
+  `channel` (`ui` or `server`), `phase`, `from` and `to` (that layer's
+  versions, a short commit on the git channel), `error_code`, `trigger`
+  (`boot`, `periodic` or `manual`), `duration_ms`, `build_kind`, `component`
+  (`anton-agent` when an anton-only release moved; absent means
+  cowork-server), `repair` (the move was the stream repair, whatever its
+  outcome) and `journaled_at`. The phases:
+  - `applied`: the new version is live and passed its health check. A UI
+    activated with no window to load it into carries `error_code`
+    `unverified-no-window`; it serves at the next boot.
+  - `rolled-back`: the apply ran, the health check failed, and the previous
+    version is back. A UI rollback also quarantines the bundle (`error_code`
+    `renderer-load`); a server rollback is `health-check`.
+  - `failed`: nothing changed, or the rollback itself failed. `error_code` is
+    `not-applied` (the UI download, checksum, extraction or activation
+    failed; the app log says which, and `to` is the version the apply
+    downloaded, which can be newer than the one the check offered), `install` (the server reinstall
+    failed), `uv-missing`, `unknown-installed-version`, `rollback-failed` or
+    `restore-failed` (rolled back, but the restored server did not start).
+  - `repaired`: a reinstall that was not a version move: the server stream
+    repair (`from` an rc, `to` the stable), or a venv rebuilt at boot
+    (`error_code` `unsupported-python` or `broken-install`).
+  - `skipped`: a UI the check offered that this pass did not download, with
+    the offered version as `to`: held behind a failed server update
+    (`server-update-failed`), or withdrawn, quarantined or held for server
+    compatibility by the time the apply ran (`not-attempted`).
+
+  The first question it answers: on a given day, how many devices applied UI
+  version X, how many of those rolled back, and how many server updates
+  succeeded, by `build_kind`. In PostHog: filter `update_phase` on
+  `channel = ui` and `to = X`, break down by `phase` and `build_kind`. For
+  cowork-server adoption, filter `channel = server` and exclude
+  `component = anton-agent`.
 
 ### Stranded updates: installed at the next launch (ENG-2764)
 

@@ -115,11 +115,14 @@ describe('TasksView', () => {
     expect(props.onOpenTask).not.toHaveBeenCalled();
   });
 
-  it('reveals a delete action on hover that deletes without opening the task', async () => {
-    const { user, props } = setup();
-    await user.type(screen.getByLabelText('Search tasks'), 'alpha');
-    await user.hover(screen.getByText('Alpha report'));
-    await user.click(screen.getByRole('button', { name: 'Delete task' }));
+  it('moves or deletes from the row menu without opening the task', async () => {
+    const onMoveTaskToProject = vi.fn();
+    const { user, props } = setup({ onMoveTaskToProject });
+    await user.click(screen.getByRole('button', { name: 'Actions for Alpha report' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Move to project…' }));
+    expect(onMoveTaskToProject).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }));
+    await user.click(screen.getByRole('button', { name: 'Actions for Alpha report' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
     expect(props.onDeleteTask).toHaveBeenCalledWith('t1');
     expect(props.onOpenTask).not.toHaveBeenCalled();
   });

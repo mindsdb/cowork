@@ -138,7 +138,7 @@ function renderOptions(options) {
     if (Array.isArray(opt.options)) {
       return (
         <BaseSelect.Group key={opt.group ?? i}>
-          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-[11px] font-semibold text-ink-4 uppercase tracking-[0.04em]">
+          <BaseSelect.GroupLabel className="section-label pt-[6px] px-[14px] pb-[2px]">
             {opt.group}
           </BaseSelect.GroupLabel>
           {renderOptions(opt.options)}

@@ -676,7 +676,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
       aria-label="Settings sections"
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
+      <div className="section-label pt-0 px-2.5 pb-1.5">Settings</div>
       {items.map((item, index) => {
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
@@ -691,7 +691,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
-          {showGroup && <div className="mt-3 first:mt-0 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>}
+          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{item.group}</div>}
           <button
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
@@ -2440,7 +2440,7 @@ export default function SettingsView({
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (
-                    <div className="pt-4 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>
+                    <div className="section-label pt-4 px-1 pb-1.5">{item.group}</div>
                   )}
                   <div className="mshell-accordion">
                     <button

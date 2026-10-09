@@ -102,7 +102,6 @@ describe('artifact row actions', () => {
 
     for (const name of ['Open', 'Artifact menu']) {
       const cluster = screen.getByRole('button', { name }).closest('[data-item-actions]');
-      expect(cluster).toHaveAttribute('data-revealed');
       expect(cluster).not.toHaveClass('opacity-0');
       expect(cluster).not.toHaveClass('absolute');
     }

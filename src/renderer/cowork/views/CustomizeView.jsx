@@ -19,12 +19,15 @@ import {
   SearchInput,
   SortPill,
   CollectionState,
-  NewTile,
+  CardGrid,
+  ListGroup,
+  ViewToggle,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -267,7 +270,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Credentials */}
               {displayFields.length > 0 && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Credentials
                   </div>
                   <div className="mb-5 overflow-hidden rounded-lg border border-solid border-line">
@@ -302,7 +305,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   existing ones without widening the OAuth scope. */}
               {connection.engine === 'google_drive' && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Drive files
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
@@ -381,7 +384,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   instead would pass without ever exercising the real shape. */}
               {saved?.method === 'mcp' && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Tool access
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
@@ -461,6 +464,7 @@ export default function CustomizeView({
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
+  const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
@@ -617,6 +621,7 @@ export default function CustomizeView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          view={<ViewToggle value={view} onValueChange={setView} />}
           counts={
             <ConnectionsCounts search={search} total={total} filtered={visible.length} />
           }
@@ -636,19 +641,19 @@ export default function CustomizeView({
           style: { flex: 1 },
         }}
       >
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 px-8 pb-[60px]">
-          {visible.map((c) => (
-            <ConnectionCard
-              key={`${c.engine}-${c.name}`}
-              connection={c}
-              onDelete={handleDelete}
-              onModify={setSelectedConn}
-            />
-          ))}
-          {/* Trailing dashed tile — same connect flow as the header's
-              "+ Connect". The empty state carries its own CTA. */}
-          <NewTile label="New connection" onClick={handleConnectNew} />
-        </div>
+        {effectiveView === 'grid' ? (
+          <CardGrid className="px-8 pb-[60px]">
+            {visible.map((c) => (
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+            ))}
+          </CardGrid>
+        ) : (
+          <ListGroup className="mx-8 mb-[60px]">
+            {visible.map((c) => (
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+            ))}
+          </ListGroup>
+        )}
       </CollectionState>
 
       {selectedConn && (

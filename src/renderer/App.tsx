@@ -16,7 +16,7 @@ import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
-import { trackBootScreenResolved, trackShellUpdatePhase } from './cowork/lib/analytics';
+import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
@@ -194,6 +194,9 @@ export default function App() {
       // healthy server is measurable (app_installed only fires once the server
       // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
       void trackBootScreenResolved(target);
+      // The UI/server update outcomes of the launch that just reloaded into
+      // this renderer. After the boot gate, so a boot-time apply is in it.
+      void drainUpdateJournal();
       // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
       // start — but skip that floor on a web refresh, where it was pure latency
       // on every reload (ENG-1232).

@@ -778,7 +778,7 @@ export default function Sidebar({
             // rows, so reserving their shape avoids the jump when they land.
             <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
               {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="px-2 py-2">
+                <div key={i} className="px-2.5 py-2">
                   <div
                     className="animate-pulse rounded"
                     style={{ height: 10, width: `${72 - i * 9}%`, background: 'var(--border, rgba(128,128,128,0.25))' }}
@@ -790,7 +790,7 @@ export default function Sidebar({
           {tasksStatus === 'failed' && tasksWithPin.length === 0 && (
             // Distinct from "No tasks yet" on purpose: an empty list after a
             // failed fetch reads as lost work, which is the bug this fixes.
-            <div role="alert" className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+            <div role="alert" className="px-2.5 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
               <div>Couldn&rsquo;t load your tasks.</div>
               {onRetryTasks && (
                 <button
@@ -805,7 +805,7 @@ export default function Sidebar({
             </div>
           )}
           {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
-            <div className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+            <div className="px-2.5 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
               <div>No tasks yet</div>
               {/* Where a returning user looks for missing work. The two apps
                   keep separate work by design, so the honest answer is to

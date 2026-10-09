@@ -151,7 +151,7 @@ export function ProjectSkillSelector({
           <div className="code-project-skill-picker__groups">
             {groups.map(([sourceId, group]) => (
               <section key={sourceId}>
-                <header>{group.name}</header>
+                <header className="section-label">{group.name}</header>
                 {group.items.map((item) => (
                   <label key={item.id}>
                     <Checkbox

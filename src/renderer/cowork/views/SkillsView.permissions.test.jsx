@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -46,11 +46,6 @@ vi.mock('../../platform/host', () => ({
 
 import SkillsView from './SkillsView';
 
-const setViewportWidth = (width) => {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-  window.dispatchEvent(new Event('resize'));
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
   skillState.skills = [lockedSkill];
@@ -60,11 +55,6 @@ beforeEach(() => {
     capabilities: { canEdit: true, canDelete: true, canDisable: true },
   });
   localStorage.removeItem('anton:skills-view');
-  setViewportWidth(1200);
-});
-
-afterEach(() => {
-  setViewportWidth(1200);
 });
 
 describe('SkillsView shared-resource permissions', () => {
@@ -82,9 +72,8 @@ describe('SkillsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Uninstall/ })).toHaveAttribute('data-disabled');
   });
 
-  it('gives phones rows even when the persisted preference is grid', () => {
+  it('renders rows with no view toggle, even with a stored grid preference', () => {
     localStorage.setItem('anton:skills-view', 'grid');
-    setViewportWidth(500);
 
     render(<SkillsView />);
 
@@ -95,8 +84,6 @@ describe('SkillsView shared-resource permissions', () => {
   });
 
   it('labels the stable creator as Author after another member edits the skill', () => {
-    localStorage.setItem('anton:skills-view', 'list');
-
     render(<SkillsView />);
 
     const row = screen.getByRole('article', { name: 'locked-skill' });
