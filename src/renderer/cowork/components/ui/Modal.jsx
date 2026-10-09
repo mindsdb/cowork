@@ -115,7 +115,8 @@ export function Modal({
   // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
   // and Esc dismissal a hand-rolled full-screen <div> would drop.
   fullBleed = false,
-  // 'center' | 'left' (pinned near leftOffset) | 'top' (command palette).
+  // 'center' | 'left' (pinned near leftOffset) | 'right' (detail drawer)
+  // | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
   children,
@@ -159,9 +160,11 @@ export function Modal({
         <Dialog.Viewport
           style={{
             position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: placement === 'top' ? 'flex-start' : 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            display: 'flex', alignItems: placement === 'top' ? 'flex-start' : 'center',
+            justifyContent: placement === 'left' ? 'flex-start' : placement === 'right' ? 'flex-end' : 'center',
             // `top`: command-palette anchoring, so the box grows downward as results arrive.
             ...(placement === 'top' ? { paddingTop: 'min(14vh, 120px)' } : {}),
+            ...(placement === 'right' ? { paddingRight: 8 } : {}),
             ...(placement === 'left' ? {
               paddingLeft: `max(8px, min(${leftOffset}px, calc(100vw - ${typeof width === 'number' ? `${width}px` : width || sz.width} - 8px)))`,
             } : {}),
@@ -215,9 +218,10 @@ export function Modal({
 // subtitle underneath, X close button flush right. Bottom border
 // `--line`. The id prop pairs with Modal's `labelledBy` so screen
 // readers announce the title. The X shows when `onClose` is passed and
-// the Modal is `dismissible`.
+// the Modal is `dismissible`. `leading` takes an icon or tile before the
+// title block.
 
-export function ModalHeader({ id, title, subtitle, onClose, right }) {
+export function ModalHeader({ id, title, subtitle, onClose, right, leading }) {
   const { dismissible } = useContext(ModalContext);
   const showClose = Boolean(onClose) && dismissible;
   return (
@@ -227,6 +231,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
       borderBottom: '1px solid var(--line)',
       flexShrink: 0,
     }}>
+      {leading}
       <div style={{ flex: 1, minWidth: 0 }}>
         {title && (
           <div

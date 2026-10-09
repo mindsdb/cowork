@@ -28,6 +28,8 @@ import {
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
+import { useConfirm } from '../components/ConfirmModal';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -78,7 +80,8 @@ function MetaRow({ label, value }) {
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+function ConnectionDetailPanel({ connection, onClose, onReconnect }) {
+  const [confirm, confirmModal] = useConfirm();
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -217,45 +220,37 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="fixed inset-0 z-[70] bg-[rgba(0,0,0,0.18)]"
-      />
-
-      {/* Slide-in panel */}
-      <div
-        role="dialog"
-        aria-label={`${spec?.label || connection.engine} connection details`}
-        className="fixed top-0 right-0 bottom-0 z-[71] flex w-[min(400px,_92vw)] flex-col border-l border-y-0 border-r-0 border-solid border-line bg-surface font-[family-name:var(--font-body)] shadow-[-12px_0_40px_rgba(0,0,0,0.12)]"
+      <Modal
+        open
+        onClose={onClose}
+        placement="right"
+        width="min(400px, calc(100vw - 16px))"
+        height="calc(100dvh - 16px)"
+        labelledBy="connection-detail-title"
       >
-        {/* Header */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-x-0 border-t-0 border-solid border-line pt-[18px] px-5 pb-4">
-          <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
-            {spec?.logo_url
-              ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
-              : <span className="inline-flex text-ink-3">{Ico.database(20)}</span>
-            }
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="s-h3 truncate">
-              {spec?.label || connection.engine}
-            </div>
-            <div className="mt-[1px] font-[family-name:var(--font-mono)] text-xs text-ink-4">
-              {connection.name}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="inline-grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-[18px] leading-none text-ink-3"
-          >×</button>
-        </div>
+        <ModalHeader
+          id="connection-detail-title"
+          title={spec?.label || connection.engine}
+          subtitle={<span className="font-[family-name:var(--font-mono)] text-xs text-ink-4">{connection.name}</span>}
+          onClose={onClose}
+          leading={(
+            <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
+              {spec?.logo_url
+                ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
+                : <span className="inline-flex text-ink-3">{Ico.database(20)}</span>
+              }
+            </span>
+          )}
+        />
 
-        {/* Body */}
-        <div className="scroll-clean flex-1 overflow-y-auto py-[18px] px-5">
+        <ModalBody padding="18px 20px">
+          {saved?.fields?.status === 'needs_reconnect' && (
+            <div className="mb-4">
+              <Alert variant="warning" title="Reconnection required">
+                Access for this connection has expired or was revoked. Reconnect to restore access, or disconnect it from its card.
+              </Alert>
+            </div>
+          )}
           {loading ? (
             <div className="text-[13px] text-ink-4">Loading…</div>
           ) : (
@@ -409,43 +404,28 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               )}
             </>
           )}
-        </div>
+        </ModalBody>
 
-        {/* Footer */}
-        <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
-          {saved?.fields?.status === 'needs_reconnect' && (
-            <Alert variant="warning" title="Reconnection required">
-              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
-            </Alert>
-          )}
+        {/* Disconnecting is the card's own flow; the drawer only manages. */}
+        <ModalFooter cancel={<Button variant="subtle" onClick={onClose}>Close</Button>}>
           {spec && (
             <Button
               variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
+              onClick={async () => {
+                if (!(await confirm({
+                  title: `Reconnect ${spec.label || connection.engine}?`,
+                  message: "The existing connection will be removed and you'll connect it again from scratch.",
+                  confirmLabel: 'Reconnect',
+                }))) return;
                 onReconnect?.(connection, spec);
               }}
-              className="w-full justify-center"
             >
               Reconnect
             </Button>
           )}
-          <Button
-            variant="danger"
-            block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection, saved);
-              onClose();
-            }}
-          >
-            {Ico.trash(14)}
-            Remove
-          </Button>
-        </div>
-      </div>
+        </ModalFooter>
+      </Modal>
+      {confirmModal}
     </>
   );
 }
@@ -660,10 +640,6 @@ export default function CustomizeView({
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
-          onDisconnect={async (conn, savedDetail) => {
-            await handleDelete(conn, savedDetail);
-            setSelectedConn(null);
-          }}
           onReconnect={async (conn, spec) => {
             await handleDelete(conn);
             setSelectedConn(null);

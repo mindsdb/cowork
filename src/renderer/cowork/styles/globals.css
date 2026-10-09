@@ -3347,17 +3347,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     transform: none !important;
   }
 
-  /* Scratchpad modal — go fullscreen so a 94vw card with rounded
-     corners doesn't waste space inside a fixed scrim at phone widths. */
-  .scratchpad-modal {
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    border-radius: 0 !important;
-    border-left: none !important;
-    border-right: none !important;
-  }
   /* Tighter horizontal padding so each cell's output/code can use
      the full screen width. Was pl-6 pr-6 (24px) — overkill on phone. */
   .scratchpad-cell {

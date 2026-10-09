@@ -63,12 +63,13 @@ export default function AccountOwnershipModal({
       open={open}
       size="md"
       labelledBy="account-ownership-title"
-      onClose={busy ? () => {} : onDismiss}
+      onClose={onDismiss}
+      dismissible={!busy}
     >
       <ModalHeader
         id="account-ownership-title"
         title="Whose data is this?"
-        onClose={busy ? undefined : onDismiss}
+        onClose={onDismiss}
       />
       <ModalBody>
         <p className="s-body" style={{ margin: 0 }}>
@@ -89,7 +90,8 @@ export default function AccountOwnershipModal({
           </p>
         )}
       </ModalBody>
-      <ModalFooter align="space-between">
+      {/* A forced choice: both answers sit on the right, no Cancel. */}
+      <ModalFooter>
         <Button variant="subtle" disabled={busy !== null} onClick={() => decide(false)}>
           {busy === 'fresh' ? 'Starting fresh…' : 'Start fresh'}
         </Button>

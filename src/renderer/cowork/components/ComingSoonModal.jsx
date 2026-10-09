@@ -35,10 +35,13 @@ export default function ComingSoonModal({ feature, onClose }) {
           desktop app.
         </p>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose}>
-          Not now
-        </Button>
+      <ModalFooter
+        cancel={(
+          <Button variant="subtle" onClick={onClose}>
+            Not now
+          </Button>
+        )}
+      >
         <Button
           variant="primary"
           onClick={() => {
