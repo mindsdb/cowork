@@ -1,22 +1,7 @@
-// One state for the three update mechanisms, so every surface reads the same
-// answer to "is an update pending, and what does one click do about it".
-//
-// The three transports stay independent (docs/update-behavior.md). This module
-// only aggregates what they report: the shell auto-updater's snapshot, what the
-// last OTA check offered, what an OTA apply is doing, the server updater's
-// progress, and the prod-only manual installer notice. Main holds one instance
-// and pushes the derived state on `UPDATE_STATE`. A newer OTA renderer on an
-// older shell runs the same reducer over the old channels (platform/host.ts),
-// which is why it lives in `shared` and why every input is a plain
-// serializable object.
-//
-// The OTA has two inputs, not one. `otaOffer` is written only by checks, and
-// `otaApply` only by applies, so a check that lands mid-apply cannot replace
-// its progress and an apply cannot lose an offer a check made meanwhile: the
-// offer waits in its own slot and shows once the apply settles.
-//
-// Pure, like shell-update-state.ts: `coordinateUpdates(input)` is a function
-// of its input and nothing else, and so is every decision helper below.
+// One update state for every surface. Pure and serializable, so an OTA renderer
+// on an older shell can run the same reducer over the legacy channels (host.ts).
+// Checks write only `otaOffer` and applies only `otaApply`, so neither can
+// overwrite the other.
 
 import { CHECK_ONLY_FAILURE_CODES, SHELL_AUTO_BANNER_PHASES } from './update-banner-rules';
 import { compareCalVer, parseCalVer } from './version';
@@ -32,8 +17,7 @@ export type ShellPhase =
   | 'complete'
   | 'failed';
 
-/** The shell auto-updater snapshot as the renderer sees it. Structurally the
- *  main-process `ShellUpdateSnapshot`; older shells omit the newer fields. */
+/** Older shells omit the newer fields. */
 export interface ShellSnapshot {
   phase: ShellPhase;
   mode: 'auto' | 'manual';
@@ -52,15 +36,11 @@ export interface ShellSnapshot {
   bytesTransferred?: boolean;
 }
 
-/** What main pushes on the legacy `UI_UPDATE_STATUS` channel. It carries an
- *  offer and an apply's progress in one shape; `legacyOtaInput` splits it
- *  into the two inputs below. */
+/** The legacy `UI_UPDATE_STATUS` payload; `legacyOtaInput` splits it. */
 export interface OtaStatus {
   phase: 'idle' | 'available' | 'downloading' | 'reloading' | 'rolled-back' | 'error' | 'shell-available';
   version?: string;
-  /** Set on `available` by newer shells: which layers the check offered. Older
-   *  shells set only `serverUpdate`, with `version` naming the UI update when
-   *  there is one and the server update otherwise (`legacyAvailableOffer`). */
+  /** Older shells set only `serverUpdate` (see `legacyAvailableOffer`). */
   uiUpdate?: boolean;
   uiVersion?: string;
   serverUpdate?: boolean;
@@ -70,7 +50,6 @@ export interface OtaStatus {
   downloadUrl?: string;
 }
 
-/** What main pushes on `SERVER_UPDATE_STATUS`. */
 export interface ServerStatus {
   phase: 'idle' | 'downloading' | 'restarting' | 'error';
   to?: string;
@@ -78,24 +57,19 @@ export interface ServerStatus {
   critical?: boolean;
 }
 
-/** The prod-only manual installer notice (ENG-849). */
+/** The prod-only manual installer notice. */
 export interface ShellManualNotice {
   version: string;
   currentVersion?: string;
   downloadUrl?: string | null;
 }
 
-/** What OTA checks found and nothing has applied yet, per layer. A layer is
- *  null when no check has offered it, or the last one that answered for it
- *  found nothing. */
 export interface OtaOffer {
   ui: { version?: string } | null;
   server: { version?: string; component?: 'cowork-server' | 'anton-agent' } | null;
 }
 
-/** What an OTA apply is doing, or how the last one ended. `downloading` and
- *  `reloading` are in flight; `rolled-back` and `error` stay until a later
- *  apply, or an offer for another version, replaces them. */
+/** `rolled-back` and `error` stay until a later apply or a newer offer. */
 export interface OtaApply {
   phase: 'downloading' | 'reloading' | 'rolled-back' | 'error';
   version?: string;
@@ -121,7 +95,6 @@ export type UpdateLayerStatus =
 
 export interface UpdateLayerState {
   status: UpdateLayerStatus;
-  /** The version this layer is heading to, when one is known. */
   version?: string;
   error?: string;
 }
@@ -133,19 +106,13 @@ export interface ShellLayerState extends UpdateLayerState {
   recoverable?: boolean;
   errorCode?: string;
   errorMessage?: string;
-  /** The manual installer notice is what is pending, not the auto-updater. */
   manual: boolean;
   manualDownloadUrl?: string | null;
-  /** The raw snapshot, for consumers that read fields the layer state does not
-   *  carry (telemetry, the too-old notice). */
   snapshot: ShellSnapshot | null;
 }
 
-/** What the one call to action does. `relaunch` installs the shell update,
- *  which also applies any pending OTA at the next boot. `reload` applies the
- *  OTA in place. `retry` re-runs a failed shell check or download. `download`
- *  starts a shell download in manual mode. `open-download-page` is the only
- *  action the renderer performs itself. */
+/** `relaunch` also applies pending OTA at the next boot. `open-download-page`
+ *  runs in the renderer. */
 export type UpdateAction = 'relaunch' | 'reload' | 'retry' | 'download' | 'open-download-page' | null;
 
 export interface UpdateCoordinatorState {
@@ -153,18 +120,12 @@ export interface UpdateCoordinatorState {
   server: UpdateLayerState & { component?: 'cowork-server' | 'anton-agent' };
   shell: ShellLayerState;
   action: UpdateAction;
-  /** The version the one banner names, when one is known. */
   version?: string;
-  /** Which boot-time apply is in flight, for the loading screen and the
-   *  in-app overlay. Null when nothing is being applied. */
   applying: 'downloading' | 'reloading' | 'installing' | null;
-  /** The shell failure is a check that produced no answer (`check-stalled`):
-   *  nothing to retry, so no banner. */
+  /** A check that produced no answer: nothing to retry, so no banner. */
   silentShellFailure: boolean;
-  /** Increases by one on every change of a coordinator instance. A renderer
-   *  uses it to drop a state older than one it already has (a mount-time pull
-   *  that resolves after a push). Absent from the pure reducer's result and
-   *  from shells that predate it. */
+  /** Per-instance counter; renderers drop states older than one they hold.
+   *  Absent from shells that predate it. */
   revision?: number;
 }
 
@@ -183,8 +144,7 @@ function shellStatus(phase: ShellPhase | null): UpdateLayerStatus {
   }
 }
 
-/** Does the auto-updater snapshot own the shell layer? Same rule as the
- *  shell-first banner: a failure counts only with a known target. */
+/** A failure owns the shell layer only with a known target. */
 export function shellAutoIsPending(shell: ShellSnapshot | null): boolean {
   if (!shell) return false;
   if (!(SHELL_AUTO_BANNER_PHASES as readonly string[]).includes(shell.phase)) return false;
@@ -209,7 +169,6 @@ function shellLayer(shell: ShellSnapshot | null, manual: ShellManualNotice | nul
       mode: shell?.mode,
       manual: true,
       manualDownloadUrl: manual.downloadUrl ?? null,
-      // A failed auto-update keeps its reason beside the manual fallback.
       recoverable: shell?.recoverable,
       errorCode: shell?.errorCode,
       errorMessage: shell?.errorMessage,
@@ -232,14 +191,11 @@ function shellLayer(shell: ShellSnapshot | null, manual: ShellManualNotice | nul
   };
 }
 
-/** Is the apply status one of an apply still in flight? */
 export function applyInFlight(apply: OtaApply | null): boolean {
   return apply?.phase === 'downloading' || apply?.phase === 'reloading';
 }
 
-/** Order two component versions. CalVer when both parse (by date, then
- *  same-day sequence, then commit distance; see version.ts), and otherwise
- *  only equality is known. */
+/** CalVer order when both parse; otherwise only equality is known. */
 function compareVersions(a: string, b: string): number | null {
   if (a === b) return 0;
   const pa = parseCalVer(a);
@@ -247,9 +203,7 @@ function compareVersions(a: string, b: string): number | null {
   return pa && pb ? compareCalVer(pa, pb) : null;
 }
 
-/** Is `candidate` a strictly newer version than `than`? Unordered versions
- *  that differ count as newer, so an offer naming something else still wins
- *  as it always did. */
+/** Unordered versions that differ count as newer. */
 export function isNewerVersion(candidate: string | undefined, than: string | undefined): boolean {
   if (!candidate) return false;
   if (!than) return true;
@@ -257,11 +211,8 @@ export function isNewerVersion(candidate: string | undefined, than: string | und
   return order === null ? candidate !== than : order > 0;
 }
 
-/** Does `version` reach `target`: the same version or a newer one? An
- *  unversioned target is reached by anything; an unversioned `version` only
- *  reaches an unversioned target. Two versions that compare equal but are
- *  spelled differently (a PEP 440 rc suffix the CalVer parse ignores) count
- *  as reached: the next check re-offers anything newer. */
+/** Same or newer. Versions that compare equal but are spelled differently
+ *  (a PEP 440 rc suffix) count as reached. */
 export function versionReaches(version: string | undefined, target: string | undefined): boolean {
   if (target === undefined) return true;
   if (version === undefined) return false;
@@ -269,10 +220,8 @@ export function versionReaches(version: string | undefined, target: string | und
   return order === null ? version === target : order >= 0;
 }
 
-/** The version the OTA layers are heading to, from the offer alone: the UI's
- *  when one is offered, the server's label otherwise. Progress and failures of
- *  an OTA apply are named by this, never by the coordinator's banner version,
- *  which is the shell installer's whenever a manual notice exists. */
+/** Names OTA progress and failures. Not the banner version, which is the
+ *  shell installer's whenever a manual notice exists. */
 export function otaOfferVersion(offer: OtaOffer | null): string | undefined {
   if (offer?.ui?.version) return offer.ui.version;
   if (offer?.server) return serverLabel({ status: 'ready', version: offer.server.version, component: offer.server.component });
@@ -292,30 +241,21 @@ function otaLayers(
   if (serverApplying) Object.assign(srv, { status: 'applying', version: server?.to });
   else if (serverFailed) Object.assign(srv, { status: 'failed', error: server?.error });
 
-  // What the checks offered. A server update the updater is installing right
-  // now reads as applying, not as an offer.
   if (offer?.ui) Object.assign(ui, { status: 'ready', version: offer.ui.version });
   if (offer?.server && !serverApplying) {
     Object.assign(srv, { status: 'ready', version: offer.server.version, component: offer.server.component });
   }
 
   if (applyInFlight(apply)) {
-    // The tandem apply: the server updater's busy phases are mirrored onto the
-    // apply status by main (feedServerUpdateStatus), and the reload follows a
-    // UI swap or a server-only apply. Both layers read as applying; the
-    // window reloads before either needs telling apart.
+    // Main mirrors the server updater's busy phases onto the apply.
     Object.assign(ui, { status: 'applying', version: apply?.version, error: undefined });
     if (!serverFailed) srv.status = 'applying';
   } else if (apply?.phase === 'error' || apply?.phase === 'rolled-back') {
-    // How the last apply ended, unless a check has since offered a newer UI:
-    // that offer is the newer news, and its Restart is the retry. An offer
-    // for the same version or an older one does not hide the failure (the
-    // apply re-reads the manifest, so it can fail on a release newer than the
-    // one the check offered).
+    // Only a newer offer hides the failure. The apply re-reads the manifest,
+    // so it can fail on a release newer than the one offered.
     const newerOffer = isNewerVersion(offer?.ui?.version, apply.version);
     if (!newerOffer) {
-      // A rolled-back bundle failed its load check and is quarantined;
-      // re-applying it is not an option, so that failure has no action.
+      // A rolled-back bundle is quarantined, so it has no action.
       Object.assign(ui, apply.phase === 'error'
         ? { status: 'failed', version: apply.version, error: 'apply-failed' }
         : { status: 'failed', version: apply.version, error: 'rolled-back' });
@@ -324,7 +264,6 @@ function otaLayers(
   return { ui, server: srv };
 }
 
-/** The one derived state. */
 export function coordinateUpdates(input: UpdateCoordinatorInput): UpdateCoordinatorState {
   const shell = shellLayer(input.shell, input.shellManual);
   const { ui, server } = otaLayers(input.otaOffer, input.otaApply, input.server);
@@ -339,11 +278,8 @@ export function coordinateUpdates(input: UpdateCoordinatorInput): UpdateCoordina
   const relaunch = relaunchPending(shell);
   const reload = reloadPending(ui, server);
 
-  // Shell-first, the same ladder deriveUpdateBanner always used: a pending
-  // shell update owns the action because its relaunch applies the OTA too. A
-  // shell failure with no known target drops below the OTA so a feed outage
-  // cannot hide a valid Restart, and raises nothing at all when it was a check
-  // that produced no answer.
+  // Shell-first, because a relaunch applies the OTA too. A shell failure with
+  // no known target ranks below the OTA so a feed outage cannot hide a Restart.
   let action: UpdateAction = null;
   if (applying || shell.status === 'downloading') {
     action = null;
@@ -375,49 +311,40 @@ export function coordinateUpdates(input: UpdateCoordinatorInput): UpdateCoordina
   return { ui, server, shell, action, version, applying, silentShellFailure };
 }
 
-/** A shell download is ready to install. */
 function relaunchPending(shell: ShellLayerState): boolean {
   return shell.status === 'ready' && !shell.manual;
 }
 
-/** An OTA reload would apply something: an offered UI or server update, or a
- *  retry of a failed apply (not of a rolled-back bundle). */
+/** Includes retrying a failed apply, never a rolled-back bundle. */
 function reloadPending(ui: UpdateCoordinatorState['ui'], server: UpdateCoordinatorState['server']): boolean {
   return ui.status === 'ready'
     || server.status === 'ready'
     || (ui.status === 'failed' && ui.error !== 'rolled-back');
 }
 
-/** An anton-only server update shares cowork-server's version number, so the
- *  banner names the component that is changing (ENG-1094). */
+/** An anton-only update shares cowork-server's version, so name the component. */
 export function serverLabel(server: UpdateCoordinatorState['server']): string | undefined {
   if (!server.version) return undefined;
   return server.component === 'anton-agent' ? `${server.component} ${server.version}` : server.version;
 }
 
-// ---- what a click runs ------------------------------------------------------
-
-/** What main (or the old-shell path) runs for a click. */
 export type ApplyStep = 'relaunch' | 'reload' | 'retry' | 'download';
 
 function isApplyStep(action: unknown): action is ApplyStep {
   return action === 'relaunch' || action === 'reload' || action === 'retry' || action === 'download';
 }
 
-/** Is `step` still something the current state offers? The banner can lag
- *  main by a push, so a click is checked against the state it lands on. */
+/** The banner can lag main by a push, so a click is checked on arrival. */
 function stepStillOffered(state: UpdateCoordinatorState, step: ApplyStep): boolean {
   if (state.applying) return false;
   switch (step) {
     case 'relaunch':
       return relaunchPending(state.shell);
     case 'reload':
-      // Also behind a dismissed manual installer notice, which outranks the
-      // reload in the ladder but leaves it pending.
+      // Also behind a dismissed manual notice, which outranks it in the ladder.
       return reloadPending(state.ui, state.server);
     case 'retry':
-      // Behind a manual notice the layer reads `available`, but a failed
-      // auto-update it stands in for can still be retried.
+      // A failed auto-update behind a manual notice can still be retried.
       return (state.shell.status === 'failed' || (state.shell.manual && state.shell.phase === 'failed'))
         && state.shell.recoverable === true;
     case 'download':
@@ -425,13 +352,9 @@ function stepStillOffered(state: UpdateCoordinatorState, step: ApplyStep): boole
   }
 }
 
-/** The step a click runs, decided once for main and the old-shell path alike.
- *  The click names the action it rendered; it runs only if the current state
- *  still offers it, and is otherwise `'stale'`, with no side effect, so the
- *  renderer re-renders from the fresh state. A relaunch therefore never runs
- *  for a Download or Retry click. A renderer that names no action (older than
- *  this contract) gets whatever the state offers now. `open-download-page` is
- *  the renderer's own and runs nothing here. */
+/** Runs the clicked action only if still offered, otherwise `'stale'`, so a
+ *  relaunch never runs for another click. An older renderer that names no
+ *  action gets whatever is offered now. */
 export function resolveApplyAction(state: UpdateCoordinatorState, clicked?: unknown): ApplyStep | 'stale' | null {
   if (clicked === undefined) return isApplyStep(state.action) ? state.action : null;
   if (clicked === null || clicked === 'open-download-page') return null;
@@ -439,13 +362,8 @@ export function resolveApplyAction(state: UpdateCoordinatorState, clicked?: unkn
   return stepStillOffered(state, clicked) ? clicked : 'stale';
 }
 
-// ---- what checks and applies do to the offer ---------------------------------
-
-/** What one OTA check reported, per channel. A channel that is absent was not
- *  checked (the manifest host was unreachable, or this pass is applying it),
- *  and one with `error` could not be checked: either way its offer stands. A
- *  channel that answered replaces its layer's offer, clearing it when it found
- *  nothing. */
+/** Per channel: absent or `error` leaves that layer's offer, an answer
+ *  replaces it. */
 export interface OtaCheck {
   ui?: { updateAvailable: boolean; newVersion?: string; error?: boolean };
   server?: { updateAvailable: boolean; latestVersion?: string; component?: 'cowork-server' | 'anton-agent'; error?: boolean };
@@ -455,8 +373,6 @@ function normalizeOffer(offer: OtaOffer): OtaOffer | null {
   return offer.ui || offer.server ? offer : null;
 }
 
-/** The offer after a check: each channel that answered decides its own layer,
- *  and a channel that errored or was not checked leaves it as it was. */
 export function offerAfterCheck(prev: OtaOffer | null, check: OtaCheck): OtaOffer | null {
   const next: OtaOffer = { ui: prev?.ui ?? null, server: prev?.server ?? null };
   if (check.ui && !check.ui.error) {
@@ -470,11 +386,8 @@ export function offerAfterCheck(prev: OtaOffer | null, check: OtaCheck): OtaOffe
   return normalizeOffer(next);
 }
 
-/** What one boot or periodic poll reports to the offer. The UI is not
- *  reported when the manifest host was unreachable (`ui` null). A layer this
- *  pass applies is left to the apply, which clears what lands, so an
- *  auto-applied update is never offered on the way in. A stream repair is
- *  boot-only and never offered (`surfaceServer`). */
+/** A layer this pass applies is left to the apply, so an auto-applied update
+ *  is never offered on the way in. Stream repairs are never offered. */
 export function pollOfferCheck(input: {
   ui: { updateAvailable: boolean; newVersion?: string; error?: boolean } | null;
   server: { updateAvailable: boolean; latestVersion?: string; component?: 'cowork-server' | 'anton-agent'; error?: boolean };
@@ -490,30 +403,21 @@ export function pollOfferCheck(input: {
   return check;
 }
 
-/** How one apply ended, per layer, for the offer it answered. `server` is set
- *  only when a server update landed. `ui` is absent when the apply did not try
- *  the UI (not asked, or held behind a failed server update). */
+/** `ui` is absent when the apply did not try the UI. */
 export interface OtaApplyOutcome {
   server?: { landed: true; version?: string };
   ui?: { result: 'landed' | 'rolled-back' | 'failed' | 'nothing'; version?: string };
 }
 
-/** Does the outcome speak for this offered layer? An apply re-reads the
- *  manifest, so it can land a release newer than the one the check offered:
- *  an outcome for the offered version or a newer one covers the offer, and an
- *  offer for a version newer than the outcome is a check made meanwhile, and
- *  stands. */
+/** The apply re-reads the manifest, so it can land a newer release than the
+ *  one offered. An offer newer than the outcome was made meanwhile and stands. */
 function outcomeCovers(offered: { version?: string } | null, version: string | undefined): boolean {
   if (!offered) return false;
   return versionReaches(version, offered.version);
 }
 
-/** How one apply ended, for the request that ran it. A server update that
- *  landed reloads the window, so the request applied even when the UI beside
- *  it failed (the banner names that failure after the reload). `stale` is an
- *  apply that ran nothing: the server re-check found no server update and the UI
- *  had nothing to apply, so the offer the click answered was already gone.
- *  That clears the offer (offerAfterApply) and is not a failure. */
+/** A landed server update reloads the window, so it counts as applied even
+ *  if the UI failed. `stale` means nothing ran: the offer was already gone. */
 export type ApplyRunResult = 'applied' | 'failed' | 'stale';
 
 export function applyRunResult(run: { serverTried: boolean; serverOk: boolean; ui?: OtaApplyOutcome['ui'] }): ApplyRunResult {
@@ -523,12 +427,8 @@ export function applyRunResult(run: { serverTried: boolean; serverOk: boolean; u
   return 'stale';
 }
 
-/** The offer after an apply. A layer the apply landed is no longer pending. A
- *  UI that rolled back is quarantined, and the apply status reports it; its
- *  offer goes, or Restart would re-apply the same bundle. A UI the apply found
- *  nothing to apply for was a stale offer. A UI that failed to download is
- *  still pending, and its offer stays for the retry. A layer the apply did not
- *  try, or a newer offer a check made meanwhile, stands. */
+/** A rolled-back UI's offer goes, or Restart would re-apply it. A failed
+ *  download keeps its offer for the retry. */
 export function offerAfterApply(prev: OtaOffer | null, outcome: OtaApplyOutcome): OtaOffer | null {
   if (!prev) return null;
   const next: OtaOffer = { ...prev };
@@ -537,16 +437,11 @@ export function offerAfterApply(prev: OtaOffer | null, outcome: OtaApplyOutcome)
   return normalizeOffer(next);
 }
 
-/** The `available` status for a pending UI and/or server update, on the legacy
- *  channel. Names each layer explicitly; `version` keeps the legacy "whichever
- *  we have" value so older renderers never render a blank banner. */
+/** `version` keeps the legacy "whichever we have" value for older renderers. */
 export function availableStatus(
   ui: { updateAvailable: boolean; newVersion?: string },
   server: { updateAvailable: boolean; latestVersion?: string; component?: 'cowork-server' | 'anton-agent' },
 ): OtaStatus {
-  // An anton-only server update (ENG-1094) shares cowork-server's version,
-  // so a bare version number would read as blank/wrong — name the component
-  // that's actually changing, by the one rule the banner uses too.
   const label = server.updateAvailable
     ? serverLabel({ status: 'ready', version: server.latestVersion, component: server.component })
     : undefined;
@@ -561,7 +456,6 @@ export function availableStatus(
   };
 }
 
-/** The legacy-channel status for an offer: `available`, or `idle` for none. */
 export function legacyOfferStatus(offer: OtaOffer | null): OtaStatus {
   if (!offer) return { phase: 'idle' };
   return availableStatus(
@@ -570,11 +464,8 @@ export function legacyOfferStatus(offer: OtaOffer | null): OtaStatus {
   );
 }
 
-/** The offer an `available` on the legacy channel names. Newer shells say
- *  which layers it covers. Older ones set only `serverUpdate`, and `version`
- *  is the UI's version when a UI update is pending and the server's label
- *  otherwise, so a UI update is pending when there is no server update, or
- *  when `version` names something other than the server update. */
+/** Older shells set only `serverUpdate`, and `version` names the UI update
+ *  when one is pending, else the server label. */
 export function legacyAvailableOffer(status: OtaStatus): OtaOffer | null {
   const serverPending = !!status.serverUpdate;
   const server = serverPending
@@ -596,7 +487,6 @@ export function legacyAvailableOffer(status: OtaStatus): OtaOffer | null {
   return normalizeOffer({ ui: uiPending ? { version: uiVersion } : null, server });
 }
 
-/** Split a legacy-channel status into the inputs it speaks for. */
 export function legacyOtaInput(status: OtaStatus | null): Partial<UpdateCoordinatorInput> {
   if (!status) return { otaOffer: null, otaApply: null };
   switch (status.phase) {
@@ -615,11 +505,9 @@ export function legacyOtaInput(status: OtaStatus | null): Partial<UpdateCoordina
   }
 }
 
-/** What a manual check summary from an older shell says about the offer. It
- *  carries no per-channel errors, and it reports ok while one channel errored
- *  if another found something. So a channel it reports is an answer, but a
- *  channel it leaves out is one only when nothing was found anywhere and
- *  nothing errored. */
+/** An older shell's summary has no per-channel errors and reports ok if any
+ *  channel found something, so an omitted channel is an answer only when
+ *  nothing was found. */
 export function checkFromSummary(summary: {
   ok: boolean;
   updateAvailable: boolean;
@@ -639,10 +527,8 @@ export function checkFromSummary(summary: {
   return check;
 }
 
-/** The manual installer notice after its check. It is the fallback for when
- *  the auto-updater is off or terminally failed, so it is cleared whenever
- *  the auto-updater is not; otherwise a check that could not reach the
- *  manifest leaves it as it was, and one that answered decides. */
+/** Cleared unless the auto-updater is the fallback; an unreachable manifest
+ *  leaves it. */
 export function manualNoticeAfterCheck(
   prev: ShellManualNotice | null,
   result: { available: boolean; latestVersion?: string; currentVersion?: string; downloadUrl?: string | null; error?: boolean } | null,
@@ -655,22 +541,14 @@ export function manualNoticeAfterCheck(
     : null;
 }
 
-// ---- settling an apply's progress -------------------------------------------
-
-/** Where the applies stand in main: one running under the maintenance lock,
- *  Restart requests that announced progress and wait for the lock behind it,
- *  and a reload whose navigation has not committed. */
 export interface ApplyRun {
   running: boolean;
   queued: number;
   navigationPending: boolean;
 }
 
-/** Whether progress an apply announced may be cleared now. A request still
- *  waiting for the lock owns it, always. A navigation commit ends the running
- *  apply's progress (it belonged to the page being torn down). The end of an
- *  apply or a request ends it only when nothing else is running and no reload
- *  is waiting to commit. */
+/** A queued request owns the progress. A navigation commit ends it, since it
+ *  belonged to the torn-down page. */
 export function applyProgressSettles(run: ApplyRun, at: 'navigation' | 'apply-end' | 'request-end'): boolean {
   if (run.queued > 0) return false;
   if (at === 'navigation') return true;
@@ -678,10 +556,8 @@ export function applyProgressSettles(run: ApplyRun, at: 'navigation' | 'apply-en
   return at === 'apply-end' || !run.running;
 }
 
-/** The inputs to clear when an apply's progress settles: its in-flight status
- *  and a server reinstall still reported busy (the server updater reports no
- *  completion of its own). A rolled-back or failed apply, and a server error,
- *  stay: they are what the banner and Settings show next. */
+/** The server updater reports no completion, so its busy phase clears here.
+ *  Failures stay for the banner. */
 export function settledApplyInput(input: UpdateCoordinatorInput): Partial<UpdateCoordinatorInput> {
   const partial: Partial<UpdateCoordinatorInput> = {};
   if (applyInFlight(input.otaApply)) partial.otaApply = null;
@@ -689,10 +565,6 @@ export function settledApplyInput(input: UpdateCoordinatorInput): Partial<Update
   return partial;
 }
 
-// ---- running a step -----------------------------------------------------------
-
-/** How main and the old-shell path each run a step. Only the transports
- *  differ; what counts as success does not. */
 export interface ApplyStepHandlers<R> {
   relaunch(): Promise<R>;
   reload(): Promise<R>;
@@ -700,7 +572,6 @@ export interface ApplyStepHandlers<R> {
   download(): Promise<{ phase: string }>;
 }
 
-/** Run the step `resolveApplyAction` chose. */
 export async function dispatchApplyStep<R>(
   step: ApplyStep | 'stale' | null,
   handlers: ApplyStepHandlers<R>,
@@ -719,18 +590,13 @@ export async function dispatchApplyStep<R>(
       return phase === 'downloading' || phase === 'ready-to-install';
     }
     default:
-      // `open-download-page` is the renderer's own action (it opens the
-      // browser); nothing pending answers false.
+      // `open-download-page` runs in the renderer.
       return false;
   }
 }
 
-// ---- change detection ---------------------------------------------------------
-
-/** The state as the surfaces render it. Every shell download tick changes the
- *  raw snapshot's byte counts and speed, but the banner shows a rounded
- *  percentage, so only a change in that, or in anything else rendered, is a
- *  new state worth pushing. */
+/** Download ticks change byte counts and speed, but only a rendered change,
+ *  such as the rounded percent, is worth a push. */
 export function renderedStateKey(state: UpdateCoordinatorState): string {
   const percent = (p: { percent?: number | null } | null | undefined) =>
     p?.percent == null ? null : Math.round(p.percent);
@@ -746,11 +612,8 @@ export function renderedStateKey(state: UpdateCoordinatorState): string {
   });
 }
 
-// ---- a feedable instance -------------------------------------------------------
-
 export interface UpdateCoordinator {
-  /** Replace one or more inputs. Listeners run only when the rendered state
-   *  changed. `ota` is a legacy-channel status, split by `legacyOtaInput`. */
+  /** Listeners run only when the rendered state changed. `ota` is a legacy status. */
   feed(partial: Partial<UpdateCoordinatorInput> & { ota?: OtaStatus | null }): UpdateCoordinatorState;
   getInput(): UpdateCoordinatorInput;
   getState(): UpdateCoordinatorState;
@@ -774,8 +637,7 @@ export function createUpdateCoordinator(initial: Partial<UpdateCoordinatorInput>
       const derived = coordinateUpdates(input);
       const nextKey = renderedStateKey({ ...derived, revision });
       if (nextKey === key) {
-        // Nothing rendered changed (a download tick's byte count, say): keep
-        // the fresh snapshot for the next pull, without a push.
+        // Keep the fresh snapshot for the next pull, without a push.
         state = { ...derived, revision };
         return state;
       }
