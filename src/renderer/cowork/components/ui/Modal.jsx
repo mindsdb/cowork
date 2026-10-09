@@ -28,6 +28,8 @@
 // offers it beside Settings and it opens a <ConfirmModal>. Where that
 // can't work, a delete section goes in the body — never the footer.
 // Read-only and live-apply modals drop the footer; the X is the way out.
+// Nothing inside the body scrolls on its own, except a capped code/log
+// block or a searchable list embedded in a longer form (a repo picker).
 
 import { createContext, useContext } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
@@ -280,13 +282,16 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 // ── Toolbar ───────────────────────────────────────────────────────────
 //
 // Pinned strip between the header and the body for tabs, search or
-// filters — it stays put while the body scrolls.
+// filters — it stays put while the body scrolls. `flush` drops the
+// bottom padding so a tab strip's underline sits on the toolbar's own
+// bottom border (give the TabList `border-b-0`). Tabs whose panels live in
+// the body wrap toolbar + body in `<Tabs className="contents">`.
 
-export function ModalToolbar({ children, style }) {
+export function ModalToolbar({ children, flush = false, style }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      padding: '8px 16px',
+      padding: flush ? '4px 16px 0' : '8px 16px',
       borderBottom: '1px solid var(--line)',
       background: 'var(--surface)',
       flexShrink: 0,

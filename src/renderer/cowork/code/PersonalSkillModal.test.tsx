@@ -28,6 +28,13 @@ beforeEach(() => {
 });
 
 describe('Personal skills', () => {
+  it('keeps the Write/Import tabs pinned outside the scrolling body', async () => {
+    open();
+    const scroller = (el: Element | null) => el?.closest('[style*="overflow-y: auto"]');
+    expect(scroller(await screen.findByRole('tablist'))).toBeNull();
+    expect(scroller(screen.getByRole('tabpanel'))).not.toBeNull();
+  });
+
   it('creates a skill without Git and does not submit incomplete instructions', async () => {
     open();
     expect(screen.getByRole('button', { name: 'Add skill' })).toBeDisabled();
