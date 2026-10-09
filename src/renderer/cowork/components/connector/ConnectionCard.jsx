@@ -3,12 +3,19 @@
 // changes layout, not content.
 
 import { useState } from 'react';
-import { Button } from '../ui';
+import { Badge, Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
-import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 
-function ConnectionLogo({ engine, label }) {
+function ConnectionLogo({ engine, label, custom, logoColor }) {
   const [failed, setFailed] = useState(null);
+  if (custom) {
+    return (
+      <span aria-hidden="true" className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-[13px] font-semibold" style={{ color: logoColor || 'var(--ink-2)' }}>
+        {connectorInitials(label)}
+      </span>
+    );
+  }
   // Reuse public assets without emitting a second, hashed copy. Only safe
   // connector IDs can form a local path; missing logos fall back to an initial.
   const src = /^[a-z0-9_]+$/.test(engine) ? `logos/${engine}.svg` : null;
@@ -26,6 +33,10 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
+  const legacy = isLegacyEngine(engine);
+  // The activator's own label is all a screen reader hears for the item.
+  const describedTitle = connection.custom ? `${title} (custom connector)` : title;
+  const repairHint = legacy ? '. Saved by an older version. Disconnect it and connect again.' : '';
   const needsReconnect = connection.status === 'needs_reconnect';
   // The summary API omits status for healthy saved connections. Do not paint
   // an unfamiliar explicit status green as if we had checked it successfully
@@ -45,11 +56,15 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   };
 
   return {
-    leading: <ConnectionLogo engine={engine} label={title} />,
+    leading: <ConnectionLogo engine={engine} label={title} custom={connection.custom} logoColor={connection.logo_color} />,
     title,
+    badges: connection.custom ? <Badge variant="accent" size="xs">Custom</Badge> : undefined,
     description: subtitle,
+    children: legacy
+      ? <span className="text-xs text-ink-4">Saved by an older version. Disconnect it and connect again.</span>
+      : undefined,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
-    activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
+    activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${describedTitle}: ${subtitle}${repairHint}`,
     busy,
     className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
     meta: (
