@@ -561,7 +561,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               title: 'No saved skills yet',
               description: 'Write a skill, upload a SKILL.md, or ask Cowork to make one.',
               action: { label: 'Write your first skill', onClick: startNew },
-              style: { flex: 1 },
+              className: 'mx-8 mb-8',
             }}
           >
             <ListGroup className={LIST_CLASS}>

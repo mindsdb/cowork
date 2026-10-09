@@ -18,6 +18,13 @@
 // `empty` takes `<EmptyState>` props, so each page keeps its own copy and CTA.
 // No-match reads "No results for “query”" with a Clear search action; pages
 // whose filters go beyond search pass `noMatchTitle` and `clearLabel`.
+//
+// Both states sit in a hairline frame where the list would be, so the
+// message is anchored to the page without filling the space: the frame has
+// no background. `empty.className` places the frame (page margins).
+
+// The ListGroup's outline without its surface: empty space, outlined.
+const FRAME = 'rounded-card border border-solid border-line';
 
 import type { ReactNode } from 'react';
 import Ico from '../Icons';
@@ -129,16 +136,21 @@ export function CollectionState({
       </div>
     );
   }
-  if (total === 0) return <EmptyState {...empty} />;
+  const { className: frameClassName, ...emptyProps } = empty;
+  if (total === 0) {
+    return <div className={cn(FRAME, frameClassName)}><EmptyState {...emptyProps} /></div>;
+  }
   if (shown === 0) {
     const q = query.trim();
     return (
-      <EmptyState
-        icon={Ico.search(20)}
-        title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
-        action={onClear && { label: clearLabel, onClick: onClear }}
-        style={{ minHeight: 240 }}
-      />
+      <div className={cn(FRAME, frameClassName)}>
+        <EmptyState
+          icon={Ico.search(20)}
+          title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
+          action={onClear && { label: clearLabel, onClick: onClear }}
+          style={{ minHeight: 240 }}
+        />
+      </div>
     );
   }
   return <>{children}</>;

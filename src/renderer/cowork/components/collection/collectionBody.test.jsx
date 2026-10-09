@@ -29,6 +29,15 @@ describe('CollectionState', () => {
     expect(screen.queryByText('items')).not.toBeInTheDocument();
   });
 
+  it('outlines the empty and no-match states with an unfilled frame placed by empty.className', () => {
+    const { rerender } = render(<CollectionState total={0} shown={0} empty={{ ...EMPTY, className: 'mx-8' }} />);
+    const frame = screen.getByText('Nothing yet').closest('.rounded-card');
+    expect(frame).toHaveClass('border', 'border-line', 'mx-8');
+    expect(frame).not.toHaveClass('bg-surface');
+    rerender(<CollectionState total={3} shown={0} empty={{ ...EMPTY, className: 'mx-8' }} />);
+    expect(screen.getByText('No results').closest('.rounded-card')).toHaveClass('border-line', 'mx-8');
+  });
+
   it('names the query when nothing matches and clears it on request', async () => {
     const user = userEvent.setup();
     const onClear = vi.fn();

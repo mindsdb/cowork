@@ -203,7 +203,7 @@ export default function TasksView({
           icon: Ico.chats(20),
           title: 'No tasks yet',
           description: 'Start a conversation from the home screen — every chat shows up here.',
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         <ListGroup className="mx-8 mb-8">

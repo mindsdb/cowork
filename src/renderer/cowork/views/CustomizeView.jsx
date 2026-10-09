@@ -634,7 +634,7 @@ export default function CustomizeView({
           title: 'No apps connected yet',
           description: `Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`,
           action: { label: 'Connect your first app', onClick: handleConnectNew },
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (

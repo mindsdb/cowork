@@ -193,7 +193,7 @@ export default function ScheduledView({
           title: 'No scheduled tasks yet',
           description: `Have ${agentLabel} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.`,
           action: { label: 'Schedule your first task', onClick: openCreate },
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         <ListGroup className="mx-8 mb-8">

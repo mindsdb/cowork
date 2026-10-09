@@ -966,7 +966,7 @@ export default function ArtifactsView({
               <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
             </>
           ),
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (

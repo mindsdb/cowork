@@ -854,7 +854,7 @@ export default function ProjectsView({
           description: 'Create your first project to start grouping conversations and outputs.',
           // proj-new-action: hidden on phones, where the FAB is the create entry.
           action: { label: 'Create your first project', onClick: handleNewProject, className: 'proj-new-action' },
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (
