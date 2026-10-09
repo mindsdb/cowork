@@ -31,7 +31,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [confirmation, setConfirmation] = useState<'discard' | 'delete' | null>(null);
+  const [confirmation, setConfirmation] = useState<'discard' | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
 
@@ -97,8 +97,8 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   </div>;
 
   return <>
-    <Modal open onClose={close} size="md" labelledBy="personal-skill-title" closeOnBackdrop={!busy} closeOnEsc={!busy} maxHeight="min(820px, 92vh)">
-      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={busy ? undefined : close} />
+    <Modal open onClose={close} size="md" labelledBy="personal-skill-title" dismissible={!busy} maxHeight="min(820px, 92vh)">
+      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={close} />
       <ModalBody>
         {loading ? <div className="code-personal-skill__state" role="status"><Spinner /> Loading skill…</div>
           : skillId && !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>Try again</Button></div>
@@ -120,19 +120,13 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
               {error && !confirmation && <Alert variant="danger">{error}</Alert>}
             </fieldset>}
       </ModalBody>
-      <ModalFooter>
-        {skillId && original && <Button variant="danger" onClick={() => { setError(''); setConfirmation('delete'); }} disabled={busy || loading}>Delete skill</Button>}
-        <span className="flex-1" />
-        <Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={save} disabled={busy || loading || !valid || (!!skillId && !original)}>{busy ? 'Saving…' : skillId ? 'Save changes' : 'Add skill'}</Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal open={!!confirmation} title={confirmation === 'delete' ? 'Delete personal skill?' : 'Discard changes?'}
-      message={confirmation === 'delete' ? 'This removes the skill from your library. Existing tasks keep their saved copy.' : 'Your unsaved skill changes will be lost.'}
-      confirmLabel={confirmation === 'delete' ? 'Delete skill' : 'Discard changes'} cancelLabel="Keep editing" destructive busy={busy} error={error}
-      onClose={() => setConfirmation(null)} onConfirm={() => {
-        if (confirmation === 'delete' && skillId) void run(() => personalSkillsApi.remove(skillId));
-        else onClose();
-      }} />
+    <ConfirmModal open={!!confirmation} title="Discard changes?"
+      message="Your unsaved skill changes will be lost."
+      confirmLabel="Discard changes" cancelLabel="Keep editing" destructive
+      onClose={() => setConfirmation(null)} onConfirm={onClose} />
   </>;
 }

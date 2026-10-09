@@ -7,6 +7,7 @@ import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Checkbox from '../components/ui/Checkbox';
 import Input from '../components/ui/Input';
+import OverflowMenu from '../components/OverflowMenu';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import {
   CollectionState,
@@ -29,6 +30,7 @@ import {
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
 import { PersonalSkillModal } from './PersonalSkillModal';
+import { personalSkillsApi } from './personalSkillsApi';
 import { openCodeRepository } from './shellLinks';
 import { useSkillLibrary } from './useSkillLibrary';
 import './code-skills.css';
@@ -175,7 +177,6 @@ function SkillSourceModal({
   onClose,
   onRefresh,
   onApply,
-  onRemove,
   onOpenRepository,
 }: {
   source: SkillLibrarySource | null;
@@ -185,11 +186,10 @@ function SkillSourceModal({
   onClose: () => void;
   onRefresh: () => Promise<void>;
   onApply: () => Promise<void>;
-  onRemove: () => Promise<void>;
   onOpenRepository: () => Promise<void>;
 }) {
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-source-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-source-title" dismissible={!busy}>
       <ModalHeader id="skill-source-title" title={source?.name || 'Team source'} subtitle={source ? `${source.branch} · ${shortRevision(source.current_revision)}` : ''} onClose={onClose} />
       <ModalBody>
         {source && <div className="code-skill-source-detail">
@@ -198,6 +198,9 @@ function SkillSourceModal({
             <span><strong>{source.item_count}</strong> items</span>
             <span><strong>{source.enabled_project_count}</strong> project{source.enabled_project_count === 1 ? '' : 's'}</span>
           </div>
+          {source.enabled_project_count > 0 && <span className="code-skill-source-usage">
+            {Ico.folder(14)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
+          </span>}
           {(actionError || source.error) && <Alert variant="danger">{actionError || source.error}</Alert>}
           {source.update_available && <div className="code-skill-source-update">
             <strong>Update available</strong>
@@ -206,13 +209,7 @@ function SkillSourceModal({
           </div>}
         </div>}
       </ModalBody>
-      <ModalFooter>
-        {source?.enabled_project_count ? (
-          <span className="code-skill-source-usage">
-            {Ico.folder(14)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
-          </span>
-        ) : <Button variant="danger" onClick={() => void onRemove()} disabled={busy}>Remove source</Button>}
-        <span className="flex-1" />
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Close</Button>}>
         <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>Open repository</Button>
         <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(14)} Check for updates</Button>
         {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>Update source</Button>}
@@ -235,6 +232,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [removeError, setRemoveError] = useState('');
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const [personalEditor, setPersonalEditor] = useState<{ id?: string } | null>(null);
+  const [deletePending, setDeletePending] = useState<SkillLibraryItem | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -315,8 +314,17 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           </ItemActions>
         ) : <span>{item.enabled ? 'Available' : 'Disabled'}</span>}
       </>}
+      // Delete is its own flow beside Edit, not a button inside the editor.
       actions={item.origin === 'personal'
-        ? <Button size="sm" variant="subtle" aria-label={`Edit ${item.name}`} onClick={() => setPersonalEditor({ id: item.path })}>Edit</Button>
+        ? <OverflowMenu
+            label={`More actions for ${item.name}`}
+            icon={Ico.more(14)}
+            size="sm"
+            items={[
+              { id: 'edit', label: 'Edit', icon: Ico.edit(14), onClick: () => setPersonalEditor({ id: item.path }) },
+              { id: 'delete', label: 'Delete', icon: Ico.trash(14), danger: true, onClick: () => { setDeleteError(''); setDeletePending(item); } },
+            ]}
+          />
         : undefined}
     />
   ));
@@ -382,9 +390,24 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
                 <small className="truncate font-mono text-xs font-normal text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
               </button>}
               meta={source.error || source.update_available ? undefined : `${source.item_count} item${source.item_count === 1 ? '' : 's'}`}
-              actions={source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Needs attention</Button>
-                : source.update_available ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Update available</Button>
-                  : undefined}
+              actions={<>
+                {source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Needs attention</Button>
+                  : source.update_available ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Update available</Button>
+                    : null}
+                <OverflowMenu
+                  label={`More actions for ${source.name}`}
+                  icon={Ico.more(14)}
+                  size="sm"
+                  items={[
+                    { id: 'details', label: 'Source details', icon: Ico.settings(14), onClick: () => openSource(source) },
+                    // A source in use can't be removed; say why instead of hiding it.
+                    { id: 'remove', label: 'Remove source', icon: Ico.trash(14), danger: true,
+                      disabled: source.enabled_project_count > 0,
+                      hint: source.enabled_project_count > 0 ? `Used by ${source.enabled_project_count} project${source.enabled_project_count === 1 ? '' : 's'}` : undefined,
+                      onClick: () => { setRemoveError(''); setRemovePending(source); } },
+                  ]}
+                />
+              </>}
             >
               {items.length ? rows(items) : <ListNotice className="py-6 text-center text-xs text-ink-4">
                 {source.error ? 'Source unavailable — open for details.' : searching ? 'No items match this search.' : 'No shared items found.'}
@@ -420,7 +443,6 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           try { await openCodeRepository(sourceDetail.repository); }
           catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : 'Could not open that repository.'); }
         }}
-        onRemove={async () => { if (sourceDetail) { setRemoveError(''); setRemovePending(sourceDetail); } }}
       />
       <ConfirmModal
         open={!!removePending}
@@ -441,6 +463,28 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             await load();
           } catch (reason) {
             setRemoveError(reason instanceof Error ? reason.message : 'Could not remove that source.');
+          } finally { setBusy(false); }
+        }}
+      />
+      <ConfirmModal
+        open={!!deletePending}
+        title="Delete personal skill?"
+        message={deletePending ? `${deletePending.name} will be removed from your library. Existing tasks keep their saved copy.` : ''}
+        confirmLabel="Delete skill"
+        destructive
+        busy={busy}
+        busyLabel="Deleting…"
+        error={deleteError}
+        onClose={() => { setDeletePending(null); setDeleteError(''); }}
+        onConfirm={async () => {
+          if (!deletePending) return;
+          setBusy(true); setDeleteError('');
+          try {
+            await personalSkillsApi.remove(deletePending.path);
+            setDeletePending(null);
+            await load();
+          } catch (reason) {
+            setDeleteError(reason instanceof Error ? reason.message : 'Could not delete that skill.');
           } finally { setBusy(false); }
         }}
       />

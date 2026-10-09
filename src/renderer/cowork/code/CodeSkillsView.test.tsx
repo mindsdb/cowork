@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -172,7 +172,7 @@ describe('CodeSkillsView', () => {
     vi.mocked(personalSkillsApi.create).mockResolvedValue({ id: 'new-review', name: 'New review', description: 'Review my work', instructions: 'Check the changed files', enabled: true, projects: [] });
     skillLibrary.mockResolvedValue({ ...library, items: [...library.items, { id: 'personal:new-review', name: 'New review', description: 'Review my work', origin: 'personal', source_name: 'Yours', path: 'new-review', enabled: true, kind: 'skill', enabled_project_ids: [] }] });
     await user.click(screen.getByRole('button', { name: 'Add skill' }));
-    expect(await screen.findByRole('button', { name: 'Edit New review' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'More actions for New review' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveValue('');
     expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('SourceYours');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -180,9 +180,65 @@ describe('CodeSkillsView', () => {
 
   it('offers personal editing but not editing team or built-in skills', async () => {
     renderSkills();
-    expect(await screen.findByRole('button', { name: 'Edit Release' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit Review' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /^Edit / })).toHaveLength(1);
+    expect(await screen.findByRole('button', { name: 'More actions for Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions for Review' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions for Thermo-Nuclear Code Quality Review' })).not.toBeInTheDocument();
+  });
+
+  it('opens the personal skill editor from the row menu', async () => {
+    vi.mocked(personalSkillsApi.get).mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    renderSkills();
+    await user.click(await screen.findByRole('button', { name: 'More actions for Release' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    expect(await screen.findByRole('dialog', { name: 'Edit personal skill' })).toBeInTheDocument();
+    expect(personalSkillsApi.get).toHaveBeenCalledWith('release');
+  });
+
+  it('deletes a personal skill through its own confirmation, keeping it on failure', async () => {
+    vi.mocked(personalSkillsApi.remove).mockRejectedValueOnce(new Error('Cannot delete skill'));
+    const user = userEvent.setup();
+    renderSkills();
+    await user.click(await screen.findByRole('button', { name: 'More actions for Release' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    expect(personalSkillsApi.remove).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('dialog', { name: 'Delete personal skill?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Delete skill' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cannot delete skill');
+
+    vi.mocked(personalSkillsApi.remove).mockResolvedValueOnce();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete skill' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(personalSkillsApi.remove).toHaveBeenLastCalledWith('release');
+  });
+
+  it('removes an unused team source from its menu, not from source details', async () => {
+    const unused = { ...library, sources: [{ ...library.sources[0], enabled_project_count: 0 }] };
+    skillLibrary.mockResolvedValue(structuredClone(unused));
+    removeSkillSource.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderSkills();
+
+    await user.click(await screen.findByRole('button', { name: /^Engineering standards/ }));
+    expect(screen.queryByRole('button', { name: 'Remove source' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'More actions for Engineering standards' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Remove source/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Remove team source?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Remove source' }));
+    await waitFor(() => expect(removeSkillSource).toHaveBeenCalledWith('engineering'));
+  });
+
+  it('will not remove a team source that projects still use', async () => {
+    const user = userEvent.setup();
+    renderSkills();
+    await user.click(await screen.findByRole('button', { name: 'More actions for Engineering standards' }));
+    const remove = await screen.findByRole('menuitem', { name: /Remove source/ });
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).toHaveTextContent('Used by 1 project');
   });
 
   it('opens a readable skill document from the library row', async () => {
@@ -232,7 +288,7 @@ describe('CodeSkillsView', () => {
   it('shows source usage without presenting it as a destructive error', async () => {
     const user = userEvent.setup();
     renderSkills();
-    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+    await user.click(await screen.findByRole('button', { name: /^Engineering standards/ }));
 
     expect(screen.getByText('Used by 1 project')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove source' })).not.toBeInTheDocument();
@@ -242,7 +298,7 @@ describe('CodeSkillsView', () => {
   it('opens the backing Git repository from source details', async () => {
     const user = userEvent.setup();
     renderSkills();
-    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+    await user.click(await screen.findByRole('button', { name: /^Engineering standards/ }));
 
     await user.click(screen.getByRole('button', { name: 'Open repository' }));
 
@@ -265,7 +321,7 @@ describe('CodeSkillsView', () => {
     refreshSkillSource.mockRejectedValueOnce(new Error('The repository could not be reached.'));
     const user = userEvent.setup();
     renderSkills();
-    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+    await user.click(await screen.findByRole('button', { name: /^Engineering standards/ }));
     await user.click(screen.getByRole('button', { name: 'Check for updates' }));
 
     expect(await screen.findByText('The repository could not be reached.')).toBeInTheDocument();
