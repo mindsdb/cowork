@@ -737,15 +737,8 @@ export default function SettingsView({
   // from the section list (the top-bar back control drills out to it first).
   mobile = false,
   onClose,
-  // Shell (installer) update notice (ENG-849): { version, currentVersion,
-  // downloadUrl } or null. Shown in Updates regardless of banner dismissal —
-  // Settings is a deliberate visit, so it always reflects the true state.
-  shellUpdate = null,
-  onDownloadShellUpdate,
-  shellAutoUpdate = null,
-  onDownloadShellAutoUpdate,
-  onInstallShellAutoUpdate,
-  onRetryShellAutoUpdate,
+  updateState = null,
+  onUpdateAction,
 }) {
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -2343,12 +2336,8 @@ export default function SettingsView({
     <UpdatesSection
       footer={renderSaveFooter()}
       serverOnline={serverOnline}
-      shellUpdate={shellUpdate}
-      onDownloadShellUpdate={onDownloadShellUpdate}
-      shellAutoUpdate={shellAutoUpdate}
-      onDownloadShellAutoUpdate={onDownloadShellAutoUpdate}
-      onInstallShellAutoUpdate={onInstallShellAutoUpdate}
-      onRetryShellAutoUpdate={onRetryShellAutoUpdate}
+      updateState={updateState}
+      onUpdateAction={onUpdateAction}
     />
   );
 

@@ -27,6 +27,9 @@ interface AntonTronAPI {
   awaitBootReady: () => Promise<{ ready: boolean }>;
   drainUpdateJournal: () => Promise<import('../shared/update-journal-types').UpdatePhaseEntry[]>;
   ackUpdateJournal: (ids: string[]) => Promise<void>;
+  getUpdateState: () => Promise<import('../shared/update-coordinator').UpdateCoordinatorState>;
+  onUpdateState: (cb: (state: import('../shared/update-coordinator').UpdateCoordinatorState) => void) => () => void;
+  applyUpdates: (options?: { force?: boolean; action?: import('../shared/update-coordinator').UpdateAction }) => Promise<import('../shared/restart-confirmation').RestartRequestResult>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
   checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;

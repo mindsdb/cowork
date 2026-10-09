@@ -1,8 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { UpdateCoordinatorState } from '../../shared/update-coordinator';
 
 // host.ts resolves `window.antontron` into module-level constants at IMPORT
 // time (bridge/isElectron/isWeb), so every test must (1) set up or remove the
 // bridge, (2) vi.resetModules(), (3) dynamically import a fresh copy.
+/** The update state as a watcher sees it right now (null on web), read
+ *  through the one public subscription. */
+function stateNow(host: { watchUpdateState: (cb: (state: UpdateCoordinatorState) => void) => () => void }): UpdateCoordinatorState | null {
+  let last: UpdateCoordinatorState | null = null;
+  const off = host.watchUpdateState((state) => { last = state; });
+  off();
+  return last;
+}
+
 async function importHost() {
   vi.resetModules();
   return await import('./host');
@@ -447,6 +457,194 @@ describe('electron mode (bridge present)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('the one update state (ENG-2296)', () => {
+    const shell = (phase: string, over: Record<string, unknown> = {}) => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...over });
+    type Fn = ReturnType<typeof vi.fn>;
+    const setBridge = (bridge: Record<string, unknown>) => {
+      (window as unknown as Record<string, unknown>).antontron = bridge;
+      return bridge as Record<string, Fn>;
+    };
+    /** A shell with UPDATE_STATE; `push` delivers a state from main. */
+    const newerShell = (over: Record<string, unknown> = {}) => {
+      const ctl = { push: (_s: unknown) => {}, off: vi.fn() };
+      const bridge = setBridge({
+        getUpdateState: vi.fn(async () => ({ action: null })),
+        onUpdateState: vi.fn((cb: (s: unknown) => void) => { ctl.push = cb; return ctl.off; }),
+        onUpdateStatus: vi.fn(),
+        onShellAutoUpdate: vi.fn(),
+        ...over,
+      });
+      return { ...ctl, bridge, push: (s: unknown) => ctl.push(s) };
+    };
+    /** A shell that predates UPDATE_STATE: the renderer composes the state from
+     *  its OTA status and shell snapshot channels. */
+    const olderShell = (over: Record<string, unknown> = {}) => {
+      const cb: { ota: (s: unknown) => void; shell: (s: unknown) => void } = { ota: () => {}, shell: () => {} };
+      const offs = { ota: vi.fn(), shell: vi.fn() };
+      const bridge = setBridge({
+        onUpdateStatus: vi.fn((fn: (s: unknown) => void) => { cb.ota = fn; return offs.ota; }),
+        onShellAutoUpdate: vi.fn((fn: (s: unknown) => void) => { cb.shell = fn; return offs.shell; }),
+        getShellAutoUpdate: vi.fn(async () => shell('idle')),
+        getShellUpdate: vi.fn(async () => null),
+        ...over,
+      });
+      return { bridge, offs, ota: (s: unknown) => cb.ota(s), shell: (s: unknown) => cb.shell(s) };
+    };
+
+    it('shares one bridge subscription across watchers on a newer shell, and tears it down with the last', async () => {
+      const main = newerShell({ getUpdateState: vi.fn(async () => ({ action: 'relaunch' })), applyUpdates: vi.fn(async () => true) });
+      const host = await importHost();
+      const first = vi.fn();
+      const second = vi.fn();
+      const offFirst = host.watchUpdateState(first);
+      const offSecond = host.watchUpdateState(second);
+      await vi.waitFor(() => expect(first).toHaveBeenCalledWith({ action: 'relaunch' }));
+      expect(second).toHaveBeenCalledWith({ action: 'relaunch' });
+      expect(main.bridge.getUpdateState).toHaveBeenCalledTimes(1);
+      expect(main.bridge.onUpdateState).toHaveBeenCalledTimes(1);
+      expect(main.bridge.onUpdateStatus).not.toHaveBeenCalled();
+      expect(main.bridge.onShellAutoUpdate).not.toHaveBeenCalled();
+      offFirst();
+      main.push({ action: 'reload' });
+      expect(first).not.toHaveBeenLastCalledWith({ action: 'reload' });
+      expect(second).toHaveBeenLastCalledWith({ action: 'reload' });
+      offSecond();
+      expect(main.off).toHaveBeenCalledOnce();
+      host.watchUpdateState(vi.fn());
+      expect(main.bridge.onUpdateState).toHaveBeenCalledTimes(2);
+    });
+
+    it.each<[string, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>]>([
+      ['revisions order them', { action: null, applying: 'downloading', revision: 5 }, { action: 'reload', applying: null, revision: 4 }, { action: null, applying: 'downloading', revision: 5 }],
+      ['without revisions the push that landed first wins', { action: 'relaunch' }, { action: 'reload' }, { action: 'relaunch' }],
+    ])('a mount-time pull that resolves after a push does not replace it: %s', async (_name, pushed, pulled, expected) => {
+      let resolvePull!: (s: unknown) => void;
+      const main = newerShell({ getUpdateState: vi.fn(() => new Promise((r) => { resolvePull = r; })) });
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      main.push(pushed);
+      resolvePull(pulled);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(seen).toHaveBeenCalledTimes(1);
+      expect(seen).toHaveBeenLastCalledWith(expected);
+      if (typeof pushed.revision === 'number') {
+        main.push({ action: 'reload', revision: 3 });
+        expect(seen).toHaveBeenCalledTimes(1);
+        main.push({ action: 'reload', revision: 6 });
+        expect(seen).toHaveBeenLastCalledWith({ action: 'reload', revision: 6 });
+      }
+    });
+
+    it('sends the clicked action to main and passes a stale answer through', async () => {
+      const main = newerShell({ applyUpdates: vi.fn(async () => 'stale') });
+      const host = await importHost();
+      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
+      expect(main.bridge.applyUpdates).toHaveBeenCalledWith({ action: 'download' });
+      expect(main.bridge.applyUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('composes the same state on an older shell, registering its legacy listeners once and removing them with the last watcher', async () => {
+      const old = olderShell({ applyUpdate: vi.fn(async () => true), installShellAutoUpdate: vi.fn(async () => true) });
+      const host = await importHost();
+      const seen = vi.fn();
+      const offFirst = host.watchUpdateState(seen);
+      const offSecond = host.watchUpdateState(vi.fn());
+      expect(old.bridge.onUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(old.bridge.onShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(old.bridge.getShellAutoUpdate).toHaveBeenCalledTimes(1);
+      expect(old.bridge.getShellUpdate).toHaveBeenCalledTimes(1);
+      expect(seen.mock.calls[0][0]).toMatchObject({ action: null, applying: null });
+      old.ota({ phase: 'available', version: '2.26.10.7.1' });
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      old.shell(shell('ready-to-install', { targetVersion: '2.26.10.9.1' }));
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'relaunch', ui: { status: 'ready' } });
+      await host.applyUpdates();
+      expect(old.bridge.installShellAutoUpdate).toHaveBeenCalledWith({});
+      expect(old.bridge.applyUpdate).not.toHaveBeenCalled();
+      old.ota({ phase: 'shell-available', version: '2.26.10.9.1', downloadUrl: 'https://x/y.pkg' });
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      old.shell(shell('idle'));
+      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
+      offFirst();
+      expect(old.offs.ota).not.toHaveBeenCalled();
+      offSecond();
+      expect(old.offs.ota).toHaveBeenCalledOnce();
+      expect(old.offs.shell).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a reload shows progress and reports a failure from the composed state', async () => {
+      const old = olderShell({ applyUpdate: vi.fn(async () => false) });
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen);
+      old.ota({ phase: 'available', version: 'ui-1' });
+      expect(await host.applyUpdates()).toBe(false);
+      expect(old.bridge.applyUpdate).toHaveBeenCalledOnce();
+      expect(seen.mock.calls.map((c) => (c[0] as { ui: { status: string } }).ui.status)).toContain('applying');
+      expect(seen.mock.lastCall![0]).toMatchObject({ action: 'reload', ui: { status: 'failed' } });
+    });
+
+    it('on an older shell the reload behind an installer notice runs only when named', async () => {
+      const old = olderShell({ getShellAutoUpdate: vi.fn(async () => shell('disabled')), applyUpdate: vi.fn(async () => true) });
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      old.ota({ phase: 'available', version: 'ui-1' });
+      old.ota({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
+      expect(await host.applyUpdates()).toBe(false);
+      expect(old.bridge.applyUpdate).not.toHaveBeenCalled();
+      expect(await host.applyUpdates({ action: 'reload' })).toBe(true);
+      expect(old.bridge.applyUpdate).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a Download click the state no longer offers runs nothing', async () => {
+      const old = olderShell({ installShellAutoUpdate: vi.fn(async () => true), downloadShellAutoUpdate: vi.fn(async () => shell('downloading')) });
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      old.shell(shell('available', { mode: 'manual', targetVersion: 'v' }));
+      old.shell(shell('ready-to-install', { mode: 'manual', targetVersion: 'v' }));
+      expect(await host.applyUpdates({ action: 'download' })).toBe('stale');
+      expect(old.bridge.installShellAutoUpdate).not.toHaveBeenCalled();
+      expect(old.bridge.downloadShellAutoUpdate).not.toHaveBeenCalled();
+      expect(await host.applyUpdates({ action: 'relaunch' })).toBe(true);
+      expect(old.bridge.installShellAutoUpdate).toHaveBeenCalledOnce();
+    });
+
+    it('on an older shell a manual check feeds the offer, but never turns an auto-updater download into a stale notice', async () => {
+      const summary = (over: Record<string, unknown>) => ({ ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false, ...over });
+      const old = olderShell({ checkForUpdate: vi.fn(async () => ({ updateAvailable: true, newVersion: '2.26.10.7.1' })) });
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+      const host = await importHost();
+      host.watchUpdateState(vi.fn());
+      // A shell old enough to answer with the UI-only reply.
+      await host.checkForUpdates();
+      expect(stateNow(host)!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      // The summary flags the shell update the auto-updater is downloading.
+      old.bridge.checkForUpdate.mockResolvedValue(summary({ shellUpdateAvailable: true, shellVersion: '2.26.10.9.1' }));
+      old.shell(shell('downloading', { targetVersion: '2.26.10.9.1' }));
+      await host.checkForUpdates();
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      old.shell(shell('failed', { recoverable: true, errorCode: 'check-stalled' }));
+      expect(stateNow(host)!.shell.manual).toBe(false);
+      // With the auto-updater out of the picture the summary is the notice, and a no clears it.
+      old.shell(shell('disabled'));
+      await host.checkForUpdates();
+      expect(stateNow(host)!).toMatchObject({ shell: { manual: true } });
+      old.bridge.checkForUpdate.mockResolvedValue(summary({ updateAvailable: false }));
+      await host.checkForUpdates();
+      expect(stateNow(host)!.shell.manual).toBe(false);
+    });
+
+    it('publishes nothing on web', async () => {
+      const host = await importHost();
+      const seen = vi.fn();
+      host.watchUpdateState(seen)();
+      expect(seen).not.toHaveBeenCalled();
+      expect(stateNow(host)).toBeNull();
+      expect(await host.applyUpdates()).toBe(false);
+    });
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

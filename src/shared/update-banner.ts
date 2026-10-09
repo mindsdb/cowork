@@ -1,93 +1,15 @@
-// Which update banner, if any, the user sees. Collapses the three update
-// mechanisms (see docs/update-behavior.md) into one banner, so the sidebar and
-// Settings render from the same decision:
-//   - OTA (UI + server)   → applied by a renderer *reload*   (updateStatus)
-//   - shell auto-update   → applied by an app *relaunch*     (shellAutoUpdate)
-//   - shell manual notice → hand-downloaded installer, prod fallback (shellUpdate)
-//
-// Priority is SHELL-FIRST: a shell relaunch also auto-applies any pending
-// UI/server OTA at boot, so whenever a shell update is pending it owns the slot
-// and the weaker OTA "Restart" (reload-only) is suppressed. "Pending" excludes a
-// shell failure with no known target (see shellAutoOwnsBanner) — it must not hide
-// a valid OTA, so it drops to the BOTTOM of the ladder rather than the top:
-//   shell-owned  ►  shell-manual  ►  OTA  ►  targetless shell failure  ►  none
-// Ranking it last (not dropping it) keeps its Retry/Download affordance alive
-// even after a failed retry check clears the target. shellAuto and shellManual
-// are mutually exclusive at the source, but the ordering is safe if they overlap.
+// Turns the coordinator state into banner copy, shared by the sidebar and
+// Settings so they cannot disagree. Copy is layer-agnostic except the manual
+// installer fallback, which keeps "Download".
 
-/** Shell auto-updater phases that can own a banner. Passive phases
- *  (disabled/idle/checking/complete) surface nothing, leaving the slot for an
- *  OTA or manual banner. `failed` is conditional — see shellAutoOwnsBanner. */
-export const SHELL_AUTO_BANNER_PHASES = [
-  'available',
-  'downloading',
-  'ready-to-install',
-  'installing',
-  'failed',
-] as const;
+import type { UpdateAction, UpdateCoordinatorState } from './update-coordinator';
+import { serverLabel } from './update-coordinator';
 
-/** Does this shell-auto snapshot warrant owning the top (shell-first) banner slot?
- *
- *  A `failed` phase owns the top slot only when `targetVersion` proves an update
- *  was actually found (set by UPDATE_FOUND / DOWNLOAD_COMPLETE and retained
- *  through a download/install failure). A failure with no target — a rejected
- *  checkForUpdates(), or a *retry* whose CHECK_REQUESTED cleared the target and
- *  then failed — must not outrank a valid OTA "Restart", so it does not own the
- *  top slot. It is still rendered at the BOTTOM of deriveUpdateBanner's ladder,
- *  so its Retry/Download affordance survives a failed retry check. */
-/** Shell failure codes that describe a check which produced no answer — the
- *  updater stalled, and no update was found or lost. They exist so the next
- *  scheduled check can run; there is nothing for the user to retry, so they
- *  raise no banner. */
-export const CHECK_ONLY_FAILURE_CODES = ['check-stalled'] as const;
-
-function isSilentCheckFailure(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): boolean {
-  return shellAuto.phase === 'failed'
-    && !shellAuto.targetVersion
-    && (CHECK_ONLY_FAILURE_CODES as readonly string[]).includes(shellAuto.errorCode ?? '');
-}
-
-export function shellAutoOwnsBanner(
-  shellAuto: NonNullable<UpdateBannerInput['shellAuto']>,
-): boolean {
-  const phase = shellAuto.phase;
-  if (!phase || !(SHELL_AUTO_BANNER_PHASES as readonly string[]).includes(phase)) return false;
-  if (phase === 'failed') return !!shellAuto.targetVersion;
-  return true;
-}
-
-export interface UpdateBannerInput {
-  /** OTA (UI + server) status pushed from main. `available` = ready to apply on
-   *  a renderer reload; `error` = a prior apply failed and offers a retry. Any
-   *  other phase surfaces no banner (the app shows a full-screen overlay). */
-  ota?: { phase?: string | null; version?: string } | null;
-  /** electron-updater snapshot, or null when not packaged / not subscribed. */
-  shellAuto?: {
-    phase?: string | null;
-    recoverable?: boolean;
-    version?: string;
-    /** The update this snapshot is heading to. Present once an update is found;
-     *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
-    targetVersion?: string;
-    /** Classified failure code; a check-only code suppresses the banner. On a
-     *  `ready-to-install` snapshot it is the reason the last install attempt
-     *  was aborted (ENG-3291), and the banner says so. */
-    errorCode?: string;
-    errorMessage?: string;
-    progress?: { percent?: number | null } | null;
-    /** `auto` installs a downloaded update on quit; `manual` never does. */
-    mode?: string;
-  } | null;
-  /** Prod-only manual installer notice, already filtered for per-version
-   *  dismissal by the caller (a dismissed notice must arrive here as null). */
-  shellManual?: { version?: string; debInstaller?: boolean } | null;
-}
+export { SHELL_AUTO_BANNER_PHASES, CHECK_ONLY_FAILURE_CODES } from './update-banner-rules';
 
 export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error';
 export type UpdateBannerTone = 'ready' | 'progress' | 'error';
-/** Which caller-supplied handler the banner's click invokes. `null` while work
- *  is in flight (download/install), where the banner is display-only. */
-export type UpdateBannerAction = 'shell-auto' | 'download-installer' | 'apply-ota' | null;
+export type UpdateBannerAction = UpdateAction;
 
 export interface UpdateBanner {
   kind: UpdateBannerKind;
@@ -110,44 +32,10 @@ export interface UpdateBanner {
   debInstaller?: boolean;
 }
 
-function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): UpdateBanner {
-  const phase = shellAuto.phase;
-  const version = shellAuto.version;
-  switch (phase) {
-    case 'downloading': {
-      const pct = shellAuto.progress?.percent;
-      const title = pct != null ? `Downloading update (${Math.round(pct)}%)` : 'Downloading update…';
-      return { kind: 'shell-auto', tone: 'progress', title, actionLabel: null, action: null, disabled: true, dismissible: false, version };
-    }
-    case 'installing':
-      return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
-    case 'ready-to-install':
-      // An install that never left the process (the sidecar stop or the
-      // installer failed) re-arms with its reason on the snapshot. Say so,
-      // or the pill flips from "Installing…" back to "Update ready" with no
-      // explanation (ENG-3291).
-      if (shellAuto.errorCode) {
-        return {
-          kind: 'shell-auto', tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false, dismissible: false, version,
-          hint: abortedInstallHint(shellAuto.errorMessage),
-        };
-      }
-      // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
-      // is the only way to install.
-      return {
-        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version,
-        hint: shellAuto.mode === 'auto'
-          ? `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
-          : undefined,
-      };
-    case 'failed':
-      // Recoverable → retry via the auto-updater; terminal → manual installer
-      // link. The single `shell-auto` handler routes both.
-      return { kind: 'shell-auto', tone: 'error', title: 'App update failed', actionLabel: shellAuto.recoverable ? 'Retry' : 'Download', action: 'shell-auto', disabled: false, dismissible: false, version };
-    case 'available':
-    default:
-      return { kind: 'shell-auto', tone: 'ready', title: 'New app version available', actionLabel: 'Download', action: 'shell-auto', disabled: false, dismissible: false, version };
-  }
+export interface UpdateBannerOptions {
+  /** Settings passes nothing: it always reflects the true state. */
+  dismissedManualVersion?: string | null;
+  debInstaller?: boolean;
 }
 
 /** Why the last restart did not finish, for the banner hint and the Settings
@@ -165,63 +53,103 @@ export function debInstallStep(version?: string): string {
   return `run sudo apt install ./mindshub-cowork-${version ?? ''}*.deb from the directory you downloaded it to`;
 }
 
-/** The one banner to show, or null when nothing is pending. Shell-first: a
- *  pending shell update (auto or manual) always owns the slot over OTA. */
-export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | null {
-  const shellAuto = input.shellAuto;
-  if (shellAuto && shellAutoOwnsBanner(shellAuto)) {
-    return shellAutoBanner(shellAuto);
+const base = { disabled: false, dismissible: false } as const;
+
+export function deriveUpdateBanner(
+  state: UpdateCoordinatorState | null | undefined,
+  options: UpdateBannerOptions = {},
+): UpdateBanner | null {
+  if (!state) return null;
+  const { shell, ui, server, action } = state;
+
+  // The boot overlay owns an OTA apply, so only shell progress shows here.
+  if (shell.status === 'downloading' && !shell.manual) {
+    const pct = shell.progress?.percent;
+    const title = pct != null ? `Downloading update (${Math.round(pct)}%)` : 'Downloading update…';
+    return { kind: 'shell-auto', tone: 'progress', title, actionLabel: null, action: null, disabled: true, dismissible: false, version: shell.version };
+  }
+  if (shell.status === 'applying') {
+    return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version: shell.version };
   }
 
-  const shellManual = input.shellManual;
-  if (shellManual) {
-    return {
-      kind: 'shell-manual',
-      tone: 'ready',
-      title: `New version available${shellManual.version ? ` (${shellManual.version})` : ''}`,
-      actionLabel: 'Download',
-      action: 'download-installer',
-      disabled: false,
-      dismissible: true,
-      version: shellManual.version,
-      debInstaller: !!shellManual.debInstaller,
-    };
+  switch (action) {
+    case 'relaunch':
+      // An aborted install re-arms with its reason; say so.
+      if (shell.errorCode) {
+        return {
+          kind: 'shell-auto', tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action, ...base, version: shell.version,
+          hint: abortedInstallHint(shell.errorMessage),
+        };
+      }
+      // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
+      // is the only way to install.
+      return {
+        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action, ...base, version: shell.version,
+        hint: shell.mode === 'auto'
+          ? `The new version${shell.version ? ` (${shell.version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
+          : undefined,
+      };
+    case 'download':
+      return { kind: 'shell-auto', tone: 'ready', title: 'New version available', actionLabel: 'Download', action, ...base, version: shell.version };
+    case 'retry':
+      return { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Retry', action, ...base, version: shell.version };
+    case 'open-download-page':
+      if (shell.manual) {
+        // Dismissal hides only the notice, not what is pending behind it.
+        if (options.dismissedManualVersion && options.dismissedManualVersion === shell.version) {
+          return otaBanner(ui, server) ?? shellFailureBehindNotice(state);
+        }
+        return {
+          kind: 'shell-manual',
+          tone: 'ready',
+          title: `New version available${shell.version ? ` (${shell.version})` : ''}`,
+          actionLabel: 'Download',
+          action,
+          disabled: false,
+          dismissible: true,
+          version: shell.version,
+          debInstaller: !!options.debInstaller,
+        };
+      }
+      // A terminal auto-update failure: the installer is the way forward.
+      return { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Download', action, ...base, version: shell.version };
+    case 'reload':
+      return otaBanner(ui, server);
+    default:
+      return null;
   }
+}
 
-  const otaPhase = input.ota?.phase;
-  const otaVersion = input.ota?.version;
-  if (otaPhase === 'available') {
-    return {
-      kind: 'ota-ready',
-      tone: 'ready',
-      title: `Update ready${otaVersion ? ` (${otaVersion})` : ''}`,
-      actionLabel: 'Restart',
-      action: 'apply-ota',
-      disabled: false,
-      dismissible: false,
-      version: otaVersion,
-      hint: `Reloads the app to finish updating${otaVersion ? ` to ${otaVersion}` : ''}. It also applies on its own the next time you open the app.`,
-    };
-  }
-  if (otaPhase === 'error') {
-    return {
-      kind: 'ota-error',
-      tone: 'error',
-      title: `Update failed${otaVersion ? ` (${otaVersion})` : ''}`,
-      actionLabel: 'Try again',
-      action: 'apply-ota',
-      disabled: false,
-      dismissible: false,
-      version: otaVersion,
-    };
-  }
+/** A failed auto-update behind a dismissed notice still shows. */
+function shellFailureBehindNotice(state: UpdateCoordinatorState): UpdateBanner | null {
+  const { shell } = state;
+  if (shell.phase !== 'failed' || state.silentShellFailure) return null;
+  const version = shell.snapshot?.targetVersion;
+  return shell.recoverable
+    ? { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Retry', action: 'retry', ...base, version }
+    : { kind: 'shell-auto', tone: 'error', title: 'Update failed', actionLabel: 'Download', action: 'open-download-page', ...base, version };
+}
 
-  // Bottom of the ladder: a shell failure with no known target (a failed retry
-  // check that cleared the target, or a check-only outage). It never outranks
-  // OTA/manual above, but is shown here so Retry/Download survives.
-  if (shellAuto?.phase === 'failed' && !isSilentCheckFailure(shellAuto)) {
-    return shellAutoBanner(shellAuto);
+function otaBanner(ui: UpdateCoordinatorState['ui'], server: UpdateCoordinatorState['server']): UpdateBanner | null {
+  const version = ui.status !== 'idle' && ui.version ? ui.version : serverLabel(server);
+  if (ui.status === 'failed') {
+    // A rolled-back bundle has nothing to retry, but a pending server update does.
+    if (ui.error === 'rolled-back') return server.status === 'ready' ? otaReadyBanner(serverLabel(server)) : null;
+    return { kind: 'ota-error', tone: 'error', title: `Update failed${version ? ` (${version})` : ''}`, actionLabel: 'Try again', action: 'reload', ...base, version };
   }
+  if (ui.status !== 'ready' && server.status !== 'ready') return null;
+  return otaReadyBanner(version);
+}
 
-  return null;
+function otaReadyBanner(version: string | undefined): UpdateBanner {
+  return {
+    kind: 'ota-ready',
+    tone: 'ready',
+    title: 'Update ready',
+    actionLabel: 'Restart now',
+    action: 'reload',
+    ...base,
+    version,
+    hint: `Restarts the app to finish updating${version ? ` to ${version}` : ''}. It also applies on its own the next time you open the app.`,
+  };
 }

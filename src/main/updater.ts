@@ -3,6 +3,8 @@
 // Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
 // env-only escape hatch (UI_UPDATE_MODE in the Cowork home's .env), not a user
 // setting. Applied together — server first, then UI, then window reload.
+// Holds the update coordinator and pushes its state on UPDATE_STATE; the legacy
+// status channels keep emitting for older renderers.
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
@@ -13,15 +15,42 @@ import { isServerRunning } from './server-process';
 import { countRunningTasks } from './running-tasks';
 import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive, shellManualNoticeIsFallback } from './update-logic';
 import type { UpdateCheckSummary } from '../shared/update-types';
+import type { RestartRequestResult } from '../shared/restart-confirmation';
+import {
+  applyInFlight as applyStatusInFlight,
+  applyProgressSettles,
+  applyRunResult,
+  createUpdateCoordinator,
+  dispatchApplyStep,
+  legacyOfferStatus,
+  manualNoticeAfterCheck,
+  offerAfterApply,
+  offerAfterCheck,
+  otaOfferVersion,
+  pollOfferCheck,
+  resolveApplyAction,
+  settledApplyInput,
+  type OtaApply,
+  type ApplyRunResult,
+  type OtaApplyOutcome,
+  type OtaCheck,
+  type OtaStatus,
+  type ServerStatus,
+  type UpdateAction,
+} from '../shared/update-coordinator';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import {
   checkShellAutoUpdate,
   configureShellAutoUpdate,
+  downloadShellAutoUpdate,
   getShellAutoUpdateSnapshot,
+  onShellAutoUpdateSnapshot,
   registerShellAutoUpdateHandlers,
+  requestShellInstall,
   startShellAutoUpdatePolling,
 } from './shell-auto-update-runtime';
+import type { ShellUpdateSnapshot } from './shell-update-state';
 import { withUpdateMaintenance } from './update-maintenance';
 import { recordUpdatePhase, serverOutcomeRecord, uiOutcomeRecord, type UiReloadOutcome, type UpdateJournalTrigger } from './update-journal';
 
@@ -31,6 +60,11 @@ const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
+
+export const updateCoordinator = createUpdateCoordinator();
+
+// Lets a manual check, which has no window of its own, push like the poll.
+let windowRef: GetWindow = () => null;
 
 // Cached so the renderer can recover the notice after an OTA reload.
 let lastShellStatus: ShellUpdateStatus = { available: false };
@@ -64,23 +98,23 @@ function serverUpdatePending(result: ServerUpdateCheckResult | undefined): boole
   return !!result && result.updateAvailable && !result.repair;
 }
 
-// Returns whether the server is in a good state to proceed with a UI update:
+// `ok` says whether the server is in a good state to proceed with a UI update:
 // true if it was updated cleanly or was already current, false if an update was
 // attempted and failed (in which case it has rolled back to the old server).
-async function applyServerUpdate(trigger: UpdateJournalTrigger): Promise<boolean> {
+async function applyServerUpdate(trigger: UpdateJournalTrigger): Promise<{ ok: boolean; landed?: { version?: string } }> {
   const startedAt = Date.now();
   const result = await maybeUpdateServer();
   const record = serverOutcomeRecord(result, trigger, Date.now() - startedAt);
   if (record) recordUpdatePhase(record);
   if (result.updated) {
     console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
-    return true;
+    return { ok: true, landed: { version: result.newVersion } };
   }
   if (result.error) {
     console.error(`[updater] server update failed: ${result.error}`);
-    return false;
+    return { ok: false };
   }
-  return true; // already current
+  return { ok: true }; // already current
 }
 
 // Resolve a live window at the moment of use. The window can be closed
@@ -93,14 +127,115 @@ function liveWindow(getWindow: GetWindow): BrowserWindow | null {
   return win && !win.isDestroyed() ? win : null;
 }
 
-function sendStatus(getWindow: GetWindow, payload: Record<string, unknown>) {
-  liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, payload);
+function sendApply(getWindow: GetWindow, apply: OtaApply) {
+  updateCoordinator.feed({ otaApply: apply });
+  liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, apply);
+}
+
+/** The legacy channel has one slot for offer and progress, so it hears of an
+ *  offer only while nothing is being applied. */
+function recordCheck(getWindow: GetWindow, check: OtaCheck): void {
+  const otaOffer = offerAfterCheck(updateCoordinator.getInput().otaOffer, check);
+  updateCoordinator.feed({ otaOffer });
+  if (!applyBusy()) liveWindow(getWindow)?.webContents.send(IPC.UI_UPDATE_STATUS, legacyOfferStatus(otaOffer));
+}
+
+// Only busy phases are mirrored: an error must never leave the UI in a spinner.
+export function serverPhaseToUiStatus(payload: Record<string, unknown>): OtaApply | null {
+  const phase = typeof payload.phase === 'string' ? payload.phase : '';
+  const version = typeof payload.to === 'string' ? payload.to : undefined;
+  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
+  if (phase === 'restarting') return { phase: 'reloading' };
+  return null;
+}
+
+// `queued` counts Restart requests that announced progress but have not taken
+// the lock yet; they own that progress. Decisions live in applyProgressSettles.
+const applyRun = { running: false, queued: 0, navigation: null as { cancel: () => void } | null };
+
+function applyBusy(): boolean {
+  return applyRun.running || applyRun.queued > 0 || applyRun.navigation !== null;
+}
+
+interface ApplyRequestTicket { entered: boolean }
+
+function leaveQueue(ticket: ApplyRequestTicket): void {
+  if (ticket.entered) return;
+  ticket.entered = true;
+  applyRun.queued -= 1;
+}
+
+function settleApplyProgress(at: 'navigation' | 'apply-end' | 'request-end'): void {
+  const settles = applyProgressSettles(
+    { running: applyRun.running, queued: applyRun.queued, navigationPending: applyRun.navigation !== null },
+    at,
+  );
+  if (settles) updateCoordinator.feed(settledApplyInput(updateCoordinator.getInput()));
+}
+
+/** Busy phases are mirrored onto the apply so `applying` reaches `reloading`
+ *  during a server reinstall. Outside an apply only the legacy channel hears
+ *  them, so the coordinator cannot be left stuck in `applying`. */
+export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
+  const phase = payload.phase;
+  if (phase !== 'downloading' && phase !== 'restarting' && phase !== 'error' && phase !== 'idle') return;
+  const status: ServerStatus = {
+    phase,
+    ...(typeof payload.to === 'string' ? { to: payload.to } : {}),
+    ...(typeof payload.error === 'string' ? { error: payload.error } : {}),
+    ...(payload.critical === true ? { critical: true } : {}),
+  };
+  updateCoordinator.feed({ server: status });
+  const mirrored = serverPhaseToUiStatus(payload);
+  if (!mirrored) return;
+  if (applyRun.running) sendApply(windowRef, mirrored);
+  else liveWindow(windowRef)?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
+}
+
+function contentsAlive(win: BrowserWindow): boolean {
+  try {
+    return !win.isDestroyed() && !win.webContents.isDestroyed();
+  } catch {
+    return false;
+  }
+}
+
+/** Settles on the next main-frame commit, failure or health timeout, so the
+ *  old page keeps its overlay until the new document replaces it. */
+function settleWhenNavigated(win: BrowserWindow): void {
+  applyRun.navigation?.cancel();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const cleanup = () => {
+    if (applyRun.navigation === entry) applyRun.navigation = null;
+    if (timer) clearTimeout(timer);
+    // The window can close before the navigation commits (macOS keeps main
+    // alive); the health timer then fires against a destroyed webContents.
+    if (!contentsAlive(win)) return;
+    win.webContents.removeListener('did-navigate', done);
+    win.webContents.removeListener('did-fail-load', onFail);
+  };
+  const done = () => {
+    if (applyRun.navigation !== entry) return;
+    cleanup();
+    settleApplyProgress('navigation');
+  };
+  const onFail = (_e: unknown, errorCode: number, _desc: string, _url: string, isMainFrame: boolean) => {
+    if (!isMainFrame || errorCode === -3) return;
+    done();
+  };
+  const entry = { cancel: cleanup };
+  applyRun.navigation = entry;
+  timer = setTimeout(done, UI_RELOAD_HEALTH_MS);
+  timer.unref?.();
+  win.webContents.on('did-navigate', done);
+  win.webContents.on('did-fail-load', onFail);
 }
 
 function reload(getWindow: GetWindow) {
   const win = liveWindow(getWindow);
   if (!win) return;
-  win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+  sendApply(getWindow, { phase: 'reloading' });
+  settleWhenNavigated(win);
   win.loadFile(getRendererPath());
 }
 
@@ -115,8 +250,10 @@ function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      win.webContents.removeListener('did-finish-load', onOk);
-      win.webContents.removeListener('did-fail-load', onFail);
+      if (contentsAlive(win)) {
+        win.webContents.removeListener('did-finish-load', onOk);
+        win.webContents.removeListener('did-fail-load', onFail);
+      }
       resolve(ok);
     };
     const onOk = () => finish(true);
@@ -148,7 +285,9 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
   // The bundle is already activated and serves at the next boot; there is just
   // nothing to load it into now.
   if (!win) return 'unverified';
-  win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+  const version = getCachedVersion() ?? undefined;
+  sendApply(getWindow, { phase: 'reloading', version });
+  settleWhenNavigated(win);
   if (await loadAndVerify(win, getRendererPath())) return 'applied';
 
   console.error('[updater] new UI bundle failed to load — rolling back');
@@ -163,7 +302,8 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
   }
   const win2 = liveWindow(getWindow);
   if (!win2) return outcome;
-  win2.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'rolled-back' });
+  sendApply(getWindow, { phase: 'rolled-back', version });
+  settleWhenNavigated(win2);
   // Best-effort: the fallback (previous cache / bundled) should always load.
   await loadAndVerify(win2, getRendererPath());
   return outcome;
@@ -177,10 +317,16 @@ function servedUiVersion(): string {
 
 /** Swap in the staged bundle through the health-checked reload and journal
  *  the outcome against the version it replaced. */
-async function activateUiAndJournal(getWindow: GetWindow, from: string, trigger: UpdateJournalTrigger, startedAt: number): Promise<void> {
+async function activateUiAndJournal(
+  getWindow: GetWindow,
+  from: string,
+  trigger: UpdateJournalTrigger,
+  startedAt: number,
+): Promise<{ outcome: UiReloadOutcome; to: string | null }> {
   const to = getCachedVersion();
   const outcome = await reloadWithUiHealthCheck(getWindow);
   recordUpdatePhase(uiOutcomeRecord(outcome, { from, to }, trigger, Date.now() - startedAt));
+  return { outcome, to };
 }
 
 // Apply server (if requested) then UI, and reload if either landed. Shared by
@@ -191,11 +337,19 @@ async function applyUpdatesUnlocked(
   applyServer: boolean,
   applyUi: boolean,
   trigger: UpdateJournalTrigger,
-): Promise<boolean> {
+): Promise<ApplyRunResult> {
+  const answeredUi = updateCoordinator.getInput().otaOffer?.ui?.version;
   // Surface progress before the multi-second, server-down reinstall so the UI
   // shows "Updating…" instead of a bare config-not-ready state (ENG-749).
-  if (applyServer) sendStatus(getWindow, { phase: 'downloading' });
-  const serverOk = applyServer ? await applyServerUpdate(trigger) : true;
+  if (applyServer) {
+    const input = updateCoordinator.getInput();
+    const version = input.otaApply?.version ?? otaOfferVersion(input.otaOffer);
+    sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
+  }
+  const serverResult = applyServer ? await applyServerUpdate(trigger) : { ok: true };
+  const serverOk = serverResult.ok;
+  const outcome: OtaApplyOutcome = {};
+  if (serverResult.landed) outcome.server = { landed: true, version: serverResult.landed.version };
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
   // server is current. Defer the UI to the next pass.
@@ -207,18 +361,20 @@ async function applyUpdatesUnlocked(
   const uiStartedAt = Date.now();
   const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
   if (applyUi && serverOk && !uiApplied) {
-    // Credit the outcome to the version the apply actually tried: it re-reads
-    // the manifest, so a release published since the check is what it
-    // downloads. A download that ran and failed (download, checksum,
-    // extraction or activation; ui-updater logged which) is a failure of that
-    // version. An offer the apply never downloaded (withdrawn, quarantined, or
-    // held for server compat) is a skip of the offered version.
+    // Credit the version the apply actually tried: it re-reads the manifest.
+    // An offer it never downloaded (withdrawn, quarantined, held for compat)
+    // was stale, so the next Restart does not repeat the same no-op.
     const attempted = lastUiApplyAttempt();
     const durationMs = Date.now() - uiStartedAt;
     if (attempted) {
       recordUpdatePhase({ channel: 'ui', phase: 'failed', trigger, errorCode: 'not-applied', from: uiFrom, to: attempted, durationMs });
-    } else if (lastUiOffer !== null) {
-      recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'not-attempted', from: uiFrom, to: lastUiOffer || null, durationMs });
+      sendApply(getWindow, { phase: 'error', version: attempted });
+      outcome.ui = { result: 'failed', version: attempted };
+    } else {
+      if (lastUiOffer !== null) {
+        recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'not-attempted', from: uiFrom, to: lastUiOffer || null, durationMs });
+      }
+      outcome.ui = { result: 'nothing', version: answeredUi };
     }
   }
   // One offer, one attempt, one entry: the next check decides again whether
@@ -227,16 +383,44 @@ async function applyUpdatesUnlocked(
   if (applyUi && serverOk) lastUiOffer = null;
   if (uiApplied) {
     // A UI bundle was swapped — verify it loads and roll back if not (R4).
-    await activateUiAndJournal(getWindow, uiFrom, trigger, uiStartedAt);
+    const { outcome: reloaded, to } = await activateUiAndJournal(getWindow, uiFrom, trigger, uiStartedAt);
+    const rolledBack = reloaded === 'rolled-back' || reloaded === 'rollback-failed';
+    outcome.ui = { result: rolledBack ? 'rolled-back' : 'landed', version: to ?? undefined };
   } else if (applyServer && serverOk) {
     // Server-only update: reload the same (unchanged) renderer, no rollback.
     reload(getWindow);
   }
-  return uiApplied || (applyServer && serverOk);
+  updateCoordinator.feed({ otaOffer: offerAfterApply(updateCoordinator.getInput().otaOffer, outcome) });
+  return applyRunResult({ serverTried: applyServer, serverOk, ui: outcome.ui });
 }
 
-function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean> {
-  return withUpdateMaintenance(() => applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger));
+function applyUpdates(
+  getWindow: GetWindow,
+  applyServer: boolean,
+  applyUi: boolean,
+  trigger: UpdateJournalTrigger,
+  ticket?: ApplyRequestTicket,
+): Promise<ApplyRunResult> {
+  return withUpdateMaintenance(async () => {
+    applyRun.navigation?.cancel();
+    if (ticket && !ticket.entered) {
+      leaveQueue(ticket);
+      // The apply it waited behind may have pushed over its progress.
+      if (!applyStatusInFlight(updateCoordinator.getInput().otaApply)) {
+        const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
+        sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
+      }
+    }
+    applyRun.running = true;
+    try {
+      return await applyUpdatesUnlocked(getWindow, applyServer, applyUi, trigger);
+    } finally {
+      applyRun.running = false;
+      // Not only after a reload: an apply with no window would otherwise hold
+      // the overlay up.
+      settleApplyProgress('apply-end');
+    }
+  });
 }
 
 // Detection only. Each channel reports its own errors so a confirmed update can
@@ -245,7 +429,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const [ui, server, shell, shellAuto] = await Promise.all([
     checkForUIUpdate().then((result) => { rememberUiOffer(result); return result; }),
     checkServer(),
-    checkForShellUpdate().catch(() => ({ available: false as const })),
+    checkForShellUpdate().catch((): ShellUpdateStatus => ({ available: false, error: true })),
     // The stateful shell updater owns background download/install. This call
     // coalesces the user's manual trigger with any boot/periodic check already
     // in flight; its snapshot is folded into the summary below so a manual
@@ -255,27 +439,68 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   // On stable the legacy prod-only checkForShellUpdate() always reports nothing,
   // so the auto-updater is the only signal that a shell update is in flight.
   const shellAutoActive = !!shellAuto && shellAutoUpdateIsActive(shellAuto.phase);
-  return summarizeUpdateCheck({
+  // A pending stream repair is boot-only; the manual check must not offer it.
+  const surfaceServer = server.updateAvailable && !server.repair;
+  const summary = summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
-    // A pending stream repair is boot-only; the manual check must not offer it.
-    server: { updateAvailable: server.updateAvailable && !server.repair, latestVersion: server.latestVersion, error: server.error, component: server.component },
+    server: { updateAvailable: surfaceServer, latestVersion: server.latestVersion, error: server.error, component: server.component },
     shell: shell.available
       ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
       : shellAutoActive
         ? { updateAvailable: true, version: shellAuto?.targetVersion }
         : { updateAvailable: false },
   });
+  recordCheck(windowRef, {
+    ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
+    server: { updateAvailable: surfaceServer, latestVersion: server.latestVersion, component: server.component, error: server.error },
+  });
+  // A healthy auto-updater whose feed lags latest.json must not raise a
+  // Download banner for an update it will install itself.
+  const autoSnap = shellAuto ?? getShellAutoUpdateSnapshot();
+  rememberShellManual(shell, shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable));
+  return summary;
 }
+
+function rememberShellManual(shell: ShellUpdateStatus, isFallback: boolean): void {
+  const notice = manualNoticeAfterCheck(updateCoordinator.getInput().shellManual, shell, isFallback);
+  lastShellStatus = notice
+    ? { available: true, currentVersion: notice.currentVersion, latestVersion: notice.version, downloadUrl: notice.downloadUrl }
+    : { available: false };
+  updateCoordinator.feed({ shellManual: notice });
+  if (notice) {
+    liveWindow(windowRef)?.webContents.send(IPC.UI_UPDATE_STATUS, {
+      phase: 'shell-available',
+      version: notice.version,
+      currentVersion: notice.currentVersion,
+      downloadUrl: notice.downloadUrl ?? undefined,
+    } satisfies OtaStatus);
+  }
+}
+
+let statePushWired = false;
 
 // Register unconditionally; each updater self-gates for unsupported builds.
 export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
+  windowRef = getWindow;
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
-  ipcMain.handle(IPC.UI_UPDATE_APPLY, (_event: unknown, options?: { force?: boolean }) => (
-    handleApplyRequest(getWindow, options)
+  // The legacy channel predates `'stale'`.
+  ipcMain.handle(IPC.UI_UPDATE_APPLY, async (_event: unknown, options?: { force?: boolean }) => {
+    const result = await handleApplyRequest(getWindow, options);
+    return result === 'stale' ? false : result;
+  });
+  ipcMain.handle(IPC.UPDATE_STATE_GET, () => updateCoordinator.getState());
+  ipcMain.handle(IPC.UPDATE_APPLY, (_event: unknown, options?: { force?: boolean; action?: UpdateAction }) => (
+    handleUnifiedApply(getWindow, options)
   ));
+  if (!statePushWired) {
+    statePushWired = true;
+    updateCoordinator.subscribe((state) => {
+      liveWindow(getWindow)?.webContents.send(IPC.UPDATE_STATE, state);
+    });
+  }
   registerShellAutoUpdateHandlers();
 }
 
@@ -284,7 +509,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
 export async function handleApplyRequest(
   getWindow: GetWindow,
   options?: { force?: boolean },
-): Promise<boolean | { confirm: true; runningTasks: number | null }> {
+): Promise<RestartRequestResult> {
   // A server update stops the sidecar, which ends every running turn. Unless
   // the renderer has already asked, report the count back and let it ask
   // (ENG-3291). A UI-only apply reloads the window and leaves turns running.
@@ -299,6 +524,26 @@ export async function handleApplyRequest(
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
     confirmed = true;
   }
+  // Announce progress before the re-check, which can take ten seconds. The
+  // request is queued from here, so no other apply's settle can clear it.
+  const version = otaOfferVersion(updateCoordinator.getInput().otaOffer);
+  sendApply(getWindow, { phase: 'downloading', ...(version ? { version } : {}) });
+  applyRun.queued += 1;
+  const ticket: ApplyRequestTicket = { entered: false };
+  try {
+    return await runApplyRequest(getWindow, options, { asked, confirmed, version, ticket });
+  } finally {
+    leaveQueue(ticket);
+    settleApplyProgress('request-end');
+  }
+}
+
+async function runApplyRequest(
+  getWindow: GetWindow,
+  options: { force?: boolean } | undefined,
+  ctx: { asked: boolean; confirmed: boolean; version: string | undefined; ticket: ApplyRequestTicket },
+): Promise<RestartRequestResult> {
+  const { asked, confirmed, version, ticket } = ctx;
   // A manual apply re-checks the server so it can't drift from the UI,
   // unless a check fresh enough preceded this call (the one the dialog
   // interrupted). A pending stream repair is excluded: it applies at boot,
@@ -309,13 +554,37 @@ export async function handleApplyRequest(
     : null;
   const server = options?.force && reusable ? reusable : await checkServer();
   const applyServer = serverUpdatePending(server);
-  // The re-check can find a server update the last poll did not know about.
-  // That restart was never offered as one, so it still has to ask.
+  recordCheck(getWindow, {
+    server: { updateAvailable: applyServer, latestVersion: server.latestVersion, component: server.component, error: server.error },
+  });
+  // A server update the re-check found was never offered, so it still asks.
   if (applyServer && asked && !confirmed && isServerRunning()) {
     const runningTasks = await countRunningTasks();
     if (runningTasks === null || runningTasks > 0) return { confirm: true, runningTasks };
   }
-  return applyUpdates(getWindow, applyServer, true, 'manual');
+  try {
+    const result = await applyUpdates(getWindow, applyServer, true, 'manual', ticket);
+    return result === 'applied' ? true : result === 'stale' ? 'stale' : false;
+  } catch (error) {
+    // Name the failure so the banner offers Try again instead of going silent.
+    console.error('[updater] manual apply failed:', error);
+    sendApply(getWindow, { phase: 'error', ...(version ? { version } : {}) });
+    return false;
+  }
+}
+
+export async function handleUnifiedApply(
+  getWindow: GetWindow,
+  options?: { force?: boolean; action?: UpdateAction },
+): Promise<RestartRequestResult> {
+  const step = resolveApplyAction(updateCoordinator.getState(), options?.action);
+  const force = options?.force ? { force: true } : {};
+  return dispatchApplyStep<RestartRequestResult>(step, {
+    relaunch: () => requestShellInstall(force),
+    reload: () => handleApplyRequest(getWindow, force),
+    retry: () => checkShellAutoUpdate('retry'),
+    download: () => downloadShellAutoUpdate(),
+  });
 }
 
 // After the boot poll (server now current), re-verify a constrained OTA cache
@@ -340,6 +609,8 @@ export interface ShellUpdateStatus {
   currentVersion?: string; // installed shell (Electron app) CalVer
   latestVersion?: string;  // newest published shell CalVer
   downloadUrl?: string | null; // platform/channel installer URL, null if none
+  /** The manifest was unreachable: no answer either way. */
+  error?: boolean;
 }
 
 // Detection only and prod-only: non-prod builds must never receive a prod
@@ -350,13 +621,108 @@ export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
   if (kind !== 'prod') return { available: false };
 
   const manifest = await fetchManifest();
-  const latestVersion = manifest?.shellVersion;
+  // fetchManifest() turns network errors into null: no answer, not "no update".
+  if (!manifest) return { available: false, error: true };
+  const latestVersion = manifest.shellVersion;
   if (!latestVersion) return { available: false };
 
   const currentVersion = getAppDisplayVersion();
   if (!shellUpdateIsNewer(latestVersion, currentVersion)) return { available: false };
 
   return { available: true, currentVersion, latestVersion, downloadUrl: shellDownloadUrl(process.platform, kind, process.arch) };
+}
+
+export interface UpdatePollDeps {
+  hasInternet(): Promise<boolean>;
+  checkUi(): Promise<UpdateCheckResult>;
+  checkServer(): Promise<ServerUpdateCheckResult>;
+  checkShellManual(): Promise<ShellUpdateStatus>;
+  getShellSnapshot(): Pick<ShellUpdateSnapshot, 'phase' | 'recoverable'>;
+  isServerRunning(): boolean;
+  getMode(): 'auto' | 'manual';
+  applyUpdates(applyServer: boolean, applyUi: boolean, trigger: UpdateJournalTrigger): Promise<boolean>;
+  recordCheck(check: OtaCheck): void;
+  onShellManual(status: ShellUpdateStatus): void;
+}
+
+/** Boot polls auto-apply; periodic polls only offer (`decideUpdateApply`). */
+export async function runUpdatePoll(deps: UpdatePollDeps, autoApply: boolean): Promise<void> {
+  // hasInternet() probes the OTA manifest host (GitHub Pages). The server
+  // update lives on different hosts (git remote / PyPI) with its own
+  // fail-safe checks, so a down manifest host must only skip the UI check —
+  // never suppress a server update (which may be the fix a user needs).
+  const manifestReachable = await deps.hasInternet();
+  if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
+
+  const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false };
+  const [ui, server] = await Promise.all([
+    manifestReachable ? deps.checkUi() : Promise.resolve(uiSkipped),
+    deps.checkServer(),
+  ]);
+  rememberUiOffer(ui);
+
+  // Shell notices are independent of OTA and never auto-applied. Poll the
+  // ENG-849 manifest only when it's the fallback path — auto-update disabled
+  // or terminally failed. When ENG-850 auto-update is enabled and healthy it
+  // owns the shell update and its own poll+banner cover it, so this would be
+  // a second redundant boot+4h check on prod (ENG-1739).
+  const autoSnap = deps.getShellSnapshot();
+  if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
+    const shell = await deps.checkShellManual().catch((): ShellUpdateStatus => ({ available: false, error: true }));
+    deps.onShellManual(shell);
+    if (shell.available) console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
+  }
+
+  // The stream repair is boot-only: a downgrade pill mid-session reads as
+  // the app being confused, so a pending repair is never surfaced.
+  const surfaceServer = server.updateAvailable && !server.repair;
+  const report = (applyServer: boolean, applyUi: boolean) => deps.recordCheck(pollOfferCheck({
+    ui: manifestReachable ? ui : null,
+    server,
+    surfaceServer,
+    applyServer,
+    applyUi,
+  }));
+
+  if (!ui.updateAvailable && !server.updateAvailable) {
+    console.log('[updater] everything up to date');
+    // A withdrawn release clears its offer.
+    report(false, false);
+    return;
+  }
+
+  if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
+  if (server.updateAvailable) console.log(`[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
+
+  // A UI held back only for server-compat is still a candidate when a server
+  // update is also pending: the server-first apply brings the server current,
+  // and applyUIUpdate re-checks compat against it in the same pass — so a
+  // coordinated release doesn't strand the UI until the next restart.
+  const uiCandidate = ui.updateAvailable || (!!ui.skippedReason && server.updateAvailable);
+  if (ui.skippedReason && server.updateAvailable) {
+    console.log(`[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
+  }
+
+  // A down server turns an "available" server update into a recovery action:
+  // apply it regardless of mode (a newer build may be what fixes the boot).
+  const { applyServer, applyUi } = decideUpdateApply({
+    serverUpdateAvailable: server.updateAvailable,
+    uiUpdateAvailable: uiCandidate,
+    serverDown: !deps.isServerRunning(),
+    isBootCheck: autoApply,
+    mode: deps.getMode(),
+    repairOnly: !!server.repair,
+  });
+
+  report(applyServer, applyUi);
+  if (applyServer || applyUi) {
+    if (applyServer && !deps.isServerRunning()) console.log('[updater] server is down — applying server update to recover');
+    await deps.applyUpdates(applyServer, applyUi, autoApply ? 'boot' : 'periodic');
+    return;
+  }
+  if (!ui.updateAvailable && !surfaceServer) {
+    console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
+  }
 }
 
 // Start update polling: a boot check (may auto-apply in auto mode) plus a
@@ -371,11 +737,13 @@ export function initUpdater(
   // it never routes into the app mid-update (ENG-749). Idempotent.
   onBootPollComplete: () => void = () => {},
 ) {
+  windowRef = getWindow;
   configureShellAutoUpdate({
     enabled: shellAutoUpdateEnabled,
     getWindow,
     getMode,
   });
+  onShellAutoUpdateSnapshot((snapshot) => updateCoordinator.feed({ shell: snapshot }));
   // The loading gate also waits on the shell boot check, so a stranded update
   // installs before the app is shown (ENG-2764). That install quits the app,
   // so it waits for the OTA boot apply below to settle first: a shell swap
@@ -384,99 +752,19 @@ export function initUpdater(
   const otaBootSettled = new Promise<void>(resolve => { otaBootDone = resolve; });
   const shellBootSettled = startShellAutoUpdatePolling(rendererReady, otaBootSettled);
 
-  async function poll(autoApply: boolean) {
-    const trigger: UpdateJournalTrigger = autoApply ? 'boot' : 'periodic';
-    // hasInternet() probes the OTA manifest host (GitHub Pages). The server
-    // update lives on different hosts (git remote / PyPI) with its own
-    // fail-safe checks, so a down manifest host must only skip the UI check —
-    // never suppress a server update (which may be the fix a user needs).
-    const manifestReachable = await hasInternet();
-    if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
-
-    const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false };
-    const [ui, server] = await Promise.all([
-      manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
-      checkServer(),
-    ]);
-    rememberUiOffer(ui);
-
-    // Shell notices are independent of OTA and never auto-applied. Poll the
-    // ENG-849 manifest only when it's the fallback path — auto-update disabled
-    // or terminally failed. When ENG-850 auto-update is enabled and healthy it
-    // owns the shell update and its own poll+banner cover it, so this would be
-    // a second redundant boot+4h check on prod (ENG-1739).
-    const autoSnap = getShellAutoUpdateSnapshot();
-    if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
-      const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
-      lastShellStatus = shell;
-      if (shell.available) {
-        console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
-        sendStatus(getWindow, {
-          phase: 'shell-available',
-          version: shell.latestVersion,
-          currentVersion: shell.currentVersion,
-          downloadUrl: shell.downloadUrl ?? undefined,
-        });
-      }
-    }
-
-    if (!ui.updateAvailable && !server.updateAvailable) {
-      console.log('[updater] everything up to date');
-      return;
-    }
-
-    if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
-    if (server.updateAvailable) console.log(`[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
-
-    // A UI held back only for server-compat is still a candidate when a server
-    // update is also pending: the server-first apply brings the server current,
-    // and applyUIUpdate re-checks compat against it in the same pass — so a
-    // coordinated release doesn't strand the UI until the next restart.
-    const uiCandidate = ui.updateAvailable || (!!ui.skippedReason && server.updateAvailable);
-    if (ui.skippedReason && server.updateAvailable) {
-      console.log(`[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
-    }
-
-    // A down server turns an "available" server update into a recovery action:
-    // apply it regardless of mode (a newer build may be what fixes the boot).
-    const { applyServer, applyUi } = decideUpdateApply({
-      serverUpdateAvailable: server.updateAvailable,
-      uiUpdateAvailable: uiCandidate,
-      serverDown: !isServerRunning(),
-      isBootCheck: autoApply,
-      mode: getMode(),
-      repairOnly: !!server.repair,
-    });
-
-    if (applyServer || applyUi) {
-      if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
-      await applyUpdates(getWindow, applyServer, applyUi, trigger);
-    } else {
-      // The stream repair is boot-only: a downgrade pill mid-session reads as
-      // the app being confused, so a pending repair is never surfaced here.
-      const surfaceServer = server.updateAvailable && !server.repair;
-      if (!ui.updateAvailable && !surfaceServer) {
-        console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
-        return;
-      }
-      // An anton-only server update (ENG-1094) shares cowork-server's version,
-      // so a bare version number would read as blank/wrong — name the component
-      // that's actually changing. A cowork-server (or git) update keeps the
-      // bare version it always showed.
-      const serverLabel = server.component === 'anton-agent' && server.latestVersion
-        ? `${server.component} ${server.latestVersion}`
-        : server.latestVersion;
-      sendStatus(getWindow, {
-        phase: 'available',
-        // Interim: surface whichever version we have so the banner never
-        // renders blank. Longer term this collapses to one unified version.
-        version: ui.newVersion ?? (surfaceServer ? serverLabel : undefined),
-        serverUpdate: surfaceServer,
-        serverVersion: surfaceServer ? server.latestVersion : undefined,
-        serverComponent: surfaceServer ? server.component : undefined,
-      });
-    }
-  }
+  const deps: UpdatePollDeps = {
+    hasInternet,
+    checkUi: checkForUIUpdate,
+    checkServer,
+    checkShellManual: checkForShellUpdate,
+    getShellSnapshot: getShellAutoUpdateSnapshot,
+    isServerRunning,
+    getMode,
+    applyUpdates: async (applyServer, applyUi, trigger) => (await applyUpdates(getWindow, applyServer, applyUi, trigger)) === 'applied',
+    recordCheck: (check) => recordCheck(getWindow, check),
+    onShellManual: (status) => rememberShellManual(status, true),
+  };
+  const poll = (autoApply: boolean) => runUpdatePoll(deps, autoApply);
 
   rendererReady.then(async () => {
     try {

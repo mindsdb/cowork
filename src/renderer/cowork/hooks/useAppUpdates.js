@@ -1,160 +1,63 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
+import { deriveUpdateBanner } from '../../../shared/update-banner';
+import { SHELL_DOWNLOAD_PAGE } from '../../../shared/shell-support';
 
-// The app's self-update lifecycle, across the two independently-versioned
-// pieces the renderer surfaces:
-//   - OTA UI bundle (`updateStatus` + `handleApplyUpdate`)
-//   - the desktop shell binary — both the download-only notice
-//     (`shellUpdate` / `handleDownloadShellUpdate` / `dismissShellUpdate`)
-//     and the electron-updater auto-update (`shellAutoUpdate` /
-//     `handleShellAutoUpdateAction`)
-// plus the main-process subscriptions that feed all three. No-ops cleanly in
-// web, where `host` returns stubbed getters and noop unsubscribers.
+// The chat app's view of the update state: the sidebar banner and its action.
+// No-ops in web, where `host` never publishes a state.
 //
 // The server-online/health/`refreshData` cluster stays in App.jsx:
 // `refreshData` is the app-wide data loader (it writes tasks, projects,
 // artifacts, settings, …), so that half is not a self-contained move.
+
 export function useAppUpdates() {
-  // OTA UI update state
-  const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
-  const [updateApplying, setUpdateApplying] = useState(false);
-  // Download-only shell notice; dismissal is scoped to the offered version.
-  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
-  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
+  const [updateState, setUpdateState] = useState(null);
   const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
   });
 
-  // Shell updater snapshot. Pull once for renderer reload recovery,
-  // then subscribe to the same authoritative main-process state.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellAutoUpdate().then((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    }).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
+  useEffect(() => host.watchUpdateState(setUpdateState), []);
 
-  // Listen for OTA update status pushed from main process. No-op in
-  // web — host returns a noop unsubscriber there.
-  useEffect(() => {
-    return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') {
-        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
-        return;
-      }
-      setUpdateStatus(status);
-    });
-  }, []);
+  const updateBanner = useMemo(() => deriveUpdateBanner(updateState, {
+    dismissedManualVersion: shellUpdateDismissed || null,
+    debInstaller: host.getPlatform() === 'linux',
+  }), [updateState, shellUpdateDismissed]);
 
-  // Recover a cached notice after an OTA reload drops the original push.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleApplyUpdate = useCallback(async () => {
-    console.log('[ui-update] install clicked, applying update...');
-    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
-    setUpdateApplying(true);
-    const previous = updateStatus;
-    const showProgress = () => setUpdateStatus({ phase: 'downloading', version: previous?.version });
-    // An apply with a server update may ask first (ENG-3291): main answers
-    // within seconds with a question, and the banner must still read "Update
-    // ready" under that dialog, not "Downloading…". So progress starts only
-    // once the restart proceeds: here for a UI-only apply, which never asks,
-    // and from the guard's onProceed after a yes. When no task is running
-    // main applies at once and pushes its own `downloading` status.
-    if (!previous?.serverUpdate) showProgress();
+  // One request at a time: the banner stays enabled until main's progress push
+  // lands, so a second click answers 'busy' rather than queuing another apply.
+  const applyInFlight = useRef(false);
+  const handleUpdateAction = useCallback(async (action, hooks = {}) => {
+    if (action === 'open-download-page') {
+      // Old shells never supply a downloadUrl, so this is their only link.
+      const explicit = typeof hooks.url === 'string' && hooks.url ? hooks.url : null;
+      host.openExternal(explicit || updateState?.shell?.manualDownloadUrl || SHELL_DOWNLOAD_PAGE);
+      return true;
+    }
+    if (!action) return false;
+    if (applyInFlight.current) return 'busy';
+    applyInFlight.current = true;
     try {
-      const result = await host.applyUpdate({ onProceed: showProgress });
-      console.log('[ui-update] applyUpdate result:', result);
-      if (result === 'cancelled') {
-        // The person kept their running tasks (ENG-3291). Put the banner back
-        // the way it was so the update is still offered.
-        setUpdateApplying(false);
-        setUpdateStatus(previous);
-        return;
-      }
-      // Window will reload with the new bundle — no further action needed
+      return await host.applyUpdates({ onProceed: hooks.onProceed, action });
     } catch (err) {
-      console.error('[ui-update] applyUpdate failed:', err);
-      setUpdateApplying(false);
-      // Keep the version so the sidebar can offer a labelled retry rather than
-      // going silent until the next poll.
-      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
+      console.error('[updates] apply failed:', err);
+      return false;
+    } finally {
+      applyInFlight.current = false;
     }
-  }, [updateApplying, updateStatus]);
-
-  // Settings can pass a URL; a bare click falls back to the cached notice, and
-  // failing that to the human download page. Note: bare downloads.mindshub.ai
-  // now 302s to the marketing homepage — the real per-OS installer page lives
-  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
-  // last fallback is the only link that cohort ever gets.
-  const handleDownloadShellUpdate = useCallback((url) => {
-    const explicit = typeof url === 'string' && url ? url : null;
-    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
-  }, [shellUpdate]);
-
-  const handleShellAutoUpdateDownload = useCallback(async () => {
-    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateInstall = useCallback(async () => {
-    await host.installShellAutoUpdate().catch(() => false);
-  }, []);
-
-  const handleShellAutoUpdateRetry = useCallback(async () => {
-    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateAction = useCallback(() => {
-    switch (shellAutoUpdate?.phase) {
-      case 'available':
-        return handleShellAutoUpdateDownload();
-      case 'ready-to-install':
-        return handleShellAutoUpdateInstall();
-      case 'failed':
-        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
-        return handleDownloadShellUpdate();
-      default:
-        return undefined;
-    }
-  }, [
-    shellAutoUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleDownloadShellUpdate,
-  ]);
+  }, [updateState]);
 
   const dismissShellUpdate = useCallback(() => {
-    const v = shellUpdate?.version;
+    const v = updateState?.shell?.manual ? updateState.shell.version : null;
     if (!v) return;
     try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
     setShellUpdateDismissed(v);
-  }, [shellUpdate]);
+  }, [updateState]);
 
   return {
-    updateStatus,
-    shellUpdate,
-    shellAutoUpdate,
+    updateState,
+    updateBanner,
     shellUpdateDismissed,
-    handleApplyUpdate,
-    handleDownloadShellUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleShellAutoUpdateAction,
+    handleUpdateAction,
     dismissShellUpdate,
   };
 }

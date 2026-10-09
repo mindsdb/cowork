@@ -14,7 +14,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, SERVER_STOP_CEILING_MS } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
-import { initUpdater, registerUpdateHandlers } from './updater';
+import { initUpdater, registerUpdateHandlers, feedServerUpdateStatus } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
@@ -249,20 +249,6 @@ async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
   // A missing field identifies an older or unreachable sidecar. The request
   // gate treats that as unknown and preserves the conservative wait.
   return configured?.mindsRuntimeCredentialRequired ?? null;
-}
-
-// Map a server-updater notification onto the UI update-status shape the renderer
-// already consumes, so a server download shows progress on the loading screen and
-// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
-// their own channel and must never leave the UI stuck in a spinner.
-function serverPhaseToUiStatus(
-  payload: Record<string, unknown>,
-): { phase: string; version?: string } | null {
-  const phase = typeof payload.phase === 'string' ? payload.phase : '';
-  const version = typeof payload.to === 'string' ? payload.to : undefined;
-  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
-  if (phase === 'restarting') return { phase: 'reloading' };
-  return null;
 }
 
 function httpRequest(
@@ -1985,11 +1971,8 @@ app.whenReady().then(async () => {
     // maybeUpdateServer rolls back automatically if the new version also fails
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
+      feedServerUpdateStatus(payload);
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
-      // Mirror progress onto the UI status channel so the loading screen and
-      // in-app overlay show it during a server download (ENG-749).
-      const mirrored = serverPhaseToUiStatus(payload);
-      if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
     const devMode = getDevMode();

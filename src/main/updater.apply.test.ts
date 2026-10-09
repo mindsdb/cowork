@@ -53,7 +53,7 @@ vi.mock('./shell-auto-update-runtime', () => ({
   startShellAutoUpdatePolling: vi.fn(() => Promise.resolve()),
 }));
 
-import { checkForUpdates, handleApplyRequest } from './updater';
+import { checkForUpdates, handleApplyRequest, updateCoordinator } from './updater';
 
 const apply = (options?: { force?: boolean }) => handleApplyRequest(() => null, options);
 
@@ -178,6 +178,34 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(await apply({ force: true })).toBe(false);
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'ui', phase: 'skipped', errorCode: 'server-update-failed', to: '2.26.10.7.1' }));
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server', phase: 'failed', errorCode: 'install' }));
+  });
+
+  it('announces the restart before the remote re-check, so the click shows at once', async () => {
+    serverUpdater.check.mockResolvedValue({ updateAvailable: false });
+    await checkForUpdates();
+    updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.7.1' }, server: null } });
+    let phaseAtCheck: string | undefined;
+    serverUpdater.check.mockImplementation(async () => {
+      phaseAtCheck = updateCoordinator.getInput().otaApply?.phase;
+      return { updateAvailable: false };
+    });
+    await apply({});
+    expect(phaseAtCheck).toBe('downloading');
+    updateCoordinator.feed({ otaOffer: null, otaApply: null });
+  });
+
+  it('a manual apply with a server update keeps the announced version on its progress', async () => {
+    serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
+    await checkForUpdates();
+    updateCoordinator.feed({ otaOffer: { ui: { version: '2.26.10.7.1' }, server: { version: '0.26.10.7.1' } } });
+    let seen: unknown;
+    serverUpdater.apply.mockImplementationOnce(async () => {
+      seen = updateCoordinator.getInput().otaApply;
+      return { updated: false, previousVersion: '0.26.10.5.2', newVersion: '0.26.10.5.2' };
+    });
+    await apply({ force: true });
+    expect(seen).toEqual({ phase: 'downloading', version: '2.26.10.7.1' });
+    updateCoordinator.feed({ otaOffer: null, otaApply: null });
   });
 
   it('never asks for a UI-only apply', async () => {
