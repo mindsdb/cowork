@@ -1193,6 +1193,11 @@ describe('superseded data-vault stream', () => {
   // through the same updateLiveStepsAndDrainQueue and reduceStream.
   afterEach(() => clearDataVaultForm('conv-a'));
 
+  // The connect form is a modal, so the composer behind it is hidden from the
+  // accessibility tree while it is open. The stream it started is what these
+  // tests are about, so reach the composer's Stop through the hidden tree.
+  const stopBehindConnectForm = () => screen.findByRole('button', { name: /stop/i, hidden: true });
+
   /** Opens the connect form for conv-a and submits it, returning the stream. */
   async function submitConnectForm(user) {
     await act(async () => {
@@ -1220,7 +1225,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
 
     // Stop supersedes the stream: bump, then abort.
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
@@ -1240,7 +1245,7 @@ describe('superseded data-vault stream', () => {
     const composer = await openTask(user);
     const vault = await submitConnectForm(user);
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 

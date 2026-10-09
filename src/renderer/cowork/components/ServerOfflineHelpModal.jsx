@@ -6,8 +6,8 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
-import { Alert, Button, Tooltip } from './ui';
-import { Modal } from './ui/Modal';
+import { Alert, Button } from './ui';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 
@@ -204,9 +204,14 @@ export default function ServerOfflineHelpModal({
       size="md"
       width="min(640px, 92vw)"
       maxHeight="min(640px, 88vh)"
-      ariaLabel={HEADER.title}
+      labelledBy="server-help-title"
     >
-        <div className="flex items-start gap-3 py-4 px-[18px] border-b border-t-0 border-x-0 border-solid border-line">
+        <ModalHeader
+          id="server-help-title"
+          title={HEADER.title}
+          subtitle={HEADER.subtitle}
+          onClose={onClose}
+          leading={(
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-card-row shrink-0 border border-solid"
             style={{
@@ -218,23 +223,10 @@ export default function ServerOfflineHelpModal({
           >
             {Ico.power(20)}
           </span>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-[14.5px] text-ink">{HEADER.title}</div>
-            <div className="text-sm text-ink-3 mt-[2px] leading-[1.5]">
-              {HEADER.subtitle}
-            </div>
-          </div>
-          <Tooltip content="Close">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
-            >×</button>
-          </Tooltip>
-        </div>
+          )}
+        />
 
-        <div className="flex-1 overflow-y-auto py-[14px] px-[18px] flex flex-col gap-[14px]">
+        <ModalBody padding="14px 18px" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Quick facts row — exit code only renders when the
               backend isn't running, otherwise it's irrelevant noise.
               The grid auto-fits whichever tiles are present. */}
@@ -287,13 +279,9 @@ export default function ServerOfflineHelpModal({
               </ul>
             </div>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="flex items-center justify-end gap-2 py-3 px-[18px] border-t border-b-0 border-x-0 border-solid border-line bg-surface">
-          <Button
-            variant="subtle"
-            onClick={onClose}
-          >Close</Button>
+        <ModalFooter cancel={<Button variant="subtle" onClick={onClose}>Close</Button>}>
           {/* Action buttons — split by intent so the user can stop
               the backend without it immediately restarting:
                 * online   → [Stop] [Restart]   (Restart = stop + start)
@@ -333,7 +321,7 @@ export default function ServerOfflineHelpModal({
                 : (state === 'offline' ? 'Start backend' : 'Restart backend')}
             </Button>
           )}
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

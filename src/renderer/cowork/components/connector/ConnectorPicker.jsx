@@ -18,7 +18,7 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
-import { Modal } from '../ui/Modal';
+import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
 import { Alert, Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
@@ -293,25 +293,13 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
       open={open}
       onClose={onClose}
       size="md"
-      width="min(720px, 92vw)"
-      maxHeight="min(640px, 86vh)"
       labelledBy="connector-picker-title"
     >
-        {/* Header — title row, then search row, then filter/sort row.
-            All three live in the chrome above the scrollable grid;
-            the grid background (surface-2) provides the visual break. */}
-        <div className="flex items-center justify-between pt-[14px] px-4 pb-2 bg-surface shrink-0">
-          <h2 id="connector-picker-title" className="s-h3 m-0">Connectors Directory</h2>
-          <Tooltip content="Close">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
-            >×</button>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-[10px] pt-0 px-4 pb-2 bg-surface shrink-0">
+        <ModalHeader id="connector-picker-title" title="Connectors Directory" onClose={onClose} />
+        {/* Search, then filter/sort, then the cloud note — pinned above
+            the scrolling grid as one "narrow my results" cluster. */}
+        <ModalToolbar style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, padding: '12px 16px' }}>
+        <div className="flex items-center gap-[10px]">
           <label className="focus-within-ring flex-1 inline-flex items-center gap-2 py-2 px-[11px] rounded-card-row bg-surface-2 border border-solid border-line">
             <span className="inline-flex text-ink-3 shrink-0">
               {Ico.search(14)}
@@ -334,11 +322,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             />
           </label>
         </div>
-        {/* Filter + Sort row — directly under the search so the three
-            "narrow my results" controls (search, filter, sort) read
-            as one cluster. No hard divider line; the body's softer
-            surface-2 plus an inset top shadow handle the break. */}
-        <div className="flex items-center gap-2 flex-wrap pt-0 px-4 pb-[18px] bg-surface shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <Select
             variant="pill"
             label="Filter by"
@@ -374,7 +358,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             Drive + Gmail) — this note just explains the short list rather
             than doing any filtering of its own. */}
         {orgMode && (
-          <div className="px-4 pb-3 bg-surface shrink-0">
+          <div>
             <Alert variant="info">
               The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
               <button
@@ -389,18 +373,11 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
           </div>
         )}
 
-        {/* Body — grid of connector tiles, scrollable.
-            • surface-2 background so tiles (on var(--surface)) sit
-              forward against a quieter base.
-            • boxShadow inset on the top edge gives a soft "tucked
-              under" feel where the body meets the chrome — replaces
-              the hard 1px divider for a cleaner read.
-            • generous padding-top (24px) so the first row of cards
-              has room to breathe under the controls.
-            • `minHeight: 0` is the flexbox gotcha that lets a flex
-              child actually shrink below its content size — without
-              it, `overflowY: auto` never triggers. */}
-        <div className="flex-1 min-h-0 overflow-y-auto pt-6 px-4 pb-4 bg-surface-2 shadow-[inset_0_8px_16px_-10px_rgba(15,16,17,0.10)]">
+        </ModalToolbar>
+
+        {/* Grid of connector tiles on surface-2 so tiles (on --surface)
+            sit forward against a quieter base. */}
+        <ModalBody padding="24px 16px 16px" background="var(--surface-2)">
           {loading && (
             <div className="p-3 text-ink-3 text-[13px]">
               Loading connectors…
@@ -474,7 +451,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             connectors={desktopOnly}
             onPick={onDesktopOnly}
           />
-        </div>
+        </ModalBody>
     </Modal>
   );
 }
