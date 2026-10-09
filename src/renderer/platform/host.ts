@@ -25,6 +25,7 @@ import {
   createUpdateCoordinator,
   dispatchApplyStep,
   offerAfterCheck,
+  otaOfferVersion,
   resolveApplyAction,
   shellAutoIsPending,
   type OtaStatus,
@@ -965,15 +966,6 @@ export function watchUpdateState(cb: UpdateStateListener): () => void {
   };
 }
 
-/** The current update state, or null off Electron. */
-export async function getUpdateState(): Promise<UpdateCoordinatorState | null> {
-  if (!isElectron) return null;
-  if (shellCarriesUpdateState()) {
-    try { return (await bridge.getUpdateState()) ?? null; } catch { return null; }
-  }
-  return localUpdateState().getState();
-}
-
 /** The one apply: resolves whatever is pending by the minimal sufficient step,
  *  and inherits the running-tasks confirmation. On a
  *  shell that predates UPDATE_APPLY the step is chosen here from the composed
@@ -996,7 +988,9 @@ export async function applyUpdates(hooks: { onProceed?: () => void; action?: Upd
   // (handleUnifiedApply), over this shell's own channels.
   return dispatchApplyStep<GuardedRestartResult>(resolveApplyAction(state, hooks.action), {
     relaunch: () => installShellAutoUpdate(hooks),
-    reload: () => reloadOnOlderShell(local, state.version, state.server.status === 'ready', hooks),
+    // Named by the OTA offer, not the banner version, which is the shell
+    // installer's whenever a manual notice exists.
+    reload: () => reloadOnOlderShell(local, otaOfferVersion(local.getInput().otaOffer), state.server.status === 'ready', hooks),
     retry: async () => {
       const snapshot = await checkShellAutoUpdate();
       local.feed({ shell: snapshot });
@@ -1903,7 +1897,6 @@ export const host = {
   drainUpdateJournal,
   ackUpdateJournal,
   watchUpdateState,
-  getUpdateState,
   applyUpdates,
   checkForUpdates,
   getShellUpdate,

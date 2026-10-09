@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
+import { SHELL_DOWNLOAD_PAGE } from '../../../shared/shell-support';
 
 // The app's self-update lifecycle, rendered from the one update state main
 // keeps over the three independently-versioned pieces (OTA UI bundle, server,
@@ -12,7 +13,6 @@ import { deriveUpdateBanner } from '../../../shared/update-banner';
 // The server-online/health/`refreshData` cluster stays in App.jsx:
 // `refreshData` is the app-wide data loader (it writes tasks, projects,
 // artifacts, settings, …), so that half is not a self-contained move.
-export const SHELL_DOWNLOAD_PAGE = 'https://mindshub.ai/download';
 
 export function useAppUpdates() {
   const [updateState, setUpdateState] = useState(null);

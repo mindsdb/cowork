@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
 import { Alert, Button } from '../../components/ui';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -156,7 +156,6 @@ export default function UpdatesSection({
     }
   };
 
-  const applyInFlight = useRef(false);
   const handleAction = async (banner) => {
     if (!onUpdateAction || !banner?.action) return;
     if (banner.kind === 'shell-manual') {
@@ -166,13 +165,12 @@ export default function UpdatesSection({
       await onUpdateAction(banner.action, { url: updateState?.shell?.manualDownloadUrl });
       return;
     }
-    if (applyInFlight.current) return;
-    applyInFlight.current = true;
+    // One request at a time is the hook's rule (useAppUpdates): a second
+    // click, here or in the sidebar, answers 'busy' below and changes nothing.
     setApplyError(false);
     // The button reads "Restarting…" only once the restart proceeds, not
     // while the running-tasks dialog is open (ENG-3291).
     const result = await Promise.resolve(onUpdateAction(banner.action, { onProceed: () => setApplyingUpdate(true) })).catch(() => false);
-    applyInFlight.current = false;
     // The person chose to keep their running tasks (ENG-3291): not an error,
     // the card simply offers Restart now again.
     if (result === 'cancelled') { setApplyingUpdate(false); return; }

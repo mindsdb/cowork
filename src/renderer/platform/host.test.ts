@@ -1,8 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { UpdateCoordinatorState } from '../../shared/update-coordinator';
 
 // host.ts resolves `window.antontron` into module-level constants at IMPORT
 // time (bridge/isElectron/isWeb), so every test must (1) set up or remove the
 // bridge, (2) vi.resetModules(), (3) dynamically import a fresh copy.
+/** The update state as a watcher sees it right now (null on web), read
+ *  through the one public subscription. */
+function stateNow(host: { watchUpdateState: (cb: (state: UpdateCoordinatorState) => void) => () => void }): UpdateCoordinatorState | null {
+  let last: UpdateCoordinatorState | null = null;
+  const off = host.watchUpdateState((state) => { last = state; });
+  off();
+  return last;
+}
+
 async function importHost() {
   vi.resetModules();
   return await import('./host');
@@ -509,9 +519,9 @@ describe('electron mode (bridge present)', () => {
       expect(bridge.applyUpdate).not.toHaveBeenCalled();
       // The legacy manual notice reaches the composed state too.
       otaCb!({ phase: 'shell-available', version: '2.26.10.9.1', downloadUrl: 'https://x/y.pkg' });
-      expect((await host.getUpdateState())!.shell.manual).toBe(false); // the ready download still wins
+      expect(stateNow(host)!.shell.manual).toBe(false); // the ready download still wins
       shellCb!(shell('idle'));
-      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
+      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true, manualDownloadUrl: 'https://x/y.pkg' } });
     });
 
     it('on an older shell a manual OTA apply shows progress and reports a failure from the composed state', async () => {
@@ -551,7 +561,7 @@ describe('electron mode (bridge present)', () => {
       host.watchUpdateState(vi.fn());
       otaCb!({ phase: 'available', version: 'ui-1' });
       otaCb!({ phase: 'shell-available', version: 'sh-2', downloadUrl: 'https://x/y.pkg' });
-      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', ui: { status: 'ready' } });
+      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', ui: { status: 'ready' } });
       // The notice's action is the renderer's own; unnamed, nothing is sent.
       expect(await host.applyUpdates()).toBe(false);
       expect(applyUpdate).not.toHaveBeenCalled();
@@ -570,7 +580,7 @@ describe('electron mode (bridge present)', () => {
       vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
       const host = await importHost();
       await host.checkForUpdates();
-      expect((await host.getUpdateState())!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
+      expect(stateNow(host)!).toMatchObject({ action: 'reload', ui: { status: 'ready', version: '2.26.10.7.1' } });
     });
 
     it('shares one bridge subscription across watchers, and tears it down with the last', async () => {
@@ -644,19 +654,19 @@ describe('electron mode (bridge present)', () => {
       host.watchUpdateState(vi.fn());
       shellCb!(shell('downloading', { targetVersion: '2.26.10.9.1' }));
       await host.checkForUpdates();
-      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+      expect(stateNow(host)!.shell.manual).toBe(false);
       // The download later fails with no target: nothing stale falls through.
       shellCb!(shell('failed', { recoverable: true, errorCode: 'check-stalled' }));
-      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+      expect(stateNow(host)!.shell.manual).toBe(false);
       // With the auto-updater out of the picture, the same summary is the notice,
       // and a negative check clears it again.
       shellCb!(shell('disabled'));
       await host.checkForUpdates();
-      expect((await host.getUpdateState())!).toMatchObject({ action: 'open-download-page', shell: { manual: true } });
+      expect(stateNow(host)!).toMatchObject({ action: 'open-download-page', shell: { manual: true } });
       const bridge = (window as unknown as { antontron: Record<string, ReturnType<typeof vi.fn>> }).antontron;
       bridge.checkForUpdate.mockResolvedValue({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
       await host.checkForUpdates();
-      expect((await host.getUpdateState())!.shell.manual).toBe(false);
+      expect(stateNow(host)!.shell.manual).toBe(false);
     });
 
     it('a mount-time pull that resolves after a push does not replace the newer state', async () => {
@@ -743,7 +753,7 @@ describe('electron mode (bridge present)', () => {
       const seen = vi.fn();
       host.watchUpdateState(seen)();
       expect(seen).not.toHaveBeenCalled();
-      expect(await host.getUpdateState()).toBeNull();
+      expect(stateNow(host)).toBeNull();
       expect(await host.applyUpdates()).toBe(false);
     });
   });

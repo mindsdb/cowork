@@ -19,6 +19,7 @@
 // of its input and nothing else, and so is every decision helper below.
 
 import { CHECK_ONLY_FAILURE_CODES, SHELL_AUTO_BANNER_PHASES } from './update-banner-rules';
+import { compareCalVer, parseCalVer } from './version';
 
 export type ShellPhase =
   | 'disabled'
@@ -236,6 +237,48 @@ export function applyInFlight(apply: OtaApply | null): boolean {
   return apply?.phase === 'downloading' || apply?.phase === 'reloading';
 }
 
+/** Order two component versions. CalVer when both parse (by date, then
+ *  same-day sequence, then commit distance; see version.ts), and otherwise
+ *  only equality is known. */
+function compareVersions(a: string, b: string): number | null {
+  if (a === b) return 0;
+  const pa = parseCalVer(a);
+  const pb = parseCalVer(b);
+  return pa && pb ? compareCalVer(pa, pb) : null;
+}
+
+/** Is `candidate` a strictly newer version than `than`? Unordered versions
+ *  that differ count as newer, so an offer naming something else still wins
+ *  as it always did. */
+export function isNewerVersion(candidate: string | undefined, than: string | undefined): boolean {
+  if (!candidate) return false;
+  if (!than) return true;
+  const order = compareVersions(candidate, than);
+  return order === null ? candidate !== than : order > 0;
+}
+
+/** Does `version` reach `target`: the same version or a newer one? An
+ *  unversioned target is reached by anything; an unversioned `version` only
+ *  reaches an unversioned target. Two versions that compare equal but are
+ *  spelled differently (a PEP 440 rc suffix the CalVer parse ignores) count
+ *  as reached: the next check re-offers anything newer. */
+export function versionReaches(version: string | undefined, target: string | undefined): boolean {
+  if (target === undefined) return true;
+  if (version === undefined) return false;
+  const order = compareVersions(version, target);
+  return order === null ? version === target : order >= 0;
+}
+
+/** The version the OTA layers are heading to, from the offer alone: the UI's
+ *  when one is offered, the server's label otherwise. Progress and failures of
+ *  an OTA apply are named by this, never by the coordinator's banner version,
+ *  which is the shell installer's whenever a manual notice exists. */
+export function otaOfferVersion(offer: OtaOffer | null): string | undefined {
+  if (offer?.ui?.version) return offer.ui.version;
+  if (offer?.server) return serverLabel({ status: 'ready', version: offer.server.version, component: offer.server.component });
+  return undefined;
+}
+
 function otaLayers(
   offer: OtaOffer | null,
   apply: OtaApply | null,
@@ -264,9 +307,12 @@ function otaLayers(
     Object.assign(ui, { status: 'applying', version: apply?.version, error: undefined });
     if (!serverFailed) srv.status = 'applying';
   } else if (apply?.phase === 'error' || apply?.phase === 'rolled-back') {
-    // How the last apply ended, unless a check has since offered another UI
-    // version: that offer is the newer news, and its Restart is the retry.
-    const newerOffer = !!offer?.ui?.version && offer.ui.version !== apply.version;
+    // How the last apply ended, unless a check has since offered a newer UI:
+    // that offer is the newer news, and its Restart is the retry. An offer
+    // for the same version or an older one does not hide the failure (the
+    // apply re-reads the manifest, so it can fail on a release newer than the
+    // one the check offered).
+    const newerOffer = isNewerVersion(offer?.ui?.version, apply.version);
     if (!newerOffer) {
       // A rolled-back bundle failed its load check and is quarantined;
       // re-applying it is not an option, so that failure has no action.
@@ -370,7 +416,10 @@ function stepStillOffered(state: UpdateCoordinatorState, step: ApplyStep): boole
       // reload in the ladder but leaves it pending.
       return reloadPending(state.ui, state.server);
     case 'retry':
-      return state.shell.status === 'failed' && state.shell.recoverable === true;
+      // Behind a manual notice the layer reads `available`, but a failed
+      // auto-update it stands in for can still be retried.
+      return (state.shell.status === 'failed' || (state.shell.manual && state.shell.phase === 'failed'))
+        && state.shell.recoverable === true;
     case 'download':
       return state.shell.status === 'available' && !state.shell.manual;
   }
@@ -449,12 +498,29 @@ export interface OtaApplyOutcome {
   ui?: { result: 'landed' | 'rolled-back' | 'failed' | 'nothing'; version?: string };
 }
 
-/** Does the outcome speak for this offered layer? An offer with no version is
- *  the one the apply answered; one naming another version is a newer offer a
- *  check made meanwhile, and stands. */
+/** Does the outcome speak for this offered layer? An apply re-reads the
+ *  manifest, so it can land a release newer than the one the check offered:
+ *  an outcome for the offered version or a newer one covers the offer, and an
+ *  offer for a version newer than the outcome is a check made meanwhile, and
+ *  stands. */
 function outcomeCovers(offered: { version?: string } | null, version: string | undefined): boolean {
   if (!offered) return false;
-  return offered.version === undefined || offered.version === version;
+  return versionReaches(version, offered.version);
+}
+
+/** How one apply ended, for the request that ran it. A server update that
+ *  landed reloads the window, so the request applied even when the UI beside
+ *  it failed (the banner names that failure after the reload). `stale` is an
+ *  apply that ran nothing: the server re-check found no server update and the UI
+ *  had nothing to apply, so the offer the click answered was already gone.
+ *  That clears the offer (offerAfterApply) and is not a failure. */
+export type ApplyRunResult = 'applied' | 'failed' | 'stale';
+
+export function applyRunResult(run: { serverTried: boolean; serverOk: boolean; ui?: OtaApplyOutcome['ui'] }): ApplyRunResult {
+  if (run.serverTried) return run.serverOk ? 'applied' : 'failed';
+  if (run.ui?.result === 'landed' || run.ui?.result === 'rolled-back') return 'applied';
+  if (run.ui?.result === 'failed') return 'failed';
+  return 'stale';
 }
 
 /** The offer after an apply. A layer the apply landed is no longer pending. A
