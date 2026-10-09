@@ -197,6 +197,16 @@ let _runningAccountRoot: string | null | undefined;
 // moves during a start cannot make us record a root the process is not on.
 let _runningOrgStoreRoot: string | undefined;
 
+// The organization id those stores belong to. Turns bill this organization, not
+// the one a later token names: a refresh after a switch on another device
+// rewrites the record before the sidecar moves.
+let _runningOrgId: string | null = null;
+
+/** The organization the running sidecar was started on, or null if none is recorded. */
+export function getRunningSidecarOrgId(): string | null {
+  return _runningOrgId;
+}
+
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
 let serverStarted = false;
@@ -705,6 +715,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
       _runningOrgStoreRoot = currentOrgStoreRoot();
+      _runningOrgId = readActiveOrg(accountDataRoot());
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -806,7 +817,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // unconfigured.
     const orgStoreRootAtSpawn = currentOrgStoreRoot();
     const orgSegmentAtSpawn = currentOrgSegment();
-    const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
+    const orgIdAtSpawn = readActiveOrg(accountDataRoot());
+    const orgEnv = orgStoreEnv(accountDataRoot(), orgIdAtSpawn);
     console.log(
       `[server] build kind "${kind}" → data home ${dataHome}` +
         (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
@@ -1007,6 +1019,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
+    _runningOrgId = orgIdAtSpawn;
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only
@@ -1092,6 +1105,7 @@ async function stopServerUnlocked(): Promise<void> {
   if (!proc) {
     if (_adoptedExternal) await prepareCodingTasksForShutdown();
     serverStarted = false;
+    _runningOrgId = null;
     lastStopIntentional = true;
     // If we adopted an external server (no child handle), try to kill
     // whatever is listening on the port so the next launch gets a clean
@@ -1116,6 +1130,7 @@ async function stopServerUnlocked(): Promise<void> {
   serverStarted = false;
   _runningAccountRoot = undefined;
   _runningOrgStoreRoot = undefined;
+  _runningOrgId = null;
 
   const exited = new Promise<void>((resolve) => {
     proc.once('exit', () => resolve());
