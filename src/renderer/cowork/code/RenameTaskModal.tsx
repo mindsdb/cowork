@@ -37,8 +37,8 @@ export function RenameTaskModal({
     }
   };
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-rename-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
-      <ModalHeader id="code-rename-title" title="Rename coding task" onClose={busy ? undefined : onClose} />
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-rename-title" dismissible={!busy}>
+      <ModalHeader id="code-rename-title" title="Rename coding task" onClose={onClose} />
       <ModalBody>
         <Field label="Task name" error={error || undefined}>
           <Input
@@ -52,8 +52,7 @@ export function RenameTaskModal({
           />
         </Field>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
         <Button variant="primary" disabled={busy || !value.trim()} onClick={() => void submit()}>Rename</Button>
       </ModalFooter>
     </Modal>
