@@ -30,15 +30,15 @@ jobs:
     secrets: inherit
 
   build-deploy:
-    # A production-<sha> image so the argocd-envs parent chart's
-    # `tags.cowork: production` fallback resolves, and for static prod rollout.
+    # A production-<sha> image in the prod-tier repository (mindsdb-cowork),
+    # which only a main build can write, and the prod rollout of it.
     needs: [run-unit-tests]
     permissions:
       contents: read
+      id-token: write # the build and the scan assume the prod-tier ECR role
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: production
-      build-runner: mdb-prod
     secrets: inherit
 
   auto-release:
@@ -55,6 +55,9 @@ jobs:
 
   build-installers:
     needs: [auto-release]
+    permissions:
+      contents: read
+      id-token: write # the uploads assume the prod installer role
     uses: ./.github/workflows/build-installers.yml
     with:
       # prod -> the PyPI stable stream: immutable, versioned, yankable, and no

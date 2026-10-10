@@ -31,6 +31,7 @@ jobs:
     needs: [run-unit-tests]
     permissions:
       contents: read
+      id-token: write # the build and the scan assume the dev-tier ECR role
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: staging
@@ -38,6 +39,9 @@ jobs:
 
   build-installers:
     needs: [run-unit-tests]
+    permissions:
+      contents: read
+      id-token: write # the uploads assume the staging installer role
     uses: ./.github/workflows/build-installers.yml
     with:
       # stable -> the PyPI rc stream, following cowork-server's publish-staging

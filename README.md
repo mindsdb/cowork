@@ -1150,7 +1150,7 @@ Export-PfxCertificate -Cert $cert -FilePath cowork-dev.pfx -Password (ConvertTo-
 
 ### Installer build flow
 
-Installers are built on GitHub-hosted runners (required for Apple notarization and SSL.com signing) and uploaded to S3 from the self-hosted `mdb-prod` pod.
+Installers are built on GitHub-hosted runners (required for Apple notarization and SSL.com signing). A GitHub-hosted upload job then publishes them to S3 with an AWS role it assumes through GitHub OIDC.
 
 | Flavor | Trigger | S3 destination |
 | --- | --- | --- |
@@ -1160,7 +1160,15 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 
 ### S3 layout
 
-The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role has `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` and `s3:DeleteObject` on `arn:aws:s3:::anton-installer` and `arn:aws:s3:::anton-installer/*`, granted by the `AllowS3AntonInstallerAccess` statement in `templates/eks-oidc-roles/github-runner.tf` in the `mindsdb/terraform` repo.
+The bucket is **`anton-installer`** in `us-east-1`. It is **private**: no public reads, no public ACLs. Everything is served through CloudFront. The upload job in [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) assumes one of three roles in the PROD account (`065786718370`) through GitHub OIDC, so no AWS secret exists:
+
+| Role | Assumed by | GitHub environment | Writes under `mindshub-cowork/` |
+| --- | --- | --- | --- |
+| `gha-cowork-installer-preview` | **preview** builds from pull requests | none | `{platform}/previews/` |
+| `gha-cowork-installer-staging` | **stable** builds from `staging` | `staging` | `{platform}/snapshots/`, `{platform}/mindshub-cowork-staging.*`, `{platform}/staging.json`, `updates/stable/` |
+| `gha-cowork-installer-prod` | **prod** builds from `main` | `prod` | `{platform}/mindshub-cowork-{version}.*`, `{platform}/mindshub-cowork-latest.*`, `{platform}/latest.json`, `updates/prod/` |
+
+The environment sets the job's OIDC subject, and each role trusts only the subject of its own row: a pull request run with no environment, the `staging` environment on `staging`, or the `prod` environment on `main`. Each role's policy in the `mindsdb/terraform` repo lets it write only the keys in its row. So a pull request run cannot overwrite the stable channel, its updater feed or a release, and a `staging` build cannot overwrite a release. [`src/main/installer-upload-roles.invariant.test.ts`](src/main/installer-upload-roles.invariant.test.ts) fails when an upload path holds another path's environment or assumes another path's role.
 
 ```
 s3://anton-installer/
@@ -1250,18 +1258,36 @@ CloudFront behavior:
 
 > **Check these URLs by their bytes, not their status.** A correct status still cannot tell a current object from a stale one, which is the failure an immutable key is most exposed to. And `curl --retry` fires only on a timeout or a 408/429/5xx, so it does not cover the case that actually needs waiting: a key created moments ago, shadowed by an edge that cached the `404` for it. Both checks in the release parse the body and compare a checksum, and wait in an explicit loop.
 
-> **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
+> **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, so no upload role is granted one.
 
 Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+
+### Web image and rollouts
+
+This repo is public, so every job in it runs on a GitHub-hosted runner. [`.github/actionlint.yaml`](.github/actionlint.yaml) declares no self-hosted labels, so the workflow lint fails on a `runs-on` that names `mdb-dev` or `mdb-prod`. actionlint accepts GitHub's generic `self-hosted` label, and it cannot see a label passed to a reusable workflow as an input. [`src/main/hosted-runners.invariant.test.ts`](src/main/hosted-runners.invariant.test.ts) covers both: it fails on any workflow line outside a comment that names `mdb-dev`, `mdb-prod` or `self-hosted`.
+
+[`build-deploy.yml`](.github/workflows/build-deploy.yml) builds the web SPA image and pushes it to one of two ECR repositories in the DEV account (`168681354662`). The build and the scan get AWS credentials from GitHub OIDC:
+
+| Build | Repository | Role | GitHub environment |
+| --- | --- | --- | --- |
+| Pull request | `mindsdb-cowork-dev` | `gha-cowork-ecr-dev` | none |
+| Push to `staging` | `mindsdb-cowork-dev` | `gha-cowork-ecr-dev` | `staging` |
+| Push to `main` | `mindsdb-cowork` | `gha-cowork-ecr-prod` | `prod` |
+
+The environment sets the OIDC subject each role trusts. `gha-cowork-ecr-dev` trusts pull request runs and the `staging` environment on the `staging` branch. `gha-cowork-ecr-prod` trusts only the `prod` environment on `main`, and `prod` admits only `main`. So neither a pull request nor a `staging` build can write the image prod runs. The scan assumes the same role as the build, with a session policy that allows only pulls. A fork's run cannot mint an OIDC token, so the pipeline skips the image and installer builds for forks.
+
+The rollout runs in [`mindsdb/deployer`](https://github.com/mindsdb/deployer). After the build and the scan pass, the `deploy` job holds the `staging` or `prod` environment and mints a token for the deployer's GitHub App. It then dispatches the deployer's `deploy.yml` for this commit and waits for that run. The deployer checks that the commit is the branch head and that its image exists, then runs helm. A rollback is a manual dispatch of that workflow with an earlier commit of the branch.
+
+The deployer also rolls out PR environments. Every 10 minutes its reconciler syncs each open, same-repo pull request labelled `deploy` whose `development-head-<sha>` image exists. This repo deploys nothing for a pull request. The `pr-env-wait` job in [`dev-build-deploy.yml`](.github/workflows/dev-build-deploy.yml) polls `https://cowork-pr-cowork-<number>.dev.mindshub.ai` until it serves a build stamped with the pull request's head commit, and the PR comment reports the result.
 
 ### Workflow files
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| [`dev-build-deploy.yml`](.github/workflows/dev-build-deploy.yml) | Pull request | Tests, PR env, and label-gated preview installers |
+| [`dev-build-deploy.yml`](.github/workflows/dev-build-deploy.yml) | Pull request | Tests, PR image, a wait for the PR environment, and label-gated preview installers |
 | [`staging-build-deploy.yml`](.github/workflows/staging-build-deploy.yml) | Push to `staging` | Tests, staging image + rollout, stable installers |
 | [`prod-build-deploy.yml`](.github/workflows/prod-build-deploy.yml) | Push to `main` | Tests, prod image, CalVer tag + release, prod installers, OTA UI bundle |
-| [`build-deploy.yml`](.github/workflows/build-deploy.yml) | Called | Build + push the web SPA image, then roll it out |
+| [`build-deploy.yml`](.github/workflows/build-deploy.yml) | Called | Build, push and scan the web SPA image, then roll it out through `mindsdb/deployer` |
 | [`build-installers.yml`](.github/workflows/build-installers.yml) | Called | Both platforms' installers: build, sign, upload |
 | [`pipeline-watchdog.yml`](.github/workflows/pipeline-watchdog.yml) | Scheduled | Alerts on runs that never started (`startup_failure`) |
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
@@ -1278,7 +1304,9 @@ Windows signing: `SSL_USERNAME`, `SSL_PASSWORD`, `SSL_CREDENTIAL_ID`, `SSL_TOTP_
 
 OTA UI publishing: `RELEASES_TOKEN` (fine-grained PAT scoped to `mindsdb/antontron-releases`)
 
-> **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role needs `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::anton-installer/*` — `GetObject` as well as `PutObject`, because the publish path reads a key back to check whether it already holds these bytes, and copies the versioned key onto the alias server-side.
+Web rollout: `DEPLOYER_APP_PRIVATE_KEY` (environment secret) and `DEPLOYER_APP_CLIENT_ID` (environment variable), each set in both the `staging` and the `prod` environment. They belong to the deployer's GitHub App. The `deploy` job in [`build-deploy.yml`](.github/workflows/build-deploy.yml) narrows the App's token to Actions write on `mindsdb/deployer`, which is all it needs to dispatch and watch a run.
+
+> **No AWS secrets.** Every job that reaches AWS assumes a role through GitHub OIDC, so it declares `id-token: write`, and so does every caller up its chain. The upload roles need `s3:GetObject` as well as `s3:PutObject` on the keys they publish. The publish path reads a key back to check whether it already holds these bytes, and copies the versioned key onto the alias server-side. The staging and prod roles also need `s3:ListBucket`, because their paths ask whether a key is already published: only a `404` counts as "not published yet", and S3 answers a role that cannot list with a `403` for a missing key. A preview always overwrites, so it never asks.
 
 ### OTA UI publishing setup
 
