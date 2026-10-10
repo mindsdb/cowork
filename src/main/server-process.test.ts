@@ -928,6 +928,34 @@ describe('the sidecar organization stores', () => {
     expect(getRunningSidecarOrgId()).toBeNull();
   });
 
+  it('knows the organization while the sidecar is still starting', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    const starting = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    await vi.waitFor(() => expect(cp.spawn).toHaveBeenCalled());
+
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    healthOwner = 'owner-token';
+    await starting;
+  });
+
+  it('forgets the organization when the sidecar crashes', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    child.emit('exit', 1);
+
+    expect(getRunningSidecarOrgId()).toBeNull();
+  });
+
   it('reads as foreign after an organization switch, so it is restarted', async () => {
     // The regression that matters: the account never changes across a switch,
     // so an account-id comparison reads as unchanged and the sidecar is left

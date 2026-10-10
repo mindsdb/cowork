@@ -936,6 +936,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       childExitCode = code;
       serverStarted = false;
       serverProcess = null;
+      _runningOrgId = null;
       lastExitCode = code;
       // Attribute the death: if `_stopRequested` is set, this exit
       // was caused by stopServer() (user clicked Stop, or the app is
@@ -953,6 +954,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     });
 
     serverProcess = child;
+    // Recorded at spawn, not after /health: a hand-over can land while it starts.
+    _runningOrgId = orgIdAtSpawn;
 
     // Wait on the child's liveness, not on a fixed timer: poll /health for as
     // long as the process is alive and still starting, up to the hard cap. A
@@ -1180,6 +1183,7 @@ export async function forceReapServer(): Promise<void> {
     killTree(proc, 'SIGKILL');
   }
   serverStarted = false;
+  _runningOrgId = null;
   await killProcessOnPort(serverPort);
   if (serverProcess === proc) serverProcess = null;
 }
