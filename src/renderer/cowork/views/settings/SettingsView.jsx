@@ -45,6 +45,9 @@ const FIELD_ICON_BTN = `${FIELD_ICON_BTN_BASE} absolute right-1 top-1/2 -transla
 const COLOR_SWATCH_INPUT =
   'w-[64px] h-[32px] p-0.5 border border-solid border-line-2 rounded-md bg-surface cursor-pointer';
 
+const FAVICON_MIME_TYPES = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml', 'image/webp'];
+const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp' };
+
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
@@ -2059,6 +2062,44 @@ export default function SettingsView({
     reader.readAsDataURL(file);
   };
 
+  const faviconInputRef = useRef(null);
+  const faviconReadRef = useRef(null);
+  const [faviconError, setFaviconError] = useState(null);
+  useEffect(() => () => faviconReadRef.current?.abort(), []);
+  const handleFaviconUpload = (file) => {
+    if (!file) return;
+    faviconReadRef.current?.abort();
+    faviconReadRef.current = null;
+    const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
+    if (!FAVICON_MIME_TYPES.includes(mime)) {
+      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      return;
+    }
+    if (file.size >= 100 * 1024) {
+      setFaviconError('Browser tab icon must be under 100 KB.');
+      return;
+    }
+    setFaviconError(null);
+    const reader = new FileReader();
+    faviconReadRef.current = reader;
+    reader.onload = () => {
+      if (faviconReadRef.current !== reader) return;
+      if (typeof reader.result !== 'string') {
+        setFaviconError("Couldn't read this image. Try another file.");
+        return;
+      }
+      autoSaveSetting('favicon', reader.result);
+    };
+    reader.onerror = () => {
+      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+    };
+    try {
+      reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
+    } catch {
+      setFaviconError("Couldn't read this image. Try another file.");
+    }
+  };
+
   const renderCodingAgentSection = () => (
     <CodingAgentSettingsSection
       settings={settings}
@@ -2287,6 +2328,33 @@ export default function SettingsView({
             <div className="text-[12px] text-danger mt-1.5">{logoError}</div>
           )}
         </Section>
+        {host.isWeb && (
+          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {settings.favicon && (
+                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+              )}
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
+                {settings.favicon ? 'Change icon' : 'Upload icon'}
+              </Button>
+              {settings.favicon && (
+                <Button variant="danger" className="whitespace-nowrap" onClick={() => {
+                  faviconReadRef.current?.abort();
+                  faviconReadRef.current = null;
+                  autoSaveSetting('favicon', '');
+                  setFaviconError(null);
+                }} aria-label="Remove browser tab icon">
+                  {Ico.trash(14)} Remove
+                </Button>
+              )}
+              <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
+                aria-label="Browser tab icon file" className="hidden"
+                onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
+              <AutoSaveTag settingKey="favicon" />
+            </div>
+            {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">

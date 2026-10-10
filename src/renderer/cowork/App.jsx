@@ -43,7 +43,7 @@ import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyNavTitleColor } from '../lib/navBranding';
+import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canUseSharedResource } from './lib/sharedResourceAccess';
@@ -1789,6 +1789,10 @@ function AppCore() {
   useEffect(() => {
     applyNavTitleColor(appearanceSettings.navTitleColor);
   }, [appearanceSettings.navTitleColor]);
+
+  useEffect(() => {
+    if (host.isWeb) applyFavicon(appearanceSettings.favicon);
+  }, [appearanceSettings.favicon]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
