@@ -244,6 +244,15 @@ Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
 and point its `/v1` requests at a running cowork-server process.
 
+### Browser tab icon
+
+Settings > Appearance lets web users upload a browser tab icon independently
+of the sidebar logo. PNG, ICO, SVG, and WEBP files must be smaller than 100 KB;
+a square image of at least 32 × 32 pixels works best. Changes preview immediately
+and persist through the settings API. Removing the override restores the page's
+original icon, including a deployment's custom branding. Desktop does not show
+this control, and the browser's home-screen icon is unchanged.
+
 ### Platform abstraction
 
 The cowork tree (`src/renderer/cowork/`) **never** touches
