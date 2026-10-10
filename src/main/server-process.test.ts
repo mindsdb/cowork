@@ -83,6 +83,7 @@ import {
   setServerStartedHook,
   ensureSidecarOnCurrentAccountRoot,
   sidecarIsOnCurrentStores,
+  getRunningSidecarOrgId,
 } from './server-process';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
@@ -911,6 +912,48 @@ describe('the sidecar organization stores', () => {
 
     expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
     expect(spawnedEnv().COWORK_CODING_DIR).toBe('/root/orgs/org-b/coding');
+  });
+
+  it('remembers the organization it was started on, not a later record', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    // A refresh after a switch on another device rewrites the record first.
+    accountState.orgStoreRoot = null;
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    await stopServer();
+    expect(getRunningSidecarOrgId()).toBeNull();
+  });
+
+  it('knows the organization while the sidecar is still starting', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    const starting = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    await vi.waitFor(() => expect(cp.spawn).toHaveBeenCalled());
+
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    healthOwner = 'owner-token';
+    await starting;
+  });
+
+  it('forgets the organization when the sidecar crashes', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getRunningSidecarOrgId()).toBe('org-b');
+
+    child.emit('exit', 1);
+
+    expect(getRunningSidecarOrgId()).toBeNull();
   });
 
   it('reads as foreign after an organization switch, so it is restarted', async () => {

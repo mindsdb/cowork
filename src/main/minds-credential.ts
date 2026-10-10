@@ -31,7 +31,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
-import { getServerPort, isServerRunning, isServerStarting } from './server-process';
+import { getRunningSidecarOrgId, getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import { settleMindsResumeCredentialGate } from './minds-resume-gate';
@@ -146,13 +146,16 @@ async function pushMindsCredentialNow(
   const port = getServerPort();
   if (!port) return false;
   try {
+    const organizationId = getRunningSidecarOrgId();
     // authHeader(): a main-process fetch never passes through the renderer's
     // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
     // would 401 and the app would look unconfigured with no visible cause.
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/runtime-credential/minds`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({ value: value ?? '' }),
+      // The sidecar mints a turn key for this organization, so its turns keep
+      // billing it whatever organization Keycloak has active.
+      body: JSON.stringify({ value: value ?? '', ...(organizationId ? { organization_id: organizationId } : {}) }),
       signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
     });
     if (!res.ok) {

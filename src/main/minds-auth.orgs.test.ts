@@ -18,6 +18,7 @@ vi.mock('./token-store', () => ({
   isAccessTokenExpired: vi.fn(() => false),
 }));
 vi.mock('./server-process', () => ({
+  getRunningSidecarOrgId: () => null,
   stopServer: vi.fn(),
   startServer: vi.fn(),
   isServerRunning: vi.fn(() => true),
