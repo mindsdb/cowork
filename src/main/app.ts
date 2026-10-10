@@ -16,6 +16,7 @@ import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
+import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
@@ -2146,3 +2147,7 @@ app.on('before-quit', (event) => {
     app.quit();
   });
 });
+
+// Termination signals (Ctrl-C under `npm run dev`) go through the same drain,
+// once; see quit-signals.ts for why repeats must be swallowed.
+installQuitSignalHandlers(() => app.quit());
