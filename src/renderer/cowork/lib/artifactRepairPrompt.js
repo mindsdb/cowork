@@ -15,7 +15,7 @@
 // send time: the transcript is re-hydrated from the server on every reload, so
 // anything not in the text itself would have to survive persistence to keep the
 // card after a refresh. The template is server-generated from a single site
-// (`build_agent_repair` in cowork-server's artifact_revisions.py), so there is
+// (`create_agent_repair` in cowork-server's artifact_revisions.py), so there is
 // one shape to track, and a miss degrades to the plain text that renders today.
 
 const PREFIX = 'Address this artifact review thread.';
