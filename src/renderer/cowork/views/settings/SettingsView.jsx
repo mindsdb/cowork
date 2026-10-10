@@ -2330,15 +2330,15 @@ export default function SettingsView({
         </Section>
         {host.isWeb && (
           <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {settings.favicon && (
                 <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
               )}
-              <Button variant="subtle" onClick={() => faviconInputRef.current?.click()}>
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
                 {settings.favicon ? 'Change icon' : 'Upload icon'}
               </Button>
               {settings.favicon && (
-                <Button variant="danger" onClick={() => {
+                <Button variant="danger" className="whitespace-nowrap" onClick={() => {
                   faviconReadRef.current?.abort();
                   faviconReadRef.current = null;
                   autoSaveSetting('favicon', '');
