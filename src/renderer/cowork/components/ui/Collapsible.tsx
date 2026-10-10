@@ -56,7 +56,7 @@ const metaVariants = cva('flex-none tabular-nums text-ink-4', {
   variants: {
     variant: {
       section: 'text-xs',
-      compact: 'font-mono text-2xs',
+      compact: 'text-2xs',
     },
   },
   defaultVariants: { variant: 'section' },

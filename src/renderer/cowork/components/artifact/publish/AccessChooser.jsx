@@ -18,8 +18,6 @@ import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
 
-const FONT_MONO = "var(--font-mono)";
-
 // Shared class strings for the bare-input shell (a bordered row wrapping an
 // unstyled <input>), so the password field and any future inputs stay in sync.
 const INPUT_SHELL = 'flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]';
@@ -247,7 +245,7 @@ export function AccessChooser({
             style={{
               width: '100%', boxSizing: 'border-box', resize: 'vertical',
               background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
-              color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
+              color: 'var(--ink)', fontSize: 13, padding: '9px 10px', outline: 'none',
             }}
           />
           <div className="font-body text-xs text-ink-4 mt-[6px]">

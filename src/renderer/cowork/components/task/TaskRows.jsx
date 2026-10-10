@@ -140,7 +140,7 @@ export function ScheduleGroupRow({ schedule, runs = [], projects, onOpenSchedule
       leading={Ico.schedule(16)}
       title={schedule?.title || latest?.title || 'Scheduled task'}
       badges={(
-        <Badge variant="accent" size="sm" className="shrink-0 font-mono uppercase tracking-[0.06em]">
+        <Badge variant="accent" size="sm" className="shrink-0 uppercase tracking-[0.06em]">
           {runs.length} {runs.length === 1 ? 'run' : 'runs'}
         </Badge>
       )}

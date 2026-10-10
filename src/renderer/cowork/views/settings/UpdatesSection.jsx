@@ -220,7 +220,7 @@ export default function UpdatesSection({
             return (
               <div className="flex flex-col gap-2 text-sm text-ink">
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} className="font-[family-name:var(--font-mono)] text-md font-semibold">
+                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} className="text-md font-semibold tabular-nums">
                     {unified ? unified.label : (shellVer || '—')}
                   </span>
                   {outOfSync && (
@@ -236,12 +236,12 @@ export default function UpdatesSection({
                   )}
                 </div>
                 {isElectron && (
-                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px] flex items-baseline gap-2 flex-wrap">
+                  <span className="text-ink-3 text-[12px] flex items-baseline gap-2 flex-wrap">
                     <span><span className="mr-1">App shell</span>{shellVer || '—'}</span>
                     {shellTooOld && (
                       <span
                         title={`Supported: ${MIN_SUPPORTED_SHELL} or newer, and within ${SUPPORTED_SHELL_WINDOW_DAYS} days of the latest app (${shellSupport.latestShellVersion}).`}
-                        className="text-warning text-[11.5px] font-semibold font-[family-name:var(--font-sans)]"
+                        className="text-warning text-[11.5px] font-semibold"
                       >
                         ⚠ too old
                       </span>

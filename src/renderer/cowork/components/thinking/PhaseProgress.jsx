@@ -112,7 +112,7 @@ function PhaseRow({
         )}
       </span>
       {hint && (
-        <span className="ml-1 flex-none text-[10.5px] font-mono text-ink-4">
+        <span className="ml-1 flex-none text-xs tabular-nums text-ink-4">
           {hint}
         </span>
       )}

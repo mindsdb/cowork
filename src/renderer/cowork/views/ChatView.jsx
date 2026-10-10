@@ -78,8 +78,6 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_MONO    = "var(--font-mono)";
-
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
   if (!value) return '';
@@ -986,12 +984,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           other, so a long message never crushes the path beside it. */}
       {status ? (
         <span
-          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('card__rail chat-artifact-card__status text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
       ) : (
-        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+        <span className="card__rail chat-artifact-card__loc text-xs text-ink-3" title={previewText}>
           {Ico.folder(12)}
           <span className="min-w-0 truncate">{previewText}</span>
         </span>
