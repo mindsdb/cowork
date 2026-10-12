@@ -258,7 +258,7 @@ describe('Task and project connector detours', () => {
     const task: CodingSession = {
       schema_version: 1, id: 'existing-task', title: 'The existing coding task', project_id: project.id,
       engine_id: 'codex', engine_adapter_version: '1', model: 'gpt', permission_mode: 'supervised', status: 'completed',
-      source_path: '/work/my-app', workspace_path: '/work/my-app', workspace_kind: 'direct_folder', source_dirty: false,
+      source_path: '/work/my-app', workspace_path: '/work/my-app', workspace_kind: 'git_worktree', source_dirty: false,
       event_count: 0, created_at: project.created_at, updated_at: project.updated_at,
     };
     vi.mocked(codingApi.projects).mockImplementation(async () => ({ items: [project] }));
@@ -272,6 +272,9 @@ describe('Task and project connector detours', () => {
     vi.spyOn(codingApi, 'git').mockRejectedValue(new Error('Not a Git checkout'));
     vi.spyOn(codingApi, 'diff').mockResolvedValue({ files: [] });
     vi.spyOn(codingApi, 'projectActions').mockResolvedValue({ items: [], preview_url: null });
+    // With no GitHub account on the project, delivery offers Add GitHub,
+    // the task's way into Project settings.
+    vi.spyOn(codingApi, 'deliveryPlan').mockResolvedValue({ items: [{ folder_id: 'folder', folder_name: 'my-app', workspace_path: '/work/my-app', status: 'needs_commit', detail: '' }] });
     vi.spyOn(await import('./api'), 'openCodingEventStream').mockReturnValue(() => {});
     const github = { engine: 'github', name: 'work', status: 'connected' };
     mocks.fetchDatasources.mockResolvedValue({ connections: [github] });
@@ -289,8 +292,9 @@ describe('Task and project connector detours', () => {
     const user = userEvent.setup();
     render(<TaskApp />);
     await user.click(screen.getByRole('button', { name: 'Open existing task' }));
-    await user.click(await screen.findByRole('button', { name: 'Coding task actions' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
+    await user.click(await screen.findByRole('button', { name: 'Review changes' }));
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
+    await user.click(await screen.findByRole('button', { name: 'Add GitHub' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Keep this project edit' } });
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));

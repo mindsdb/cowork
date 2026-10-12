@@ -64,6 +64,32 @@ describe('useAppUpdates', () => {
     expect(result.current.updateStatus).toEqual({ phase: 'downloading', version: '3.0.0' });
   });
 
+  it('shows no Downloading under the dialog when a server update may ask first (ENG-3291)', async () => {
+    // Main asks; the banner must still read "Update ready" while it does, and
+    // flip to Downloading only once the person says yes (the guard's onProceed).
+    const { result } = await mountFlushed();
+    const status = { phase: 'available', version: '3.0.0', serverUpdate: true, serverVersion: '0.3.0' };
+    act(() => hostMock.state.onUpdateStatusCb(status));
+    let seenAtCall;
+    hostMock.host.applyUpdate.mockImplementationOnce(async ({ onProceed }) => {
+      seenAtCall = result.current.updateStatus;
+      onProceed();
+      return true;
+    });
+    await act(async () => { await result.current.handleApplyUpdate(); });
+    expect(seenAtCall).toEqual(status);
+    expect(result.current.updateStatus).toEqual({ phase: 'downloading', version: '3.0.0' });
+
+    // A cancel puts the banner back exactly as it was (a fresh mount: a
+    // successful apply reloads the window, so that hook never applies twice).
+    const fresh = await mountFlushed();
+    act(() => hostMock.state.onUpdateStatusCb(status));
+    hostMock.host.applyUpdate.mockResolvedValueOnce('cancelled');
+    await act(async () => { await fresh.result.current.handleApplyUpdate(); });
+    expect(fresh.result.current.updateStatus).toEqual(status);
+    expect(hostMock.host.applyUpdate).toHaveBeenCalledTimes(2);
+  });
+
   it('handleApplyUpdate surfaces an error phase when the apply throws', async () => {
     hostMock.host.applyUpdate.mockRejectedValueOnce(new Error('nope'));
     const { result } = await mountFlushed();

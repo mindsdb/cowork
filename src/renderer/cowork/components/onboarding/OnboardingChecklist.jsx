@@ -64,7 +64,7 @@ export default function OnboardingChecklist({ onStartChat }) {
       </span>
       <span
         aria-hidden
-        className="inline-flex shrink-0 self-center text-[var(--frost-600)] [transition:transform_200ms_ease]"
+        className="inline-flex shrink-0 self-center text-[var(--frost-600)] [transition:transform_var(--dur-layout)_ease]"
         style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
       >
         {Ico.chevDown(14)}
@@ -95,7 +95,7 @@ export default function OnboardingChecklist({ onStartChat }) {
       className="h-1 rounded-[2px] mt-[6px] mx-[6px] mb-2 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden"
     >
       <div
-        className="h-full rounded-[2px] bg-accent [transition:width_300ms_cubic-bezier(0.23,1,0.32,1)]"
+        className="h-full rounded-[2px] bg-accent [transition:width_var(--dur-layout)_var(--ease-out)]"
         style={{ width: `${(completedCount / total) * 100}%` }}
       />
     </div>
@@ -113,7 +113,7 @@ export default function OnboardingChecklist({ onStartChat }) {
           without hard-coding a pixel value (same idiom as OnboardingItem). */}
       <div
         id={STEPS_ID}
-        className="grid min-h-0 [transition:grid-template-rows_200ms_ease,opacity_200ms_ease]"
+        className="grid min-h-0 [transition:grid-template-rows_var(--dur-layout)_ease,opacity_var(--dur-layout)_ease]"
         style={{
           gridTemplateRows: collapsed ? '0fr' : '1fr',
           opacity: collapsed ? 0 : 1,
@@ -134,7 +134,7 @@ export default function OnboardingChecklist({ onStartChat }) {
   );
 
   return (
-    <div className="shrink-0 mt-1 mx-[10px] mb-2 [animation:fadein-up_320ms_ease-out_both]">
+    <div className="shrink-0 mt-1 mx-[10px] mb-2 [animation:fadein-up_var(--dur-layout)_ease-out_both]">
       <div className="onboarding-card p-3">{body}</div>
     </div>
   );

@@ -111,7 +111,7 @@ export function ArtifactViewerHeader({
         {canOpenInBrowserTab && (
           <Tooltip content="Open in a browser tab">
             <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
-              {Ico.arrowUpRight(15)}
+              {Ico.arrowUpRight(16)}
             </IconButton>
           </Tooltip>
         )}
@@ -130,7 +130,7 @@ export function ArtifactViewerHeader({
                 onClick={toggleComments}
                 active={commentsOpen}
               >
-                {Ico.chats(18)}
+                {Ico.chats(16)}
               </IconButton>
             </Tooltip>
             {comments.unreadCount > 0 && (
@@ -167,36 +167,36 @@ export function ArtifactViewerHeader({
             items={[
               {
                 label: 'Reload preview',
-                icon: Ico.reload(13),
+                icon: Ico.reload(14),
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
               ...(canOpenInBrowser ? [{
                 label: isPublished ? 'Open shared link' : 'Open in browser',
-                icon: Ico.arrowUpRight(13),
+                icon: Ico.arrowUpRight(14),
                 onClick: onOpenInBrowser,
               }] : []),
               ...(canOpenLocalFile ? [{
                 label: 'Open folder',
-                icon: Ico.openFolder(13),
+                icon: Ico.openFolder(14),
                 onClick: onOpenFolder,
               }] : []),
               ...(host.isWeb ? [] : [{
                 label: 'Open in OS',
-                icon: Ico.externalLink(13),
+                icon: Ico.externalLink(14),
                 disabled: !hasActionPath || (isBackendArtifact && !backendPort),
                 title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
                 onClick: onOpenOS,
               }]),
               ...(artifact?.serveUrl ? [{
                 label: 'Download',
-                icon: Ico.download(13),
+                icon: Ico.download(14),
                 onClick: onDownload,
               }] : []),
               { divider: true },
               {
                 label: 'Delete',
-                icon: Ico.trash(13),
+                icon: Ico.trash(14),
                 danger: true,
                 disabled: deleteBusy || !hasActionPath || !canManage,
                 onClick: onTrash,
@@ -205,7 +205,7 @@ export function ArtifactViewerHeader({
           />
         )}
         <Tooltip content="Close">
-          <IconButton onClick={onClose} aria-label="Close">{Ico.close(15)}</IconButton>
+          <IconButton onClick={onClose} aria-label="Close">{Ico.close(16)}</IconButton>
         </Tooltip>
       </div>
     </div>

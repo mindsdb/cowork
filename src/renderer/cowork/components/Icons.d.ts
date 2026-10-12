@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import type { IconSize } from './ui/Icon';
 
-type IconRenderer = (size?: number) => ReactNode;
+type IconRenderer = (size?: IconSize) => ReactNode;
 
 declare const Ico: {
   attach: IconRenderer;
@@ -23,10 +24,12 @@ declare const Ico: {
   externalLink: IconRenderer;
   folder: IconRenderer;
   globe: IconRenderer;
+  grid: IconRenderer;
   image: IconRenderer;
   key: IconRenderer;
   lock: IconRenderer;
   mindsdb: IconRenderer;
+  more: IconRenderer;
   moreVert: IconRenderer;
   openFolder: IconRenderer;
   panelExpandLeft: IconRenderer;

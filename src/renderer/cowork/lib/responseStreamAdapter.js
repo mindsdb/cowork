@@ -49,10 +49,12 @@ export function initialStreamState() {
     /** Live "train of thought" text that isn't part of the final answer
      *  (extended-thinking / reasoning deltas). A single ephemeral burst —
      *  NOT a step, so it never accumulates into the persisted steps list.
-     *  `{ text, startedAt, _isPreamble? } | null`. `_isPreamble` marks
+     *  `{ text, startedAt, _isPreamble?, kind? } | null`. `_isPreamble` marks
      *  reclassified narration so the next real reasoning delta replaces
-     *  it instead of appending. Cleared whenever body text starts
-     *  streaming or the turn finishes. */
+     *  it instead of appending. `kind: 'model_wait'` marks the server's
+     *  still-working status while a model call is silent; any other
+     *  event clears it, an ask_user question included. Cleared whenever
+     *  body text starts streaming or the turn finishes. */
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
@@ -62,6 +64,17 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
+    /** Persisted assistant Message's id, off `response.completed`/
+     *  `response.failed`'s root (same placement as conversation_id/harness
+     *  on `response.created` — see _inject_created/_inject_completion_id
+     *  server-side). Null when the turn persisted nothing (an empty turn,
+     *  or a probe turn that never reached the point of saving one). */
+    assistantMessageId: null,
+    /** Persisted user Message's id, off `response.created`'s root. The
+     *  client appends the user's row optimistically on send, so this is the
+     *  only thing that gives that row a real id during its own turn. Null on
+     *  a producer that persists no user row (the probe path). */
+    userMessageId: null,
   };
 }
 
@@ -275,6 +288,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     ? event.at_ms
     : now();
 
+  /* A model-wait line says only that a silent model call is still open. Any
+   * other event is newer news, so it drops the line before it is handled: a
+   * tool or scratchpad frame leaves no stale status behind, a question shows
+   * without a model-wait line over it, and a reasoning delta starts a fresh
+   * burst instead of appending to the status. */
+  if (state.currentThought?.kind === 'model_wait'
+    && !(type === 'response.in_progress'
+      && event.thought_role === 'thought.progress'
+      && event.phase === 'model_wait')) {
+    state = { ...state, currentThought: null };
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────
   if (type === 'response.created') {
     return {
@@ -282,6 +307,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       responseId: event.response?.id ?? state.responseId,
       conversationId: event.conversation_id ?? state.conversationId,
       harness: event.harness ?? state.harness,
+      userMessageId: event.user_message_id ?? state.userMessageId,
       startedAt: state.startedAt ?? now(),
       status: 'thinking',
     };
@@ -293,6 +319,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
       currentThought: null,
+      assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
     };
   }
 
@@ -340,6 +367,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
       currentThought: null,
+      // Present only when a partial assistant row was persisted before the
+      // failure — absent otherwise, not null-vs-unset here since
+      // the wire frame itself omits the field in that case.
+      assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
     };
   }
 
@@ -559,6 +590,29 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type !== 'response.in_progress') return state;
 
   const role = event.thought_role;
+
+  // A tool's message to the user (generate_artifact's brief when the agent
+  // acts first). Rendered as an agent message between the steps, so it is a
+  // step of its own and never body text.
+  if (role === 'thought.tool_call.message') {
+    const markdown = typeof event.content === 'string' ? event.content : '';
+    if (!markdown.trim()) return state;
+    const toolUseId = event.tool_use_id || null;
+    // The progress row that produced the message is done once it shows.
+    const closed = toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps;
+    return {
+      ...state,
+      steps: [...closed, {
+        id: `step-${closed.length + 1}`,
+        label: '',
+        badge: 'Message',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: { markdown },
+      }],
+    };
+  }
 
   // New scratchpad cell starts. We push a placeholder step now so the
   // UI sees activity even before the .end event delivers the input.
@@ -836,6 +890,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // A fresh burst, not an append: this interrupts whatever the model was
       // narrating, and the next real reasoning delta should replace it.
       return { ...state, currentThought: { text, startedAt: eventTs } };
+    }
+
+    /* The server's keep-alive while a model call sends nothing (the model is
+     * thinking, or writing a tool call's arguments). The frame is not saved
+     * with the turn, so it is never a step: it only replaces the live line,
+     * which also shows in the collapsed header. Each tick carries the call's
+     * elapsed time in its message, so it replaces rather than appends. */
+    if (phase === 'model_wait') {
+      return {
+        ...state,
+        currentThought: { text: event.message || 'Waiting for the model', startedAt: eventTs, kind: 'model_wait' },
+      };
     }
 
     // Cell finished — flip the trailing in-progress scratchpad to

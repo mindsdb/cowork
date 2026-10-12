@@ -140,11 +140,16 @@ describe('useLogout — the confirm lock', () => {
 
   it('hands the dialog back when the platform never replies', async () => {
     pending();
-    const { result } = renderHook(() => useLogout());
+    const { result, rerender } = renderHook(() => useLogout());
 
     await act(async () => { result.current.logout(); });
     expect(result.current.locked).toBe(true);
     expect(result.current.loggingOut).toBe(true);
+    // Parent renders must not reset shared sign-out state or start another request.
+    rerender();
+    expect(result.current.locked).toBe(true);
+    expect(result.current.loggingOut).toBe(true);
+    expect(hostMock.host.logout).toHaveBeenCalledTimes(1);
 
     act(() => vi.advanceTimersByTime(LOGOUT_BUSY_LOCK_MS));
 

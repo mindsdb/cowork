@@ -68,7 +68,7 @@ export function ThinkingStep({
       <div
         className={clsx(
           'flex min-w-0 flex-1 items-center justify-between rounded-md py-1.5',
-          'transition-colors duration-150 group-hover:bg-surface-2/60'
+          'transition-colors duration-hover group-hover:bg-surface-2/60'
         )}
       >
         <div className="flex min-w-0 items-center gap-1.5 px-1">

@@ -1,7 +1,7 @@
 // The org-mode action gate has to be applied at BOTH menu sites.
 //
-// ArtifactsView builds its kebab menu twice: the list view's `ArtifactMenu`
-// component owns its own item list, and the grid view's items are assembled
+// ArtifactsView builds its kebab menu twice: the list view's `rowMenuItems`
+// builds its own item list, and the grid view's items are assembled
 // inline by the page-level shared `HoverMenu`. They are separate arrays, so
 // wiring the gate into one leaves the other offering filesystem and publish
 // controls on a deployment where none of them can work. Preview is available
@@ -490,6 +490,7 @@ describe('delete gives feedback while it runs', () => {
   it('marks the card Deleting… and disables the menu item', async () => {
     const gate = deferred();
     api.deleteArtifact.mockReturnValueOnce(gate.promise);
+    toastAdd.mockClear();
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     render(<ArtifactsView artifacts={[published]} />);
@@ -501,7 +502,10 @@ describe('delete gives feedback while it runs', () => {
     expect(screen.getAllByText('Deleting…').length).toBeGreaterThan(0);
 
     gate.resolve();
-    await vi.waitFor(() => expect(screen.queryByText('Weather Dashboard')).toBeNull());
+    // Dropping the card is App's job (it owns the list); see App.artifactsCount.test.jsx.
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Deleted.', type: 'success' }),
+    ));
   });
 
   it('clears the phase when the delete fails, so the card is usable again', async () => {
@@ -574,5 +578,24 @@ describe.each([
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
     expect(toastAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe('publish state belongs to the owner of the list', () => {
+  // App owns the list (it also feeds the sidebar count). A change kept only in
+  // a local copy was wiped by the next prop, e.g. the one a delete produces.
+  it('reports a stopped share upward and renders the prop it gets back', async () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    api.unpublishArtifact.mockResolvedValue({});
+    const onArtifactChanged = vi.fn();
+    render(<ArtifactsView artifacts={[published]} onArtifactChanged={onArtifactChanged} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Stop sharing'));
+
+    await vi.waitFor(() => expect(onArtifactChanged).toHaveBeenCalledWith(
+      expect.objectContaining({ path: published.path, publishedUrl: '' }),
+    ));
   });
 });

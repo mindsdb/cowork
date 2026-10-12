@@ -39,6 +39,7 @@ import {
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
+  consoleUrlFor,
 } from '../../lib/mindsUrls';
 
 // `useToastManager` throws outside a provider, and the real tree always has
@@ -149,15 +150,29 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(hostMock.openExternal).not.toHaveBeenCalled();
   });
 
+  /* Console links carry the account they were opened for (ENG-3274); with no
+     organization listed yet, that is all they can carry. Support is not the
+     console and stays bare. */
   it.each([
-    ['Billing & Usage', MINDS_BILLING_URL],
-    ['Members', MINDS_MEMBERS_URL],
+    ['Billing & Usage', consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' })],
+    ['Members', consoleUrlFor(MINDS_MEMBERS_URL, { subject: 'user-1' })],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it('names the active organization on console links so the browser lands on it (ENG-3274)', () => {
+    orgsMock.state = { orgs: [ACME, PERSONAL], activeOrg: ACME, activeOrgId: ACME.id, switching: false };
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Members/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_MEMBERS_URL);
+    expect(opened.searchParams.get('organization')).toBe(ACME.id);
+    expect(opened.searchParams.get('subject')).toBe('user-1');
   });
 
   // On web, host.logout() ends the Keycloak browser session, so Logout is a
@@ -196,7 +211,9 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Billing & Usage/ }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('nav');
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' }),
+    );
   });
 
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
@@ -400,6 +417,8 @@ describe('UserMenu — organization picker', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Manage organization/ }));
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_GENERAL_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_GENERAL_URL, { organizationId: ACME.id, subject: 'user-1' }),
+    );
   });
 });

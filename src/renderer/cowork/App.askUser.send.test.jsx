@@ -7,6 +7,8 @@ const spies = vi.hoisted(() => ({
   submitAnswer: vi.fn(async () => ({ accepted: true })),
   streamMessage: vi.fn(),
   useActualStreams: false,
+  useActualHealth: false,
+  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
   // Default matches the real fn under this file's denied-network env (an
@@ -28,7 +30,9 @@ vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+    fetchHealth: (...args) => spies.useActualHealth
+      ? actual.fetchHealth(...args)
+      : spies.fetchHealth(...args),
     fetchSessions: vi.fn(async () => [
       { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
       { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
@@ -142,22 +146,28 @@ vi.mock('./lib/analytics', () => ({
   trackTurnFailed: vi.fn(),
 }));
 
-import App from './App';
-import { trackTurnFailed } from './lib/analytics';
+import App, { unsavedRefusedQuestions } from './App';
+import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
+  fetchSettings,
   createProject,
   uploadAttachments,
   renameConversation,
   moveTaskToProject,
+  cancelScratchpad,
+  SHORT_REQUEST_TIMEOUT_MS,
+  deleteConversationTurn,
+  fetchInFlightList,
 } from './api';
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
 } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
+import { MINDSHUB_AIR_MODEL_ID } from './lib/modelCatalog';
 
 const ASK_EVENT = {
   type: 'response.ask_user',
@@ -235,9 +245,15 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.useActualStreams = false;
+  spies.useActualHealth = false;
+  spies.fetchHealth.mockReset();
+  spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: true }));
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
-  spies.cancelResponse.mockClear();
+  // mockReset, not mockClear: a test that fails before its Stop click would
+  // otherwise leave a queued mockImplementationOnce for the next test's Stop.
+  spies.cancelResponse.mockReset();
+  spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
@@ -722,6 +738,548 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+
+  it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'finished' });
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+
+    expect(await screen.findByText('finished answer')).toBeInTheDocument();
+    expect(screen.getAllByText('finished answer')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['fails', null],
+    ['returns only an earlier turn', { messages: [
+      { id: 'user-previous', role: 'user', content: 'previous question' },
+      { id: 'assistant-previous', role: 'assistant', content: 'old answer', _turnComplete: true },
+    ] }],
+  ])('keeps the failed turn deletable by its persisted reply id when the reload %s', async (_kind, reload) => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue(reload);
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+    });
+
+    const answer = (await screen.findByText('Partial answer kept')).closest('.answer-turn');
+    // The resync after the delete has no transcript here and warns via alert().
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    try {
+      await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+    } finally {
+      window.alert = originalAlert;
+    }
+  });
+
+  describe('a message sent while a failed turn is still being recovered', () => {
+    /** Fails the turn and leaves its history reload open until `release`. */
+    async function failWithReloadHeld(user, failure) {
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      spies.fetchSession.mockImplementation(() => held);
+      const composer = await openTask(user);
+      await send(user, composer, 'do something');
+      const handle = await waitForStream();
+      await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+      await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+      await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+      return { composer, release: (value) => act(async () => { release(value); }) };
+    }
+
+    const sentTexts = () => spies.streamMessage.mock.calls.map((c) => c[1]);
+
+    it('waits, then goes out once, and the failed partial keeps its own reply id', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release(null);
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
+    it('waits, and its live answer survives the recovery that replaces history', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        code: 'stream_error', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release({ messages: [
+        { id: 'user-current', role: 'user', content: 'do something' },
+        { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+      ] });
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      const followUp = streams[streams.length - 1];
+      await emitOn(followUp, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-follow-up' });
+      await emitOn(followUp, { type: 'response.output_text.delta', delta: 'fresh live text' });
+      // Stop shows only while this conversation holds a live row.
+      expect(await screen.findByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      expect(screen.getByText('finished answer')).toBeInTheDocument();
+    });
+
+    it('Stop during recovery waits for it, keeps the failed partial, and still cancels', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      spies.cancelResponse.mockClear();
+
+      await user.click(screen.getByRole('button', { name: 'Stop generation' }));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(spies.cancelResponse).not.toHaveBeenCalled();
+
+      // Later reads return a real page that ends at the question: a reload by
+      // Stop after recovery would merge that over the partial and drop it.
+      spies.fetchSession.mockImplementation(async () => ({
+        messages: [{ id: 'user-current', role: 'user', content: 'do something' }],
+      }));
+      await release(null);
+
+      await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      expect(screen.getByText('The provider rejected the request.')).toBeInTheDocument();
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
+    describe('when a reconnect replays the same failure', () => {
+      const failure = {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      };
+      const pendingPage = { messages: [{ id: 'user-current', role: 'user', content: 'do something' }] };
+
+      /** Each history reload waits in `reloads` until the test answers it. */
+      function holdReloads() {
+        const reloads = [];
+        spies.fetchSession.mockImplementation(() => new Promise((resolve) => { reloads.push(resolve); }));
+        return reloads;
+      }
+
+      /** Fails the turn (recovery A), then reattaches a tail that replays it. */
+      async function failTwice(user) {
+        const reloads = holdReloads();
+        const composer = await openTask(user);
+        await send(user, composer, 'do something');
+        const handle = await waitForStream();
+        await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(1));
+
+        spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+        await openByTitle(user, 'Beta task');
+        const alphaComposer = await openByTitle(user, 'Alpha task');
+        const tail = await waitFor(() => {
+          const t = streams.find((s) => s.kind === 'tail');
+          if (!t) throw new Error('tail not attached');
+          return t;
+        });
+        await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emitOn(tail, { type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        return { reloads, tail, composer: alphaComposer };
+      }
+
+      it('holds sends until both recoveries settle, and only one writes the failed turn', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail, composer } = await failTwice(user);
+        await act(async () => { tail.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(2));
+        await send(user, composer, 'follow one');
+        await send(user, composer, 'follow two');
+        expect(sentTexts()).toEqual(['do something']);
+
+        // The replay's recovery lands first; the turn's own is still out.
+        await act(async () => { reloads[1](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(sentTexts()).toEqual(['do something']);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one']));
+        expect(screen.getAllByText('Partial answer kept')).toHaveLength(1);
+        expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+        const followOne = streams[streams.length - 1];
+        await act(async () => { followOne.opts.onDone(); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one', 'follow two']));
+        const followTwo = streams[streams.length - 1];
+        await act(async () => { followTwo.opts.onDone(); });
+
+        // The failed turn's id stays on its own partial, not on a later answer.
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        const originalAlert = window.alert;
+        window.alert = vi.fn();
+        try {
+          await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+          await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+          await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+        } finally {
+          window.alert = originalAlert;
+        }
+      });
+
+      it('leaves a turn the reattached stream completed alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail } = await failTwice(user);
+        await emitOn(tail, { type: 'response.completed', assistant_message_id: 'assistant-done' });
+        await act(async () => { tail.opts.onDone(); });
+        trackTurnFailed.mockClear();
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(trackTurnFailed).not.toHaveBeenCalled();
+      });
+
+      it('leaves the reattached stream\'s live row alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads } = await failTwice(user);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        // The tail still owns the turn: no failed partial or error card from
+        // the older recovery, and it is still streaming.
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      });
+    });
+
+    it('a connect form submitted meanwhile starts its stream only after recovery', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      await act(async () => {
+        setDataVaultForm('conv-a', { form_id: 'fm_1', title: 'Connect Postgres', fields: [] });
+      });
+      const vaultStarted = () => streams.some((x) => x.kind === 'datavault');
+      try {
+        await user.click(await screen.findByRole('button', { name: /^submit$/i }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(vaultStarted()).toBe(false);
+        // The form stays busy while held, so a second click submits nothing more.
+        const busyButton = screen.getByRole('button', { name: 'Working…' });
+        expect(busyButton).toBeDisabled();
+        await user.click(busyButton);
+
+        await release(null);
+
+        await waitFor(() => expect(vaultStarted()).toBe(true));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(streams.filter((x) => x.kind === 'datavault')).toHaveLength(1);
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+      } finally {
+        clearDataVaultForm('conv-a');
+      }
+    });
+  });
+
+  it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { role: 'error', content: 'The provider rejected the request.' },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'partial' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error', user_message_id: 'user-current',
+      });
+    });
+
+    expect(await screen.findByText('The provider rejected the request.')).toBeInTheDocument();
+    expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
+});
+
+describe('health preflight falls back to cached readiness', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each([false, true])('keeps cached config_ready=%s when the real health request times out', async (ready) => {
+    spies.fetchHealth.mockImplementation(async () => ({ status: 'ok', config_ready: ready }));
+    const composer = await openTask(userEvent.setup());
+    // Finish boot before replacing only the send preflight with the real API.
+    await act(async () => {});
+    spies.useActualHealth = true;
+    const healthFetch = vi.fn(async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(
+        new DOMException('The request timed out', 'AbortError'),
+      ), { once: true });
+    }));
+    vi.stubGlobal('fetch', healthFetch);
+    vi.useFakeTimers();
+
+    fireEvent.change(composer, { target: { value: 'use the cached readiness' } });
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(healthFetch).toHaveBeenCalledTimes(1);
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS); });
+    vi.useRealTimers();
+
+    if (ready) {
+      await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    } else {
+      expect(spies.streamMessage).not.toHaveBeenCalled();
+      expect(await screen.findByText('Connect a provider to start chatting')).toBeInTheDocument();
+    }
+  });
+});
+
+/* cowork-server refuses a question before the stream with a 503 when no
+   database connection frees in time, and with a 409 when the conversation
+   already has a running turn. Real api.js streams, so the refusal travels the
+   same path a tester's does: response, onError, handleStreamError, ChatView. */
+describe('a question the server refuses', () => {
+  const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
+  const SECOND = 'Another question is still being answered in this conversation. Wait for it to finish, then send yours again.';
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Answers the question POST with `status` and a JSON body. */
+  const refuseWith = (status, body, headers = {}) => vi.fn(async (url) => {
+    if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+  });
+
+  /** Opens conv-a with real streams and a history reload that never answers,
+   *  as it wouldn't from a server whose pool is exhausted. */
+  async function openWithStalledReload(user) {
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    spies.fetchSession.mockClear();
+    spies.fetchSession.mockImplementation(() => new Promise(() => {}));
+    return composer;
+  }
+
+  it('shows the busy card at once, gated on Retry-After, without reloading the conversation', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByText(BUSY)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  it("shows a second question's 409 sentence at once, with nothing to retry", async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+
+    await send(user, composer, 'a second question');
+
+    const sentence = await screen.findByText(SECOND);
+    expect(sentence.closest('[role="alert"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+
+  /* The 409 says another turn is running here. The conversation stays in the
+     in-flight set, so the poll that no longer lists it refetches the other
+     answer, and the refused question with its sentence stays under it. */
+  it('keeps the conversation in flight after a 409, so the poll that reports it finished refetches its history', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    vi.stubGlobal('fetch', refuseWith(409, { detail: SECOND, code: 'turn_in_progress' }));
+    await send(user, composer, 'a second question');
+    await screen.findByText(SECOND);
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+
+    // Saved rows carry server ids; the page is merged by them.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { id: 'u-first', role: 'user', content: 'the first question' },
+        { id: 'a-other', role: 'assistant', content: 'The other answer' },
+      ],
+    }));
+    fetchInFlightList.mockResolvedValueOnce([]);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalledWith('conv-a'));
+    const otherAnswer = await screen.findByText('The other answer');
+    const refused = screen.getByText('a second question');
+    expect(screen.getByText(SECOND)).toBeInTheDocument();
+    expect(otherAnswer.compareDocumentPosition(refused) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('carries every trailing refused question past a refetch, and nothing else', () => {
+    const refused = (text) => [
+      { role: 'user', content: text },
+      { role: 'error', content: SECOND, code: 'turn_in_progress' },
+    ];
+    const answered = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }];
+
+    expect(unsavedRefusedQuestions([...answered, ...refused('one'), ...refused('two')]))
+      .toEqual([...refused('one'), ...refused('two')]);
+    expect(unsavedRefusedQuestions([...refused('one'), ...answered])).toEqual([]);
+    expect(unsavedRefusedQuestions([
+      { role: 'user', content: 'q' },
+      { role: 'error', content: 'Something broke', code: 'anton_error' },
+    ])).toEqual([]);
+    expect(unsavedRefusedQuestions(undefined)).toEqual([]);
+  });
+
+  it('shows a busy failure inside the stream at once, as the same gated card, without reloading the conversation', async () => {
+    const user = userEvent.setup();
+    const composer = await openWithStalledReload(user);
+    const enc = new TextEncoder();
+    const frames = [
+      { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' },
+      {
+        type: 'response.failed',
+        code: 'server_busy',
+        error: BUSY,
+        retry_after: 5,
+        retry_at: new Date(Date.now() + 5_000).toISOString(),
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+      return { ok: true, status: 200, body: new ReadableStream({
+        start(controller) {
+          frames.forEach((frame) => controller.enqueue(enc.encode(`data: ${JSON.stringify(frame)}\n\n`)));
+          controller.close();
+        },
+      }) };
+    }));
+
+    await send(user, composer, 'do something');
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    expect(spies.fetchSession).not.toHaveBeenCalled();
+  });
+});
+
+/* A failure card's resend goes through handleSendInTask with the failed
+   question's own attachments, so its files go to the server again and a file
+   staged in the composer since stays there for the next message. */
+describe("a resend from a failure card carries the failed question's files", () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+    fetchSettings.mockReset();
+    fetchSettings.mockResolvedValue({});
+  });
+
+  /** Sends `text` with `notes.txt`, uploaded as att-1, and fails the turn. */
+  async function failWithFile(user, composer, text, failure) {
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'notes.txt' }]);
+    await attach(user, 'notes.txt');
+    await send(user, composer, text);
+    const handle = await waitForStream();
+    expect(spies.streamMessage.mock.calls[0][2].attachmentIds).toEqual(['att-1']);
+    await act(async () => {
+      handle.opts.onError(failure.message, failure.event);
+      await Promise.resolve();
+    });
+  }
+
+  it("busy card: Try again resends att-1, and leaves a file staged since in the composer", async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: 'Cowork is busy. Try again in about 5 seconds.',
+      event: { code: 'server_busy', retry_at: new Date(Date.now() - 1_000).toISOString() },
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await attach(user, 'later.txt');
+
+    await user.click(retry);
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('chart these sales');
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
+    expect(uploadAttachments).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('later.txt')).toBeInTheDocument();
+  });
+
+  it('Switch to MindsHub Air resends att-1 on Air', async () => {
+    fetchSettings.mockResolvedValue({ recommendedModels: { 'minds-cloud': [MINDSHUB_AIR_MODEL_ID] } });
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await failWithFile(user, composer, 'chart these sales', {
+      message: "You don't have enough credits for this model.",
+      event: { code: 'model_access_denied', http_status: 402 },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Switch to MindsHub Air' }));
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][2].model).toBe(MINDSHUB_AIR_MODEL_ID);
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual(['att-1']);
   });
 });
 
@@ -1262,6 +1820,53 @@ describe('a requested conversation id not present locally (ENG-1233 Major 4)', (
   });
 });
 
+describe('a sidebar-known task whose messages have not loaded yet', () => {
+  // fetchSessions has no global reset (only fetchSessionResult/fetchSession
+  // do, in the top-level beforeEach) — restore the file's own default shape
+  // so a later test in this file doesn't inherit messagesStatus: 'loading'
+  // rows and get stuck showing the loading state instead of its ChatView.
+  afterEach(() => {
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+  });
+
+  it('shows the loading state instead of an empty transcript, then clears once messages arrive', async () => {
+    const user = userEvent.setup();
+    // Every sidebar-listed task is already in `tasks` (messages: [],
+    // messagesStatus: 'loading') before its own transcript fetch resolves —
+    // the bug this fixes: a gate keyed only on "task known locally" flips
+    // to ready the instant the row is clicked, showing an empty transcript
+    // for however long that fetch takes.
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+    ]);
+    let resolveFetch;
+    spies.fetchSessionResult.mockImplementationOnce(() => new Promise((resolve) => { resolveFetch = resolve; }));
+
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+    // Not the wrong/empty ChatView rendered underneath at the same time.
+    expect(screen.queryByPlaceholderText(/message/i)).not.toBeInTheDocument();
+
+    resolveFetch({
+      status: 'ok',
+      task: {
+        id: 'conv-a', title: 'Alpha task', status: 'idle', projectName: 'general',
+        messages: [{ role: 'user', content: 'hello from the loaded page' }],
+        messagesStatus: 'loaded',
+      },
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('conversation-loading')).not.toBeInTheDocument());
+    expect(await screen.findByText('hello from the loaded page')).toBeInTheDocument();
+  });
+});
+
 // ─── ENG-2246: a server refresh must not blank the open transcript ──────────
 //
 // fetchSessions now resolves on the conversation LIST alone, so every row it
@@ -1342,5 +1947,1008 @@ describe('a background refresh must not blank the open transcript (ENG-2246)', (
 
     await waitFor(() => expect(moveTaskToProject).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
+  });
+});
+
+describe('a tail displaced by opening another running conversation', () => {
+  it('is still torn down when its own conversation is stopped', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Opening Beta attaches a second tail. Concurrent background streams are
+    // intended (see the two draining suites above), so Alpha's must survive.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    expect(tailB.kind).toBe('tail');
+    expect(tailA.abort).not.toHaveBeenCalled();
+
+    // Back on Alpha, which re-attaches. The tail conv-a held before must be
+    // torn down rather than left attached with nothing able to abort it: a
+    // leaked tail keeps replaying into the turn and its own idle timer can
+    // cancel it later with no UI trace.
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+    expect(tailA2.kind).toBe('tail');
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+
+    // Stopping conv-a leaves the other conversation streaming.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves a running conversation attached when the opened one is idle', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Beta has no producer, so opening it must not reach any teardown: the
+    // common navigation must never touch the conversation that is running.
+    await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-b'));
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('Stop with a scratchpad cell open', () => {
+  it('cancels the cell of a conversation started from home', async () => {
+    const user = userEvent.setup();
+    // Open a task first so HomeView mounts with its composer (see the
+    // new-session suite above for why).
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    cancelScratchpad.mockClear();
+
+    await send(user, composer, 'start something');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+
+    // The agent opens a cell, so Stop has to cancel it: cancelling the turn
+    // alone leaves the cell executing on the server.
+    await emitOn(handle, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(handle, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('Stop after re-attaching to a conversation with a cell open', () => {
+  it('still cancels the cell the conversation opened before the re-attach', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    cancelScratchpad.mockClear();
+
+    // Alpha opens a cell, then the user leaves and comes back, which re-attaches.
+    await emitOn(tailA, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailA, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+
+    // The replay has not re-reported the cell yet, so the record is all that
+    // remembers it. Stop must still cancel it rather than leave it executing.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('a stream that ends while silenced by a Stop elsewhere', () => {
+  it('still drops its registry record', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+
+    // Stop on Beta bumps the shared generation, which silences Alpha's tail.
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then finishes. The record has to go even though the rest of
+    // the terminal is skipped, or the registry keeps claiming a dead stream.
+    await act(async () => { tailA.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // Proof it went: re-attaching finds nothing to replace, so the finished
+    // tail is never aborted on its way out.
+    await openByTitle(user, 'Alpha task');
+    await waitForStream(tailB);
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Stop on one conversation', () => {
+  it('does not silence another conversation that is still streaming', async () => {
+    const user = userEvent.setup();
+    // Only Beta has a producer to re-attach to, so Alpha's stream is its own
+    // send and navigating back to it opens no tail to confuse the assertion.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    expect(alpha.kind).toBe('reply');
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    // Stop Beta, whose turn is unrelated to Alpha's.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then completes. Its terminal has to run: it is what commits
+    // the answer, records the turn and releases Alpha's queue.
+    classifyFirstResponse.mockClear();
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    expect(classifyFirstResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ isConfigError: false }),
+    );
+  });
+});
+
+/**
+ * Alpha streams its own reply, then Beta re-attaches a tail and claims the
+ * shared slot. Back on Alpha nothing re-claims it, because Alpha's in-flight
+ * probe answers not-in-flight, as a failed probe does. Resolves with Alpha's
+ * transcript on screen.
+ */
+async function streamAlphaWhileBetaHoldsTheSlot(user) {
+  spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+  const composer = await openTask(user);
+  await send(user, composer, 'alpha turn');
+  const alpha = await waitForStream();
+  // Deletes go by message id, so the running question needs the one the server assigns.
+  await emitOn(alpha, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-alpha' });
+  await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+  await openByTitle(user, 'Beta task');
+  const tailB = await waitForStream(alpha);
+  await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+
+  await openByTitle(user, 'Alpha task');
+  await screen.findByText('alpha turn');
+  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenLastCalledWith('conv-a'));
+  return { alpha, tailB };
+}
+
+describe('Stop on the conversation on screen', () => {
+  it('cancels that conversation, not the one holding the shared slot', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves the other conversation stoppable from its own chat', async () => {
+    const user = userEvent.setup();
+    const { tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+
+    // Beta still holds the shared slot, so reopening it must not re-attach a
+    // second tail over the one already running.
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+
+    // Beta's tail is still the one its conversation holds, so its Stop reaches it.
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: ' more' });
+    spies.cancelResponse.mockClear();
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+    expect(tailB.abort).toHaveBeenCalled();
+  });
+
+  it('leaves Beta holding the slot when Alpha\'s cancelled frame lands before its cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+    // cowork-server seals the stopped turn before it answers the cancel, so
+    // Alpha's own terminal runs while Stop still waits.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('frees the slot when the stopped stream holds it after a sibling finished', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+
+    // Alpha finishing clears the shared task id but not Beta's controller, so
+    // the two shared refs now disagree about who holds the slot.
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // A stale controller left in the slot would queue this send forever.
+    spies.streamMessage.mockClear();
+    const betaComposer = document.querySelector('textarea');
+    await send(user, betaComposer, 'next turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalled());
+  });
+
+  it('does not cancel the cell of the conversation holding the slot', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailB, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-b', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    // A synthetic way to drop Alpha's record but keep its placeholder (the
+    // server reports a cancel as response.cancelled, not this code), so Stop
+    // has no record of its own to take a cell from.
+    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+    await openByTitle(user, 'Alpha task');
+    await screen.findByText('alpha turn');
+    cancelScratchpad.mockClear();
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    // The placeholder is stripped after the pad step, so the check below is not early.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+    expect(cancelScratchpad).not.toHaveBeenCalledWith('pad-b');
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('stops the stream of a turn deleted while another conversation holds the slot', async () => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+    // The post-delete re-sync reads this file's unavailable session and warns
+    // through a bare alert(), which this environment does not define.
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    try {
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+      expect(alpha.abort).toHaveBeenCalled();
+      expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
+      expect(tailB.abort).not.toHaveBeenCalled();
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u-alpha'));
+      expect(spies.cancelResponse.mock.invocationCallOrder[0])
+        .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder.at(-1));
+    } finally {
+      window.alert = originalAlert;
+    }
+  });
+
+  it('leaves the running indicators of another streaming conversation', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha emits nothing after the Stop, so its placeholder is the only thing
+    // that can keep its Stop button up: Beta's Stop must not have stripped it.
+    await openByTitle(user, 'Alpha task');
+    await screen.findByText('alpha turn');
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
+    expect(alpha.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a stream that ends while another conversation holds the shared slot', () => {
+  it.each([
+    ['finishes', (alpha) => alpha.opts.onDone()],
+    ['fails', (alpha) => alpha.opts.onError('boom', { code: 'anton_error' })],
+  ])('leaves that conversation\'s claim when it %s, so reopening it attaches no second stream', async (_how, end) => {
+    const user = userEvent.setup();
+    const { alpha, tailB } = await streamAlphaWhileBetaHoldsTheSlot(user);
+
+    await act(async () => { end(alpha); await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+});
+
+const BETA = 'beta from home';
+const GAMMA = 'gamma from home';
+const ECHO = 'echo from home';
+
+/** The sidebar row for `title`. A task started from Home is titled with its
+ *  own text, which its user bubble repeats, so the lookup stays in the sidebar. */
+function sidebarRow(title) {
+  return within(document.querySelector('aside')).findByRole('button', { name: title });
+}
+
+/** Whether the sidebar marks `title` as running. */
+async function showsActive(title) {
+  return within(await sidebarRow(title)).queryByLabelText('Active') !== null;
+}
+
+/** Opens a conversation from its sidebar row and resolves with its composer. */
+async function openFromSidebar(user, title) {
+  await user.click(await sidebarRow(title));
+  return waitFor(() => {
+    const ta = document.querySelector('textarea');
+    if (!ta) throw new Error('composer not mounted');
+    return ta;
+  });
+}
+
+/** Opens a scratchpad cell named `name` on `handle`'s turn. */
+async function openPad(handle, name) {
+  await emitOn(handle, {
+    type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: `tc-${name}`,
+  });
+  await emitOn(handle, {
+    type: 'response.in_progress',
+    thought_role: 'thought.scratchpad.end',
+    tool_use_id: `tc-${name}`,
+    content: JSON.stringify({ name, one_line_description: 'run', code: 'x=1' }),
+  });
+}
+
+/**
+ * Starts a task from Home with `text`, adopts the server id `sid` so no two
+ * Home tasks share a `tmp-` id, and streams the first words of its answer.
+ * The new task takes the shared slot and is left on screen.
+ */
+async function startFromHome(user, text, sid) {
+  await user.click(screen.getByRole('button', { name: /new task/i }));
+  const homeComposer = await waitFor(() => {
+    const ta = document.querySelector('textarea');
+    if (!ta) throw new Error('composer not mounted');
+    return ta;
+  });
+  const before = new Set(streams);
+  await send(user, homeComposer, text);
+  const handle = await waitFor(() => {
+    const h = streams.find((x) => x.kind === 'new' && !before.has(x));
+    if (!h) throw new Error('new-session stream not started');
+    return h;
+  });
+  await emitOn(handle, { type: 'response.created', conversation_id: sid });
+  await emitOn(handle, { type: 'response.output_text.delta', delta: `${text} answer` });
+  return handle;
+}
+
+/** Alpha streams its own reply with a cell open, then Beta starts from Home
+ *  with a cell of its own and takes the shared slot. */
+async function startAlphaThenBetaFromHome(user) {
+  const composer = await openTask(user);
+  await send(user, composer, 'alpha turn');
+  const alpha = await waitForStream();
+  // Deletes go by message id, so the running question needs the one the server assigns.
+  await emitOn(alpha, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-alpha' });
+  await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+  await openPad(alpha, 'pad-a');
+
+  const beta = await startFromHome(user, BETA, 'conv-home-b');
+  await openPad(beta, 'pad-b');
+  return { alpha, beta };
+}
+
+/** Goes back to Alpha with `alphaProbe` answering Alpha's in-flight check, and
+ *  resolves once Alpha shows `line` and that check has been asked. */
+async function returnToAlpha(user, alphaProbe, line = 'alpha turn') {
+  spies.fetchInFlightStatus.mockClear();
+  spies.fetchInFlightStatus.mockImplementation(async (cid) => (
+    cid === 'conv-a' ? alphaProbe() : { in_flight: false }
+  ));
+  await openByTitle(user, 'Alpha task');
+  await screen.findByText(line);
+  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-a'));
+}
+
+const probePending = () => new Promise(() => {});
+// The real fetchInFlightStatus answers "not in flight" for any failure.
+const probeFailed = () => ({ in_flight: false });
+const probeRunning = () => ({ in_flight: true });
+
+/** A run the server lists as running that this window never streamed, such
+ *  as a scheduled task: Alpha's transcript holds only the prompt. */
+function listAlphaAsServerRun() {
+  fetchInFlightList.mockImplementation(async () => [{ conversation_id: 'conv-a' }]);
+  spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-a'
+    ? {
+        status: 'ok',
+        task: {
+          id: 'conv-a',
+          title: 'Alpha task',
+          messages: [{ id: 'u-scheduled', role: 'user', content: 'scheduled prompt' }],
+          status: 'idle',
+          projectName: 'general',
+        },
+      }
+    : { status: 'unavailable', code: 0 }));
+}
+
+/** Confirms the "Delete this exchange?" dialog for the only deletable turn on screen. */
+async function deleteTheRunningTurn(user) {
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+}
+
+describe('Stop in one task while a task started from Home runs', () => {
+  const originalAlert = window.alert;
+
+  beforeEach(() => {
+    cancelScratchpad.mockClear();
+    deleteConversationTurn.mockClear();
+    // The post-delete re-sync reads this file's unavailable session and warns
+    // through a bare alert(), which this environment does not define.
+    window.alert = vi.fn();
+  });
+  afterEach(() => {
+    window.alert = originalAlert;
+    fetchInFlightList.mockImplementation(async () => []);
+  });
+
+  it.each([
+    ['before Alpha\'s in-flight check answers', probePending],
+    ['after Alpha\'s in-flight check fails', probeFailed],
+  ])('cancels only Alpha and Alpha\'s cell %s', async (_when, alphaProbe) => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, alphaProbe);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels only Alpha when Alpha\'s in-flight check re-attaches it', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeRunning);
+    const tailA = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'tail');
+      if (!h) throw new Error('Alpha not re-attached yet');
+      return h;
+    });
+    await emitOn(tailA, { type: 'response.output_text.delta', delta: ' more' });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves Beta\'s running dot and question card in place', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    await emitOn(beta, ASK_EVENT);
+    // Alpha re-attaches, so the target is Alpha even before the fix: only the
+    // clean-up after the cancel can touch Beta here.
+    await returnToAlpha(user, probeRunning);
+    await waitFor(() => expect(streams.some((x) => x.kind === 'tail')).toBe(true));
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+    expect(await showsActive(BETA)).toBe(true);
+
+    await openFromSidebar(user, BETA);
+    await user.click(await screen.findByRole('button', { name: /postgres/i }));
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-home-b', 'ask:1', expect.anything());
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('cancels Alpha, not the newest running task, after a third task\'s turn ends', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    // Beta finishing leaves Gamma holding the shared slot.
+    await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
+    await returnToAlpha(user, probeFailed);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(gamma.abort).not.toHaveBeenCalled();
+    expect(await showsActive(GAMMA)).toBe(true);
+  });
+
+  it('cancels Alpha, not Beta, after a third task is stopped', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(gamma.abort).toHaveBeenCalled());
+    await returnToAlpha(user, probeFailed);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-home-c'], ['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels only a server-listed run that has no stream in this window', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    await openPad(beta, 'pad-b');
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+
+    // With no record of its own, Stop leaves Beta's controller in the slot, so
+    // reopening Beta finds it there and attaches no second stream.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-home-b' }));
+    const streamCount = streams.length;
+    await openFromSidebar(user, BETA);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(streamCount);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('never cancels a cell Alpha did not open, even while Alpha holds the slot', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
+    // Gamma finishing frees the shared slot while Beta keeps running.
+    await act(async () => { gamma.opts.onDone('conv-home-c'); await Promise.resolve(); });
+    await openPad(beta, 'pad-b');
+
+    // A file sent into the server-listed run reserves the slot for Alpha and
+    // waits on its upload, so Alpha holds the slot with no stream of its own.
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+    await attach(user, 'alpha-notes.txt');
+    await send(user, document.querySelector('textarea'), 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalled());
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+
+    // The message was sent before Stop and is not part of the stopped run, so
+    // it still goes out once its upload finishes.
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0].slice(0, 2)).toEqual(['conv-a', 'with a file']);
+  });
+
+  it('holds a running task\'s queued follow-ups until that task\'s turn ends, in order', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    await send(user, composer, 'alpha second follow-up');
+    expect(await screen.findAllByLabelText('Remove from queue')).toHaveLength(2);
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('alpha follow-up');
+  });
+
+  it('queues a message typed into a running task after another task\'s Stop freed the slot', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    const echo = await startFromHome(user, ECHO, 'conv-home-e');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(echo.abort).toHaveBeenCalled());
+
+    const alphaComposer = await openByTitle(user, 'Alpha task');
+    await send(user, alphaComposer, 'typed while running');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(alpha.abort).not.toHaveBeenCalled();
+  });
+
+  it('cancels Alpha before deleting Alpha\'s running turn', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(cancelScratchpad.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('cancels a server-listed run before deleting its running turn', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    await openTask(user);
+    const beta = await startFromHome(user, BETA, 'conv-home-b');
+    await returnToAlpha(user, probeFailed, 'scheduled prompt');
+
+    await deleteTheRunningTurn(user);
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(deleteConversationTurn.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.cancelResponse.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['fails', { status: 'error', conversation_id: 'conv-a' }, [['conv-a'], ['conv-a']]],
+    ['succeeds', { status: 'ok', cancelled: true }, [['conv-a']]],
+  ])('tears Alpha down before deleting its turn when a Stop on Alpha is still waiting and then %s', async (_how, answer, cancels) => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    // The delete waits for the Stop in progress before it sends anything.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(deleteConversationTurn).not.toHaveBeenCalled();
+
+    await act(async () => { answerCancel(answer); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+
+    expect(spies.cancelResponse.mock.calls).toEqual(cancels);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(alpha.abort.mock.invocationCallOrder[0])
+      .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder[0]);
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('deletes Alpha\'s turn only after a Stop on Alpha has finished its history reload', async () => {
+    const user = userEvent.setup();
+    const { alpha } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // Hold the Stop's history reload. It read the conversation before the
+    // delete, so landing after the delete's resync would restore the exchange.
+    let answerReload;
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { answerReload = resolve; }));
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(answerReload).toBeDefined());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(deleteConversationTurn).not.toHaveBeenCalled();
+
+    await act(async () => { answerReload({ messages: [] }); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+  });
+
+  it('holds a message sent during a delete of Alpha\'s turn until the delete is done', async () => {
+    const user = userEvent.setup();
+    const { beta } = await startAlphaThenBetaFromHome(user);
+    // Beta finishing frees the shared slot, so only the delete can hold the message.
+    await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+    let answerDelete;
+    deleteConversationTurn.mockImplementationOnce(() => new Promise((resolve) => { answerDelete = resolve; }));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+    await send(user, document.querySelector('textarea'), 'typed during delete');
+
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalled());
+    // The Stop is over, but the DELETE is still out: a message sent now waits too.
+    await send(user, document.querySelector('textarea'), 'typed while deleting');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { answerDelete({}); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'typed during delete']);
+  });
+
+  it('cancels Alpha\'s cell when Alpha\'s cancelled frame lands before its cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    // Alpha's own terminal drops its stream record, and the cell with it,
+    // while Stop still waits on the cancel.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalled());
+
+    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+
+  it('sends one cancel when Stop is clicked twice before the cancel answers', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
+
+    const stop = await screen.findByRole('button', { name: /stop/i });
+    await user.click(stop);
+    expect(screen.getByRole('button', { name: /stop/i })).toBe(stop);
+    await user.click(stop);
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(alpha.abort).toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+  });
+
+  it('keeps Alpha running and names no other task when Alpha\'s cancel fails', async () => {
+    const user = userEvent.setup();
+    const { alpha, beta } = await startAlphaThenBetaFromHome(user);
+    await returnToAlpha(user, probeFailed);
+    spies.cancelResponse.mockResolvedValueOnce({ status: 'error', conversation_id: 'conv-a' });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeTruthy();
+    expect(alpha.abort).not.toHaveBeenCalled();
+    expect(cancelScratchpad).not.toHaveBeenCalled();
+    expect(beta.abort).not.toHaveBeenCalled();
+    expect(await showsActive(BETA)).toBe(true);
+  });
+});
+
+describe('Stop racing its own turn\'s end', () => {
+  it('frees a slot Alpha held with a controller no stream owns', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    // A synthetic way to drop Alpha's record but keep Alpha holding the slot
+    // with its live row up: the server reports a cancel as response.cancelled,
+    // not this code. Stop is the only thing left that can free the slot.
+    await act(async () => { alpha.opts.onError('cancelled', { code: 'cancelled' }); await Promise.resolve(); });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+    expect(alpha.abort).toHaveBeenCalled();
+
+    await send(user, document.querySelector('textarea'), 'alpha again');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+  });
+
+  it('drops the stopped task\'s own follow-up when its cancelled frame lands first', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    // cowork-server seals the stopped turn before it answers the cancel, so the
+    // stream's response.cancelled (an onDone) can run while Stop still waits.
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'ok', cancelled: true };
+    });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a message sent during Alpha\'s Stop once Alpha has stopped, and drops the one queued before', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'queued before stop');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    // Alpha's cancelled frame lands first and frees its record and the slot.
+    let answerCancel;
+    spies.cancelResponse.mockImplementationOnce(() => {
+      alpha.opts.onDone();
+      return new Promise((resolve) => { answerCancel = resolve; });
+    });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(1));
+    await send(user, document.querySelector('textarea'), 'typed while stopping');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    // Hold Stop's history reload: the message waits for it, or the reload
+    // would replace the new turn's rows with the server's copy.
+    let answerReload;
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { answerReload = resolve; }));
+    await act(async () => { answerCancel({ status: 'ok', cancelled: true }); await Promise.resolve(); });
+    await waitFor(() => expect(answerReload).toBeDefined());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { answerReload({ messages: [] }); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'typed while stopping']);
+    const reply = streams[streams.length - 1];
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(reply.abort).not.toHaveBeenCalled();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('typed while stopping')).toBeInTheDocument();
+  });
+
+  it('sends Alpha\'s queued follow-up when Alpha\'s cancelled frame lands and its cancel then fails', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+    await send(user, composer, 'alpha follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    spies.cancelResponse.mockImplementationOnce(async () => {
+      alpha.opts.onDone();
+      await Promise.resolve();
+      return { status: 'error', conversation_id: 'conv-a' };
+    });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'alpha follow-up']);
   });
 });

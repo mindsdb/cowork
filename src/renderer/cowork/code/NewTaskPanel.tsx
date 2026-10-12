@@ -124,7 +124,7 @@ export function NewTaskPanel({
       <div className="code-new-task__content">
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">
-            <span className="code-new-task__mark" aria-hidden="true">{Ico.code(18)}</span>
+            <span className="code-new-task__mark" aria-hidden="true">{Ico.code(20)}</span>
             <h1>What should we build?</h1>
           </div>
         </div>
@@ -168,7 +168,7 @@ export function NewTaskPanel({
                 disabled={busy}
                 aria-label={`Edit ${selectedProject.name}`}
               >
-                {Ico.settings(13)}
+                {Ico.settings(14)}
               </Button>
             ) : (
               <Button
@@ -180,7 +180,7 @@ export function NewTaskPanel({
                 title={standaloneFolderPath || undefined}
                 aria-label={standaloneFolderPath ? `Change folder, currently ${standaloneFolderName}` : 'Choose folder'}
               >
-                <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(13)}</span>
+                <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(14)}</span>
                 <span className="code-standalone-folder-picker__label">{standaloneFolderName || 'Choose folder'}</span>
               </Button>
             )}

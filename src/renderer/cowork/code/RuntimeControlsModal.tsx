@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ModelSelect from '../components/ModelSelect';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Select from '../components/ui/Select';
 import Switch from '../components/ui/Switch';
+import Tooltip from '../components/ui/Tooltip';
 import {
   buildModelPickerOptions,
   withModelPickerFallback,
@@ -102,7 +105,7 @@ export function RuntimeControlsModal({
     try {
       await onApply(draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task controls.');
+      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
     }
   };
 
@@ -110,14 +113,13 @@ export function RuntimeControlsModal({
     <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
       <ModalHeader
         id="code-controls-title"
-        title="Task controls"
+        title="Task settings"
         subtitle="These settings apply to future turns in this coding task."
         onClose={busy ? undefined : onClose}
       />
       <ModalBody>
         <div className="code-controls-grid">
-          <label className="code-controls-field">
-            <span>Model</span>
+          <Field className="min-w-0" label="Model">
             <ModelSelect
               value={draft.model}
               onValueChange={chooseModel}
@@ -126,10 +128,9 @@ export function RuntimeControlsModal({
               ariaLabel="Task model"
               disabled={busy}
             />
-          </label>
+          </Field>
           {effortLevels && (
-            <label className="code-controls-field">
-              <span>Reasoning</span>
+            <Field className="min-w-0" label="Reasoning">
               <Select
                 value={resolveEffort(draft.reasoning_effort, null, effortLevels) || ''}
                 onValueChange={(next: string) => update('reasoning_effort', next)}
@@ -142,10 +143,9 @@ export function RuntimeControlsModal({
                 placeholder="Effort"
                 disabled={busy}
               />
-            </label>
+            </Field>
           )}
-          <label className="code-controls-field">
-            <span>Permissions</span>
+          <Field className="min-w-0" label="Permissions">
             <Select
               value={draft.permission_mode}
               onValueChange={(next: string) => setDraft((current) => ({
@@ -157,9 +157,8 @@ export function RuntimeControlsModal({
               ariaLabel="Task permissions"
               disabled={busy}
             />
-          </label>
-          <label className="code-controls-field">
-            <span>Personality</span>
+          </Field>
+          <Field className="min-w-0" label="Personality">
             <Select
               value={draft.personality}
               onValueChange={(next: string) => update('personality', next as Personality)}
@@ -167,7 +166,7 @@ export function RuntimeControlsModal({
               ariaLabel="Agent personality"
               disabled={busy}
             />
-          </label>
+          </Field>
           <div className="code-controls-toggle">
             <div><strong>Fast</strong><small>Use priority inference when the model supports it.</small></div>
             <Switch checked={draft.service_tier === 'priority'} onCheckedChange={(checked) => update('service_tier', checked ? 'priority' : 'standard')} disabled={busy} aria-label="Fast inference" />
@@ -236,20 +235,22 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <div className="code-controls-error" role="alert">{submitError}</div>}
+          {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        {/* `.btn:disabled` sets pointer-events: none, so a title on the button
+        {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
-        <span className="inline-flex" title={applyBlockedReason}>
-          <Button
-            variant="primary"
-            disabled={busy || !draft.model || !!applyBlockedReason}
-            onClick={() => void apply()}
-          >Apply</Button>
-        </span>
+        <Tooltip content={applyBlockedReason}>
+          <span className="inline-flex">
+            <Button
+              variant="primary"
+              disabled={busy || !draft.model || !!applyBlockedReason}
+              onClick={() => void apply()}
+            >Apply</Button>
+          </span>
+        </Tooltip>
       </ModalFooter>
     </Modal>
   );

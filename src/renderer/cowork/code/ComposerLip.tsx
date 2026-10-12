@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import Menu from '../components/ui/Menu';
+import { ActionBar } from '../components/ui/ActionBar';
 import type { ComposerNotice } from './composerNotices';
 import './task-control.css';
 
@@ -47,10 +47,11 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
     : notice.reopen ? { label: notice.reopening ? 'Reopening…' : 'Reopen task', onClick: onReopen, disabled: notice.reopening }
       : notice.chooseModel ? { label: 'Choose model', onClick: onChooseModel }
         : null;
-  const secondary = [
+  const others = [
     ...(notice.addCredits && notice.chooseModel ? [{ label: 'Choose another model', button: 'Choose model', onClick: onChooseModel }] : []),
     ...(notice.detail ? [{ label: detailOpen ? 'Hide details' : 'Show details', button: 'Details', expanded: detailOpen, onClick: () => setDetailOpen((open) => !open) }] : []),
   ];
+  const secondary = others.length === 1 ? { ...others[0], label: others[0].button } : null;
   return (
     <div className={`code-composer-lip is-${notice.tone}`} role="status">
       <div className="code-composer-lip__row">
@@ -59,21 +60,10 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
           {title && <strong>{title} </strong>}{notice.body && <span>{notice.body}</span>}
         </p>
         <div className="code-composer-lip__actions">
-          {primary && <Button size="xs" variant="default" disabled={'disabled' in primary && primary.disabled} onClick={primary.onClick}>{primary.label}</Button>}
-          {secondary.length === 1 ? (
-            <Button size="xs" variant="subtle" aria-expanded={secondary[0].expanded} onClick={secondary[0].onClick}>{secondary[0].button}</Button>
-          ) : secondary.length > 1 && (
-            <Menu
-              trigger={<Button icon size="xs" variant="subtle" aria-label="More options">{Ico.moreVert(12)}</Button>}
-              items={secondary}
-              side="top"
-              align="end"
-              ariaLabel="More options"
-            />
-          )}
+          <ActionBar size="xs" primary={primary} secondary={secondary} overflow={others.length > 1 ? others : []} menuSide="top" overflowLabel="More options" />
           <MoreNotices count={more} onShow={onShowMore} />
           {notice.dismissible && (
-            <Button icon size="xs" variant="subtle" aria-label="Dismiss" onClick={() => onDismiss(notice.key)}>{Ico.close(11)}</Button>
+            <Button icon size="xs" variant="subtle" aria-label="Dismiss" onClick={() => onDismiss(notice.key)}>{Ico.close(12)}</Button>
           )}
         </div>
       </div>

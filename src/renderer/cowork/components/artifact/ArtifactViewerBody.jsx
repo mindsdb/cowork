@@ -173,7 +173,7 @@ export function ArtifactViewerBody({
                 : 'Preview is truncated.'}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-              {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
+              {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
               {host.isWeb ? 'Download full file' : 'Open full file in OS'}
             </Button>
           </div>
@@ -213,7 +213,7 @@ export function ArtifactViewerBody({
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
-            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
           }}
         />
       )}

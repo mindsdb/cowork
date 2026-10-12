@@ -108,7 +108,7 @@ function UpToDateTag() {
   return (
     <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
       {/* var(--ok) has no config utility (distinct from the --success hex) — keep inline. */}
-      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(15)}</span>
+      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
       Up to date
     </span>
   );
@@ -128,7 +128,7 @@ function UrlField({ url }) {
           type="button" onClick={onCopy} aria-label="Copy URL"
           className="shrink-0 w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 cursor-pointer inline-grid place-items-center"
           style={{ color: copied ? 'var(--accent)' : 'var(--ink-4)' }}
-        >{copied ? Ico.check(13) : Ico.copy(13)}</button>
+        >{copied ? Ico.check(14) : Ico.copy(14)}</button>
       </Tooltip>
     </div>
   );
@@ -148,7 +148,7 @@ function AccessSummaryCard({ mode, ownerOnly }) {
         <span className="block font-body font-semibold text-[13px] text-ink">{m.title}</span>
         <span className="block font-body text-[11.5px] text-ink-3 mt-px">{m.desc}</span>
       </span>
-      <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(15)}</span>
+      <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(14)}</span>
     </div>
   );
 }
@@ -326,7 +326,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               birth — but nobody else can open it, so the button that offers to
               change that still reads "Share". */}
           {isSharedWithSomeone
-            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(13)}</span></>)
+            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(14)}</span></>)
             : 'Share'}
         </Popover.Trigger>
         <Popover.Portal>
@@ -414,7 +414,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                             <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
                               aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
                               className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-                              {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+                              {pwd.reveal ? Ico.eyeOff(16) : Ico.eye(16)}
                             </button>
                           </Tooltip>
                         </div>

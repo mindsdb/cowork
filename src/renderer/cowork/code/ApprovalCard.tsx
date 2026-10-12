@@ -1,6 +1,5 @@
 import Ico from '../components/Icons';
-import Button from '../components/ui/Button';
-import Tooltip from '../components/ui/Tooltip';
+import type { ActionSpec } from '../components/ui/ActionBar';
 import type { ApprovalDecision, PendingApproval } from './api';
 import { DecisionTray, isTrayShortcut } from './DecisionTray';
 import { compactPath } from './presentation';
@@ -14,6 +13,11 @@ const KINDS: Record<string, { label: string; question: string; icon: () => React
 };
 
 
+/**
+ * Three answers of rising commitment, all visible: Deny (ghost, Escape),
+ * Always allow (outlined, only when the engine offers a session amendment),
+ * Allow once (filled, Enter).
+ */
 export function ApprovalCard({
   approval,
   busy,
@@ -25,12 +29,22 @@ export function ApprovalCard({
 }) {
   const kind = KINDS[approval.kind];
   const decide = (decision: ApprovalDecision) => { if (!busy) onDecision(decision); };
+  const deny: ActionSpec = { label: 'Deny', disabled: busy, shortcut: 'Escape', onClick: () => decide('deny') };
+  const always: ActionSpec | null = approval.allow_session
+    ? { label: 'Always allow', disabled: busy, tooltip: 'Allow this now, and similar commands for the rest of this task', onClick: () => decide('approve_session') }
+    : null;
   return (
     <DecisionTray
       label="Approval required"
       kind={kind?.label || 'Approval'}
       icon={kind?.icon() || Ico.lock(12)}
       aside={approval.cwd && <span className="code-decision-tray__aside" title={approval.cwd}>{compactPath(approval.cwd)}</span>}
+      actions={{
+        leading: approval.risk && <p className="code-decision-tray__note" title={approval.risk}>{approval.risk}</p>,
+        tertiary: always && deny,
+        secondary: always || deny,
+        primary: { label: 'Allow once', disabled: busy, shortcut: 'Enter', onClick: () => decide('approve_once') },
+      }}
       onKeyDown={(event) => {
         if (isTrayShortcut(event, 'Escape')) { event.preventDefault(); decide('deny'); }
         // A focused button already answers Enter with its own click.
@@ -39,20 +53,6 @@ export function ApprovalCard({
     >
       <h2 className="code-decision-tray__question">{kind?.question || approval.title || 'The agent needs approval'}</h2>
       {approval.detail && <pre className="code-decision-tray__detail">{approval.detail}</pre>}
-      <div className="code-decision-tray__actions">
-        {approval.risk ? <p className="code-decision-tray__note" title={approval.risk}>{approval.risk}</p> : <span className="code-decision-tray__spacer" aria-hidden="true" />}
-        <Button size="sm" variant="subtle" disabled={busy} aria-keyshortcuts="Escape" onClick={() => decide('deny')}>
-          Deny
-        </Button>
-        {approval.allow_session && (
-          <Tooltip content="Allow this now, and similar commands for the rest of this task">
-            <Button size="sm" variant="default" disabled={busy} onClick={() => decide('approve_session')}>Always allow</Button>
-          </Tooltip>
-        )}
-        <Button size="sm" variant="primary" disabled={busy} aria-keyshortcuts="Enter" onClick={() => decide('approve_once')}>
-          Allow once
-        </Button>
-      </div>
     </DecisionTray>
   );
 }

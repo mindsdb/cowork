@@ -11,7 +11,8 @@ import {
   writeConvTurns,
   persistTurnState,
   mergeConvTurns,
-  migrateLegacyArtifacts,
+  removeConvTurnsFor,
+  dropLegacyIndexKeyedSidecar,
   reduceServerEvents,
   failedEventMeta,
   hydrateMessagesFromServerEvents,
@@ -134,44 +135,98 @@ describe('conversation-turn sidecar (localStorage)', () => {
   });
 
   it('persistTurnState whitelists serialisable step fields and ignores empty step lists', () => {
-    persistTurnState('c1', 0, [], 1);
+    persistTurnState('c1', 'a1', [], 1);
     expect(readConvTurns('c1')).toBeNull();
-    persistTurnState('c1', 0, [{ id: 's1', status: 'completed', cellStatus: 'error', fn: () => {}, executionDurationMs: 42 }], 5);
-    const saved = readConvTurns('c1')[0];
+    persistTurnState('c1', 'a1', [{ id: 's1', status: 'completed', cellStatus: 'error', fn: () => {}, executionDurationMs: 42 }], 5);
+    const saved = readConvTurns('c1')['a1'];
     expect(saved.startedAt).toBe(5);
     expect(saved.steps[0]).toMatchObject({ id: 's1', status: 'completed', cellStatus: 'error', executionDurationMs: 42 });
     expect(saved.steps[0]).not.toHaveProperty('fn');
   });
 
+  // Keyed by the assistant message's own id, not a counted
+  // position — a write under a falsy-but-real key (id '0', or index 0
+  // pre-rekey) must not be swallowed by a truthiness guard.
+  it('persistTurnState accepts a message id that would be falsy as a number', () => {
+    persistTurnState('c1', '0', [{ id: 's1', status: 'completed' }], 2);
+    expect(readConvTurns('c1')['0'].steps).toEqual([expect.objectContaining({ id: 's1' })]);
+  });
+
   it('mergeConvTurns fills persisted steps onto step-less assistant turns only', () => {
-    persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
+    persistTurnState('c1', 'a1', [{ id: 'saved', status: 'completed' }], 9);
     const out = mergeConvTurns('c1', [
       user('q'),
-      assistant(), // no steps → gets the saved ones
+      assistant({ id: 'a1' }), // no steps → gets the saved ones
     ]);
     expect(out[1].steps).toEqual([expect.objectContaining({ id: 'saved' })]);
   });
 
   it('mergeConvTurns never overwrites live steps', () => {
-    persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
-    const out = mergeConvTurns('c1', [assistant({ steps: [{ id: 'live' }] })]);
+    persistTurnState('c1', 'a1', [{ id: 'saved', status: 'completed' }], 9);
+    const out = mergeConvTurns('c1', [assistant({ id: 'a1', steps: [{ id: 'live' }] })]);
     expect(out[0].steps).toEqual([{ id: 'live' }]);
   });
 
-  it('migrateLegacyArtifacts promotes the old artifact-only sidecar and clears it', () => {
+  it('mergeConvTurns leaves an id-less assistant turn (still in flight) untouched', () => {
+    persistTurnState('c1', 'a1', [{ id: 'saved', status: 'completed' }], 9);
+    const out = mergeConvTurns('c1', [assistant()]);
+    expect(out[0]).not.toHaveProperty('steps');
+  });
+
+  // The whole point of keying by id instead of a counted position: this
+  // page has no idea an earlier page exists, but the lookup still lands on
+  // the right turn because the key never depended on how much history is
+  // loaded.
+  it('mergeConvTurns restores the correct steps by id when only a partial page is loaded', () => {
+    persistTurnState('c1', 'a1', [{ id: 'old-turn-steps' }], 1);
+    persistTurnState('c1', 'a99', [{ id: 'recent-turn-steps' }], 99);
+    const partialPage = [user('q2'), assistant({ id: 'a99' })];
+    const out = mergeConvTurns('c1', partialPage);
+    expect(out[1].steps).toEqual([expect.objectContaining({ id: 'recent-turn-steps' })]);
+  });
+
+  it('removeConvTurnsFor drops sidecar entries for the given ids and leaves the rest', () => {
+    persistTurnState('c1', 'a1', [{ id: 'keep' }], 1);
+    persistTurnState('c1', 'a2', [{ id: 'drop' }], 2);
+    removeConvTurnsFor('c1', ['a2', 'a3-not-present']);
+    const map = readConvTurns('c1');
+    expect(map).toEqual({ a1: { steps: [expect.objectContaining({ id: 'keep' })], startedAt: 1 } });
+  });
+
+  it('removeConvTurnsFor tolerates a missing cid or an empty/missing id set', () => {
+    persistTurnState('c1', 'a1', [{ id: 'keep' }], 1);
+    removeConvTurnsFor(null, ['a1']);
+    removeConvTurnsFor('c1', []);
+    removeConvTurnsFor('c1', undefined);
+    expect(readConvTurns('c1')['a1'].steps).toEqual([expect.objectContaining({ id: 'keep' })]);
+  });
+
+  it('clears the old artifact-only sidecar rather than promoting unreadable keys', () => {
+    // Its keys were assistant turn indices, which nothing reads since the
+    // rekey and which cannot be translated back to message ids.
     localStorage.setItem('anton:conv-artifacts:c1', JSON.stringify({ 0: [{ id: 'art' }] }));
-    migrateLegacyArtifacts('c1');
-    expect(readConvTurns('c1')[0].steps).toEqual([{ id: 'art' }]);
+    dropLegacyIndexKeyedSidecar('c1');
     expect(localStorage.getItem('anton:conv-artifacts:c1')).toBeNull();
+    expect(readConvTurns('c1')).toBeNull();
+  });
+
+  it('prunes turn-index keys from the step sidecar and keeps id-keyed ones', () => {
+    localStorage.setItem('anton:conv-turns:c1', JSON.stringify({
+      0: { steps: [{ id: 'stale' }], startedAt: 1 },
+      12: { steps: [{ id: 'also-stale' }], startedAt: 2 },
+      'a1b2c3': { steps: [{ id: 'keep' }], startedAt: 3 },
+    }));
+    dropLegacyIndexKeyedSidecar('c1');
+    expect(Object.keys(readConvTurns('c1'))).toEqual(['a1b2c3']);
   });
 
   it('persistTurnState keeps what a ToolProgress row needs (ENG-2981)', () => {
-    persistTurnState('c1', 0, [{
+    persistTurnState('c1', 'a1', [{
       id: 'step-2', label: 'Writing the page (step 3 of 4)', badge: 'ToolProgress', icon: 'code',
       status: 'completed', startedAt: 1, completedAt: 2, data: null,
       _isScratchpad: false, _isToolCall: false, _scratchpadTabId: 'tc_1',
     }], 1);
-    expect(readConvTurns('c1')[0].steps[0]).toMatchObject({
+    expect(readConvTurns('c1').a1.steps[0]).toMatchObject({
       label: 'Writing the page (step 3 of 4)', badge: 'ToolProgress', _scratchpadTabId: 'tc_1',
     });
   });
@@ -297,21 +352,58 @@ describe('hydrateMessagesFromServerEvents', () => {
     ]);
     expect(out.some((m) => m.role === 'provider_required')).toBe(true);
   });
+
+  /* A stall and a Stop both keep the partial answer. The server saves a stall
+   * with a `stalled` failure event and a Stop with no terminal event, so only
+   * the stall reloads with an error row. */
+  it('reloads a saved stall as a stalled error row after the partial answer', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' } },
+          { type: 'response.output_text.delta', delta: 'Partial answer' },
+          { type: 'response.failed', code: 'stalled', error: 'The response stalled and was ended. Please try sending again.', request_id: 'corr-1' },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'error']);
+    expect(out[1].content).toBe('Partial answer');
+    expect(out[2]).toMatchObject({ code: 'stalled', requestId: 'corr-1' });
+  });
+
+  it('reloads a Stop as the partial answer with no error row', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' } },
+          { type: 'response.output_text.delta', delta: 'Partial answer' },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(out[1].content).toBe('Partial answer');
+  });
 });
 
 describe('applySessionMessages', () => {
   beforeEach(() => localStorage.clear());
 
   it('hydrates, merges the sidecar, and reconciles in one pass', () => {
-    persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
-    const out = applySessionMessages('c1', [user('q'), assistant()], { isLive: false });
+    persistTurnState('c1', 'a1', [{ id: 'saved', status: 'completed' }], 9);
+    const out = applySessionMessages('c1', [user('q'), assistant({ id: 'a1' })], { isLive: false });
     // sidecar steps merged onto the step-less assistant turn
     expect(out.find((m) => m.role === 'assistant').steps).toEqual([expect.objectContaining({ id: 'saved' })]);
   });
 
   it('skips the local sidecar merge when asked', () => {
-    persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
-    const out = applySessionMessages('c1', [assistant()], { skipLocalSidecar: true });
+    persistTurnState('c1', 'a1', [{ id: 'saved', status: 'completed' }], 9);
+    const out = applySessionMessages('c1', [assistant({ id: 'a1' })], { skipLocalSidecar: true });
     expect(out[0]).not.toHaveProperty('steps');
   });
 });

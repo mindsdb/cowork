@@ -72,9 +72,6 @@ function Harness({ onSave, initial }) {
   const setSetting = (key, value) => setSettings((s) => ({ ...s, [key]: value }));
   return (
     <>
-      {/* The save button only enables once settings drift from the mount
-          snapshot — flip a harmless flag the way any real edit would. */}
-      <button type="button" onClick={() => setSetting('actFirst', true)}>make-dirty</button>
       <SettingsView
         settings={settings}
         setSetting={setSetting}
@@ -105,10 +102,12 @@ async function saveAndCapture(initial) {
   const onSave = vi.fn(async () => {});
   const user = userEvent.setup();
   render(<Harness onSave={onSave} initial={initial} />);
-  await user.click(screen.getByText('make-dirty'));
+  await user.click(screen.getByLabelText('Act first, ask later'));
   await user.click(await screen.findByRole('button', { name: /save settings/i }));
   expect(onSave).toHaveBeenCalledTimes(1);
-  return onSave.mock.calls[0][0];
+  const patch = onSave.mock.calls[0][0];
+  // Applying the submitted patch must preserve untouched role selections.
+  return { ...initial, ...patch };
 }
 
 describe('withResolvedRoles — default-mode save (ENG-1632)', () => {

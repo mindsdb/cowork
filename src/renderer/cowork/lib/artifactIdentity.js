@@ -36,3 +36,9 @@ export function artifactCommentsKey(value) {
   ];
   return `artifact/${groups.join('-')}`;
 }
+
+// The conversation that created the artifact (the server reads it from the
+// first provenance entry), or '' for artifacts older than provenance.
+export function originConversationId(artifact) {
+  return String(artifact?.originConversationId || '');
+}

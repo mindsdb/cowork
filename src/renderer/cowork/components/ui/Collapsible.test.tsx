@@ -120,4 +120,47 @@ describe('Collapsible', () => {
     expect(screen.getByRole('button', { name: /advanced/i }).className).toContain('px-3');
     expect(container.querySelector('.pl-6')).toBeTruthy();
   });
+  it('uses the section header style by default and compact when asked', () => {
+    const { rerender } = render(
+      <Collapsible title="Details">
+        <p>body</p>
+      </Collapsible>,
+    );
+    const section = screen.getByRole('button', { name: /details/i });
+    expect(section.className).toContain('text-sm');
+    expect(section.className).toContain('min-h-[36px]');
+    rerender(
+      <Collapsible variant="compact" title="Details">
+        <p>body</p>
+      </Collapsible>,
+    );
+    const compact = screen.getByRole('button', { name: /details/i });
+    expect(compact.className).toContain('text-xs');
+    expect(compact.className).toContain('min-h-[26px]');
+    expect(compact.className).not.toContain('text-sm');
+  });
+
+  it('shows meta beside the title in the variant style, and omits it when empty', () => {
+    const { rerender } = render(
+      <Collapsible variant="compact" title="Checks" meta={2}>
+        <p>body</p>
+      </Collapsible>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Checks 2' });
+    const meta = screen.getByText('2');
+    expect(trigger.contains(meta)).toBe(true);
+    expect(meta.className).toContain('font-mono');
+    rerender(
+      <Collapsible title="Included guidance" meta="2 of 3">
+        <p>body</p>
+      </Collapsible>,
+    );
+    expect(screen.getByText('2 of 3').className).not.toContain('font-mono');
+    rerender(
+      <Collapsible title="Checks" meta="">
+        <p>body</p>
+      </Collapsible>,
+    );
+    expect(screen.getByRole('button', { name: 'Checks' }).querySelectorAll('span')).toHaveLength(1);
+  });
 });

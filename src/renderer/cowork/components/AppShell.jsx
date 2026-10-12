@@ -66,11 +66,11 @@ export default function AppShell({
             transform: showFloatingHamburger ? 'translateX(0)' : 'translateX(-8px)',
             pointerEvents: showFloatingHamburger ? 'auto' : 'none',
             transition:
-              'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-              'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
+              'opacity var(--dur-layout) var(--ease-out) calc(3 * var(--dur-stagger)), ' +
+              'transform var(--dur-layout) var(--ease-out) calc(2 * var(--dur-stagger))',
           }}
         >
-          {Ico.sidebarExpandRight(15)}
+          {Ico.sidebarExpandRight(16)}
         </button>
       </Tooltip>
       {mainEl}

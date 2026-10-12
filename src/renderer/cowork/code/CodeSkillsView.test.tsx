@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { pickFilter } from '../../../../tests/helpers/pickOption';
+
 const {
   skillLibrary,
   skillDocument,
@@ -161,7 +163,7 @@ describe('CodeSkillsView', () => {
     const user = userEvent.setup();
     renderSkills();
     await screen.findByText('Prepare a release.');
-    await user.click(screen.getByRole('button', { name: 'Team' }));
+    await pickFilter(user, 'Source', 'Team');
     await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'different');
     await user.click(screen.getByRole('button', { name: 'Add personal skill' }));
     await user.type(screen.getByLabelText('Name'), 'New review');
@@ -172,7 +174,7 @@ describe('CodeSkillsView', () => {
     await user.click(screen.getByRole('button', { name: 'Add skill' }));
     expect(await screen.findByRole('button', { name: 'Edit New review' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Yours' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('SourceYours');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

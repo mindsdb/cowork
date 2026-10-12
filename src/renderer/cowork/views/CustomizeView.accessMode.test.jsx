@@ -4,7 +4,7 @@
 // check). Follows CustomizeView.identity.test.jsx's mocking convention.
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const CONNECTIONS = [
@@ -58,7 +58,7 @@ describe('CustomizeView — HubSpot "edit access" affordance', () => {
     await userEvent.click(screen.getByRole('button', { name: /Manage HubSpot/i }));
     await waitFor(() => expect(screen.getByText('Tool access')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: 'Read and write' }));
 
     await waitFor(() => expect(patchConnectionAccessModeMock).toHaveBeenCalledWith('hubspot', 'acme-hubspot', 'write'));

@@ -221,7 +221,8 @@ describe('CodeConnectorsView', () => {
     const onConnectionsChange = vi.fn();
     render(<CodeConnectorsView connections={[github]} projects={[]} onConnectionsChange={onConnectionsChange} />);
 
-    await user.click(screen.getByRole('button', { name: 'Disconnect ian@mindsdb.com' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for ian@mindsdb.com' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Disconnect' }));
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
 
     await waitFor(() => expect(mocks.deleteDatasource).toHaveBeenCalledWith('github', 'github-ian'));

@@ -281,7 +281,7 @@ describe('task repository setup', () => {
       expect(screen.getByRole('textbox', { name: /New branch/ })).toBeDisabled();
       expect(screen.getByLabelText('Include Application')).toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByRole('combobox', { name: 'Start Application from' })).toBeDisabled();
-      expect(screen.getByRole('radio', { name: /Include my local changes/ })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /Include my local changes/ })).toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
       expect(onApply).not.toHaveBeenCalled();
       await act(async () => reject(new Error('Connection lost')));

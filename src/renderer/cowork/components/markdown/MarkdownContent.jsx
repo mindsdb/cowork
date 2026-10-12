@@ -562,7 +562,7 @@ const _SIZES = {
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
     h1: 's-h3 text-ink mt-3.5 mb-1.5',
     h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5',
-    h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
+    h3: 'font-display text-[12px] font-semibold text-ink-3 mt-2.5 mb-1',
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',

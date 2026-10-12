@@ -159,7 +159,7 @@ export default function SwipeableRow({
         style={{
           transform: `translateX(${translateX}px)`,
           transition: transitioning
-            ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
+            ? 'transform var(--dur-layout) var(--ease-out)'
             : 'none',
         }}
       >

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
@@ -101,7 +102,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
           title={shown.resting ? 'Hide' : 'Dismiss'}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
-          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+          <Icon of={X} size={14} />
         </button>
       </div>
     </>

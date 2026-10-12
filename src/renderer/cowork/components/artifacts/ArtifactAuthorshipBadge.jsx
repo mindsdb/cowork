@@ -10,7 +10,7 @@ export function ArtifactAuthorshipBadge({ authorship, className }) {
   if (!authorship) return null;
   return (
     <Tooltip content={authorship.description}>
-      <Badge variant="muted" size="sm" icon={Ico.user(11)} className={className}>
+      <Badge variant="muted" size="sm" icon={Ico.user(12)} className={className}>
         {authorship.label}
       </Badge>
     </Tooltip>

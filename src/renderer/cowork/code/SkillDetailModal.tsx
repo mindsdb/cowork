@@ -91,7 +91,7 @@ export function SkillDetailModal({
         onClose={onClose}
         right={displayedDocument && !loading ? (
           <Button size="sm" variant="subtle" onClick={() => setShowSource((value) => !value)}>
-            {Ico.code(13)} {showSource ? 'Rendered' : 'View source'}
+            {Ico.code(14)} {showSource ? 'Rendered' : 'View source'}
           </Button>
         ) : undefined}
       />

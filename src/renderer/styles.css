@@ -131,7 +131,7 @@ body.gf-dots-off .gravity-field { display: none; }
   background: var(--accent-green);
   box-shadow: 0 0 8px rgba(105, 240, 174, 0.5);
   flex-shrink: 0;
-  transition: all 0.3s ease;
+  transition: all var(--dur-layout) ease;
 }
 
 .status-dot.thinking {

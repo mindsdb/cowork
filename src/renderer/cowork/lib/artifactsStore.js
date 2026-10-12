@@ -5,7 +5,8 @@
 // surfaced through useSyncExternalStore, because the app has no React Query or
 // global store. The artifact list App.jsx already holds cannot answer this: it
 // is a system-wide snapshot refreshed on boot, at turn end and on the artifacts
-// route, and never after a delete. Consolidating the two is deliberate debt.
+// route; it hears about artifact deletes through onArtifactDeleted, while a
+// project delete reloads it directly. Consolidating the two is deliberate debt.
 //
 // Three indices, all the same shape so one matcher (artifactLiveness) serves
 // all of them:
@@ -53,6 +54,7 @@ let _inFlight = null;
 // request cannot write a stale index.
 let _loadGen = 0;
 const _subscribers = new Set();
+const _deleteListeners = new Set();
 
 function _recomputeBorn() {
   _bornEffective = _bornPending ? mergeArtifactIndex(_born, _bornPending) : _born;
@@ -170,8 +172,19 @@ export function noteArtifactsFromSteps(steps) {
 export async function deleteArtifactAndSync(artifact) {
   const result = await deleteArtifact(artifact);
   noteArtifactDeleted(artifact);
+  for (const listener of _deleteListeners) {
+    // The server already deleted it, so a listener error must not read as a failed delete.
+    try { listener(artifact); } catch { /* ignored */ }
+  }
   revalidate().catch(() => {});
   return result;
+}
+
+/** Called with the deleted card after every confirmed delete, whichever surface
+ *  made it. Returns the unsubscribe function. */
+export function onArtifactDeleted(listener) {
+  _deleteListeners.add(listener);
+  return () => _deleteListeners.delete(listener);
 }
 
 /** The decision, outside React. */
@@ -220,4 +233,5 @@ export function __resetForTests() {
   _loadGen += 1;
   _recomputeBorn();
   _subscribers.clear();
+  _deleteListeners.clear();
 }

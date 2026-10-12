@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ConnectionCard from './ConnectionCard';
+import ConnectionCard, { ConnectionRow } from './ConnectionCard';
 
 const connection = { engine: 'github', label: 'GitHub', name: 'ianu82', display_name: 'ianu82' };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -120,5 +120,15 @@ describe('ConnectionCard', () => {
 
     const confirm = await screen.findByRole('dialog');
     expect(within(confirm).getByText(/stored credentials deleted/i)).toBeInTheDocument();
+  });
+
+  it('renders the same content and actions as a list row', async () => {
+    const onModify = vi.fn();
+    render(<ConnectionRow connection={connection} onModify={onModify} />);
+    expect(screen.getByText('ianu82')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
   });
 });

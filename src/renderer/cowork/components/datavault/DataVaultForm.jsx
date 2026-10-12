@@ -375,7 +375,7 @@ export function DataVaultForm({
               color: 'var(--ink-2)',
               border: '1px solid var(--line)',
             }}
-          >{Ico.link(18)}</span>
+          >{Ico.link(20)}</span>
           <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
             <div className="s-h3">{spec.title || 'Checking the connection'}</div>
             <div className="text-sm text-ink-3 leading-[1.5]">
@@ -887,7 +887,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
             cursor: busy ? 'not-allowed' : 'pointer',
-            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+            transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
           }}
           onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
           onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -982,7 +982,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
                 : '1px solid var(--line)',
               cursor: busy ? 'not-allowed' : 'pointer',
-              transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+              transition: 'transform var(--dur-hover) ease, background var(--dur-hover) ease, border-color var(--dur-hover) ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -1065,10 +1065,10 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
                   See other options to connect {providerName}
                   <span
-                    className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
+                    className="inline-flex transition-transform duration-layout group-data-[panel-open]:rotate-180"
                     aria-hidden
                   >
-                    {Ico.chevDown(13)}
+                    {Ico.chevDown(14)}
                   </span>
                 </span>
               )}
@@ -1126,7 +1126,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         color: 'inherit',
         textAlign: 'left',
         alignSelf: 'flex-start',
-        transition: 'background 120ms ease',
+        transition: 'background var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}

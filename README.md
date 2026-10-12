@@ -244,6 +244,15 @@ Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
 and point its `/v1` requests at a running cowork-server process.
 
+### Browser tab icon
+
+Settings > Appearance lets web users upload a browser tab icon independently
+of the sidebar logo. PNG, ICO, SVG, and WEBP files must be smaller than 100 KB;
+a square image of at least 32 × 32 pixels works best. Changes preview immediately
+and persist through the settings API. Removing the override restores the page's
+original icon, including a deployment's custom branding. Desktop does not show
+this control, and the browser's home-screen icon is unchanged.
+
 ### Platform abstraction
 
 The cowork tree (`src/renderer/cowork/`) **never** touches
@@ -380,15 +389,17 @@ the openai-compatible and anthropic ones, from the BYOK step. Main's MindsHub pr
 is kept in step with the sidecar anyway, because the drift is what caused this bug
 and a future caller should not have to rediscover it.
 
-Rollout is not symmetric between the two, and not in the obvious direction. On
-`prod` the renderer bundle hot-updates at boot while the Electron shell (so
-everything under `src/main/**`) only changes when a new installer is applied,
-because shell auto-update is opt-in there. On `stable` it is the other way round:
-UI OTA is prod-only (`otaUiEnabled` in `src/main/update-logic.ts`) and shell
-auto-update is on by default (`shellAutoUpdateEnabledFor` in
-`src/main/shell-auto-update-rollout.ts`), so the shell replaces itself in the
-background and applies on the next relaunch. Either way a main-process change lands
-a relaunch later than a sidecar change. See [Shell updates](#shell-updates-auto-update--installer).
+Rollout is not symmetric between the two. On `prod` the renderer bundle
+hot-updates at boot, while the Electron shell (so everything under `src/main/**`)
+downloads its own update in the background (`shellAutoUpdateEnabledFor` in
+`src/main/shell-auto-update-rollout.ts`, on by default for `prod` and `stable`)
+and only changes on the next relaunch — so each new UI first runs on the previous
+shell until the user quits. On `stable` only the shell moves: UI OTA is prod-only
+(`otaUiEnabled` in `src/main/update-logic.ts`). Either way a main-process change
+lands a relaunch later than a sidecar change, and how far a prod shell may fall
+behind before the UI says so is the "Supported desktop window" in
+[docs/update-behavior.md](docs/update-behavior.md). See
+[Shell updates](#shell-updates-auto-update--installer).
 
 ---
 
