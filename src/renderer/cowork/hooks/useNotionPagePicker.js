@@ -55,6 +55,7 @@ export function useNotionPagePicker({ selectedProject, setComposerAttachments })
           notionPageId: p.id,
           url: p.url,
           workspace: p.workspace,
+          connectionName: p.connectionName,
         }))
         .filter((c) => !seen.has(c.id));
       return fresh.length ? [...prev, ...fresh] : prev;

@@ -81,6 +81,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -436,20 +437,8 @@ function describeGoogleDriveReferenceFiles(reference) {
   ].join('\n');
 }
 
-function describeNotionReferencePages(reference) {
-  const pages = (reference || []).filter((a) => a.source === 'notion');
-  if (!pages.length) return '';
-  const lines = pages.map((p) => `- ${p.name || 'Untitled'}${p.workspace ? ` (workspace: ${p.workspace})` : ''}: ${p.url || p.notionPageId}`);
-  return [
-    '[Notion pages added for this message — Anton-only context, do not echo back]',
-    'The user just added the following Notion page(s). When they refer to "this page"/"these pages" '
-      + 'in the message above, they mean these — read them with the notion-fetch tool, passing the URL:',
-    ...lines,
-  ].join('\n');
-}
-
-function describeReferenceAttachments(reference) {
-  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference)]
+function describeReferenceAttachments(reference, notionTexts) {
+  return [describeGoogleDriveReferenceFiles(reference), describeNotionReferencePages(reference, notionTexts)]
     .filter(Boolean).join('\n\n');
 }
 
@@ -3299,7 +3288,8 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
-    const sendText = reference.length ? `${text}\n\n${describeReferenceAttachments(reference)}` : text;
+    const notionTexts = await loadNotionPageTexts(reference);
+    const sendText = reference.length ? `${text}\n\n${describeReferenceAttachments(reference, notionTexts)}` : text;
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -3885,7 +3875,7 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const referenceContext = describeReferenceAttachments(referenceAttachments);
+    const referenceContext = describeReferenceAttachments(referenceAttachments, await loadNotionPageTexts(referenceAttachments));
     const hiddenContext = [connectContext, referenceContext].filter(Boolean).join('\n\n');
     const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 

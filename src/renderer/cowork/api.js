@@ -1873,6 +1873,16 @@ export async function searchNotionPages(name, query, { signal } = {}) {
   return Array.isArray(data?.results) ? data.results : [];
 }
 
+// A picked page's title and text (capped server-side; `truncated` says so),
+// sent with the chat message so the agent doesn't have to fetch it itself.
+export async function fetchNotionPage(name, page, { signal } = {}) {
+  return req('/connectors/notion/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ name, page }),
+    signal,
+  });
+}
+
 // Modify-flow read: returns the saved connection as
 //   {
 //     engine, name, createdAt, updatedAt,

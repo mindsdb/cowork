@@ -74,7 +74,7 @@ describe('useNotionPagePicker', () => {
 
     expect(result.current.attachments).toEqual([{
       id: 'notion-p1', source: 'notion', name: 'ML Research',
-      notionPageId: 'p1', url: 'https://www.notion.so/p1', workspace: 'MindsDB',
+      notionPageId: 'p1', url: 'https://www.notion.so/p1', workspace: 'MindsDB', connectionName: 'mindsdb-ws',
     }]);
     expect(hostMock.oauthConnect).not.toHaveBeenCalled();
   });
