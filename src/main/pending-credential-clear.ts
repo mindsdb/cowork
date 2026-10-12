@@ -35,6 +35,10 @@ export const PENDING_CLEAR_CAPABILITY = 'pending-credential-clear';
 
 const STORE_DATABASE = 'cowork.db';
 
+// Present when the last server this install started reads markers. On disk so a
+// run whose server never comes up still knows, at sign-out, whether to mark.
+const SERVER_CLEARS_FILE = '.server-clears-pending-credentials';
+
 /** An account root and every organization store under it. */
 function accountStores(accountRoot: string): string[] {
   return [
@@ -61,15 +65,19 @@ function incumbentOwnsDefaultRoot(home: string): boolean {
  *
  * Args: `home` is the shared Cowork home, `active` the session read at
  * sign-out entry, `activeStore` the store a sidecar is running or starting
- * on, or null.
- * Returns the store roots to mark. A store with no database is left out, as it
- * holds no keys, except the active one, whose sidecar may not have created it yet.
+ * on, or null, and `serverClears` whether the installed server reads markers.
+ * Returns the store roots to mark: none for a server that ignores markers,
+ * since a later upgrade would consume them and clear keys entered in between.
+ * A store with no database is left out, as it holds no keys, except the
+ * active one, whose sidecar may not have created it yet.
  */
 export function storesToClearAtSignOut(
   home: string,
   active: ActiveAccount,
   activeStore: string | null,
+  serverClears: boolean,
 ): string[] {
+  if (!serverClears) return [];
   const accountRoot = accountDataHome(home, active);
   let candidates: string[];
   if (active.kind !== 'unknown') {
@@ -110,4 +118,27 @@ export function markStoresForCredentialClear(stores: string[], activeStore: stri
 /** Whether a store still has a clear pending. */
 export function hasPendingCredentialClear(storeRoot: string): boolean {
   return fs.existsSync(path.join(storeRoot, PENDING_CLEAR_MARKER));
+}
+
+/**
+ * Record whether the server this install just started reads markers.
+ *
+ * Args: `home` is the shared Cowork home; `clears` what its /health said.
+ * Side effects: writes or removes a file in `home`. Best effort: a lost write
+ * only means one sign-out falls back to the previous answer.
+ */
+export function recordServerClearsPendingCredentials(home: string, clears: boolean): void {
+  const file = path.join(home, SERVER_CLEARS_FILE);
+  try {
+    if (clears) fs.writeFileSync(file, '', { encoding: 'utf-8', mode: 0o600 });
+    else fs.rmSync(file, { force: true });
+  } catch (err) {
+    console.warn('[server] could not record whether the backend clears a pending store', err);
+  }
+}
+
+/** Whether the server this install last started reads markers, as recorded on
+ *  disk. False when nothing has been recorded. */
+export function installedServerClearsPendingCredentials(home: string): boolean {
+  return fs.existsSync(path.join(home, SERVER_CLEARS_FILE));
 }

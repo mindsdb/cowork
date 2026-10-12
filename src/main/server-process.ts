@@ -33,7 +33,13 @@ import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { hasPendingCredentialClear, PENDING_CLEAR_CAPABILITY, PENDING_CLEAR_FAILURE_LOG } from './pending-credential-clear';
+import {
+  hasPendingCredentialClear,
+  installedServerClearsPendingCredentials,
+  recordServerClearsPendingCredentials,
+  PENDING_CLEAR_CAPABILITY,
+  PENDING_CLEAR_FAILURE_LOG,
+} from './pending-credential-clear';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
@@ -212,9 +218,14 @@ let _runningOrgStoreRoot: string | undefined;
 let _startingOrgStoreRoot: string | undefined;
 
 // Whether the last sidecar this process started or adopted clears a store's
-// pending credential clear at startup. Kept across a stop: a sign-out with no
-// sidecar running still has to know whether a marker would ever be read.
-let _serverClearsPendingCredentials = false;
+// pending credential clear at startup, or null before one has answered. Kept
+// across a stop, and on disk for a run whose sidecar never comes up.
+let _serverClearsPendingCredentials: boolean | null = null;
+
+function noteServerClearsPendingCredentials(clears: boolean): void {
+  _serverClearsPendingCredentials = clears;
+  recordServerClearsPendingCredentials(coworkHome(), clears);
+}
 
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
@@ -740,7 +751,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
       _runningOrgStoreRoot = currentOrgStoreRoot();
-      _serverClearsPendingCredentials = probe.clearsPendingCredentials;
+      noteServerClearsPendingCredentials(probe.clearsPendingCredentials);
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -1063,7 +1074,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
-    _serverClearsPendingCredentials = clearsPendingCredentials;
+    noteServerClearsPendingCredentials(clearsPendingCredentials);
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only
@@ -1261,10 +1272,10 @@ export function activeStoreRoot(): string | null {
   return null;
 }
 
-/** Whether the last sidecar started or adopted here consumes a store's pending
- *  credential clear at startup. False until one has been seen. */
+/** Whether the installed sidecar consumes a store's pending credential clear at
+ *  startup: what this run saw, else what the last run recorded. */
 export function serverClearsPendingCredentials(): boolean {
-  return _serverClearsPendingCredentials;
+  return _serverClearsPendingCredentials ?? installedServerClearsPendingCredentials(coworkHome());
 }
 
 export interface ServerDiagnostics {

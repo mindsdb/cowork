@@ -1107,6 +1107,22 @@ describe('a store with a pending credential clear', () => {
     expect(serverClearsPendingCredentials()).toBe(true);
   });
 
+  it('records on disk what the started sidecar can do, for a run where none comes up', async () => {
+    const recordPath = path.join('/tmp/cowork-test-home', '.server-clears-pending-credentials');
+
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(recordPath, '', expect.anything());
+    await stopServer();
+
+    healthOwner = null;
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(fs.rmSync).toHaveBeenCalledWith(recordPath, { force: true });
+  });
+
   it('names the store a running sidecar serves, and none once it stops', async () => {
     accountState.orgStoreRoot = '/tmp/cowork-test-home/orgs/org-b';
     spawnHandingOff();

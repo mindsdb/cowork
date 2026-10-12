@@ -657,9 +657,7 @@ function mindsSignOutDeps(): SignOutDeps {
       const activeStore = activeStoreRoot();
       return {
         accountRoot: accountDataHome(home, active),
-        // A server that does not read the marker would leave it for a later
-        // upgrade to consume, wiping keys entered in between.
-        stores: serverClearsPendingCredentials() ? storesToClearAtSignOut(home, active, activeStore) : [],
+        stores: storesToClearAtSignOut(home, active, activeStore, serverClearsPendingCredentials()),
         activeStore,
       };
     },

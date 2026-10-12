@@ -17,7 +17,9 @@ import {
 import {
   PENDING_CLEAR_MARKER,
   hasPendingCredentialClear,
+  installedServerClearsPendingCredentials,
   markStoresForCredentialClear,
+  recordServerClearsPendingCredentials,
   storesToClearAtSignOut,
 } from './pending-credential-clear';
 
@@ -52,7 +54,7 @@ describe('storesToClearAtSignOut', () => {
     store(ACCOUNTS_DIR, 'acct-c');
     store(ACCOUNTS_DIR, 'acct-c', ORGS_DIR, 'org-1');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null, true);
 
     expect(stores.sort()).toEqual([own, ownOrg].sort());
   });
@@ -64,7 +66,7 @@ describe('storesToClearAtSignOut', () => {
     const org = store(ORGS_DIR, 'org-1');
     store(ACCOUNTS_DIR, 'acct-b');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'signed-out', lastAccountId: 'acct-a' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'signed-out', lastAccountId: 'acct-a' }, null, true);
 
     expect(stores.sort()).toEqual([home, org].sort());
   });
@@ -74,7 +76,7 @@ describe('storesToClearAtSignOut', () => {
     const own = store(ACCOUNTS_DIR, 'acct-b');
     fs.mkdirSync(path.join(own, ORGS_DIR, 'never-started'), { recursive: true });
 
-    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null, true);
 
     expect(stores).toEqual([own]);
   });
@@ -84,7 +86,7 @@ describe('storesToClearAtSignOut', () => {
     store(ACCOUNTS_DIR, 'acct-b');
     const starting = path.join(home, ACCOUNTS_DIR, 'acct-b', ORGS_DIR, 'org-new');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, starting);
+    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, starting, true);
 
     expect(stores).toContain(starting);
   });
@@ -94,7 +96,7 @@ describe('storesToClearAtSignOut', () => {
     const own = store(ACCOUNTS_DIR, 'acct-b');
     const elsewhere = path.join(home, ACCOUNTS_DIR, 'acct-c');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, elsewhere);
+    const stores = storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, elsewhere, true);
 
     expect(stores).toEqual([own]);
   });
@@ -106,7 +108,7 @@ describe('storesToClearAtSignOut', () => {
     fs.writeFileSync(path.join(quarantine, 'cowork.db'), '');
     store(ACCOUNTS_DIR, 'acct-b');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'unresolved' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'unresolved' }, null, true);
 
     expect(stores).toEqual([quarantine]);
   });
@@ -117,7 +119,7 @@ describe('storesToClearAtSignOut', () => {
     expect(claimForRecordedIncumbent(home)).toBe('acct-a');
     const org = store(ORGS_DIR, 'org-1');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'unknown' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'unknown' }, null, true);
 
     expect(stores.sort()).toEqual([home, org].sort());
   });
@@ -129,9 +131,32 @@ describe('storesToClearAtSignOut', () => {
     store(ORGS_DIR, 'org-2');
     writeActiveOrgSync(home, 'org-1');
 
-    const stores = storesToClearAtSignOut(home, { kind: 'unknown' }, null);
+    const stores = storesToClearAtSignOut(home, { kind: 'unknown' }, null, true);
 
     expect(stores).toEqual([resolved]);
+  });
+});
+
+describe('marking only for a server that reads the marker', () => {
+  /*
+   * A server that ignores the marker leaves it for a later upgrade, which would
+   * then clear keys entered in between.
+   */
+  it('marks nothing when the installed server does not clear a pending store', () => {
+    defaultRootOwnedByAnother();
+    store(ACCOUNTS_DIR, 'acct-b');
+
+    expect(storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null, false)).toEqual([]);
+  });
+
+  it('remembers across runs what the installed server can do', () => {
+    expect(installedServerClearsPendingCredentials(home)).toBe(false);
+
+    recordServerClearsPendingCredentials(home, true);
+    expect(installedServerClearsPendingCredentials(home)).toBe(true);
+
+    recordServerClearsPendingCredentials(home, false);
+    expect(installedServerClearsPendingCredentials(home)).toBe(false);
   });
 });
 
