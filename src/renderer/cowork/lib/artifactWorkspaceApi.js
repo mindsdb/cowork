@@ -28,6 +28,9 @@ async function request(path, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.detail = detail;
+    // Same field `responseError` in api.js sets, so callers branch on one shape.
+    const detailCode = detail && typeof detail === 'object' && !Array.isArray(detail) ? detail.code : null;
+    error.code = payload?.code || detailCode || null;
     throw error;
   }
   if (response.status === 204) return { ok: true };

@@ -7,6 +7,7 @@ import {
   canUseArtifactWorkspace,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  setArtifactAccess,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
 
@@ -210,5 +211,39 @@ describe('loadArtifactDraftDocument', () => {
     authFetch.mockClear();
     await expect(loadArtifactDraftDocument('https://evil.example/index.html')).rejects.toThrow();
     expect(authFetch).not.toHaveBeenCalled();
+  });
+});
+
+// Callers branch on a refusal's code (409 artifact_owned_by_other_user), so it
+// sits on the error as `code`, the same field the desktop request helper sets.
+describe('workspace request errors', () => {
+  const ARTIFACT = { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1' };
+  const refuse = (status, body) => {
+    authFetch.mockResolvedValueOnce({ ok: false, status, json: () => Promise.resolve(body) });
+  };
+
+  it('puts a structured detail code on the error', async () => {
+    const detail = {
+      code: 'artifact_owned_by_other_user',
+      message: 'This artifact was published by another owner.',
+    };
+    refuse(409, { detail });
+
+    await expect(setArtifactAccess(ARTIFACT, { mode: 'public' })).rejects.toMatchObject({
+      status: 409,
+      code: 'artifact_owned_by_other_user',
+      message: 'This artifact was published by another owner.',
+      detail,
+    });
+  });
+
+  it('leaves the code null for a string detail', async () => {
+    refuse(400, { detail: 'Bad access' });
+
+    await expect(setArtifactAccess(ARTIFACT, { mode: 'public' })).rejects.toMatchObject({
+      status: 400,
+      code: null,
+      message: 'Bad access',
+    });
   });
 });
