@@ -185,9 +185,9 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         {signInCard}
         {userCard}
         {accountUser && <div className={`${CARD} pt-0 px-[18px] pb-2`}>
-          <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
+          <Section title="Sign out" subtitle={LOGOUT_CONFIRM_COPY.paneSubtitle}>
             <div className="flex justify-end">
-              <Tooltip content="Sign out and clear stored credentials">
+              <Tooltip content={LOGOUT_CONFIRM_COPY.tooltip}>
                 <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut}>
                   <Icon of={LogOut} size={14} />
                   {loggingOut ? 'Signing out…' : 'Sign out'}
