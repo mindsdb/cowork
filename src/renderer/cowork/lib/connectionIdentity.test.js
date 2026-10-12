@@ -212,7 +212,7 @@ describe('humanLabel', () => {
   });
 
   it('titlecases across hyphens without collapsing them', () => {
-    expect(humanLabel('kinaxis-maestro-connect')).toBe('Kinaxis-Maestro-Connect');
+    expect(humanLabel('acme-planner-connect')).toBe('Acme-Planner-Connect');
   });
 
   it('tolerates empty input', () => {
