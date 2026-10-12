@@ -839,7 +839,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
