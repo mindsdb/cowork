@@ -24,6 +24,7 @@ import {
   orgStoreEnv,
   orgStoreRoot,
   readActiveOrg,
+  readOrgClaim,
   ACCOUNTS_DIR,
   listOrgSegments,
 } from './account-data';
@@ -202,9 +203,15 @@ let _runningOrgStoreRoot: string | undefined;
 // rewrites the record before the sidecar moves.
 let _runningOrgId: string | null = null;
 
-/** The organization the running sidecar was started on, or null if none is recorded. */
+/** The organization the running sidecar's stores belong to, or null if none is recorded. */
 export function getRunningSidecarOrgId(): string | null {
-  return _runningOrgId;
+  if (_runningOrgId) return _runningOrgId;
+  // Started before any org was known (a fresh install opens signed out), then the
+  // sign-in claimed the same stores so nothing restarted it. The claim names their
+  // owner and, unlike the active-org record, no token refresh rewrites it.
+  if (!_runningOrgStoreRoot || !(isServerRunning() || isServerStarting())) return null;
+  const claim = readOrgClaim(_runningOrgStoreRoot);
+  return claim.kind === 'claimed' ? claim.orgId : null;
 }
 
 let serverProcess: ChildProcess | null = null;

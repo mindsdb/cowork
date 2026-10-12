@@ -45,6 +45,8 @@ const accountState = vi.hoisted(() => ({
    *  cover is the restart decision and that the overrides reach the spawn. */
   orgStoreRoot: null as string | null,
   orgEnv: {} as Record<string, string>,
+  /** Which organization has claimed the account root's stores, if any. */
+  orgClaim: null as string | null,
 }));
 vi.mock('./account-data', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./account-data')>()),
@@ -52,6 +54,9 @@ vi.mock('./account-data', async (importOriginal) => ({
   readActiveOrg: () => (accountState.orgStoreRoot ? 'org-b' : null),
   orgStoreRoot: (accountRoot: string) => accountState.orgStoreRoot ?? accountRoot,
   orgStoreEnv: () => accountState.orgEnv,
+  readOrgClaim: () => (accountState.orgClaim
+    ? { kind: 'claimed', orgId: accountState.orgClaim }
+    : { kind: 'unclaimed' }),
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -139,6 +144,7 @@ beforeEach(() => {
   accountState.dataRoot = '/tmp/cowork-test-home';
   accountState.orgStoreRoot = null;
   accountState.orgEnv = {};
+  accountState.orgClaim = null;
   resetServerAuthTokenCache();
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
@@ -939,6 +945,20 @@ describe('the sidecar organization stores', () => {
 
     healthOwner = 'owner-token';
     await starting;
+  });
+
+  it('picks up the org that claims its stores after starting with none', async () => {
+    // A fresh install opens signed out, then the sign-in claims the same stores,
+    // so nothing restarts the sidecar.
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getRunningSidecarOrgId()).toBeNull();
+
+    accountState.orgClaim = 'org-a';
+    expect(getRunningSidecarOrgId()).toBe('org-a');
+
+    await stopServer();
+    expect(getRunningSidecarOrgId()).toBeNull();
   });
 
   it('forgets the organization when the sidecar crashes', async () => {

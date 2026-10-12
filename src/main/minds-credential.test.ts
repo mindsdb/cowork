@@ -201,6 +201,19 @@ describe('pushMindsCredential', () => {
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'a-token' });
   });
 
+  it('warns when a session token goes over with no organization to pin', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installFetch();
+    await pushMindsCredential('a-token');
+    await pushMindsCredential('mdb_users_own');
+    vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
+    await pushMindsCredential('a-token');
+
+    const noOrg = warn.mock.calls.filter(([msg]) => String(msg).includes('no organization'));
+    expect(noOrg).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   it('sends the organization the sidecar was started on, so its turns stay billed there', async () => {
     vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
     const calls = installFetch();

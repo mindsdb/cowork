@@ -147,6 +147,10 @@ async function pushMindsCredentialNow(
   if (!port) return false;
   try {
     const organizationId = getRunningSidecarOrgId();
+    if (value && !value.startsWith('mdb_') && !organizationId) {
+      // The sidecar can't pin a key, so its turns bill whatever org Keycloak has active.
+      console.warn('[minds-credential] handing over a session token with no organization; billing is not pinned');
+    }
     // authHeader(): a main-process fetch never passes through the renderer's
     // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
     // would 401 and the app would look unconfigured with no visible cause.
