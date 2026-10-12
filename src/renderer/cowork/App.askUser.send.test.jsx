@@ -1531,6 +1531,23 @@ describe('superseded data-vault stream', () => {
     return handle;
   }
 
+  it('replaces a live reply on the same conversation instead of running beside it', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const reply = await waitForStream();
+    expect(reply.kind).toBe('reply');
+    await emitOn(reply, { type: 'response.created', conversation_id: 'conv-a' });
+
+    // A second stream on one conversation must abort the first, or the first
+    // keeps replaying into a turn nobody reads.
+    const vault = await submitConnectForm(user);
+    expect(reply.abort).toHaveBeenCalled();
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(vault.abort).toHaveBeenCalled());
+  });
+
   it('does not hijack the composer with a question from a dead stream', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
