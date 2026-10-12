@@ -209,12 +209,14 @@ export function coworkStatePath(): string {
   return coworkStatePathIn(accountDataRoot());
 }
 
-/** The same files under a given account root, for a caller that captured the
- *  root before the account record could change (sign-out). */
+/** The account's dotenv under a given account root, for a caller that captured
+ *  the root before the account record could change (sign-out). */
 export function coworkEnvPathIn(accountRoot: string): string {
   return path.join(accountRoot, '.env');
 }
 
+/** The account's provider state under a given account root, for the same
+ *  reason as `coworkEnvPathIn`. */
 export function coworkStatePathIn(accountRoot: string): string {
   return path.join(accountRoot, 'state.json');
 }
