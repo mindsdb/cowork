@@ -1,3 +1,5 @@
+import { PLATFORM_UI } from '../../../lib/deployment';
+
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot', group: 'General' },
   { id: 'codingAgent', label: 'Coding agent', icon: 'code', group: 'Code' },
@@ -19,7 +21,7 @@ const NAV_ITEMS = [
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels', 'usage']);
 
 export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false) {
-  if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id));
+  if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id) && (PLATFORM_UI || item.id !== 'usage'));
   if (!codeModeAvailable) {
     return NAV_ITEMS.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');
   }

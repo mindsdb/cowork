@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 /**
  * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
  * placeholder), display name, and org, opening a dropdown with the account
@@ -119,7 +120,7 @@ export function UserMenu({ user, onOpenSettings }) {
   // `Personal` whether or not the listing has landed. Reading `displayName`
   // directly here is what made the row paint `Personal` and then swap to auth's
   // long `<email>'s organization` (ENG-2109).
-  const activeOrgName = organizationLabel(activeOrg) || user.org || null;
+  const activeOrgName = PLATFORM_UI ? organizationLabel(activeOrg) || user.org || null : null;
   /* Console links say which organization and account they were opened for
      (ENG-3274), so the browser lands on this organization's page rather than
      whatever its own session has active. The listing's id is the one the
@@ -226,7 +227,7 @@ export function UserMenu({ user, onOpenSettings }) {
   }] : [];
 
   const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
-  const orgRows = organizationRows.length ? [
+  const orgRows = PLATFORM_UI && organizationRows.length ? [
     { id: 'organization-group', heading: sectionHeading('Organization') },
     ...organizationRows,
     { divider: true },
@@ -257,9 +258,9 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
-    externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
-    externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    PLATFORM_UI && externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
+    PLATFORM_UI && externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a
     // browser anyway. Shown whenever there is an organization to manage.

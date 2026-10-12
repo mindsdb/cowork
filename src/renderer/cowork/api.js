@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../lib/deployment';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
 // the loopback server on the per-OS-user port main resolved (ENG-439); Vite
@@ -1605,6 +1606,7 @@ async function hubHeaders() {
  * caller decides how many times to ask again.
  */
 export async function fetchHubWorkspaces() {
+  if (!PLATFORM_UI) return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
   try {
     const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
     if (data && typeof data === 'object') return data;
@@ -1623,6 +1625,7 @@ export async function fetchHubWorkspaces() {
  * three apart.
  */
 export async function setActiveHubWorkspace(workspaceId) {
+  if (!PLATFORM_UI) throw new Error('Workspace switching is unavailable.');
   return req('/hub/workspaces/active', {
     method: 'PUT',
     headers: await hubHeaders(),
@@ -1637,6 +1640,7 @@ export async function setActiveHubWorkspace(workspaceId) {
  * the composer notice and Settings tab render nothing for it.
  */
 export async function fetchHubUsage() {
+  if (!PLATFORM_UI) return { reachable: false };
   try {
     const data = await req('/hub/usage/', { headers: await hubHeaders() });
     if (data && typeof data === 'object') return data;
