@@ -42,6 +42,7 @@ import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -1070,6 +1071,19 @@ function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deletin
   );
 }
 
+function ProviderLimitCard({ time, agentLabel, deleting }) {
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind="Provider"
+      title="Task stopped"
+      body="The provider's usage limit was reached. Contact your administrator before starting another task."
+    />
+  );
+}
+
 // ── AllowanceExhaustedCard: the free allowance, not a drained wallet ───────
 // ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
 // free-bucket model on an org that has NEVER topped up, so this user has not
@@ -1100,6 +1114,7 @@ function refillClause(resetAt, lead) {
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
      carries the same allowance's refill, so the free way forward still has a
@@ -1177,6 +1192,7 @@ function switchToAirButtons(onSwitchToAir) {
 export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
@@ -1231,6 +1247,18 @@ export function BalanceEmptyCard({
 export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind="Provider"
+        title="The provider is temporarily unavailable"
+        body="The provider has paused requests. Try again later or contact your administrator."
+      />
+    );
+  }
   /* The sentence lives in lib/usageWarnings because the Settings probe notice
      says the same thing about the same fuse. */
   return (
@@ -1266,9 +1294,11 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       time={time}
       kind="Connection"
       title="Connect a provider to start chatting"
-      body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
+      body={PLATFORM_UI
+        ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
+        : 'Add an API key or configure an endpoint in Settings. Contact your administrator if provider setup is managed for you.'}
       buttons={[
-        {
+        ...(PLATFORM_UI ? [{
           label: 'Start for free',
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1278,8 +1308,8 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        },
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+        }] : []),
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !PLATFORM_UI },
       ]}
     />
   );
@@ -1291,6 +1321,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+  if (!PLATFORM_UI) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1438,7 +1469,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
 
-  const canReconnect = Boolean(reconnectable) && !isWeb;
+  const canReconnect = PLATFORM_UI && Boolean(reconnectable) && !isWeb;
 
   const reconnect = async () => {
     if (busy) return;
@@ -1482,14 +1513,14 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   const title = done
     ? 'Reconnected'
     : canReconnect ? 'Reconnect to continue'
-    : reconnectable ? 'Sign in again'
+    : PLATFORM_UI && reconnectable ? 'Sign in again'
     : 'Update your API key';
   const body = done
     ? 'Your MindsHub session was refreshed. Send your message again to continue.'
     : err || (
         canReconnect
           ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-          : reconnectable
+          : PLATFORM_UI && reconnectable
             ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
             : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
       );
@@ -1559,15 +1590,17 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
-  if (code === 'model_restricted') {
+  if (code === 'model_restricted' || !PLATFORM_UI) {
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
         kind="Model"
-        title={`${label} is restricted`}
-        body="An admin in your organization restricted this model. Choose another model in Settings."
+        title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
+        body={code === 'model_restricted'
+          ? 'An admin in your organization restricted this model. Choose another model in Settings.'
+          : 'The provider cannot serve this model. Choose another model in Settings or contact your administrator.'}
         buttons={[
           { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
         ]}
@@ -1638,10 +1671,10 @@ function ProviderOverloadedCard({
   deleting = false,
 }) {
   const onManaged = Boolean(reconnectable);
-  const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
-  const base = errorText
+  const who = !PLATFORM_UI ? 'The model provider' : onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const base = (PLATFORM_UI && errorText)
     || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
-  const body = onManaged
+  const body = !PLATFORM_UI || onManaged
     ? base
     : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
 
@@ -2745,9 +2778,11 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Billing"
-                      title="Billing is temporarily unavailable"
-                      body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      kind={PLATFORM_UI ? 'Billing' : 'Provider'}
+                      title={PLATFORM_UI ? 'Billing is temporarily unavailable' : 'The provider is temporarily unavailable'}
+                      body={PLATFORM_UI
+                        ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                        : "The provider couldn't authorize this request. Try again in a moment."}
                       buttons={resend
                         ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}

@@ -94,6 +94,7 @@ import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { trackBillingOpened } from '../lib/analytics';
 import Combobox from './ui/Combobox.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
@@ -402,7 +403,10 @@ export function ModelSelect({
     // has to know how to render one. An explicit `action` from a call site wins
     // — Model Router carries its own and is never locked anyway.
     const entries = options.filter(Boolean)
-      .map((o) => (o.locked && !o.action ? { ...o, action: creditsAction() } : o));
+      .map((o) => {
+        if (!PLATFORM_UI && o.locked) return { ...o, tag: 'Unavailable' };
+        return o.locked && !o.action ? { ...o, action: creditsAction() } : o;
+      });
     const top = entries.filter((o) => o.pin === 'top');
     const bottom = entries.filter((o) => o.pin === 'bottom');
     const grouped = groupModelOptions(entries.filter((o) => !o.pin));
