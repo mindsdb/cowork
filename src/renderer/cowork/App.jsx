@@ -2298,13 +2298,12 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already tailing locally — second-mount of the same task should
-    // not double up. Deliberately still the shared refs and not the registry:
-    // a record also covers a live send, and re-attaching over one would abort
-    // it in favour of a tail that immediately 404s.
-    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
-      return true;
-    }
+    // A tail or send registered here, or a send holding the slot while it
+    // uploads. A second stream would abort it, whoever holds the shared slot.
+    const alreadyStreamingHere = () => (
+      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+    );
+    if (alreadyStreamingHere()) return true;
     let status;
     try {
       status = await fetchInFlightStatus(taskId);
@@ -2312,6 +2311,8 @@ function AppCore() {
       return false;
     }
     if (!status || !status.in_flight) return false;
+    // A send or queued drain may have started here while the probe was out.
+    if (alreadyStreamingHere()) return true;
 
     // Cache sync: the probe just confirmed the producer is alive.
     // Mark it now so any concurrent reconcile (e.g. switching to a
