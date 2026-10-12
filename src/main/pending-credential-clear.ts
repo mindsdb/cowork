@@ -26,6 +26,10 @@ import {
 
 export const PENDING_CLEAR_MARKER = '.pending-credential-clear';
 
+/** The start of the line cowork-server logs when it cannot finish a clear,
+ *  which is how a start that died on it is told apart from any other exit. */
+export const PENDING_CLEAR_FAILURE_LOG = 'pending credential clear failed';
+
 /** The `/health` capability of a sidecar that consumes the marker. */
 export const PENDING_CLEAR_CAPABILITY = 'pending-credential-clear';
 

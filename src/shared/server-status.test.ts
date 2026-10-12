@@ -66,6 +66,19 @@ describe('exitCodeLabel', () => {
 describe('backendFailureCopy', () => {
   const base = { hasLog: false, port: 27903, portHolderPid: null };
 
+  it('says the start stopped on the keys a sign-out left to remove, and that reopening retries it', () => {
+    const copy = backendFailureCopy({ ...base, kind: 'credential-clear', hasLog: true });
+    expect(copy.headline).toContain('sign-out');
+    expect(copy.hints.some((h) => /Quit MindsHub Cowork completely and reopen it/.test(h))).toBe(true);
+    expect(copy.hints.some((h) => /copy the log/i.test(h))).toBe(true);
+  });
+
+  it('does not ask for a log after a failed credential clear that printed nothing', () => {
+    const copy = backendFailureCopy({ ...base, kind: 'credential-clear', hasLog: false });
+    expect(copy.hints.some((h) => /copy the log/i.test(h))).toBe(false);
+    expect(copy.hints.some((h) => /no log to send/.test(h))).toBe(true);
+  });
+
   it('explains a timeout as a slow first launch and offers the recovery that works', () => {
     const copy = backendFailureCopy({ ...base, kind: 'timeout' });
     expect(copy.headline).toContain('still starting');

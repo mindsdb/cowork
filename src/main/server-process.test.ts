@@ -1045,6 +1045,43 @@ describe('a store with a pending credential clear', () => {
 
     expect(result.ok).toBe(false);
     expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(getServerDiagnostics().lastErrorKind).toBe('credential-clear');
+    expect(getServerDiagnostics().portHolderPid).toBe(9999);
+  });
+
+  it('names a start that died on a failed credential clear', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        child.stdout.emit('data', Buffer.from(
+          '[ERROR] cowork.services.pending_credential_clear: pending credential clear failed for store /tmp/cowork-test-home (OperationalError)\n',
+        ));
+        child.exitCode = 3;
+        child.emit('exit', 3);
+      }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastErrorKind).toBe('credential-clear');
+  });
+
+  it('still calls an ordinary boot death an exit', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        child.stdout.emit('data', Buffer.from('ERROR:    Application startup failed. Exiting.\n'));
+        child.exitCode = 3;
+        child.emit('exit', 3);
+      }, 0);
+      return child as never;
+    }) as never);
+
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(getServerDiagnostics().lastErrorKind).toBe('exited');
   });
 
   /** A sidecar whose launcher hands off and exits once healthy, so a stop

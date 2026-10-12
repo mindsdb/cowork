@@ -33,7 +33,7 @@ import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { hasPendingCredentialClear, PENDING_CLEAR_CAPABILITY } from './pending-credential-clear';
+import { hasPendingCredentialClear, PENDING_CLEAR_CAPABILITY, PENDING_CLEAR_FAILURE_LOG } from './pending-credential-clear';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
@@ -765,7 +765,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const holders = await findPortHolders(serverPort);
     if (holders.length > 0) {
       lastStartError = `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`;
-      lastStartErrorKind = null;
+      lastStartErrorKind = 'credential-clear';
       lastPortHolderPid = holders[0];
       console.error(`[server] ${lastStartError} (pid ${holders.join(', ')})`);
       return { ok: false, reason: lastStartError, port: serverPort };
@@ -1014,9 +1014,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
     if (step.action === 'fail') {
       const elapsedMs = Date.now() - waitStartedAt;
-      lastStartErrorKind = step.kind;
+      // The one boot death with its own remedy: a sign-out's credential clear
+      // that the backend refused to start past.
+      const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
+        ? 'credential-clear'
+        : step.kind;
+      lastStartErrorKind = kind;
       lastStartError = startFailureMessage({
-        kind: step.kind,
+        kind,
         exitCode: childExitCode,
         spawnError,
         elapsedMs,

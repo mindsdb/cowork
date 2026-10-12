@@ -719,6 +719,8 @@ export function startFailureMessage(input: {
       return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;
     case 'incompatible':
       return 'The backend is running, but it is too old for this version of MindsHub Cowork.';
+    case 'credential-clear':
+      return 'The backend stopped before serving because it could not remove the API keys a sign-out left behind.';
   }
 }
 
