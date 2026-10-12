@@ -9,6 +9,7 @@ export function visibleProviderCards(settings, providers, platformUi) {
   const usesMindsEndpoint = [settings.planningProvider, settings.codingProvider, settings.routerProvider]
     .some((type) => providerValueToType(type) === 'minds-cloud')
     || (Boolean(baseUrl) && isMindsBaseUrl(baseUrl, settings.mindsUrl));
-  return providers.filter((provider) => provider.type !== 'minds-cloud'
-    || (usesMindsEndpoint && Boolean(provider.apiKey || settings.mindsApiKey)));
+  // Clearing a credential is also the first step of replacing it. Keep the
+  // inference card editable while its draft key is empty.
+  return providers.filter((provider) => provider.type !== 'minds-cloud' || usesMindsEndpoint);
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/deployment', () => ({ PLATFORM_UI: false }));
@@ -31,7 +31,7 @@ const settings = {
 
 function renderSettings(data = settings, onSave = vi.fn(async () => ({})), section = 'agent') {
   return render(<SettingsView
-    settings={data} onSave={onSave} theme="dark" skin="default" customTheme={{}}
+    settings={data} setSetting={vi.fn()} onSave={onSave} theme="dark" skin="default" customTheme={{}}
     onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
     agentLabel="Cowork" serverOnline section={section} onSectionChange={vi.fn()}
   />);
@@ -62,6 +62,38 @@ it('keeps a MindsHub inference card without signup or console links', () => {
   expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Sign up|mindshub/i })).not.toBeInTheDocument();
   expect(screen.queryByText(/All frontier models/)).not.toBeInTheDocument();
+});
+
+it('keeps the MindsHub inference key editor available while replacing its key', async () => {
+  const save = vi.fn(async () => ({}));
+  renderSettings({
+    ...settings, providers: [minds], openaiBaseUrl: 'https://api.mindshub.ai/v1',
+    planningProvider: 'minds-cloud', codingProvider: 'minds-cloud', routerProvider: 'minds-cloud',
+  }, save);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear key' }));
+  expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
+  const key = screen.getByLabelText('minds API key');
+  expect(key).toHaveValue('');
+  fireEvent.change(key, { target: { value: 'replacement-key' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({
+    mindsApiKey: 'replacement-key', providers: [{ ...minds, apiKey: 'replacement-key' }],
+  }));
+});
+
+it.each([
+  'wallet_empty', 'included_allowance_exhausted', 'free_air_daily_spend_fuse_exceeded', 'policy_unavailable',
+])('keeps a failed MindsHub inference card neutral for %s', async (code) => {
+  renderSettings({
+    ...settings, providers: [minds], planningProvider: 'minds-cloud',
+    providerStatus: { 'minds-cloud': 'fail' },
+    providerStatusDetails: { 'minds-cloud': 'HTTP 402: No credits available. Add funds to use MindsHub.' },
+    providerStatusReasons: { 'minds-cloud': { code } },
+  });
+  const card = screen.getByRole('heading', { name: 'MindsHub' }).closest('.settings-provider-row');
+  await within(card).findByText('The configured provider is unavailable. Try again, or contact your administrator.');
+  expect(card).not.toHaveTextContent(/credits|funds|balance|free MindsHub|billing/i);
 });
 
 it('does not inject a MindsHub card into empty settings', () => {

@@ -53,6 +53,7 @@ const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'i
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
    probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
@@ -68,7 +69,7 @@ const LINK_BTN =
    refill time, or the no-grant sentence). */
 export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
   if (!PLATFORM_UI) {
-    return <div className="text-[12px] text-ink-3">The configured provider is unavailable. Try again, or contact your administrator.</div>;
+    return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
   }
   const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
   if (notice.kind === 'no_credits') {
@@ -1306,7 +1307,10 @@ export default function SettingsView({
                 const detail = configured ? st.detail : '';
                 // The probe's reason names which MindsHub limit a 402/429 was,
                 // which the detail string alone cannot.
-                const friendlyError = friendlyProviderError(detail, configured ? st.reason : null);
+                const neutralProbeError = !PLATFORM_UI && p.type === 'minds-cloud'
+                  && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
+                  ? PROVIDER_UNAVAILABLE_MESSAGE : '';
+                const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
