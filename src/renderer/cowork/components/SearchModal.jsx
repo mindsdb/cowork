@@ -80,10 +80,10 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
           type="search"
           placeholder={LABEL}
           aria-label={LABEL}
-          leading={Ico.search(17)}
+          leading={Ico.search(16)}
           trailing={(
             <Tooltip content="Close">
-              <button type="button" className="mini-icon-btn" aria-label="Close" onClick={onClose}>{Ico.close(13)}</button>
+              <button type="button" className="mini-icon-btn" aria-label="Close" onClick={onClose}>{Ico.close(14)}</button>
             </Tooltip>
           )}
         />

@@ -32,7 +32,7 @@ export default function TaskModePills({ onPick }) {
             className="inline-flex text-[var(--frost-600)] [transition:color_var(--dur-hover)_ease] [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-[var(--text-strong)]"
             aria-hidden
           >
-            {Ico[mode.icon](15)}
+            {Ico[mode.icon](14)}
           </span>
           {mode.pillLabel}
         </button>

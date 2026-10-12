@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Cloud, Monitor, Pencil, Plus } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 
 import type { CodeComputer } from '../../code/api';
 import { codingApi } from '../../code/api';
@@ -133,7 +134,7 @@ export default function ComputersSettingsSection() {
               <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">Connected computers can run portable Git projects. Local folders stay on the computer where you added them.</p>
             </div>
             <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
-              <Plus size={13} strokeWidth={1.5} /> Connect computer
+              <Icon of={Plus} size={14} /> Connect computer
             </Button>
           </div>
         )}
@@ -148,7 +149,7 @@ export default function ComputersSettingsSection() {
             return (
               <div key={computer.id} className="flex items-center gap-3 py-3.5">
                 <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-solid border-line bg-surface-2 text-ink-3">
-                  <Monitor size={17} strokeWidth={1.5} />
+                  <Icon of={Monitor} size={16} />
                   <i className={`absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-solid border-[var(--surface)] ${computer.status === 'online' ? 'bg-[var(--ok)]' : 'bg-ink-4'}`} />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -187,7 +188,7 @@ export default function ComputersSettingsSection() {
                     aria-label={`Rename ${computer.name}`}
                     onClick={() => { setEditingId(computer.id); setEditingName(computer.name); }}
                   >
-                    <Pencil size={13} strokeWidth={1.5} />
+                    <Icon of={Pencil} size={14} />
                   </Button>
                 )}
                 {!isLocal && (confirming ? (
@@ -208,7 +209,7 @@ export default function ComputersSettingsSection() {
       <SettingsGroup title="MindsHub Cloud">
         <div className="flex items-center gap-3 py-4">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-solid border-line bg-surface-2 text-ink-4">
-            <Cloud size={17} strokeWidth={1.5} />
+            <Icon of={Cloud} size={16} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

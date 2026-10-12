@@ -1,5 +1,5 @@
 // Test-only entry: the real Scheduled page with fixture props, so Playwright can
-// measure layout (happy-dom has none). `?view=grid|list` picks the layout.
+// measure layout (happy-dom has none).
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import ScheduledView from '../../src/renderer/cowork/views/ScheduledView';
@@ -7,8 +7,6 @@ import '../../src/renderer/cowork/styles/tailwind.css';
 import '../../src/renderer/cowork/styles/globals.css';
 
 document.body.setAttribute('data-theme', 'light');
-const view = new URLSearchParams(location.search).get('view') === 'grid' ? 'grid' : 'list';
-try { localStorage.setItem('anton:scheduled-view-v2', view); } catch { /* storage blocked */ }
 
 const LONG_WORD = 'Q'.repeat(120);
 const LONG_WORDS = 'Quarterly revenue reconciliation for every regional subsidiary and holding company '.repeat(2).slice(0, 120);

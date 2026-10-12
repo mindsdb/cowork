@@ -63,7 +63,7 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
           <ActionBar size="xs" primary={primary} secondary={secondary} overflow={others.length > 1 ? others : []} menuSide="top" overflowLabel="More options" />
           <MoreNotices count={more} onShow={onShowMore} />
           {notice.dismissible && (
-            <Button icon size="xs" variant="subtle" aria-label="Dismiss" onClick={() => onDismiss(notice.key)}>{Ico.close(11)}</Button>
+            <Button icon size="xs" variant="subtle" aria-label="Dismiss" onClick={() => onDismiss(notice.key)}>{Ico.close(12)}</Button>
           )}
         </div>
       </div>

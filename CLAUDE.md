@@ -84,7 +84,8 @@ npm run check:cowork-purity  # no direct window.antontron outside platform/host.
   build); `pack-smoke.yml` and `tests-e2e.yml` run nightly, non-blocking.
 - The IPC channel map is snapshot-locked
   (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
-  change** (OTA renderers can lag main), not a refactor.
+  change** (an OTA renderer is routinely newer than the shell it runs on —
+  main never serves a UI older than its own), not a refactor.
 
 ### Python server
 

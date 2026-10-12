@@ -5,7 +5,7 @@
 // the page default and the toggle is not drawn there; the stored desktop choice
 // is left as it was.
 //
-//   const { view, setView, effectiveView } = useCollectionView('anton:skills-view', { defaultView: 'list' });
+//   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
 //   <FilterRow view={<ViewToggle value={view} onValueChange={setView} />} … />
 //   {effectiveView === 'grid' ? grid : list}
 
@@ -44,8 +44,8 @@ export function useCollectionView(storageKey: string, { defaultView = 'grid' }: 
 }
 
 const OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(13) },
-  { value: 'list', label: 'List', icon: Ico.list(13) },
+  { value: 'grid', label: 'Grid', icon: Ico.grid(14) },
+  { value: 'list', label: 'List', icon: Ico.list(14) },
 ];
 
 export interface ViewToggleProps {

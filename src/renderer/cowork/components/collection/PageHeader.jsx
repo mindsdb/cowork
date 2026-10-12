@@ -74,7 +74,7 @@ export function PageHeader({
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">
         <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
           {eyebrow && (
-            <div className="mb-0.5 font-[family-name:var(--font-mono)] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-4">
+            <div className="section-label mb-0.5">
               {eyebrow}
             </div>
           )}

@@ -25,6 +25,7 @@
 
 import type { HTMLAttributes, ReactNode } from 'react';
 import { EllipsisVertical } from 'lucide-react';
+import { Icon, type IconSize } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Button, { type ButtonVariant } from './Button';
@@ -75,7 +76,7 @@ const barVariants = cva('flex min-w-0 items-center', {
   defaultVariants: { size: 'sm', align: 'end' },
 });
 
-const ICON_SIZE: Record<ActionBarSize, number> = { xs: 12, sm: 13, md: 14 };
+const ICON_SIZE: Record<ActionBarSize, IconSize> = { xs: 12, sm: 14, md: 14 };
 
 const KEY_GLYPHS: Record<string, string> = {
   Enter: '↵', Escape: 'Esc', Meta: '⌘', Control: 'Ctrl', Alt: '⌥', Shift: '⇧',
@@ -134,7 +135,7 @@ export function ActionBar({
         <Menu
           trigger={(
             <Button icon size={size} variant="subtle" aria-label={overflowLabel}>
-              <EllipsisVertical size={ICON_SIZE[size]} strokeWidth={1.5} aria-hidden="true" />
+              <Icon of={EllipsisVertical} size={ICON_SIZE[size]} />
             </Button>
           )}
           items={items}

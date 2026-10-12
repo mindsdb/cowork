@@ -55,7 +55,7 @@ function ScheduledList({ items, onSelect }) {
             } : undefined}
           >
             <span className="text-ink-3 inline-flex shrink-0">
-              {Ico.clock(13)}
+              {Ico.clock(14)}
             </span>
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {label}

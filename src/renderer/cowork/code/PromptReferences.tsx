@@ -54,7 +54,7 @@ export function PromptReferenceChips({
             aria-label={`Remove ${item.name}`}
             onClick={() => onRemove(item.path)}
           >
-            {Ico.close(10)}
+            {Ico.close(12)}
           </Button>
         </span>
       ))}

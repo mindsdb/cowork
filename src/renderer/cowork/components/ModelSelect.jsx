@@ -89,10 +89,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { ChevronRight, Check } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { trackBillingOpened } from '../lib/analytics';
 import Combobox from './ui/Combobox.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
@@ -119,8 +121,8 @@ const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 // levels — where an instant close would just look like the footer vanished.
 const FOOTER_EXIT_MS = 260;
 
-const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_RIGHT = <Icon of={ChevronRight} size={12} />;
+const CHECK = <Icon of={Check} size={12} />;
 
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -401,7 +403,10 @@ export function ModelSelect({
     // has to know how to render one. An explicit `action` from a call site wins
     // — Model Router carries its own and is never locked anyway.
     const entries = options.filter(Boolean)
-      .map((o) => (o.locked && !o.action ? { ...o, action: creditsAction() } : o));
+      .map((o) => {
+        if (!PLATFORM_UI && o.locked) return { ...o, tag: 'Unavailable' };
+        return o.locked && !o.action ? { ...o, action: creditsAction() } : o;
+      });
     const top = entries.filter((o) => o.pin === 'top');
     const bottom = entries.filter((o) => o.pin === 'bottom');
     const grouped = groupModelOptions(entries.filter((o) => !o.pin));

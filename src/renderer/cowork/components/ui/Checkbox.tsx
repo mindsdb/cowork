@@ -10,6 +10,7 @@
 
 import { Checkbox as BaseCheckbox } from '@base-ui/react/checkbox';
 import { Check, Minus } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
@@ -78,9 +79,9 @@ export function Checkbox({
     >
       <BaseCheckbox.Indicator className="flex items-center justify-center">
         {indeterminate ? (
-          <Minus size={size === 'sm' ? 10 : 12} strokeWidth={1.5} aria-hidden="true" />
+          <Icon of={Minus} size={12} />
         ) : (
-          <Check size={size === 'sm' ? 10 : 12} strokeWidth={1.5} aria-hidden="true" />
+          <Icon of={Check} size={12} />
         )}
       </BaseCheckbox.Indicator>
     </BaseCheckbox.Root>

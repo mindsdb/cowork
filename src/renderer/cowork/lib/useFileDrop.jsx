@@ -21,6 +21,7 @@
 
 import { memo, useCallback, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 
 function dragHasFiles(e) {
   const types = e?.dataTransfer?.types;
@@ -178,7 +179,7 @@ export const FileDropOverlay = memo(function FileDropOverlay({ active, label, bu
         }}
       >
         {/* upload-into-tray glyph (inherits currentColor) */}
-        <Upload size={18} strokeWidth={1.5} aria-hidden="true" className="flex-none" />
+        <Icon of={Upload} size={20} className="flex-none" />
         <span>{text}</span>
       </div>
     </div>

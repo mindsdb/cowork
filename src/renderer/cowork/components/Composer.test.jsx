@@ -2,7 +2,7 @@
 // search) used to only focus the search input — visually nothing happened.
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
@@ -771,5 +771,31 @@ describe('Composer — pasted image names (ENG-1100)', () => {
     pasteFiles([new File([new Uint8Array([1])], 'chart.png', { type: 'image/png' })]);
 
     expect(onAttachFiles.mock.calls[0][0][0].name).toBe('chart.png');
+  });
+});
+
+// The legacy `.menu` keyframe rises from below, which only suits a menu that
+// opens upward. A menu placed below the composer has to slide down instead.
+describe('Composer — slash menu entrance direction', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const openSlashWithComposerAt = (top) => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top, bottom: top + 80, left: 0, right: 600, width: 600, height: 80, x: 0, y: top,
+    });
+    renderComposer();
+    const ta = screen.getByRole('textbox');
+    fireEvent.change(ta, { target: { value: '/' } });
+    ta.setSelectionRange(1, 1);
+    fireEvent.select(ta);
+    return screen.getByRole('listbox', { name: 'Skills and actions' });
+  };
+
+  it('slides down when it opens below a composer near the top of the window', () => {
+    expect(openSlashWithComposerAt(100)).toHaveClass('menu--drop-down');
+  });
+
+  it('keeps the upward entrance when it opens above the composer', () => {
+    expect(openSlashWithComposerAt(600)).not.toHaveClass('menu--drop-down');
   });
 });

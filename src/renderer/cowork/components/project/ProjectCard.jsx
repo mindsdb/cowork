@@ -2,7 +2,7 @@
 // row in the list (ProjectRow). Both are built from one slot set on the
 // collection kit — name-led, the latest task as the description, and a
 // quiet meta line (last activity, running tasks, stats). Pin + ⋯ sit in
-// the kit's HoverActions; a pinned project keeps them visible at rest.
+// the kit's item actions.
 // The title is a real button stretched over the item, so it opens on
 // click, Enter or Space anywhere outside the actions.
 
@@ -129,10 +129,8 @@ function useProjectSlots({
   onOpen,
   onTogglePin,
   onMenuOpen,
-  isMenuOpen = false,
   onRenameSubmit,
   onRenameCancel,
-  alwaysShowActions = false,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
   const cardStats = visibleStats(stats);
@@ -205,7 +203,7 @@ function useProjectSlots({
           className={ACTION_TRIGGER}
         >
           {/* A pinned project's pin keeps the accent, hover included. */}
-          <span className={cn('inline-flex', pinned && 'text-accent')}>{Ico.pin(13)}</span>
+          <span className={cn('inline-flex', pinned && 'text-accent')}>{Ico.pin(14)}</span>
         </Button>
       </Tooltip>
       {!isReserved && (
@@ -223,7 +221,7 @@ function useProjectSlots({
             aria-label="Project menu"
             className={ACTION_TRIGGER}
           >
-            {Ico.moreVert(15)}
+            {Ico.moreVert(16)}
           </Button>
         </Tooltip>
       )}
@@ -236,9 +234,6 @@ function useProjectSlots({
     leading: Ico.folder(14),
     title,
     actions: actions || undefined,
-    // A pinned project keeps its accent pin (and the kebab beside it) in view.
-    // Rename keeps them in flow too, so they never cover the name field.
-    revealActions: alwaysShowActions || isMenuOpen || pinned || editing,
     selected: isSelected || editing,
     busy: deleting,
     onActivate: editing ? undefined : () => onOpen?.(project),

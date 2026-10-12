@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -55,6 +55,13 @@ import { setOrgMode } from '../../../lib/orgMode';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
+
+// The shared menu mounts its popup after the click settles, so wait for it
+// before reading its items.
+const openKebab = async (row = 0) => {
+  fireEvent.click(screen.getAllByLabelText('More actions')[row]);
+  return screen.findByRole('menu');
+};
 
 const draft = (overrides = {}) => ({
   id: '11111111111111111111111111111111',
@@ -227,10 +234,24 @@ describe('artifacts rail click in org mode', () => {
       publishedUrl: SHARED_URL,
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
 
     expect(screen.getByText('Open in new tab')).toBeInTheDocument();
     expect(screen.queryByText('Download')).toBeNull();
+  });
+
+  it('uses the shared menu, which grows from the kebab, and keeps its clicks off the row', async () => {
+    const row = await renderRail(draft({ title: 'Ops Console' }));
+    fireEvent.click(row);
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    cleanup();
+
+    await renderRail(draft({ title: 'Ops Console' }));
+    expect((await openKebab()).className).toContain('[transform-origin:var(--transform-origin)]');
+
+    fireEvent.click(screen.getByText('Delete'));
+    expect(screen.getByText('Delete "Ops Console"?')).toBeInTheDocument();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
   it('does not label the dead end Download for an unshared fullstack app', async () => {
@@ -246,7 +267,7 @@ describe('artifacts rail click in org mode', () => {
       publishedUrl: '',
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
 
     expect(screen.queryByText('Download')).toBeNull();
     expect(screen.getByText('Open in new tab')).toBeInTheDocument();
@@ -280,7 +301,7 @@ describe('artifacts rail click in org mode', () => {
       draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
     fireEvent.click(screen.getByText('Download'));
 
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
@@ -300,7 +321,7 @@ describe('artifacts rail click in org mode', () => {
       draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
     fireEvent.click(screen.getByText('Download'));
 
     expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
@@ -317,7 +338,7 @@ describe('artifacts rail click in org mode', () => {
       publishedUrl: SHARED_URL,
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
     fireEvent.click(screen.getByText('Download'));
 
     expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
@@ -343,7 +364,7 @@ describe('artifacts rail kebab on a non-org web deployment', () => {
       publishedUrl: '',
     }));
 
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
 
     expect(screen.queryByText('Download')).toBeNull();
     expect(screen.getByText('Open in new tab')).toBeInTheDocument();
@@ -534,36 +555,29 @@ describe('artifacts rail grouping by conversation', () => {
   });
 
   it('keeps an open row menu on its artifact when the chat regroups the rows', async () => {
-    // happy-dom has no layout: place each element 20px below the previous row.
-    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rowRect() {
-      const row = this.closest('[role="button"][title]');
-      const top = row ? [...row.parentElement.children].indexOf(row) * 20 : 0;
-      return { top, bottom: top + 20, left: 0, right: 100, width: 100, height: 20, x: 0, y: top, toJSON() {} };
-    });
-    try {
-      const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
-      fireEvent.click(screen.getAllByLabelText('More actions')[1]);
-      const topBefore = screen.getByRole('menu').style.top;
+    const { rerender } = await renderList([art('Other A', 'conv-2', 1), art('Mine A', CHAT, 2)]);
+    await openKebab(1);
 
-      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
+    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-2" />);
 
-      expect(screen.getByRole('menu').style.top).not.toBe(topBefore);
-      fireEvent.click(screen.getByText('Delete'));
-      expect(screen.getByText('Delete "Other A"?')).toBeInTheDocument();
-    } finally {
-      rect.mockRestore();
-    }
+    fireEvent.click(screen.getByText('Delete'));
+    expect(screen.getByText('Delete "Other A"?')).toBeInTheDocument();
   });
 
   it('closes an open row menu once its row leaves the list', async () => {
     const { rerender } = await renderList([art('Other A', 'conv-2', 1)]);
-    fireEvent.click(screen.getByLabelText('More actions'));
+    await openKebab();
     expect(screen.getByText('Delete')).toBeInTheDocument();
 
     fetchArtifacts.mockResolvedValue([]);
     rerender(<WorkingFolderLive project={{ id: 'proj-2', name: 'other', path: '/proj2' }} isStreaming={false} conversationId={CHAT} />);
 
     expect(screen.queryByText('Delete')).toBeNull();
+
+    fetchArtifacts.mockResolvedValue([art('Other A', 'conv-2', 1)]);
+    rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId={CHAT} />);
+    await screen.findByText('Other A');
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   // Moving to a chat of another project changes `project` and `conversationId`

@@ -13,7 +13,7 @@
 // mode's Files, Preview and Review panels): the same layout with a muted
 // icon, a 12px heading, an 11px description and no min-height.
 //
-//   <EmptyState size="sm" icon={Ico.search(18)} title="No matches"
+//   <EmptyState size="sm" icon={Ico.search(20)} title="No matches"
 //     description="Try a filename, symbol, or phrase from the code." />
 
 import { Card } from './Card.tsx';

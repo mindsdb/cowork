@@ -52,11 +52,11 @@ export function FileReviewControls({
           {file.unstaged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('stage'))}>Stage</Button>}
           {file.staged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('unstage'))}>Unstage</Button>}
           <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => setCommenting((current) => !current)}>
-            {Ico.code(11)} Ask Codex
+            {Ico.code(12)} Ask Codex
           </Button>
           {canMutate && (
             <Button icon size="xs" variant="danger" aria-label={`Discard changes to ${file.path}`} disabled={busy || localBusy} onClick={() => setDiscardOpen(true)}>
-              {Ico.trash(11)}
+              {Ico.trash(12)}
             </Button>
           )}
         </div>

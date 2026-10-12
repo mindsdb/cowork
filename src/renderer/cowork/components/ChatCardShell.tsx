@@ -14,6 +14,7 @@
 
 import type { HTMLAttributes, ReactNode } from 'react';
 import { CircleAlert, MessageCircleQuestion } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import ActionBar, { type ActionBarProps, type ActionSpec } from './ui/ActionBar';
 import { cn } from '../lib/cn';
 
@@ -60,12 +61,12 @@ export function cardActions(buttons: CardButton[] = []): ActionBarProps | null {
 export default function ChatCardShell({
   tone = 'notice', kind, title, actions, footer, className, children, ...rest
 }: ChatCardShellProps) {
-  const { icon: Icon, label } = TONES[tone];
+  const { icon, label } = TONES[tone];
   return (
     <div className={cn('chat-card-shell flex flex-col gap-2 rounded-xl bg-surface-2 px-4 py-3.5', className)} {...rest}>
       {kind !== false && (
         <div className="flex items-center gap-1.5 font-body text-xs font-medium text-ink-3">
-          <Icon size={13} strokeWidth={1.75} aria-hidden="true" />
+          <Icon of={icon} size={14} />
           <span>{kind || label}</span>
         </div>
       )}

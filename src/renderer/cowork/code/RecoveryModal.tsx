@@ -1,4 +1,5 @@
 import { Laptop, RotateCcw } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 
 import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
@@ -65,7 +66,7 @@ export function RecoveryModal({
               size="sm"
               indicator="end"
             >
-              <span className="code-recovery-option__icon"><Laptop size={17} strokeWidth={1.6} /></span>
+              <span className="code-recovery-option__icon"><Icon of={Laptop} size={16} /></span>
               <span className="code-recovery-option__copy">
                 <span className="code-recovery-option__title">
                   <strong>{option.computer.name}</strong>
@@ -82,7 +83,7 @@ export function RecoveryModal({
           ))}
           {!plan?.options.length && (
             <div className="code-recovery-empty">
-              <RotateCcw size={18} strokeWidth={1.5} />
+              <Icon of={RotateCcw} size={20} />
               <div><strong>No compatible computer is online</strong><span>Bring the original computer online or connect another compatible computer.</span></div>
             </div>
           )}

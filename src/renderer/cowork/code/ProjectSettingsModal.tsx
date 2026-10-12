@@ -7,11 +7,10 @@ import { Alert } from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Checkbox from '../components/ui/Checkbox';
 import { Collapsible } from '../components/ui/Collapsible';
-import { Field } from '../components/ui/Field';
+import { Field, FieldSet } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import { ConfirmModal } from '../components/ConfirmModal';
 import type { ConnectorConnection } from '../api';
 import {
   buildModelPickerOptions,
@@ -35,7 +34,7 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
-import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -65,7 +64,6 @@ export function ProjectSettingsModal({
   busy,
   onClose,
   onSave,
-  onDelete,
   onOpenConnectors = () => {},
   onOpenSkills = () => {},
   defaultEngineId = 'codex',
@@ -81,7 +79,6 @@ export function ProjectSettingsModal({
   busy: boolean;
   onClose: () => void;
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => Promise<CodeProject>;
-  onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
   onOpenSkills?: () => void;
   defaultEngineId?: string;
@@ -107,13 +104,9 @@ export function ProjectSettingsModal({
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
-  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
@@ -182,9 +175,6 @@ export function ProjectSettingsModal({
     setProjectPermission(project?.permission_mode || 'supervised');
     setProjectReasoningEffort(project?.default_reasoning_effort || null);
     setError('');
-    setDeleteOpen(false);
-    setDeleteBusy(false);
-    setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
       codingApi.playbook(project.id).then((status) => {
@@ -256,19 +246,6 @@ export function ProjectSettingsModal({
   }, [projectEffortLevels]);
 
   const availableEngines = engines.filter((engine) => engine.available);
-  const defaultsSummary = describeTaskDefaults({
-    agent: availableEngines.find((engine) => engine.id === projectEngineId)?.label || projectEngineId,
-    model: projectModelOptions.find((option) => option.value === projectModel)?.label || projectModel,
-    permission: PERMISSION_OPTIONS.find((option) => option.value === projectPermission)?.label || projectPermission,
-    variableCount: countEnvironmentVariables(environmentText),
-    portNames: parsePortNames(portNames),
-  });
-
-  const selectedSkillCount = selectedSkillSources.reduce((total, source) => total + source.enabled_paths.length, 0);
-  const advancedSummary = [
-    selectedSkillCount ? `${selectedSkillCount} ${selectedSkillCount === 1 ? 'skill' : 'skills'} added` : '',
-    defaultsSummary,
-  ].filter(Boolean).join(' · ');
 
   const updateCommand = (folderId: string, phase: CommandPhase, value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
@@ -315,12 +292,12 @@ export function ProjectSettingsModal({
   };
 
   return (
-    <>
     <Modal
       open={open}
       onClose={onClose}
       size="md"
-      width="min(560px, 92vw)"
+      // Creating asks only for a name and code, so it keeps the narrower width.
+      width={project ? undefined : 'min(560px, 92vw)'}
       maxHeight="min(720px, 88vh)"
       labelledBy="code-project-settings-title"
       closeOnBackdrop={!busy && !skillsSaving}
@@ -334,7 +311,7 @@ export function ProjectSettingsModal({
       />
       <ModalBody>
         <div className="code-project-settings">
-          <Field label="Project name">
+          <Field label="Project name" heading>
             <Input value={name} onChange={setName} placeholder="atlas" spellCheck={false} autoFocus />
           </Field>
 
@@ -366,24 +343,8 @@ export function ProjectSettingsModal({
             onOpenConnectors={onOpenConnectors}
           />}
 
-          {project && <Collapsible
-            open={defaultsOpen}
-            onOpenChange={setDefaultsOpen}
-            className="code-project-advanced"
-            triggerClassName="code-project-advanced__trigger"
-            panelClassName="code-project-advanced__panel"
-            title={(
-              <span className="code-project-advanced__title">
-                <span className="code-project-advanced__icon" aria-hidden="true">{Ico.slider(15)}</span>
-                <span>
-                  <strong>Advanced</strong>
-                  <small>{advancedSummary}</small>
-                </span>
-              </span>
-            )}
-          >
-            <section className="code-project-field code-project-skills" aria-labelledby="code-project-skills-label">
-              <span id="code-project-skills-label" className="code-project-label">Skills</span>
+          {project && <>
+            <FieldSet legend="Skills">
               <ProjectSkillSelector
                 items={skillLibrary.items}
                 selected={selectedSkillSources}
@@ -392,140 +353,115 @@ export function ProjectSettingsModal({
                 onChange={setSelectedSkillSources}
                 onOpenSkills={onOpenSkills}
               />
+            </FieldSet>
 
-              {project?.playbook && (
-                <Collapsible
-                  className="code-project-legacy-setup"
-                  title={<span className="code-project-legacy-setup__title"><span>Project-only Team Setup</span><small className="text-xs text-ink-4">{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>}
-                >
-                  <div className="code-team-setup__connected">
-                  <div className="code-team-setup__summary">
-                    <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
-                    <div>
-                      <strong>{repositoryLabel(project.playbook.repository)}</strong>
-                      <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
-                    </div>
-                    {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
+            {project.playbook && (
+              <FieldSet legend="Team Setup">
+                <div className="code-team-setup__connected">
+                <div className="code-team-setup__summary">
+                  <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
+                  <div>
+                    <strong>{repositoryLabel(project.playbook.repository)}</strong>
+                    <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
                   </div>
-                  <div className="code-playbook-actions">
-                    <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
+                  {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
+                </div>
+                <div className="code-playbook-actions">
+                  <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
+                    setPlaybookBusy(true); setError('');
+                    try { setPlaybookStatus(await codingApi.refreshPlaybook(project.id)); }
+                    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for Team Setup updates.'); }
+                    finally { setPlaybookBusy(false); }
+                  }}>Check for updates</Button>
+                </div>
+
+                {playbookStatus?.update_available && (
+                  <Collapsible className="code-playbook-update" title="Review update">
+                    <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
+                    <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                       setPlaybookBusy(true); setError('');
-                      try { setPlaybookStatus(await codingApi.refreshPlaybook(project.id)); }
-                      catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for Team Setup updates.'); }
+                      try { setPlaybookStatus(await codingApi.applyPlaybook(project.id)); }
+                      catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
                       finally { setPlaybookBusy(false); }
-                    }}>Check for updates</Button>
-                  </div>
+                    }}>Apply update</Button>
+                  </Collapsible>
+                )}
 
-                  {playbookStatus?.update_available && (
-                    <Collapsible className="code-playbook-update" title="Review update">
-                      <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
-                      <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
-                        setPlaybookBusy(true); setError('');
-                        try { setPlaybookStatus(await codingApi.applyPlaybook(project.id)); }
-                        catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
-                        finally { setPlaybookBusy(false); }
-                      }}>Apply update</Button>
-                    </Collapsible>
-                  )}
-
-                  {!!playbookStatus?.items.length && (
-                    <Collapsible
-                      className="code-playbook-items"
-                      title="Included guidance"
-                      meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
-                    >
-                      <div>
-                        {playbookStatus.items.map((item) => (
-                          <label key={item.path}>
-                            <Checkbox size="sm" aria-label={item.name} checked={item.enabled} disabled={playbookBusy} onCheckedChange={async () => {
-                              const enabled = playbookStatus.items
-                                .filter((candidate) => candidate.path === item.path ? !item.enabled : candidate.enabled)
-                                .map((candidate) => candidate.path);
-                              setPlaybookBusy(true); setError('');
-                              try { setPlaybookStatus(await codingApi.setPlaybookItems(project.id, enabled)); }
-                              catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
-                              finally { setPlaybookBusy(false); }
-                            }} />
-                            <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
-                          </label>
-                        ))}
-                      </div>
-                    </Collapsible>
-                  )}
-
-                  <Collapsible className="code-team-setup__details" title="Details">
-                    <dl>
-                      <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
-                      <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
-                    </dl>
+                {!!playbookStatus?.items.length && (
+                  <Collapsible
+                    className="code-playbook-items"
+                    title="Included guidance"
+                    meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
+                  >
                     <div>
-                      <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
-                      {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
+                      {playbookStatus.items.map((item) => (
+                        <label key={item.path}>
+                          <Checkbox size="sm" aria-label={item.name} checked={item.enabled} disabled={playbookBusy} onCheckedChange={async () => {
+                            const enabled = playbookStatus.items
+                              .filter((candidate) => candidate.path === item.path ? !item.enabled : candidate.enabled)
+                              .map((candidate) => candidate.path);
+                            setPlaybookBusy(true); setError('');
+                            try { setPlaybookStatus(await codingApi.setPlaybookItems(project.id, enabled)); }
+                            catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
+                            finally { setPlaybookBusy(false); }
+                          }} />
+                          <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
+                        </label>
+                      ))}
                     </div>
                   </Collapsible>
-                  {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
+                )}
+
+                <Collapsible className="code-team-setup__details" title="Details">
+                  <dl>
+                    <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
+                    <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
+                  </dl>
+                  <div>
+                    <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
+                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
                   </div>
                 </Collapsible>
-              )}
-            </section>
+                {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
+                </div>
+              </FieldSet>
+            )}
 
-            <section className="code-project-defaults__body" aria-label="Task defaults">
-              <div className="code-project-defaults">
+            <FieldSet legend="Task defaults">
+              <div className="code-project-columns">
                 <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
                 <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
-                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
-                  if (isPermissionMode(value)) setProjectPermission(value);
-                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
                 {projectEffortLevels && (
                   <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                 )}
+                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
+                  if (isPermissionMode(value)) setProjectPermission(value);
+                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
               </div>
-              <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
-                <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
-              </Field>
-              <Field label="Development ports" help="Each task gets its own free port under each name.">
-                <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
-              </Field>
-            </section>
-          </Collapsible>}
+            </FieldSet>
+
+            <FieldSet legend="Environment">
+              <div className="grid gap-3">
+                <Field label="Development ports" help="Each task gets its own free port under each name.">
+                  <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
+                </Field>
+                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
+                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
+                </Field>
+              </div>
+            </FieldSet>
+          </>}
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
-        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>Delete project</Button>}
-        <div className="code-project-footer-actions">
-          <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
-            {busy || skillsSaving || playbookBusy
-              ? (project ? 'Saving…' : 'Creating…')
-              : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
-          </Button>
-        </div>
+      <ModalFooter>
+        <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
+          {busy || skillsSaving || playbookBusy
+            ? (project ? 'Saving…' : 'Creating…')
+            : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
+        </Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal
-      open={deleteOpen}
-      title="Delete this Code Project?"
-      message="This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted."
-      confirmLabel="Delete project"
-      destructive
-      busy={busy || deleteBusy}
-      busyLabel="Deleting…"
-      error={deleteError}
-      onClose={() => { setDeleteOpen(false); setDeleteError(''); }}
-      onConfirm={async () => {
-        setDeleteBusy(true);
-        setDeleteError('');
-        try {
-          await onDelete?.();
-          setDeleteOpen(false);
-        } catch (reason) {
-          setDeleteError(reason instanceof Error ? reason.message : 'Could not delete this Code Project.');
-        } finally {
-          setDeleteBusy(false);
-        }
-      }}
-    />
-    </>
   );
 }

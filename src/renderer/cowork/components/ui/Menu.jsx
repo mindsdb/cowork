@@ -49,6 +49,7 @@
 import { useEffect, useMemo } from 'react';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { ChevronRight } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import { OutsidePressLayer } from './OutsidePressLayer';
@@ -59,6 +60,11 @@ import { Tooltip } from './Tooltip';
 // treatment while replacing the runtime-injected CSS mechanism.
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
+  // The desktop shell makes the whole window a drag region and Electron
+  // swallows mouse-downs there by geometry, not paint order. The portal puts
+  // this popup outside every opted-out surface, so it opts out itself;
+  // otherwise its items only respond where a button or scroller sits beneath.
+  '[-webkit-app-region:no-drag]',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
   // A long menu (the Filter menu's project list) scrolls within the space
   // Base UI measures below its anchor instead of running off-screen, as
@@ -94,7 +100,7 @@ const itemVariants = cva(
 
 // Chevron for submenu triggers. Lucide directly so the primitive stays
 // free of any app-icon dependency.
-const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_RIGHT = <Icon of={ChevronRight} size={12} />;
 
 // Maps the item array to Base UI nodes. Recursive so `submenu` items
 // nest cleanly. `z` rises by one per level so deeper fly-outs always

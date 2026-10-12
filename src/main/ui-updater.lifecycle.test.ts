@@ -228,6 +228,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
     const ui = await loadUpdater();
 
     await expect(ui.applyUIUpdate()).resolves.toBe(true);
+    expect(ui.lastUiApplyAttempt()).toBe('2.26.7.13.1');
     // The blocker: a freshly-activated constrained bundle must be immediately
     // serveable, not fall back to bundled and report a false success.
     expect(ui.isServingOta()).toBe(true);
@@ -241,6 +242,20 @@ describe('applyUIUpdate (apply-time gate)', () => {
 
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
     expect(ui.isServingOta()).toBe(false);
+    // Held for compat before any download: nothing was attempted.
+    expect(ui.lastUiApplyAttempt()).toBeNull();
+  });
+
+  it('names the version a failed download attempted, from the manifest it re-read', async () => {
+    stageManifest('2.26.7.13.1');
+    h.manifest = { ...(h.manifest as object), sha256: 'b'.repeat(64) }; // checksum will not match
+    const ui = await loadUpdater();
+    await expect(ui.applyUIUpdate()).resolves.toBe(false);
+    expect(ui.lastUiApplyAttempt()).toBe('2.26.7.13.1');
+    // The next run starts clean.
+    h.manifest = null;
+    await expect(ui.applyUIUpdate()).resolves.toBe(false);
+    expect(ui.lastUiApplyAttempt()).toBeNull();
   });
 
   it('does not re-activate the version already installed as the bundled renderer', async () => {

@@ -52,6 +52,7 @@
 import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { ChevronDown, ChevronsUpDown, Check } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
@@ -106,10 +107,10 @@ export function PickerMenuHeading({ children }) {
   );
 }
 
-const CHEVRON_DOWN = <ChevronDown size={11} strokeWidth={1.5} aria-hidden="true" />;
-const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_DOWN = <Icon of={ChevronDown} size={12} />;
+const CARET_UP_DOWN = <Icon of={ChevronsUpDown} size={12} />;
 
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={12} />;
 
 // Flattens the options tree (unwrapping groups, dropping separators) into
 // the `{ value, label }` pairs Base UI's Root `items` prop wants — that's
@@ -137,7 +138,7 @@ function renderOptions(options) {
     if (Array.isArray(opt.options)) {
       return (
         <BaseSelect.Group key={opt.group ?? i}>
-          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-[11px] font-semibold text-ink-4 uppercase tracking-[0.04em]">
+          <BaseSelect.GroupLabel className="section-label pt-[6px] px-[14px] pb-[2px]">
             {opt.group}
           </BaseSelect.GroupLabel>
           {renderOptions(opt.options)}

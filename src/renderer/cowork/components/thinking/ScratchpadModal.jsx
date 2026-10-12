@@ -111,7 +111,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             says the count, so we don't repeat it here. */}
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
+            <span className="inline-flex text-ink-3">{Ico.code(16)}</span>
             <span className="s-h3 text-ink">
               {modalTitle}
             </span>
@@ -418,10 +418,7 @@ function Section({ label, muted = false, right, children }) {
   return (
     <div className="mt-4 flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-3">
-        <span className={clsx(
-          'font-display text-[10.5px] font-semibold uppercase tracking-widest',
-          muted ? 'text-ink-4 opacity-60' : 'text-ink-4'
-        )}>
+        <span className={clsx('section-label', muted && 'opacity-60')}>
           {label}
         </span>
         {right}

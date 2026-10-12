@@ -27,14 +27,7 @@ export function TaskBar({
   onTogglePreview,
   onRunProjectAction,
   onOpenControls,
-  onOpenExtensions,
-  onOpenProject = () => {},
-  onRename,
   onFork,
-  onCompact,
-  onStatus,
-  onArchive,
-  onDelete,
 }: {
   session: CodingSession;
   git: GitState | null;
@@ -53,14 +46,7 @@ export function TaskBar({
   onTogglePreview: () => void;
   onRunProjectAction: (action: ProjectActionSummary) => void;
   onOpenControls: () => void;
-  onOpenExtensions: () => void;
-  onOpenProject?: () => void;
-  onRename: () => void;
   onFork: () => void;
-  onCompact: () => void;
-  onStatus: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
 }) {
   const status = codingSessionStatus(session);
   const { additions, deletions } = diffStats(files);
@@ -84,10 +70,34 @@ export function TaskBar({
       ? scopedWorkspaceNames.join(', ')
       : `${selectedResourceCount} selected ${selectedResourceCount === 1 ? 'folder' : 'folders'}`;
 
+  // Only what acts on this open task lives here; rename, archive and delete sit
+  // on the task's sidebar row, and agent commands such as /compact in the composer.
+  const workspaceActions = [
+    ...(can('open_workspace') ? [{
+      label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
+      icon: Ico.openFolder(14),
+      onClick: () => void openCodePath(session.workspace_path),
+      title: worktreeLabel,
+    }] : []),
+    ...(can('fork') ? [{
+      label: 'Fork task',
+      icon: Ico.code(14),
+      disabled: !taskIdle,
+      onClick: onFork,
+    }] : []),
+  ];
+  const taskActions = [
+    ...workspaceActions,
+    ...(can('task_controls') ? [
+      ...(workspaceActions.length ? [{ divider: true }] : []),
+      { label: 'Task settings', icon: Ico.settings(14), onClick: onOpenControls },
+    ] : []),
+  ];
+
   return (
     <header className="code-taskbar">
       <div className="code-taskbar__identity">
-        <span className="code-taskbar__glyph">{Ico.code(15)}</span>
+        <span className="code-taskbar__glyph">{Ico.code(16)}</span>
         <div className="code-taskbar__copy">
           <div className="code-taskbar__title-row">
             <div className="code-taskbar__title" title={session.title}>{session.title}</div>
@@ -119,7 +129,7 @@ export function TaskBar({
               ariaLabel="Working copy and task details"
               trigger={(
                 <button type="button" className="code-taskbar__detail-trigger" aria-label={`Show task details for ${workingCopyLabel.toLowerCase()}`}>
-                  <span>{workingCopyLabel}</span>{Ico.chevDown(10)}
+                  <span>{workingCopyLabel}</span>{Ico.chevDown(12)}
                 </button>
               )}
               items={[{
@@ -166,7 +176,7 @@ export function TaskBar({
               ariaLabel="Run project action"
               trigger={(
                 <Button size="sm" variant="subtle" disabled={projectActionBusy} aria-label="Choose a project action to run">
-                  {Ico.play(12)}<span>{projectActionBusy ? 'Starting…' : 'Run'}</span>{Ico.chevDown(10)}
+                  {Ico.play(12)}<span>{projectActionBusy ? 'Starting…' : 'Run'}</span>{Ico.chevDown(12)}
                 </Button>
               )}
               items={projectActions.map((action) => ({
@@ -190,7 +200,7 @@ export function TaskBar({
                 aria-controls="code-preview-panel"
                 aria-label="Preview running project"
               >
-                {Ico.globe(13)}
+                {Ico.globe(14)}
                 <span>Preview</span>
               </Button>
             </span>
@@ -206,7 +216,7 @@ export function TaskBar({
             aria-expanded={filesOpen}
             aria-controls="code-files-panel"
           >
-            {Ico.folder(13)}
+            {Ico.folder(14)}
             <span>Files</span>
           </Button>}
           {can('terminal') && <Button
@@ -216,7 +226,7 @@ export function TaskBar({
             aria-label="Terminal"
             aria-expanded={terminalOpen}
           >
-            {Ico.code(13)}
+            {Ico.code(14)}
             <span>Terminal</span>
           </Button>}
           {can('review') && <Button
@@ -227,7 +237,7 @@ export function TaskBar({
             aria-expanded={reviewOpen}
             aria-controls="code-review-panel"
           >
-            {Ico.panelExpandLeft(13)}
+            {Ico.panelExpandLeft(14)}
             <span>Review</span>
             {files.length > 0 && (
               <span className="code-taskbar__diff">
@@ -236,70 +246,10 @@ export function TaskBar({
             )}
           </Button>}
         </div>
-        <Menu
+        {!!taskActions.length && <Menu
           trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
-          items={[
-            ...(can('open_workspace') ? [{
-              label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
-              icon: Ico.openFolder(13),
-              onClick: () => void openCodePath(session.workspace_path),
-              title: worktreeLabel,
-            }] : []),
-            {
-              label: 'Rename task',
-              icon: Ico.edit(13),
-              onClick: onRename,
-            },
-            ...(can('fork') ? [{
-              label: 'Fork task',
-              icon: Ico.code(13),
-              disabled: !taskIdle,
-              onClick: onFork,
-            }] : []),
-            { divider: true },
-            ...(can('task_controls') ? [{
-              label: 'Task controls',
-              icon: Ico.settings(13),
-              onClick: onOpenControls,
-            }] : []),
-            ...(session.project_id ? [{
-              label: 'Project settings',
-              icon: Ico.folder(13),
-              onClick: onOpenProject,
-            }] : []),
-            ...(can('extensions') ? [{
-              label: 'Skills and extensions',
-              icon: Ico.settings(13),
-              onClick: onOpenExtensions,
-            }] : []),
-            ...(can('slash_commands') ? [{
-              label: 'Compact context',
-              icon: Ico.refresh(13),
-              disabled: !taskIdle,
-              onClick: onCompact,
-            },
-            {
-              label: 'Show task status',
-              icon: Ico.code(13),
-              onClick: onStatus,
-            }] : []),
-            { divider: true },
-            {
-              label: session.archived ? 'Restore coding task' : 'Archive coding task',
-              icon: Ico.folder(13),
-              disabled: !taskIdle,
-              onClick: onArchive,
-            },
-            {
-              label: 'Delete coding task',
-              icon: Ico.trash(13),
-              danger: true,
-              disabled: !taskIdle,
-              title: taskIdle ? undefined : 'Stop the active turn before deleting this task.',
-              onClick: onDelete,
-            },
-          ]}
-        />
+          items={taskActions}
+        />}
       </div>
     </header>
   );

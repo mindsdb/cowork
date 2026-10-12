@@ -187,7 +187,7 @@ export function TaskSourceLinks({
                 <span>{context.title}</span>
                 {sourceContextMeta(context) && <small>{sourceContextMeta(context)}</small>}
               </span>
-              <Button icon size="xxs" variant="subtle" disabled={busy || adding} aria-label={`Remove ${sourceContextLabel(context)}`} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(11)}</Button>
+              <Button icon size="xxs" variant="subtle" disabled={busy || adding} aria-label={`Remove ${sourceContextLabel(context)}`} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(12)}</Button>
             </div>
           ))}
         </div>

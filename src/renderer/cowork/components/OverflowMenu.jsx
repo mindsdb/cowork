@@ -4,7 +4,7 @@ import { Button, Menu } from './ui';
 
 export function OverflowMenu({
   items = [],
-  icon = Ico.moreVert(13),
+  icon = Ico.moreVert(14),
   label = 'More actions',
   title = label,
   width = 200,

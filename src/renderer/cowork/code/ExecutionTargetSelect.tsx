@@ -1,4 +1,5 @@
 import { Cloud, Monitor } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 
 import Select from '../components/ui/Select';
 import type { CodeComputer } from './api';
@@ -46,7 +47,7 @@ export function ExecutionTargetSelect({
       label: 'This computer',
       triggerLabel: 'This computer',
       description: `${platformLabel(local.capabilities.platform)} · Ready now`,
-      icon: <Monitor size={13} strokeWidth={1.5} aria-hidden="true" />,
+      icon: <Icon of={Monitor} size={14} />,
     }] : []),
     ...remotes.map((computer) => ({
       value: computer.id,
@@ -57,7 +58,7 @@ export function ExecutionTargetSelect({
         : computer.active_run_count
           ? `${computer.active_run_count} active ${computer.active_run_count === 1 ? 'task' : 'tasks'}`
           : 'Ready'}`,
-      icon: <Monitor size={13} strokeWidth={1.5} aria-hidden="true" />,
+      icon: <Icon of={Monitor} size={14} />,
       disabled: localOnly || computer.status !== 'online' || Boolean(available && !available.has(computer.id)),
       meta: computer.status !== 'online'
         ? undefined
@@ -79,7 +80,7 @@ export function ExecutionTargetSelect({
           label: 'MindsHub Cloud',
           triggerLabel: 'MindsHub Cloud',
           description: 'Managed, on-demand compute',
-          icon: <Cloud size={13} strokeWidth={1.5} aria-hidden="true" />,
+          icon: <Icon of={Cloud} size={14} />,
           meta: 'Coming soon',
           disabled: true,
         },

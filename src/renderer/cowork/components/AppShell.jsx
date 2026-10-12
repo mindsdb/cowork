@@ -70,7 +70,7 @@ export default function AppShell({
               'transform var(--dur-layout) var(--ease-out) calc(2 * var(--dur-stagger))',
           }}
         >
-          {Ico.sidebarExpandRight(15)}
+          {Ico.sidebarExpandRight(16)}
         </button>
       </Tooltip>
       {mainEl}

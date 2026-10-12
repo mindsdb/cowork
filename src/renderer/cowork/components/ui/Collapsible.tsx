@@ -7,7 +7,6 @@
 // WorkingFolderLive, OnboardingChecklist, Composer) — ENG-1151.
 //
 //   <Collapsible title="Advanced">…</Collapsible>
-//   <Collapsible title={<Eyebrow>Details</Eyebrow>} defaultOpen>…</Collapsible>
 //   <Collapsible open={open} onOpenChange={setOpen} title="Controlled">…</Collapsible>
 //
 // Two header styles, chosen by `variant`, so call sites don't restyle the
@@ -28,6 +27,7 @@
 
 import { Collapsible as BaseCollapsible } from '@base-ui/react/collapsible';
 import { ChevronDown } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
@@ -65,11 +65,10 @@ const metaVariants = cva('flex-none tabular-nums text-ink-4', {
 // Lucide directly (like Menu/Select) so the primitive stays free of the product icon set.
 function Chevron() {
   return (
-    <ChevronDown
-      className="flex-none text-ink-4 transition-transform duration-layout group-data-[panel-open]:rotate-180"
+    <Icon
+      of={ChevronDown}
       size={12}
-      strokeWidth={1.5}
-      aria-hidden="true"
+      className="flex-none text-ink-4 transition-transform duration-layout group-data-[panel-open]:rotate-180"
     />
   );
 }

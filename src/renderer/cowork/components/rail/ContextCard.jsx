@@ -96,15 +96,17 @@ function mergeFileResource(current, fresh) {
   return merged;
 }
 
+// Hover says what the file is for, not what's in it: memory files grow
+// to pages of raw markdown, and clicking opens the editor anyway.
+const MEMORY_DESCRIPTIONS = {
+  lessons: 'What the agent has learned working here',
+  rules: 'Standing instructions the agent follows',
+  profile: 'Who you are and how you like to work',
+};
+
 function MemoryRow({ entry, onOpen }) {
-  // Single-line row — the previous version displayed
-  // `previewFirstLine(entry.content)` underneath the filename, which
-  // for the canonical files (lessons.md, rules.md, identity.md, …)
-  // is just the H1 of the file and reads as a duplicate of the
-  // filename itself. Hover/click opens the editor, which has the
-  // full content; the rail row only needs the file identity + age.
   return (
-    <Tooltip content={entry.content || labelCategory(entry.category)}>
+    <Tooltip content={MEMORY_DESCRIPTIONS[entry.category]}>
       <button
         type="button"
         onClick={onOpen}
@@ -114,7 +116,7 @@ function MemoryRow({ entry, onOpen }) {
           'border-0 bg-transparent w-full grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
         )}
       >
-        <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+        <span className="text-ink-4 inline-flex flex-none">{Ico.code(14)}</span>
         <span className="block truncate text-sm text-ink min-w-0">
           {labelCategory(entry.category) || entry.name}
         </span>
@@ -131,9 +133,9 @@ function MemoryRow({ entry, onOpen }) {
 // present anton.md with a subtle "Project instructions" label.
 function attachmentSourceIcon(item) {
   const source = item.source || item.kind || 'file';
-  if (source === 'connector') return Ico.link(13);
-  if (item.mime && String(item.mime).startsWith('image/')) return Ico.image(13);
-  return Ico.doc(13);
+  if (source === 'connector') return Ico.link(14);
+  if (item.mime && String(item.mime).startsWith('image/')) return Ico.image(14);
+  return Ico.doc(14);
 }
 
 function SessionAttachmentRow({
@@ -220,7 +222,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
     >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.doc(14)}</span>
       <span className="block truncate text-sm text-ink min-w-0">
         {isAnton ? 'Instructions' : (file.path || file.name)}
       </span>
@@ -258,7 +260,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
                 'bg-transparent border-0 cursor-pointer p-0',
               )}
             >
-              {Ico.trash(13)}
+              {Ico.trash(14)}
             </button>
           </Tooltip>
         )}
@@ -286,7 +288,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
     >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(13)}</span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(14)}</span>
       <span className="block truncate text-sm text-ink min-w-0">{file.name || 'untitled'}</span>
       {/* Both actions show together on hover — unlike ContextFileRow's
           single age/trash swap, there's no "normal" state content to
@@ -302,7 +304,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           title="Open in Google Drive"
           className="text-ink-4 inline-flex items-center justify-center"
         >
-          {Ico.externalLink(11)}
+          {Ico.externalLink(12)}
         </span>
         {onRequestDelete && (
           <Tooltip content="Remove from project files">
@@ -321,7 +323,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
                 'bg-transparent border-0 cursor-pointer p-0',
               )}
             >
-              {Ico.trash(13)}
+              {Ico.trash(14)}
             </button>
           </Tooltip>
         )}
@@ -678,11 +680,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="section-label">
               Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
             </span>
             <OverflowMenu
-              icon={Ico.plus(13)}
+              icon={Ico.plus(14)}
               label="Add files to this project"
               title={uploadBusy ? 'Uploading…' : 'Add files to this project'}
               disabled={uploadBusy}
@@ -692,13 +694,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 {
                   id: 'attach-computer',
                   label: 'Attach files',
-                  icon: Ico.upload(13),
+                  icon: Ico.upload(14),
                   onClick: () => fileInputRef.current?.click(),
                 },
                 onAddGoogleDriveFiles && {
                   id: 'attach-gdrive',
                   label: drivePickerBusy ? 'Connecting…' : 'Attach Google Drive files',
-                  icon: Ico.googleDrive(13),
+                  icon: Ico.googleDrive(14),
                   disabled: drivePickerBusy,
                   onClick: () => {
                     setDrivePickerBusy(true);
@@ -753,7 +755,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 'cursor-pointer bg-transparent border-0 text-left',
               )}
             >
-              <span className="text-ink-4 inline-flex flex-none">{Ico.upload(13)}</span>
+              <span className="text-ink-4 inline-flex flex-none">{Ico.upload(14)}</span>
               <span>Add files to give the agent context.</span>
             </button>
           )}
@@ -810,7 +812,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="section-label">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
             <Tooltip content="Attach files to this task">
@@ -830,7 +832,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   'disabled:opacity-50 disabled:cursor-wait',
                 )}
               >
-                {Ico.plus(13)}
+                {Ico.plus(14)}
               </button>
             </Tooltip>
           </div>
@@ -883,7 +885,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   affordance — the explicit "+" header button is the
                   primary surface, this is a fallback for when the
                   list is empty and the user might miss the header. */}
-              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
+              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(14)}</span>
               <span>No files attached yet — click to add.</span>
             </button>
           )}
@@ -895,7 +897,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 rawUrl && {
                   id: 'open',
                   label: 'Open',
-                  icon: Ico.upload(13),
+                  icon: Ico.upload(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});
@@ -904,7 +906,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 {
                   id: 'move',
                   label: 'Move to project files',
-                  icon: Ico.folder(13),
+                  icon: Ico.folder(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     // Optimistic: drop from Task uploads right away
@@ -937,7 +939,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 {
                   id: 'delete',
                   label: 'Delete',
-                  icon: Ico.trash(13),
+                  icon: Ico.trash(14),
                   danger: true,
                   onClick: () => {
                     closeAttachmentMenu();
@@ -977,7 +979,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            <span className="section-label px-1 mb-1">
               {/* Display label spelled out — "Project" / "Global" on
                   their own read as project metadata, not memory. The
                   vault scope (`section.scope`) is still the canonical

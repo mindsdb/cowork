@@ -111,7 +111,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
                     <input ref={fileInput} type="file" accept=".md,.skill" aria-label="Skill file" hidden onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ''; }} />
                     <strong>Bring your own SKILL.md</strong>
                     <p>Choose a text file with a name, description and instructions. It will be copied into your Code skills. The original file stays unchanged.</p>
-                    <Button variant="tinted" onClick={() => fileInput.current?.click()}>{Ico.attach(15)} {upload ? 'Choose another file' : 'Choose file'}</Button>
+                    <Button variant="tinted" onClick={() => fileInput.current?.click()}>{Ico.attach(14)} {upload ? 'Choose another file' : 'Choose file'}</Button>
                     <small>SKILL.md or .skill · Up to 120 KB</small>
                   </div>
                   {upload && <div className="code-personal-skill__preview"><strong>{upload.name}</strong><pre>{upload.content}</pre></div>}

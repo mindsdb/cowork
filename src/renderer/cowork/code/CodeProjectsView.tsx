@@ -3,9 +3,14 @@ import { useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
-import { CollectionState, FilterRow, ListGroup, ListItem, PageHeader, SearchInput, SortPill } from '../components/collection';
+import Menu from '../components/ui/Menu';
+import {
+  CardGrid, CollectionState, FilterRow, ItemCard, ListGroup, ListItem, PageHeader, SearchInput, SortPill, ViewToggle,
+  useCollectionView,
+} from '../components/collection';
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
+import { projectActions } from './projectActions';
 
 const SORT_OPTIONS = [
   { id: 'updated', label: 'Recently updated' },
@@ -14,23 +19,25 @@ const SORT_OPTIONS = [
 
 export function CodeProjectsView({
   projects,
-  selectedId,
   loading,
   error,
   onOpen,
   onCreate,
   onEdit,
+  onDelete,
 }: {
   projects: CodeProject[];
-  selectedId: string | null;
   loading: boolean;
   error: string;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('updated');
+  // Same layouts and default as Cowork's Projects page.
+  const { view, setView, effectiveView } = useCollectionView('anton:code-projects-view');
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return projects
@@ -40,23 +47,44 @@ export function CodeProjectsView({
         : Date.parse(right.updated_at) - Date.parse(left.updated_at)));
   }, [projects, query, sort]);
 
+  // One set of slots for the card and the row.
+  const slots = (project: CodeProject) => {
+    const resources = projectResources(project);
+    return {
+      leading: Ico.folder(14),
+      title: project.name,
+      description: resources.map((resource) => resource.name).join(', ') || undefined,
+      onActivate: () => onOpen(project.id),
+      activateLabel: `View tasks in ${project.name}`,
+      meta: <>
+        <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
+        <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
+      </>,
+      actions: <Menu
+        trigger={<Button icon variant="subtle" size="sm" aria-label={`${project.name} actions`}>{Ico.moreVert(14)}</Button>}
+        items={projectActions(project.id, onEdit, onDelete)}
+      />,
+    };
+  };
+
   return (
     <main className="code-projects-view">
       <PageHeader
         title="Projects"
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
-        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>}
+        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} New project</Button>}
       />
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        view={<ViewToggle value={view} onValueChange={setView} />}
       />
 
       <div className="mx-8">
         {error ? <Alert variant="danger">{error}</Alert> : (
           <CollectionState
             loading={loading}
-            skeleton="group"
+            skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
             skeletonCount={4}
             total={projects.length}
             shown={visible.length}
@@ -69,27 +97,15 @@ export function CodeProjectsView({
               action: <Button variant="subtle" onClick={onCreate}>Create project</Button>,
             }}
           >
-            <ListGroup density="compact" aria-label="Code Projects">
-              {visible.map((project) => {
-                const resources = projectResources(project);
-                return (
-                  <ListItem
-                    key={project.id}
-                    leading={Ico.folder(15)}
-                    title={project.name}
-                    description={resources.map((resource) => resource.name).join(', ') || undefined}
-                    onActivate={() => onOpen(project.id)}
-                    activateLabel={`View tasks in ${project.name}`}
-                    selected={selectedId === project.id}
-                    meta={<>
-                      <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
-                      <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
-                    </>}
-                    actions={<Button icon variant="subtle" size="sm" aria-label={`Edit ${project.name}`} onClick={() => onEdit(project.id)}>{Ico.settings(13)}</Button>}
-                  />
-                );
-              })}
-            </ListGroup>
+            {effectiveView === 'grid' ? (
+              <CardGrid>
+                {visible.map((project) => <ItemCard key={project.id} as="article" {...slots(project)} />)}
+              </CardGrid>
+            ) : (
+              <ListGroup aria-label="Code Projects">
+                {visible.map((project) => <ListItem key={project.id} as="article" {...slots(project)} />)}
+              </ListGroup>
+            )}
           </CollectionState>
         )}
       </div>

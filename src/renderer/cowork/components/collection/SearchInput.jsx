@@ -22,7 +22,7 @@ export function SearchInput({
       value={value || ''}
       onChange={(next) => onChange?.(next)}
       placeholder={placeholder}
-      leading={Ico.search(13)}
+      leading={Ico.search(14)}
       trailing={shortcut && <Kbd>{shortcut}</Kbd>}
       wrapperClassName="flex-[0_1_320px] min-w-[220px]"
     />

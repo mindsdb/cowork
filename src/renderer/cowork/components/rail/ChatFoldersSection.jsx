@@ -47,7 +47,7 @@ function FolderFiles({ state }) {
           title={file.path}
           className="grid items-center gap-2 rounded-card-row px-1 py-1 grid-cols-[14px_minmax(0,1fr)]"
         >
-          <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
+          <span className="text-ink-4 inline-flex flex-none">{Ico.doc(14)}</span>
           <span className="block truncate text-sm text-ink min-w-0">{file.path}</span>
         </div>
       ))}
@@ -76,7 +76,7 @@ function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState })
             {Ico.chevronRight(12)}
           </span>
         </button>
-        <span className="text-ink-4 inline-flex flex-none">{Ico.folder(13)}</span>
+        <span className="text-ink-4 inline-flex flex-none">{Ico.folder(14)}</span>
         <span className="min-w-0" title={folder.path}>
           <span className="block truncate text-sm text-ink">{folder.name || folder.path}</span>
           {!folder.available && (
@@ -93,7 +93,7 @@ function FolderCard({ folder, expanded, onToggle, onRequestRemove, filesState })
               'text-ink-4 hover:text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
             )}
           >
-            {Ico.trash(13)}
+            {Ico.trash(14)}
           </button>
         </Tooltip>
       </div>
@@ -224,7 +224,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
               'disabled:opacity-50 disabled:cursor-wait',
             )}
           >
-            {Ico.plus(13)}
+            {Ico.plus(14)}
           </button>
         </Tooltip>
       </div>
@@ -240,7 +240,7 @@ export function ChatFoldersSection({ conversationId, refreshKey = 0 }) {
             'cursor-pointer bg-transparent border-0 text-left',
           )}
         >
-          <span className="text-ink-4 inline-flex flex-none">{Ico.folder(13)}</span>
+          <span className="text-ink-4 inline-flex flex-none">{Ico.folder(14)}</span>
           <span>Add a folder for the agent to work in.</span>
         </button>
       )}

@@ -14,13 +14,43 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { streamNewSession } from './api';
+import { streamNewSession, streamMessage, streamDataVaultSubmission } from './api';
 
 // The main stream had no idle timeout — only the reconnect tail did — so a
 // dead proxy connection left the turn hung with Stop still live. Mirrors
 // api.tailInFlight.test.js's coverage for the same, now-shared timer.
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A body that yields each scripted frame after its delay, then goes silent
+// until the caller aborts. Every wait rejects on abort, like a real reader.
+const scriptedBody = (getSignal, script) => {
+  const enc = new TextEncoder();
+  let i = 0;
+  return {
+    getReader: () => ({
+      read: () => new Promise((resolve, reject) => {
+        const signal = getSignal();
+        const abort = () => {
+          clearTimeout(timer);
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        };
+        let timer = null;
+        if (signal.aborted) return abort();
+        signal.addEventListener('abort', abort, { once: true });
+        const step = script[i];
+        if (!step) return;
+        i += 1;
+        timer = setTimeout(() => {
+          signal.removeEventListener('abort', abort);
+          resolve({ done: false, value: enc.encode(`data: ${JSON.stringify(step.frame)}\n\n`) });
+        }, step.after);
+      }),
+    }),
+  };
+};
 
 // A body reader that never yields a frame and rejects only once the caller
 // aborts — mirroring a real body stream reader on ctrl.abort().
@@ -182,6 +212,59 @@ describe('streamNewSession idle timeout', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('ends an idle reader locally even after it received its own response.created', async () => {
+    /* The old turn can finish behind a stalled reader and another tester can
+       start its successor. A conversation-wide Stop would cancel that newer
+       turn, despite the reader remembering its own old message id. */
+    const enc = new TextEncoder();
+    const CREATED = 'data: {"type":"response.created","conversation_id":"conv-1","user_message_id":"user-1"}\n\n';
+    const cancels = [];
+    let createdFirst = false;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancels.push(JSON.parse(options.body));
+        return { ok: true, status: 200, json: async () => ({ cancelled: true }) };
+      }
+      const { signal } = options;
+      let sentCreated = !createdFirst;
+      const silent = silentBody(() => signal).getReader();
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (sentCreated) return silent.read();
+              sentCreated = true;
+              return Promise.resolve({ done: false, value: enc.encode(CREATED) });
+            },
+          }),
+        },
+      };
+    }));
+    const stallOf = () => new Promise((resolve) => {
+      streamMessage('conv-1', 'hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ message, event }),
+        onDone: () => resolve({ event: { code: 'done' } }),
+      });
+    });
+
+    // No response.created: a keepalive-only stream, holding no turn of its own.
+    expect((await stallOf()).event.code).toBe('stalled');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancels).toEqual([]);
+
+    // Its own response.created is not proof it still owns the current turn.
+    createdFirst = true;
+    const result = await stallOf();
+    expect(result.event).toEqual({ code: 'stalled', user_message_id: 'user-1' });
+    expect(result.message).toContain('may still be running');
+    expect(result.message).not.toContain('was ended');
+    await delay(20);
+    expect(cancels).toEqual([]);
+  });
+
   it('does not fire a stall error on a caller-initiated abort', async () => {
     let signal;
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
@@ -197,5 +280,277 @@ describe('streamNewSession idle timeout', () => {
     await delay(20);
 
     expect(onError).not.toHaveBeenCalled();
+  });
+  // The server blocks an unanswered ask_user card for its own deadline, which
+  // used to equal the idle window — the client then cancelled a healthy turn
+  // as stalled just before the server's timeout frame arrived.
+  it('waits out a pending ask_user past the normal idle window', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.08, conversation_id: 'conv-1' } },
+          // Silent for 3x the 20ms idle window, inside the question's 80ms deadline.
+          { after: 60, frame: { type: 'response.ask_user_answered', question_id: 'q1', status: 'timeout' } },
+          { after: 0, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+  });
+
+  it('still reports a stall when nothing arrives after the ask_user deadline', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.03, conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const started = Date.now();
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event?.code).toBe('stalled');
+    // The 30ms deadline plus the 20ms idle window, not the bare idle window.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(45);
+  });
+});
+
+// A connect-form submission had no idle timer, so one that never answered kept
+// its conversation's stream record, and every later message there queued.
+describe('streamDataVaultSubmission idle timeout', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('aborts and reports a stall when the submission goes silent', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return { ok: true, status: 200, body: silentBody(() => signal) };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamDataVaultSubmission({
+        formId: 'form-1',
+        idleTimeoutMs: 20,
+        onError: (message) => resolve({ kind: 'error', message }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.message).toMatch(/stalled/i);
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('completes cleanly with a terminal frame and leaves no timer behind', async () => {
+    const enc = new TextEncoder();
+    const frames = [
+      enc.encode('data: {"type":"response.created","conversation_id":"conv-1"}\n\n'),
+      enc.encode('data: {"type":"response.completed","conversation_id":"conv-1"}\n\n'),
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => {
+          let i = 0;
+          return {
+            read: async () => (i < frames.length
+              ? { done: false, value: frames[i++] }
+              : { done: true, value: undefined }),
+          };
+        },
+      },
+    })));
+
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const ctrl = streamDataVaultSubmission({ formId: 'form-1', idleTimeoutMs: 20, onError, onDone });
+
+    await delay(5);
+    expect(onDone).toHaveBeenCalled();
+
+    await delay(30);
+    expect(ctrl.signal.aborted).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the submission alive while frames keep arriving past the idle window', async () => {
+    const enc = new TextEncoder();
+    let frames = 0;
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => {
+            signal = signal || options.signal;
+            await delay(5);
+            // A real body reader rejects once the request is aborted.
+            if (signal.aborted) {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              throw err;
+            }
+            frames += 1;
+            if (frames <= 8) {
+              return {
+                done: false,
+                value: enc.encode('data: {"type":"response.in_progress","message":"probing"}\n\n'),
+              };
+            }
+            return {
+              done: false,
+              value: enc.encode('data: {"type":"response.completed","conversation_id":"conv-1"}\n\n'),
+            };
+          },
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamDataVaultSubmission({
+        formId: 'form-1',
+        idleTimeoutMs: 20,
+        onError: (message) => resolve({ kind: 'error', message }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+  });
+
+  it('does not report a stall on a caller-initiated abort', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return { ok: true, status: 200, body: silentBody(() => signal) };
+    }));
+
+    const onError = vi.fn();
+    const ctrl = streamDataVaultSubmission({ formId: 'form-1', idleTimeoutMs: 10000, onError });
+
+    await delay(10);
+    ctrl.abort();
+    await delay(20);
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+});
+
+/* An idle stall ends only this tab's reader and sends no cancel, tagged or
+ * not: the cancel names only a conversation, so it could stop a newer or
+ * another tester's turn. The tab still reports the stalled code for its card. */
+describe('streamNewSession idle-stall cancel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps a silent model call alive on model_wait ticks and sends no cancel', async () => {
+    /* The server's still-working frames are ordinary data frames, so each one
+     * restarts the idle cut. A quiet call that outlasts the window several
+     * times over still completes, and nothing asks the server to cancel. */
+    let signal;
+    const cancelBodies = [];
+    const tick = {
+      type: 'response.in_progress', thought_role: 'thought.progress', phase: 'model_wait',
+      message: 'Waiting for the model (20s)', conversation_id: 'conv-1',
+    };
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.created', conversation_id: 'conv-1' } },
+          ...Array.from({ length: 8 }, () => ({ after: 10, frame: tick })),
+          { after: 10, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 50,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+    expect(cancelBodies).toEqual([]);
+  });
+
+  it('reports the stalled code and sends no cancel, with or without a reason', async () => {
+    let signal;
+    const cancelBodies = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      if (String(url).endsWith('/responses/cancel')) {
+        cancelBodies.push(JSON.parse(options.body));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ cancelled: true, conversation_id: 'conv-1' }),
+        };
+      }
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.created', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.event?.code).toBe('stalled');
+    expect(result.message).toContain('may still be running');
+    await delay(20); // room for a fire-and-forget cancel to reach fetch
+    expect(cancelBodies).toEqual([]);
   });
 });

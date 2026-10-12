@@ -30,7 +30,7 @@ export function FilterRow({ search, filter, sort, view, counts, right, chips }) 
       </div>
       {chips && <div className="mt-2.5">{chips}</div>}
       {counts ? (
-        <div className="mt-8 font-body text-xs text-ink-4">{counts}</div>
+        <div className="mt-8 font-body text-sm text-ink-4">{counts}</div>
       ) : (
         <div className="h-6" aria-hidden="true" />
       )}

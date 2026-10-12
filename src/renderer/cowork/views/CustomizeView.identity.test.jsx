@@ -47,10 +47,10 @@ import { deleteDatasource, fetchDatasources } from '../api';
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('CustomizeView connection cards — ENG-1705 wiring', () => {
-  it.each(['Connect', 'New connection'])('opens the existing connect flow from %s', async (name) => {
+  it('opens the existing connect flow from Connect', async () => {
     const onConnectNew = vi.fn();
     render(<CustomizeView connectors={CONNECTIONS} onConnectNew={onConnectNew} />);
-    await userEvent.click(screen.getByRole('button', { name, exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect', exact: true }));
     expect(onConnectNew).toHaveBeenCalledTimes(1);
   });
 

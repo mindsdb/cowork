@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -46,11 +46,6 @@ vi.mock('../../platform/host', () => ({
 
 import SkillsView from './SkillsView';
 
-const setViewportWidth = (width) => {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-  window.dispatchEvent(new Event('resize'));
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
   skillState.skills = [lockedSkill];
@@ -60,12 +55,6 @@ beforeEach(() => {
     capabilities: { canEdit: true, canDelete: true, canDisable: true },
   });
   localStorage.removeItem('anton:skills-view');
-  setViewportWidth(1200);
-});
-
-afterEach(() => {
-  setViewportWidth(1200);
-  Reflect.deleteProperty(window, 'confirm');
 });
 
 describe('SkillsView shared-resource permissions', () => {
@@ -83,23 +72,21 @@ describe('SkillsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Uninstall/ })).toHaveAttribute('data-disabled');
   });
 
-  it('forces the grid on phone widths when the persisted preference is list', () => {
-    localStorage.setItem('anton:skills-view', 'list');
-    setViewportWidth(500);
+  it('renders rows with no view toggle, even with a stored grid preference', () => {
+    localStorage.setItem('anton:skills-view', 'grid');
 
     render(<SkillsView />);
 
-    expect(screen.getByText('locked-skill')).toBeInTheDocument();
-    expect(screen.queryByText('Author')).not.toBeInTheDocument();
-    expect(screen.getByText(/Created by creator@example.com/)).toBeInTheDocument();
+    const row = screen.getByRole('article', { name: 'locked-skill' });
+    expect(within(row).getByText('creator@example.com')).toBeInTheDocument();
+    expect(screen.queryByText(/Created by creator@example.com/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Grid' })).not.toBeInTheDocument();
   });
 
   it('labels the stable creator as Author after another member edits the skill', () => {
-    localStorage.setItem('anton:skills-view', 'list');
-
     render(<SkillsView />);
 
-    const row = screen.getByRole('button', { name: /locked-skill/i });
+    const row = screen.getByRole('article', { name: 'locked-skill' });
     expect(within(row).getByText('creator@example.com')).toBeInTheDocument();
     expect(within(row).queryByText('editor@example.com')).not.toBeInTheDocument();
   });
@@ -189,6 +176,22 @@ describe('SkillsView shared-resource permissions', () => {
       .not.toHaveAttribute('data-disabled');
   });
 
+  it('asks before removing a skill, and Cancel keeps it', async () => {
+    const user = userEvent.setup();
+    skillState.skills = [{ ...lockedSkill, capabilities: { canEdit: true, canDelete: true, canDisable: true } }];
+
+    render(<SkillsView />);
+    await user.click(screen.getByText('locked-skill'));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Uninstall/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(mocks.deleteSkillAndSync).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Skill enabled' })).toBeInTheDocument();
+  });
+
   it('does not clear a newer skill selection when an older delete settles', async () => {
     const user = userEvent.setup();
     let resolveDelete;
@@ -206,15 +209,14 @@ describe('SkillsView shared-resource permissions', () => {
     mocks.deleteSkillAndSync.mockImplementation(() => new Promise((resolve) => {
       resolveDelete = resolve;
     }));
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
 
     render(<SkillsView />);
     await user.click(screen.getByText(first.label));
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: /Uninstall/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Remove skill "first-skill"?')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(mocks.deleteSkillAndSync).toHaveBeenCalledWith(first.label));
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));

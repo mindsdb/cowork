@@ -13,7 +13,7 @@ import {
   FilterChips,
   FilterMenu,
   FilterRow,
-  HoverActions,
+  ItemActions,
   ListGroup,
   ListItem,
   ListNotice,
@@ -100,7 +100,7 @@ function AddSkillSourceModal({
             const result = await host.pickCodeFolder();
             if (result.ok && result.path) { setRepository(result.path); setError(''); }
             else if (!result.cancelled) setError(result.reason || 'Could not choose that folder.');
-          }}>{Ico.folder(13)} Choose</Button></div></label>
+          }}>{Ico.folder(14)} Choose</Button></div></label>
           <div className="code-skill-source-form__pair">
             <label><span>Name <small>Optional</small></span><Input value={name} onChange={setName} placeholder="Engineering standards" /></label>
             <label><span>Branch</span><Input value={branch} onChange={setBranch} placeholder="main" /></label>
@@ -211,12 +211,12 @@ function SkillSourceModal({
       <ModalFooter>
         {source?.enabled_project_count ? (
           <span className="code-skill-source-usage">
-            {Ico.folder(13)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
+            {Ico.folder(14)} Used by {source.enabled_project_count} project{source.enabled_project_count === 1 ? '' : 's'}
           </span>
         ) : <Button variant="danger" onClick={() => void onRemove()} disabled={busy}>Remove source</Button>}
         <span className="flex-1" />
         <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>Open repository</Button>
-        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(13)} Check for updates</Button>
+        <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(14)} Check for updates</Button>
         {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>Update source</Button>}
       </ModalFooter>
     </Modal>
@@ -296,7 +296,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   };
 
   const openSource = (source: SkillLibrarySource) => { setSourceActionError(''); setSourceDetail(source); };
-  const groupTitle = (label: string) => <h2 className="m-0 text-xs font-semibold text-ink">{label}</h2>;
+  const groupTitle = (label: string) => <h2>{label}</h2>;
   const rows = (items: SkillLibraryItem[]) => items.map((item) => (
     <ListItem
       key={item.id}
@@ -310,11 +310,11 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
       meta={<>
         <span className="max-sm:hidden">{kindLabel(item.kind)}</span>
         {item.origin === 'team' ? (
-          <HoverActions reveal>
+          <ItemActions>
             <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
               {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
             </Button>
-          </HoverActions>
+          </ItemActions>
         ) : <span>{item.enabled ? 'Available' : 'Disabled'}</span>}
       </>}
       actions={item.origin === 'personal'
@@ -336,8 +336,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         title="Skills"
         subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
         actions={<div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
-          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
+          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(14)} Add team source</Button>
+          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(14)} Add personal skill</Button>
         </div>}
       />
       <FilterRow
@@ -374,15 +374,14 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             if (!items.length && searching) return null;
             return <ListGroup
               key={source.id}
-              density="compact"
               title={<button
                 type="button"
                 className="group/src flex min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-body text-ink"
                 onClick={() => openSource(source)}
               >
                 <span className="inline-flex text-ink-4">{Ico.link(14)}</span>
-                <strong className="text-xs font-semibold group-hover/src:text-accent">{source.name}</strong>
-                <small className="truncate font-mono text-2xs text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
+                <strong className="group-hover/src:text-accent">{source.name}</strong>
+                <small className="truncate font-mono text-xs font-normal text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
               </button>}
               meta={source.error || source.update_available ? undefined : `${source.item_count} item${source.item_count === 1 ? '' : 's'}`}
               actions={source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Needs attention</Button>
@@ -395,10 +394,10 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             </ListGroup>;
           })}
           {(filter === 'all' || filter === 'personal') && personal.length > 0 && (
-            <ListGroup density="compact" title={groupTitle('Yours')} description="Personal skills available in Code Mode" meta={personal.length}>{rows(personal)}</ListGroup>
+            <ListGroup title={groupTitle('Yours')} description="Personal skills available in Code Mode" meta={personal.length}>{rows(personal)}</ListGroup>
           )}
           {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && (
-            <ListGroup density="compact" title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
+            <ListGroup title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
           )}
         </CollectionState>
       </div>

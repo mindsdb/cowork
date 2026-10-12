@@ -248,7 +248,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             e.currentTarget.style.background = 'transparent';
           }}
         >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
+          {Ico.close ? Ico.close(14) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
         </button>
       )}
     </div>
@@ -260,12 +260,15 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 //
 // Scroll region. `minHeight: 0` is the flexbox gotcha — without it,
 // `overflowY: auto` doesn't actually scroll inside a flex column.
+// The popup is portaled outside the app root, so bare text would fall back
+// to the browser's 16px; pin it to the body size.
 
 export function ModalBody({ children, padding = '16px 18px', background, style }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto',
       padding,
+      fontSize: 'var(--text-base)',
       background: background || 'var(--surface)',
       ...style,
     }}>

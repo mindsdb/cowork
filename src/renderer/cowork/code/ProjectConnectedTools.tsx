@@ -2,6 +2,7 @@ import type { ConnectorConnection } from '../api';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
+import { FieldSet } from '../components/ui/Field';
 
 function accountLabel(connection: ConnectorConnection): string {
   return connection.display_name || connection.user_label || connection.label || connection.name;
@@ -26,8 +27,7 @@ export function ProjectConnectedTools({
   );
 
   return (
-    <section className="code-project-field code-project-tools" aria-labelledby="code-project-connectors-label">
-      <span id="code-project-connectors-label" className="code-project-label">Connectors <span className="code-project-optional">(optional)</span></span>
+    <FieldSet legend="Connectors">
       {developerAccounts.length ? (
         <div className="code-project-list">
           {developerAccounts.map((connection) => {
@@ -45,7 +45,7 @@ export function ProjectConnectedTools({
             );
           })}
           <div className="code-project-list__actions">
-            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(13)} Manage connectors</Button>
+            <Button size="sm" variant="subtle" onClick={onOpenConnectors}>{Ico.link(14)} Manage connectors</Button>
           </div>
         </div>
       ) : (
@@ -54,6 +54,6 @@ export function ProjectConnectedTools({
           <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Open Connectors</Button>
         </div>
       )}
-    </section>
+    </FieldSet>
   );
 }

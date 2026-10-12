@@ -1,17 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Ico from '../../components/Icons';
-import { Button } from '../../components/ui';
+import { Alert, Button } from '../../components/ui';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
-import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
+import { MIN_SUPPORTED_SHELL, SUPPORTED_SHELL_WINDOW_DAYS } from '../../../../shared/shell-support';
+import { shellAutoOwnsBanner, debInstallStep, abortedInstallHint } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
   'flex items-center gap-3 flex-wrap py-2.5 px-3 border border-solid ' +
   'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
+
+// How long one /health read may take before the Server and Agent rows say so,
+// and how soon the panel tries again (ENG-3291). The bound equals api.js's
+// SHORT_REQUEST_TIMEOUT_MS; it is restated here because the Settings tests
+// mock that module wholesale.
+export const BACKEND_VERSION_TIMEOUT_MS = 10_000;
+export const BACKEND_VERSION_RETRY_MS = 5_000;
+// What the rows show while no version has answered. Copied into the details
+// text as-is, so a bug report says "Server: Unavailable" rather than a dash.
+const BACKEND_VERSION_PLACEHOLDER = { loading: 'Loading…', unavailable: 'Unavailable' };
 
 // Naming the ring makes an rc Server version self-explanatory in bug reports:
 // staging-ring builds (preview/stable) follow the pre-release server stream.
@@ -39,8 +50,13 @@ export default function UpdatesSection({
   onRetryShellAutoUpdate,
 }) {
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web', buildKind: null });
-  const [serverVersion, setServerVersion] = useState('');
-  const [antonVersion, setAntonVersion] = useState('');
+  // Backend (server + agent) versions, read from /health. `state` is
+  // 'loading' until the first answer, 'ok' once it has one, 'unavailable' when
+  // a read failed or ran past the bound; the rows never show a bare dash for a
+  // read that is merely slow or broken (ENG-3291).
+  const [backendVersions, setBackendVersions] = useState({ state: 'loading', server: '', anton: '' });
+  const serverVersion = backendVersions.server;
+  const antonVersion = backendVersions.anton;
   const [showVersionDetails, setShowVersionDetails] = useState(false);
   // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
   // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
@@ -62,21 +78,70 @@ export default function UpdatesSection({
   // shell notice later in the session starts fresh instead of showing stale
   // "downloading…" copy for a version that was never fetched.
   const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
+  // ENG-1047 — is the installed shell inside the supported desktop window? The
+  // verdict comes from the same rule as the launch notice (getShellSupport →
+  // assessShellSupport), so the two surfaces cannot disagree. Null until it
+  // resolves, and on web or whenever a version the rule needs cannot be read,
+  // in which case the row shows no verdict at all.
+  const [shellSupport, setShellSupport] = useState(null);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    // An OTA renderer can run on a host module that predates getShellSupport
+    // only in tests (host.ts ships inside this bundle), but the probe is cheap
+    // and matches how every other optional surface here fails closed.
+    Promise.resolve()
+      .then(() => host.getShellSupport())
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict ?? null); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, []);
   // Backend (server + agent) versions come from /health, which is only
   // reachable when the backend is up. Re-read whenever the section mounts and
   // the backend is online, so versions populate after a cold open or a
   // start/restart from the Backend section instead of staying blank.
+  //
+  // The read is bounded and retried while the panel is open (ENG-3291). On
+  // 6 October one hung request left the rows at a dash for the whole session:
+  // the sidecar's connection pool was full, `fetchHealth` has no timeout of
+  // its own, and the effect never ran again. Now a read that fails or exceeds
+  // the bound marks the rows unavailable and tries again a few seconds later,
+  // until one answers.
   useEffect(() => {
-    if (!serverOnline) return undefined;
+    if (!serverOnline) {
+      // A stopped backend has no versions to read. Say so, rather than
+      // leaving the rows on the initial "Loading…" for as long as it is down.
+      setBackendVersions((prev) => ({ ...prev, state: 'unavailable' }));
+      return undefined;
+    }
     let cancelled = false;
-    fetchHealth().then((h) => {
+    let retry = null;
+    const read = async () => {
+      let timer = null;
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ status: 'timeout' }), BACKEND_VERSION_TIMEOUT_MS);
+      });
+      const health = await Promise.race([
+        fetchHealth({ timeoutMs: BACKEND_VERSION_TIMEOUT_MS }).catch(() => null),
+        timeout,
+      ]);
+      clearTimeout(timer);
       if (cancelled) return;
-      setServerVersion(h?.server_version || '');
-      setAntonVersion(h?.anton_version || '');
-    }).catch(() => { });
-    return () => { cancelled = true; };
+      const server = health?.server_version || '';
+      const anton = health?.anton_version || '';
+      if (server || anton) {
+        setBackendVersions({ state: 'ok', server, anton });
+        return;
+      }
+      setBackendVersions((prev) => ({ ...prev, state: 'unavailable' }));
+      retry = setTimeout(read, BACKEND_VERSION_RETRY_MS);
+    };
+    read();
+    return () => {
+      cancelled = true;
+      clearTimeout(retry);
+    };
   }, [serverOnline]);
 
   const handleCheckForUpdates = async () => {
@@ -93,11 +158,18 @@ export default function UpdatesSection({
     }
   };
 
+  const applyInFlight = useRef(false);
   const handleApplyUpdateNow = async () => {
-    if (applyingUpdate) return;
-    setApplyingUpdate(true);
+    if (applyInFlight.current) return;
+    applyInFlight.current = true;
     setApplyError(false);
-    const applied = await host.applyUpdate().catch(() => false);
+    // The button reads "Restarting…" only once the restart proceeds, not
+    // while the running-tasks dialog is open (ENG-3291).
+    const applied = await host.applyUpdate({ onProceed: () => setApplyingUpdate(true) }).catch(() => false);
+    applyInFlight.current = false;
+    // The person chose to keep their running tasks (ENG-3291): not an error,
+    // the card simply offers Restart now again.
+    if (applied === 'cancelled') { setApplyingUpdate(false); return; }
     // Success reloads the window; a resolved false or throw returns to retry.
     setApplyingUpdate(applied);
     setApplyError(!applied);
@@ -112,7 +184,8 @@ export default function UpdatesSection({
         >
           {(() => {
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
-            // App shell = installed Electron shell (changes only on reinstall).
+            // App shell = installed Electron shell (changes only when the shell
+            // relaunches into a new build — auto-update or reinstall).
             const shellVer = versionInfo.app || baked;
             // The running renderer's own baked version is authoritative for the
             // UI version — it's compiled into whichever bundle actually loaded
@@ -124,16 +197,24 @@ export default function UpdatesSection({
               : versionInfo.source === 'web' ? 'web' : 'bundled';
             // Unified "content" headline = release week of the newest of the
             // hot-updated components (UI + server + agent). App shell is
-            // excluded — it updates via reinstall and is shown on its own line.
+            // excluded — it only changes on a relaunch, so it is shown on its
+            // own line, with the supported-window verdict beside it (ENG-1047).
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
             const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
+            const shellTooOld = shellSupport?.status === 'too-old';
+            // Off web the backend rows always say something: a version, or why
+            // there is none yet. On web the sidecar is the host, so a missing
+            // version there keeps the plain dash.
+            const backendPlaceholder = isElectron
+              ? (BACKEND_VERSION_PLACEHOLDER[backendVersions.state] || '—')
+              : '—';
             const rows = [
-              ['App shell', shellVer || '—'],
+              ['App shell', shellTooOld ? `${shellVer} (too old)` : (shellVer || '—')],
               ...(buildLabel ? [['Build', buildLabel]] : []),
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
-              ['Server', serverVersion || '—'],
-              ['Agent', antonVersion || '—'],
+              ['Server', serverVersion || backendPlaceholder],
+              ['Agent', antonVersion || backendPlaceholder],
             ];
             const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
             return (
@@ -155,9 +236,23 @@ export default function UpdatesSection({
                   )}
                 </div>
                 {isElectron && (
-                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px]">
-                    <span className="mr-1">App shell</span>{shellVer || '—'}
+                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px] flex items-baseline gap-2 flex-wrap">
+                    <span><span className="mr-1">App shell</span>{shellVer || '—'}</span>
+                    {shellTooOld && (
+                      <span
+                        title={`Supported: ${MIN_SUPPORTED_SHELL} or newer, and within ${SUPPORTED_SHELL_WINDOW_DAYS} days of the latest app (${shellSupport.latestShellVersion}).`}
+                        className="text-warning text-[11.5px] font-semibold font-[family-name:var(--font-sans)]"
+                      >
+                        ⚠ too old
+                      </span>
+                    )}
                   </span>
+                )}
+                {shellTooOld && (
+                  <Alert variant="warning" icon={Ico.warning ? Ico.warning(16) : undefined} data-testid="shell-too-old">
+                    This app is too old for this version of Cowork. Some features are hidden until the
+                    app updates to {shellSupport.latestShellVersion}. Use Software updates below.
+                  </Alert>
                 )}
                 <button
                   type="button"
@@ -324,9 +419,14 @@ export default function UpdatesSection({
                                     ? 'Installing app update…'
                                     : 'App update failed'}
                         </span>
-                        <span className={`text-[11.5px] ${autoPhase === 'failed' ? 'text-warning' : 'text-ink-3'}`}>
+                        <span className={`text-[11.5px] ${autoPhase === 'failed' || (autoPhase === 'ready-to-install' && shellAutoUpdate.errorCode) ? 'text-warning' : 'text-ink-3'}`}>
                           {autoPhase === 'ready-to-install'
-                            ? 'Restart Cowork to finish installing the downloaded update.'
+                            ? (shellAutoUpdate.errorCode
+                              // The last Restart never left the process (ENG-3291): the
+                              // sidecar was stopped and started again, and the update is
+                              // still downloaded. Say why, or the card just reads "ready" again.
+                              ? abortedInstallHint(shellAutoUpdate.errorMessage)
+                              : 'Restart Cowork to finish installing the downloaded update.')
                             : autoPhase === 'failed'
                               ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
                               : autoPhase === 'available'
@@ -338,7 +438,9 @@ export default function UpdatesSection({
                         <Button variant="primary" onClick={onDownloadShellAutoUpdate}>Download update</Button>
                       )}
                       {autoPhase === 'ready-to-install' && (
-                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>Restart now</Button>
+                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>
+                          {shellAutoUpdate.errorCode ? 'Try again' : 'Restart now'}
+                        </Button>
                       )}
                       {autoPhase === 'failed' && shellAutoUpdate.recoverable && (
                         <Button variant="primary" onClick={onRetryShellAutoUpdate}>Retry</Button>
