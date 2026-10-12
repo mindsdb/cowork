@@ -310,11 +310,10 @@ describe.each([
 describe('grid view shared link when the bridge rejects', () => {
   /*
    * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
-   * is async, so the item has to await it for its catch to fire — unawaited,
-   * this fallback was dead code. The list row routes through `openUrl`, which
-   * already awaits.
+   * is what restricts the agent-writable URL to safe schemes, so a rejection
+   * must not hand the raw URL to window.open.
    */
-  it('falls back to window.open', async () => {
+  it('does not fall back to window.open', async () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     host.openExternal.mockClear();
@@ -326,9 +325,8 @@ describe('grid view shared link when the bridge rejects', () => {
 
       fireEvent.click(screen.getByText('Open shared link'));
 
-      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
-        'https://view.mindshub.ai/r/md1', '_blank', 'noopener,noreferrer',
-      ));
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/md1'));
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }

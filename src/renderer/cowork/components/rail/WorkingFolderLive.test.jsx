@@ -132,11 +132,11 @@ describe('artifacts rail click in org mode', () => {
     expect(openExternal).toHaveBeenCalledWith(SHARED_URL);
   });
 
-  it('falls back to window.open when the bridge rejects', async () => {
+  it('does not fall back to window.open when the bridge rejects', async () => {
     /*
-     * host.openExternal is async, so only an awaited call lets the catch see a
-     * rejection. Unawaited, the fallback is unreachable and the rejection is
-     * never handled.
+     * host.openExternal is what restricts the agent-writable URL to safe
+     * schemes, so a rejection is caught (awaited, not left unhandled) and the
+     * raw URL never reaches window.open.
      */
     openExternal.mockRejectedValueOnce(new Error('bridge gone'));
     const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
@@ -150,9 +150,8 @@ describe('artifacts rail click in org mode', () => {
       }));
 
       fireEvent.click(row);
-      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
-        SHARED_URL, '_blank', 'noopener,noreferrer',
-      ));
+      await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith(SHARED_URL));
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }

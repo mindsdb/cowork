@@ -1528,7 +1528,7 @@ export async function openArtifactFile(artifact) {
     const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
     if (!url) return { ok: false, reason: 'no-serve-url' };
     try { await host.openExternal(url); }
-    catch { window.open(url, '_blank', 'noreferrer'); }
+    catch { return { ok: false, reason: 'open-failed' }; }
     return { ok: true };
   }
   return openArtifact(artifact?.path || '');

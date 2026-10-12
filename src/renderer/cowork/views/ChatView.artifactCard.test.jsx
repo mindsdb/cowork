@@ -287,11 +287,11 @@ describe('inline artifact banner in org mode', () => {
     }
   });
 
-  it('falls back to window.open when the bridge rejects', async () => {
+  it('does not fall back to window.open when the bridge rejects', async () => {
     /*
-     * `host.openExternal` is async. A synchronous try around it returns before
-     * the promise settles, so the fallback never ran on the one failure it was
-     * written for and the rejection escaped unhandled.
+     * host.openExternal is what restricts the agent-writable URL to safe
+     * schemes, so a rejection is caught and the raw URL never reaches
+     * window.open.
      */
     setOrgMode(true);
     const user = userEvent.setup();
@@ -302,7 +302,8 @@ describe('inline artifact banner in org mode', () => {
 
       await user.click(screen.getByRole('button', { name: 'Shared link' }));
 
-      expect(opened).toHaveBeenCalledWith(PUBLISHED_URL, '_blank', 'noopener,noreferrer');
+      expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }

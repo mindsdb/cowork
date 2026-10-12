@@ -695,12 +695,13 @@ export function ArtifactViewer({
     }
   };
 
-  // Open the published URL in the default browser; falls back to a new
-  // window if the OS handoff is unavailable.
+  // Open the published URL in the default browser. No raw window.open
+  // fallback: host.openExternal is what restricts the agent-writable URL to
+  // http(s)/mailto, so a failure is reported instead of bypassing it.
   const onOpenPublished = async () => {
     if (!pub.publishedUrl) return;
     try { await host.openExternal(pub.publishedUrl); }
-    catch { window.open(pub.publishedUrl, '_blank', 'noreferrer'); }
+    catch (e) { setErr(e?.message || 'Open failed'); }
   };
 
   // Open the local file / served preview (HTML → default browser, other
@@ -722,7 +723,7 @@ export function ArtifactViewer({
         : (pub.publishedUrl || '');
       if (url) {
         try { await host.openExternal(url); }
-        catch { window.open(url, '_blank', 'noreferrer'); }
+        catch (e) { setErr(e?.message || 'Open failed'); }
         return;
       }
       setErr('This artifact is served from a remote server and has no open URL yet.');
