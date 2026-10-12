@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubWorkspaces, setActiveHubWorkspace } from '../api';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
@@ -78,7 +79,7 @@ export function useHubWorkspaces(accountUser) {
 
   const load = useCallback(async () => {
     const mine = generation.current;
-    if (!sub) {
+    if (!PLATFORM_UI || !sub) {
       setState(DARK);
       return true;
     }
@@ -93,6 +94,7 @@ export function useHubWorkspaces(accountUser) {
   }, [sub]);
 
   useEffect(() => {
+    if (!PLATFORM_UI) return;
     let timer;
     const resetAndLoad = () => {
       generation.current += 1;
@@ -136,6 +138,7 @@ export function useHubWorkspaces(accountUser) {
   // under one account and resolving after the person changed would otherwise
   // write the previous account's workspaces into the new one's menu.
   const switchWorkspace = useCallback(async (workspaceId) => {
+    if (!PLATFORM_UI) return;
     const mine = generation.current;
     setSwitching(true);
     try {

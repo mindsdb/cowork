@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
@@ -927,7 +928,7 @@ export default function Sidebar({
             container inside the organization, not the thing a reader starts a
             task from, and the top of the rail is where the first task begins.
             Renders nothing until the org has a second workspace to move to. */}
-        {accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
+        {PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so

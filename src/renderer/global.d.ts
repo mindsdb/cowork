@@ -140,6 +140,7 @@ interface ShellAutoUpdateSnapshot {
 }
 
 declare global {
+  const __PLATFORM_UI__: boolean;
   /** App display version injected by Vite at build time. */
   const __APP_VERSION__: string;
   /** Short git commit hash at build time, or '' outside a repo. */

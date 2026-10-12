@@ -739,6 +739,322 @@ describe('interrupted stream recovery', () => {
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
   });
+
+  it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'finished' });
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+
+    expect(await screen.findByText('finished answer')).toBeInTheDocument();
+    expect(screen.getAllByText('finished answer')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['fails', null],
+    ['returns only an earlier turn', { messages: [
+      { id: 'user-previous', role: 'user', content: 'previous question' },
+      { id: 'assistant-previous', role: 'assistant', content: 'old answer', _turnComplete: true },
+    ] }],
+  ])('keeps the failed turn deletable by its persisted reply id when the reload %s', async (_kind, reload) => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue(reload);
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+    });
+
+    const answer = (await screen.findByText('Partial answer kept')).closest('.answer-turn');
+    // The resync after the delete has no transcript here and warns via alert().
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    try {
+      await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+    } finally {
+      window.alert = originalAlert;
+    }
+  });
+
+  describe('a message sent while a failed turn is still being recovered', () => {
+    /** Fails the turn and leaves its history reload open until `release`. */
+    async function failWithReloadHeld(user, failure) {
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      spies.fetchSession.mockImplementation(() => held);
+      const composer = await openTask(user);
+      await send(user, composer, 'do something');
+      const handle = await waitForStream();
+      await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+      await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+      await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+      return { composer, release: (value) => act(async () => { release(value); }) };
+    }
+
+    const sentTexts = () => spies.streamMessage.mock.calls.map((c) => c[1]);
+
+    it('waits, then goes out once, and the failed partial keeps its own reply id', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release(null);
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
+    it('waits, and its live answer survives the recovery that replaces history', async () => {
+      const user = userEvent.setup();
+      const { composer, release } = await failWithReloadHeld(user, {
+        code: 'stream_error', user_message_id: 'user-current',
+      });
+
+      await send(user, composer, 'follow up');
+      expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+      expect(sentTexts()).toEqual(['do something']);
+
+      await release({ messages: [
+        { id: 'user-current', role: 'user', content: 'do something' },
+        { id: 'assistant-current', role: 'assistant', content: 'finished answer', _turnComplete: true },
+      ] });
+
+      await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow up']));
+      const followUp = streams[streams.length - 1];
+      await emitOn(followUp, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-follow-up' });
+      await emitOn(followUp, { type: 'response.output_text.delta', delta: 'fresh live text' });
+      // Stop shows only while this conversation holds a live row.
+      expect(await screen.findByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      expect(screen.getByText('finished answer')).toBeInTheDocument();
+    });
+
+    it('Stop during recovery waits for it, keeps the failed partial, and still cancels', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      spies.cancelResponse.mockClear();
+
+      await user.click(screen.getByRole('button', { name: 'Stop generation' }));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(spies.cancelResponse).not.toHaveBeenCalled();
+
+      // Later reads return a real page that ends at the question: a reload by
+      // Stop after recovery would merge that over the partial and drop it.
+      spies.fetchSession.mockImplementation(async () => ({
+        messages: [{ id: 'user-current', role: 'user', content: 'do something' }],
+      }));
+      await release(null);
+
+      await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+      expect(screen.getByText('The provider rejected the request.')).toBeInTheDocument();
+      const originalAlert = window.alert;
+      window.alert = vi.fn();
+      try {
+        await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+        await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+      } finally {
+        window.alert = originalAlert;
+      }
+    });
+
+    describe('when a reconnect replays the same failure', () => {
+      const failure = {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      };
+      const pendingPage = { messages: [{ id: 'user-current', role: 'user', content: 'do something' }] };
+
+      /** Each history reload waits in `reloads` until the test answers it. */
+      function holdReloads() {
+        const reloads = [];
+        spies.fetchSession.mockImplementation(() => new Promise((resolve) => { reloads.push(resolve); }));
+        return reloads;
+      }
+
+      /** Fails the turn (recovery A), then reattaches a tail that replays it. */
+      async function failTwice(user) {
+        const reloads = holdReloads();
+        const composer = await openTask(user);
+        await send(user, composer, 'do something');
+        const handle = await waitForStream();
+        await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emit({ type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        await act(async () => { handle.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(1));
+
+        spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+        await openByTitle(user, 'Beta task');
+        const alphaComposer = await openByTitle(user, 'Alpha task');
+        const tail = await waitFor(() => {
+          const t = streams.find((s) => s.kind === 'tail');
+          if (!t) throw new Error('tail not attached');
+          return t;
+        });
+        await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+        await emitOn(tail, { type: 'response.output_text.delta', delta: 'Partial answer kept' });
+        return { reloads, tail, composer: alphaComposer };
+      }
+
+      it('holds sends until both recoveries settle, and only one writes the failed turn', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail, composer } = await failTwice(user);
+        await act(async () => { tail.opts.onError('The provider rejected the request.', failure); });
+        await waitFor(() => expect(reloads).toHaveLength(2));
+        await send(user, composer, 'follow one');
+        await send(user, composer, 'follow two');
+        expect(sentTexts()).toEqual(['do something']);
+
+        // The replay's recovery lands first; the turn's own is still out.
+        await act(async () => { reloads[1](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(sentTexts()).toEqual(['do something']);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one']));
+        expect(screen.getAllByText('Partial answer kept')).toHaveLength(1);
+        expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+        const followOne = streams[streams.length - 1];
+        await act(async () => { followOne.opts.onDone(); });
+        await waitFor(() => expect(sentTexts()).toEqual(['do something', 'follow one', 'follow two']));
+        const followTwo = streams[streams.length - 1];
+        await act(async () => { followTwo.opts.onDone(); });
+
+        // The failed turn's id stays on its own partial, not on a later answer.
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        const originalAlert = window.alert;
+        window.alert = vi.fn();
+        try {
+          await user.click(within(answer).getByRole('button', { name: 'Delete' }));
+          await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+          await waitFor(() => expect(deleteConversationTurn).toHaveBeenLastCalledWith('conv-a', 'assistant-partial'));
+        } finally {
+          window.alert = originalAlert;
+        }
+      });
+
+      it('leaves a turn the reattached stream completed alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads, tail } = await failTwice(user);
+        await emitOn(tail, { type: 'response.completed', assistant_message_id: 'assistant-done' });
+        await act(async () => { tail.opts.onDone(); });
+        trackTurnFailed.mockClear();
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(trackTurnFailed).not.toHaveBeenCalled();
+      });
+
+      it('leaves the reattached stream\'s live row alone when the older recovery lands', async () => {
+        const user = userEvent.setup();
+        const { reloads } = await failTwice(user);
+
+        await act(async () => { reloads[0](pendingPage); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+        // The tail still owns the turn: no failed partial or error card from
+        // the older recovery, and it is still streaming.
+        expect(screen.queryByText('The provider rejected the request.')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Stop generation' })).toBeInTheDocument();
+      });
+    });
+
+    it('a connect form submitted meanwhile starts its stream only after recovery', async () => {
+      const user = userEvent.setup();
+      const { release } = await failWithReloadHeld(user, {
+        type: 'response.failed', code: 'provider_error',
+        assistant_message_id: 'assistant-partial', user_message_id: 'user-current',
+      });
+      await act(async () => {
+        setDataVaultForm('conv-a', { form_id: 'fm_1', title: 'Connect Postgres', fields: [] });
+      });
+      const vaultStarted = () => streams.some((x) => x.kind === 'datavault');
+      try {
+        await user.click(await screen.findByRole('button', { name: /^submit$/i }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(vaultStarted()).toBe(false);
+        // The form stays busy while held, so a second click submits nothing more.
+        const busyButton = screen.getByRole('button', { name: 'Working…' });
+        expect(busyButton).toBeDisabled();
+        await user.click(busyButton);
+
+        await release(null);
+
+        await waitFor(() => expect(vaultStarted()).toBe(true));
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(streams.filter((x) => x.kind === 'datavault')).toHaveLength(1);
+        const answer = screen.getByText('Partial answer kept').closest('.answer-turn');
+        expect(within(answer).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+      } finally {
+        clearDataVaultForm('conv-a');
+      }
+    });
+  });
+
+  it('ends the live turn when the reload shows the dropped stream persisted a failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [
+      { id: 'user-current', role: 'user', content: 'do something' },
+      { role: 'error', content: 'The provider rejected the request.' },
+    ] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await emit({ type: 'response.output_text.delta', delta: 'partial' });
+
+    await act(async () => {
+      handle.opts.onError('The provider rejected the request.', {
+        type: 'response.failed', code: 'provider_error', user_message_id: 'user-current',
+      });
+    });
+
+    expect(await screen.findByText('The provider rejected the request.')).toBeInTheDocument();
+    expect(screen.getAllByText('The provider rejected the request.')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument();
+  });
 });
 
 describe('health preflight falls back to cached readiness', () => {
@@ -841,10 +1157,11 @@ describe('a question the server refuses', () => {
     await screen.findByText(SECOND);
     expect(spies.fetchSession).not.toHaveBeenCalled();
 
+    // Saved rows carry server ids; the page is merged by them.
     spies.fetchSession.mockImplementation(async () => ({
       messages: [
-        { role: 'user', content: 'the first question' },
-        { role: 'assistant', content: 'The other answer' },
+        { id: 'u-first', role: 'user', content: 'the first question' },
+        { id: 'a-other', role: 'assistant', content: 'The other answer' },
       ],
     }));
     fetchInFlightList.mockResolvedValueOnce([]);
@@ -1503,6 +1820,53 @@ describe('a requested conversation id not present locally (ENG-1233 Major 4)', (
   });
 });
 
+describe('a sidebar-known task whose messages have not loaded yet', () => {
+  // fetchSessions has no global reset (only fetchSessionResult/fetchSession
+  // do, in the top-level beforeEach) — restore the file's own default shape
+  // so a later test in this file doesn't inherit messagesStatus: 'loading'
+  // rows and get stuck showing the loading state instead of its ChatView.
+  afterEach(() => {
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+  });
+
+  it('shows the loading state instead of an empty transcript, then clears once messages arrive', async () => {
+    const user = userEvent.setup();
+    // Every sidebar-listed task is already in `tasks` (messages: [],
+    // messagesStatus: 'loading') before its own transcript fetch resolves —
+    // the bug this fixes: a gate keyed only on "task known locally" flips
+    // to ready the instant the row is clicked, showing an empty transcript
+    // for however long that fetch takes.
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+    ]);
+    let resolveFetch;
+    spies.fetchSessionResult.mockImplementationOnce(() => new Promise((resolve) => { resolveFetch = resolve; }));
+
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+    // Not the wrong/empty ChatView rendered underneath at the same time.
+    expect(screen.queryByPlaceholderText(/message/i)).not.toBeInTheDocument();
+
+    resolveFetch({
+      status: 'ok',
+      task: {
+        id: 'conv-a', title: 'Alpha task', status: 'idle', projectName: 'general',
+        messages: [{ role: 'user', content: 'hello from the loaded page' }],
+        messagesStatus: 'loaded',
+      },
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('conversation-loading')).not.toBeInTheDocument());
+    expect(await screen.findByText('hello from the loaded page')).toBeInTheDocument();
+  });
+});
+
 // ─── ENG-2246: a server refresh must not blank the open transcript ──────────
 //
 // fetchSessions now resolves on the conversation LIST alone, so every row it
@@ -1777,6 +2141,8 @@ async function streamAlphaWhileBetaHoldsTheSlot(user) {
   const composer = await openTask(user);
   await send(user, composer, 'alpha turn');
   const alpha = await waitForStream();
+  // Deletes go by message id, so the running question needs the one the server assigns.
+  await emitOn(alpha, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-alpha' });
   await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
 
   await openByTitle(user, 'Beta task');
@@ -1923,7 +2289,7 @@ describe('Stop on the conversation on screen', () => {
       expect(alpha.abort).toHaveBeenCalled();
       expect(spies.cancelResponse).not.toHaveBeenCalledWith('conv-b');
       expect(tailB.abort).not.toHaveBeenCalled();
-      await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalledWith('conv-a', 0));
+      await waitFor(() => expect(deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u-alpha'));
       expect(spies.cancelResponse.mock.invocationCallOrder[0])
         .toBeLessThan(deleteConversationTurn.mock.invocationCallOrder.at(-1));
     } finally {
@@ -2040,6 +2406,8 @@ async function startAlphaThenBetaFromHome(user) {
   const composer = await openTask(user);
   await send(user, composer, 'alpha turn');
   const alpha = await waitForStream();
+  // Deletes go by message id, so the running question needs the one the server assigns.
+  await emitOn(alpha, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-alpha' });
   await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
   await openPad(alpha, 'pad-a');
 
@@ -2075,7 +2443,7 @@ function listAlphaAsServerRun() {
         task: {
           id: 'conv-a',
           title: 'Alpha task',
-          messages: [{ role: 'user', content: 'scheduled prompt' }],
+          messages: [{ id: 'u-scheduled', role: 'user', content: 'scheduled prompt' }],
           status: 'idle',
           projectName: 'general',
         },
