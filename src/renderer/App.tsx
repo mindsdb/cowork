@@ -20,6 +20,9 @@ import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } fr
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
+import { PLATFORM_UI } from './lib/deployment';
+import { checkServiceReady } from './lib/serviceReady';
+import ServiceUnavailable from './ServiceUnavailable';
 import './styles.css';
 
 // Onboarding flow:
@@ -78,6 +81,18 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
+  const [serviceUnconfigured, setServiceUnconfigured] = useState(false);
+  const enterService = useCallback(async () => {
+    setRetrying(true);
+    try {
+      const result = await checkServiceReady(() => host.checkConfigured());
+      setOrgMode(result.orgMode ?? host.isWeb);
+      setServiceUnconfigured(result.state === 'unconfigured');
+      setPage(result.state === 'ready' ? 'terminal' : 'auth');
+    } finally {
+      setRetrying(false);
+    }
+  }, []);
   // ENG-749: progress line under the welcome orb while the loading screen is
   // held open through a boot-time update: an OTA, or the boot install of a
   // stranded shell update.
@@ -159,6 +174,10 @@ export default function App() {
   useEffect(() => {
     if (hasCodeFixture()) return;
     async function init() {
+      if (!PLATFORM_UI) {
+        await enterService();
+        return;
+      }
       const started = Date.now();
       // Whether this browser has booted before is read up front: the web SPA
       // re-mounts on every refresh, and a returning session shouldn't replay the
@@ -220,7 +239,7 @@ export default function App() {
       setPage(target);
     }
     init();
-  }, []);
+  }, [enterService]);
 
   // Common final step for every path that leads to the chat UI:
   // push any credentials sitting in ~/.cowork/.env into the server DB so
@@ -355,7 +374,9 @@ export default function App() {
       )}
 
       {page === 'auth' && (
-        <OnboardingScreen onComplete={handleAuthComplete} />
+        PLATFORM_UI
+          ? <OnboardingScreen onComplete={handleAuthComplete} />
+          : <ServiceUnavailable unconfigured={serviceUnconfigured} retrying={retrying} onRetry={enterService} />
       )}
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
