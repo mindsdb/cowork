@@ -83,6 +83,8 @@ import {
   setServerStartedHook,
   ensureSidecarOnCurrentAccountRoot,
   sidecarIsOnCurrentStores,
+  serverClearsPendingCredentials,
+  activeStoreRoot,
 } from './server-process';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
@@ -985,5 +987,97 @@ describe('adopting a sidecar across organizations', () => {
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
     expect(spawnedOwner()).toBe(withNoRecord);
+  });
+});
+
+describe('a store with a pending credential clear', () => {
+  const MARKER = path.join('/tmp/cowork-test-home', '.pending-credential-clear');
+
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawns a sidecar that hands off and exits, then answers /health as the
+   *  orphan it left behind, owned by this session. */
+  async function leaveOwnOrphanRunning(): Promise<void> {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const env = (vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions).env ?? {};
+    await stopServer();
+    healthOwner = env.COWORK_SERVER_OWNER ?? null;
+  }
+
+  function markStore(): void {
+    vi.mocked(fs.existsSync).mockImplementation((p) =>
+      String(p) === '/fake/bin/cowork-server' || String(p) === MARKER);
+  }
+
+  function spawnFresh(): void {
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => fresh as never) as never);
+  }
+
+  /*
+   * An adopted process never re-runs its startup, so it would keep serving the
+   * keys the sign-out was supposed to remove.
+   */
+  it('replaces a running sidecar for that store instead of adopting it', async () => {
+    await leaveOwnOrphanRunning();
+    markStore();
+    spawnFresh();
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails the start when the sidecar it refused still holds the port', async () => {
+    await leaveOwnOrphanRunning();
+    markStore();
+    spawnFresh();
+    execHandler = (cmd) => (cmd === 'lsof' ? { err: null, stdout: '9999\n' } : { err: new Error('nothing found'), stdout: '' });
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  /** A sidecar whose launcher hands off and exits once healthy, so a stop
+   *  reaps it by port rather than waiting on a child exit. */
+  function spawnHandingOff(): void {
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      const child = makeChild();
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('remembers whether the running sidecar clears a pending store itself', async () => {
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(false);
+    await stopServer();
+
+    healthOwner = null;
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(true);
+  });
+
+  it('names the store a running sidecar serves, and none once it stops', async () => {
+    accountState.orgStoreRoot = '/tmp/cowork-test-home/orgs/org-b';
+    spawnHandingOff();
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(activeStoreRoot()).toBe('/tmp/cowork-test-home/orgs/org-b');
+
+    await stopServer();
+    expect(activeStoreRoot()).toBeNull();
   });
 });
