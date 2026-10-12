@@ -222,6 +222,8 @@ let _startingOrgStoreRoot: string | undefined;
 // across a stop, and on disk for a run whose sidecar never comes up.
 let _serverClearsPendingCredentials: boolean | null = null;
 
+/** Remember what the sidecar that just came up can do, for this run and, via
+ *  a file in the shared home, for a later run whose sidecar never answers. */
 function noteServerClearsPendingCredentials(clears: boolean): void {
   _serverClearsPendingCredentials = clears;
   recordServerClearsPendingCredentials(coworkHome(), clears);

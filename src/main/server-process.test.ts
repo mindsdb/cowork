@@ -1107,6 +1107,21 @@ describe('a store with a pending credential clear', () => {
     expect(serverClearsPendingCredentials()).toBe(true);
   });
 
+  /*
+   * A run whose sidecar never answers has only the record a previous run left.
+   * Module state is per process, so a fresh module stands in for a new run.
+   */
+  it('falls back to the recorded answer before any sidecar has answered in this run', async () => {
+    const recordPath = path.join('/tmp/cowork-test-home', '.server-clears-pending-credentials');
+    vi.resetModules();
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === recordPath);
+    expect((await import('./server-process')).serverClearsPendingCredentials()).toBe(true);
+
+    vi.resetModules();
+    vi.mocked(fs.existsSync).mockImplementation(() => false);
+    expect((await import('./server-process')).serverClearsPendingCredentials()).toBe(false);
+  });
+
   it('records on disk what the started sidecar can do, for a run where none comes up', async () => {
     const recordPath = path.join('/tmp/cowork-test-home', '.server-clears-pending-credentials');
 
