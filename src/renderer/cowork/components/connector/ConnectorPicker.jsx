@@ -526,7 +526,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               ))}
             </>
           )}
-          {canBuildCustom && !loading && !error && !(offerBuildForQuery && filtered.length === 0) && (
+          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
             <div className={GRID}>
               <BuildCustomTile onBuildCustom={onBuildCustom} />
             </div>

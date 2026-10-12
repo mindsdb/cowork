@@ -94,6 +94,7 @@ describe('ConnectorPicker build a custom connector', () => {
     fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'postgres' } });
 
     expect(screen.queryByRole('button', { name: /Build a custom connector for/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Build a custom connector Connect a system/ })).toBeNull();
     expect(screen.getByText(/No connectors in this category match/)).toBeTruthy();
   });
 
