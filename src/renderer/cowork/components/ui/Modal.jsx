@@ -31,7 +31,7 @@
 // Nothing inside the body scrolls on its own, except a capped code/log
 // block or a searchable list embedded in a longer form (a repo picker).
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
 
@@ -138,8 +138,24 @@ export function Modal({
     onClose?.();
   };
 
+  // Base UI never unmounts a dialog that is closed by an effect of the commit
+  // that opened it. The closed popup stays mounted and inert, and its backdrop
+  // swallows every click. Close is instant here (no exit animation), so a
+  // popup still connected well after close is stranded: finish the unmount
+  // Base UI skipped. Reopening clears the timer.
+  const actionsRef = useRef(null);
+  const popupRef = useRef(null);
+  useEffect(() => {
+    if (open) return undefined;
+    const timer = setTimeout(() => {
+      if (popupRef.current?.isConnected) actionsRef.current?.unmount();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [open]);
+
   return (
     <Dialog.Root
+      actionsRef={actionsRef}
       open={open}
       onOpenChange={handleOpenChange}
       modal={lockBodyScroll ? true : 'trap-focus'}
@@ -172,6 +188,7 @@ export function Modal({
           }}
         >
           <Dialog.Popup
+            ref={popupRef}
             className={FADE_POPUP}
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
