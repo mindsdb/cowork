@@ -39,6 +39,10 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
+import {
+  OWNED_BY_OTHER_USER_MESSAGE,
+  isOwnedByOtherUserError,
+} from '../components/artifact/publish/publishErrors';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -794,10 +798,12 @@ export default function ArtifactsView({
       }
     } catch (e) {
       const msg = e?.message || String(e);
-      // Map the most common failure to a clearer next step.
-      const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to share artifacts.'
-        : `Sharing failed: ${msg}`;
+      // Map the failures a user can act on to a clearer message.
+      let friendly = `Sharing failed: ${msg}`;
+      if (isOwnedByOtherUserError(e)) friendly = OWNED_BY_OTHER_USER_MESSAGE;
+      else if (/minds_api_key/i.test(msg) || /minds api key/i.test(msg)) {
+        friendly = 'Set your Minds API key in Settings to share artifacts.';
+      }
       setPhase(artifact.path, 'failed');
       showToast({ kind: 'error', message: friendly });
     } finally {
@@ -833,7 +839,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);

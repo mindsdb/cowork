@@ -29,10 +29,13 @@ import {
   loadArtifactAccess,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
+import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
 
-// Map the most common publish failure (missing Minds API key) to a clear
-// next step; everything else surfaces verbatim.
+// Map the publish failures a user can act on (a missing Minds API key, an
+// artifact another account published) to a clear message; everything else
+// surfaces verbatim.
 function friendlyPublishError(e) {
+  if (isOwnedByOtherUserError(e)) return OWNED_BY_OTHER_USER_MESSAGE;
   const msg = e?.message || String(e);
   if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
   return `Sharing failed: ${msg}`;
@@ -183,7 +186,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
-      setError(`Update failed: ${e?.message || e}`);
+      setError(isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`);
       return false;
     } finally {
       setPhase('idle');
