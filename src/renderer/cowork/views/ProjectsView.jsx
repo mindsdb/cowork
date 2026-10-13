@@ -328,9 +328,11 @@ function ProjectDetail({
           <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
+            {/* no-drag: the header sits in the titlebar's drag region, where
+                Electron swallows the hover that reveals the kebab. */}
             <div
               {...hoverProps}
-              className="flex items-center gap-1 min-w-0 flex-[1_1_0]"
+              className="flex items-center gap-1 min-w-0 flex-[1_1_0] [-webkit-app-region:no-drag]"
             >
               {editing ? (
                 <input
@@ -479,7 +481,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-surface border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 pb-6 flex flex-col gap-7 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail bg-surface self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 pb-6 flex flex-col gap-7 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <WorkingFolderBox project={project} />
           <ContextBox
             projects={projects}

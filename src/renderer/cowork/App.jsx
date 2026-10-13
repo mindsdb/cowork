@@ -1732,10 +1732,13 @@ function AppCore() {
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
 
-  // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
-  // a ref so the keydown listener (mounted once) sees the live route
-  // without needing to rebind on every navigation.
+  // The live route, read via a ref so callbacks bound once (deletion
+  // settlement below) see it without rebinding on every navigation.
   const routeRef = useRef('home');
+  // Cmd+B opens the drawer in the narrow band, where the docked sidebar's
+  // collapsed state has no visible effect; a ref for the mount-once listener.
+  const sidebarPopoutRef = useRef(sidebarPopout);
+  sidebarPopoutRef.current = sidebarPopout;
   // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar; Cmd/Ctrl+K
   // opens search; Cmd/Ctrl+N starts a new task.
   useEffect(() => {
@@ -1745,7 +1748,8 @@ function AppCore() {
       const key = e.key.toLowerCase();
       if (key === 'b') {
         e.preventDefault();
-        setSidebarCollapsed((c) => !c);
+        if (sidebarPopoutRef.current) setNavPopoutOpen((open) => !open);
+        else setSidebarCollapsed((c) => !c);
       } else if (key === 'k') {
         e.preventDefault();
         setSearchOpen(true);
@@ -5504,6 +5508,7 @@ function AppCore() {
             ? () => setNavPopoutOpen((open) => !open)
             : () => setSidebarCollapsed((c) => !c)}
           toggleLabel={sidebarDocked ? 'Collapse sidebar' : 'Open sidebar'}
+          toggleShortcut={host.isMac() || /Mac/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B'}
           onNewTask={effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask}
           newTaskLabel={effectiveWorkspaceMode === 'code' ? 'New code task' : 'New task'}
           brand={{

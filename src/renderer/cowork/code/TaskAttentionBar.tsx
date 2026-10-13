@@ -84,8 +84,10 @@ export function TaskAttentionBar({ sessions, selectedId, active, scopeKey, onSel
     <Button size="sm" variant="subtle" aria-pressed={notifications} onClick={() => void toggle()}>{notifications ? 'Notifications on' : 'Notify when away'}</Button>
     {permissionError && <p role="status">{permissionError}</p>}
   </div>;
-  // In the titlebar's app zone: a bell, badged while a task needs you, in
-  // either workspace. Its menu lists those tasks and holds the away toggle.
+  // In the titlebar's app zone: a bell, badged while a task needs you. Its menu
+  // lists those tasks and holds the away toggle. Code only: the task list
+  // stops refreshing while Cowork is in front, so a count there would be
+  // stale. Away alerts keep running either way.
   const bell = <Menu
     ariaLabel="Code attention"
     side="bottom"
@@ -105,5 +107,5 @@ export function TaskAttentionBar({ sessions, selectedId, active, scopeKey, onSel
       ...(permissionError ? [{ heading: <span className="app-attention-bell__error" role="status">{permissionError}</span> }] : []),
     ]}
   />;
-  return <AppAttention fallback={bar}>{bell}</AppAttention>;
+  return <AppAttention fallback={bar}>{active ? bell : null}</AppAttention>;
 }
