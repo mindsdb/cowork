@@ -62,6 +62,8 @@ export function CrumbCurrent({ label, title, maxWidth, className, style, ...rest
       className={cn(
         'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-0.5',
         'font-sans text-[13px] font-medium tracking-normal text-ink-2',
+        // In the titlebar's drag region, so its truncation `title` still shows.
+        '[-webkit-app-region:no-drag]',
         className,
       )}
       {...rest}

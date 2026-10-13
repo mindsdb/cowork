@@ -19,6 +19,7 @@ export default function AppTitlebar({
   docked,
   onToggleSidebar,
   toggleLabel,
+  toggleShortcut,
   onNewTask,
   newTaskLabel,
   brand,
@@ -32,7 +33,7 @@ export default function AppTitlebar({
         className={`app-titlebar__zone${docked ? ' is-docked' : ''}`}
         style={{ paddingLeft: lightsInset }}
       >
-        <Tooltip content={toggleLabel}>
+        <Tooltip content={toggleShortcut ? `${toggleLabel}  (${toggleShortcut})` : toggleLabel}>
           <button type="button" className="icon-btn" onClick={onToggleSidebar} aria-label={toggleLabel}>
             {docked ? Ico.sidebarCollapseLeft(16) : Ico.sidebarExpandRight(16)}
           </button>

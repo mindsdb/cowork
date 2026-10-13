@@ -108,7 +108,8 @@ export function TaskBar({
       <div className="code-taskbar__identity">
         <Crumb
           label={repositoryLabel(session)}
-          title={`All tasks in ${repositoryLabel(session)}`}
+          // Without a project the click falls back to every task.
+          title={session.project_id ? `All tasks in ${repositoryLabel(session)}` : 'All tasks'}
           onClick={onOpenProjectTasks}
           maxWidth={200}
           // The task title gives way first; the project name ellipsizes only past 200px.

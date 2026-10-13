@@ -3145,10 +3145,13 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
+          // no-drag only while open: closed, it still spans the window and
+          // would cancel the titlebar's drag region.
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
+            WebkitAppRegion: railOverlayOpen ? 'no-drag' : undefined,
           }}
         />
       )}
@@ -3158,7 +3161,7 @@ export default function ChatView({
         className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
             ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-surface min-w-0 border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 gap-7 transition-opacity duration-layout ease-[ease]'
+            : 'bg-surface min-w-0 self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 gap-7 transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

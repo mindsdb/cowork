@@ -523,6 +523,8 @@ input, textarea { font-family: inherit; }
   padding-right: 10px;
   box-sizing: border-box;
 }
+/* The zone's controls keep their size; only the brand gives way. */
+.app-titlebar__zone > .icon-btn { flex: none; }
 .app-titlebar__zone.is-docked {
   width: var(--sidebar-w);
   background: var(--sidebar-bg, var(--surface));
@@ -588,7 +590,9 @@ input, textarea { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  flex: 0 1 auto;
   min-width: 0;
+  overflow: hidden;
   height: 28px;
   margin-left: 4px;
   padding: 0 6px;
@@ -611,7 +615,16 @@ input, textarea { font-family: inherit; }
   font-weight: 620;
   letter-spacing: -0.012em;
   text-transform: none;
+  /* The docked zone is only --sidebar-w wide, and on macOS the traffic
+     lights take ~80px of it: a long nav title ellipsizes instead of running
+     past the sidebar edge. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.app-brand .anton-sidebar__logo,
+.app-brand__mode,
+.app-brand__chevron { flex: none; }
 body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
 .app-brand__mode {
   display: inline-flex;
@@ -1912,15 +1925,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 /* ─── Anton sidebar (per anton-sidebar-{dark,light} guideline) ────────────
    Token-driven; dark mode adds the cyan halo + glow on emphasis. */
 
-.anton-sidebar__chrome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 14px 8px;
-}
-.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
-.anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
-
 .anton-sidebar__logo {
   width: 18px;
   height: 18px;
@@ -2356,32 +2360,6 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--accent);
   background: transparent;
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
-}
-
-/* Coding Mode toggle — deliberately bare (no border/background box) so it
-   reads as a status glyph next to the boxed Display Settings button, not a
-   second button of the same weight. Greyed out (--ink-4) when off, lit
-   accent when on; toggles coding mode directly on click (no modal). */
-.coding-mode-toggle {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 0;
-  color: var(--ink-4);
-  cursor: pointer;
-  transition: color var(--dur-hover), opacity var(--dur-hover);
-}
-.coding-mode-toggle:hover {
-  color: var(--ink-2);
-}
-.coding-mode-toggle.is-on {
-  color: var(--accent);
-}
-.coding-mode-toggle.is-on:hover {
-  opacity: 0.85;
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
