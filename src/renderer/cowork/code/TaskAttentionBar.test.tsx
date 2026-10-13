@@ -122,4 +122,22 @@ describe('Task attention and notifications', () => {
     await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: /Fix imports/ })); });
     expect(onSelect).toHaveBeenCalledWith('other');
   });
+
+  it('leaves the titlebar while Cowork is in front, where its count would go stale', () => {
+    function AttentionSlot() {
+      const { setAttention } = useAppHeaderSlots();
+      return <div data-testid="attention-slot" ref={setAttention} />;
+    }
+    const other = { ...task, id: 'other', status: 'failed' } as CodingSession;
+    const ui = (active: boolean) => (
+      <AppHeaderProvider>
+        <AttentionSlot />
+        <TaskAttentionBar {...props} active={active} sessions={[task, other]} />
+      </AppHeaderProvider>
+    );
+    const { rerender } = render(ui(true));
+    expect(screen.getByRole('button', { name: 'Code: 1 task needs you' })).toBeInTheDocument();
+    rerender(ui(false));
+    expect(screen.getByTestId('attention-slot')).toBeEmptyDOMElement();
+  });
 });
