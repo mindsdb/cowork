@@ -861,15 +861,18 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             subtitle="Extend Cowork's capabilities with task-specific skills"
             actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
-          <FilterRow
-            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
-            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            counts={skills === null || skills.length === 0 ? null : (
-              search.trim()
-                ? `${sorted.length} of ${skills.length} skills`
-                : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
-            )}
-          />
+
+          {(skills === null || skills.length > 0) && (
+            <FilterRow
+              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
+              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+              counts={skills === null || skills.length === 0 ? null : (
+                search.trim()
+                  ? `${sorted.length} of ${skills.length} skills`
+                  : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
+              )}
+            />
+          )}
           {mindsHubNotice && <div className={`${LIST_CLASS} mb-4`}>{mindsHubNotice}</div>}
           {sharingStatus === LOAD_STATUS.ERROR ? (
             <div className={LIST_CLASS}>
@@ -885,9 +888,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               skeleton="group"
               skeletonClassName={LIST_CLASS}
               empty={{
-                icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
+                icon: Ico.cube(20),
                 title: 'No saved skills yet',
-                style: { flex: 1 },
+                description: 'Write a skill, upload a SKILL.md, or ask Cowork to make one.',
+                action: { label: 'Write your first skill', onClick: startNew },
+                className: 'mx-8 mb-8',
               }}
             >
               {orgSharingOn ? (
