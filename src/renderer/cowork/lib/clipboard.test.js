@@ -1,22 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trimCopiedSelection } from './clipboard';
 
-function copyEvent() {
+function copyEvent(currentTarget = document.body) {
   const data = {};
   return {
     data,
+    currentTarget,
     preventDefault: vi.fn(),
     clipboardData: { setData: (type, value) => { data[type] = value; } },
   };
 }
 
-function selectContents(el) {
-  const range = document.createRange();
-  range.selectNodeContents(el);
+function select(range) {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
   return selection;
+}
+
+function selectContents(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  return select(range);
 }
 
 describe('trimCopiedSelection', () => {
@@ -48,5 +53,34 @@ describe('trimCopiedSelection', () => {
 
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(event.data).toEqual({});
+  });
+
+  it('keeps the formatting of the element a partial selection sits inside', () => {
+    document.body.innerHTML = '<div id="turn"><div class="bubble"><p><strong id="b">Ship it today</strong></p></div></div>';
+    const text = document.getElementById('b').firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 5);
+    const selection = select(range);
+    vi.spyOn(selection, 'toString').mockReturnValue('Ship \n\n');
+    const event = copyEvent(document.getElementById('turn'));
+
+    trimCopiedSelection(event);
+
+    expect(event.data['text/html']).toBe('<p><strong>Ship </strong></p>');
+  });
+
+  it('keeps the list around a selection that spans list items', () => {
+    document.body.innerHTML = '<div id="turn"><ul class="md-list"><li id="a">One</li><li id="b">Two</li></ul></div>';
+    const range = document.createRange();
+    range.setStart(document.getElementById('a').firstChild, 0);
+    range.setEnd(document.getElementById('b'), 0);
+    const selection = select(range);
+    vi.spyOn(selection, 'toString').mockReturnValue('One\n\n');
+    const event = copyEvent(document.getElementById('turn'));
+
+    trimCopiedSelection(event);
+
+    expect(event.data['text/html']).toBe('<ul><li id="a">One</li><li id="b"></li></ul>');
   });
 });

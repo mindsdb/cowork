@@ -78,7 +78,27 @@ export function trimCopiedSelection(event) {
   // Keep the rich copy so a paste into a doc still gets lists and emphasis.
   const holder = document.createElement('div');
   for (let i = 0; i < selection.rangeCount; i += 1) {
-    holder.appendChild(selection.getRangeAt(i).cloneContents());
+    holder.appendChild(cloneRangeInContext(selection.getRangeAt(i), event.currentTarget));
   }
   event.clipboardData.setData('text/html', holder.innerHTML);
+}
+
+// `cloneContents()` leaves out the range's common ancestor, so a selection
+// inside one <strong> loses the bold, and one spanning <li>s loses its <ul>.
+// Re-wrap the fragment in shallow clones of each ancestor up to `boundary`,
+// skipping the layout divs and spans and dropping the app's own styling.
+function cloneRangeInContext(range, boundary) {
+  let content = range.cloneContents();
+  let node = range.commonAncestorContainer;
+  if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
+  while (node && node !== boundary && boundary?.contains(node)) {
+    if (node.tagName !== 'DIV' && node.tagName !== 'SPAN') {
+      const wrapper = node.cloneNode(false);
+      ['class', 'style', 'id'].forEach((name) => wrapper.removeAttribute(name));
+      wrapper.appendChild(content);
+      content = wrapper;
+    }
+    node = node.parentNode;
+  }
+  return content;
 }
