@@ -31,6 +31,8 @@ import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
+import { PLATFORM_UI } from '../../../lib/deployment';
+import { visibleProviderCards } from './providerVisibility';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -45,9 +47,13 @@ const FIELD_ICON_BTN = `${FIELD_ICON_BTN_BASE} absolute right-1 top-1/2 -transla
 const COLOR_SWATCH_INPUT =
   'w-[64px] h-[32px] p-0.5 border border-solid border-line-2 rounded-md bg-surface cursor-pointer';
 
+const FAVICON_MIME_TYPES = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml', 'image/webp'];
+const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp' };
+
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
    probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
@@ -62,6 +68,9 @@ const LINK_BTN =
    `usage` is the `/hub/usage/` view, which decides the allowance copy (a
    refill time, or the no-grant sentence). */
 export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
+  if (!PLATFORM_UI) {
+    return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
+  }
   const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
   if (notice.kind === 'no_credits') {
     return (
@@ -136,6 +145,9 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false 
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link. Exported for the visual fixture. */
 export function UnavailableModelHint({ label, restricted }) {
+  if (!PLATFORM_UI) {
+    return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
+  }
   if (restricted) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -847,8 +859,9 @@ export default function SettingsView({
   // on Save settings. The save handler routes through the providers path
   // when `providers` is included on the patch.
   const configuredProviders = Array.isArray(settings.providers) ? settings.providers : [];
-  const providers = configuredProviders.some((p) => p.type === 'minds-cloud')
+  const providers = !PLATFORM_UI || configuredProviders.some((p) => p.type === 'minds-cloud')
     ? configuredProviders : [makeEmptyProvider('minds-cloud'), ...configuredProviders];
+  const visibleProviders = visibleProviderCards(settings, providers, PLATFORM_UI);
   const modelMode = settings.modelMode === 'custom' ? 'custom' : 'default';
   const overrides = settings.modelOverrides || {};
   const recommendedModels = settings.recommendedModels || {};
@@ -857,7 +870,7 @@ export default function SettingsView({
 
   const updateProviders = (next) => setSetting('providers', dedupeByType(next));
   const availableTypesForAdd = PROVIDER_TYPE_ORDER.filter(
-    (t) => !providers.some((p) => p.type === t),
+    (t) => (PLATFORM_UI || t !== 'minds-cloud') && !providers.some((p) => p.type === t),
   );
 
   const roleOverride = (role) => {
@@ -915,10 +928,10 @@ export default function SettingsView({
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
   const defaultModeProviderType = (() => {
-    const minds = providers.find((p) => p.type === 'minds-cloud');
+    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
-    const configured = providers.find(providerConfigured);
-    return configured ? configured.type : 'minds-cloud';
+    const configured = visibleProviders.find(providerConfigured);
+    return configured ? configured.type : PLATFORM_UI ? 'minds-cloud' : '';
   })();
 
   // Which provider types actually drive planning + coding right now.
@@ -1070,7 +1083,7 @@ export default function SettingsView({
   const didMountVerify = useRef(false);
   useEffect(() => {
     if (didMountVerify.current) return;
-    const configured = providers.filter(providerConfigured);
+    const configured = visibleProviders.filter(providerConfigured);
     if (configured.length === 0) {
       // Nothing to verify — the picker's warning reflects config, not a
       // pending network result, so let it show without waiting.
@@ -1174,7 +1187,7 @@ export default function SettingsView({
       setValidation(validationResult);
       if (shouldTestLlm) {
         const freshProviders = result?.settings?.providers || normalized.providers || providers;
-        await runProviderTests(freshProviders.filter(providerConfigured));
+        await runProviderTests(visibleProviderCards(normalized, freshProviders, PLATFORM_UI).filter(providerConfigured));
       }
       setTested(true);
       setTimeout(() => setTested(false), 2400);
@@ -1262,14 +1275,14 @@ export default function SettingsView({
   // ───────────────────────── Section renderers ─────────────────────────
 
   const renderAgentSection = () => {
-    const anyProviderConfigured = providers.some(providerConfigured);
+    const anyProviderConfigured = visibleProviders.some(providerConfigured);
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
           {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
           {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
-              {providers.map((p) => {
+              {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
                 const reveal = p.type === 'anthropic' ? 'anthropic'
@@ -1286,7 +1299,7 @@ export default function SettingsView({
                   providerStatusDetails: settings.providerStatusDetails || {},
                   providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
-                  isSsoConnected,
+                  isSsoConnected: PLATFORM_UI && isSsoConnected,
                   testInProgress: testing,
                   initialTestDone: initialProviderTestDone,
                 });
@@ -1294,7 +1307,10 @@ export default function SettingsView({
                 const detail = configured ? st.detail : '';
                 // The probe's reason names which MindsHub limit a 402/429 was,
                 // which the detail string alone cannot.
-                const friendlyError = friendlyProviderError(detail, configured ? st.reason : null);
+                const neutralProbeError = !PLATFORM_UI && p.type === 'minds-cloud'
+                  && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
+                  ? PROVIDER_UNAVAILABLE_MESSAGE : '';
+                const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
@@ -1358,7 +1374,7 @@ export default function SettingsView({
                 );
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
-                const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
+                const ssoMindsHub = PLATFORM_UI && p.type === 'minds-cloud' && isSsoConnected;
                 // Keep a stale failed provider in badge mode while its fresh test is
                 // pending; otherwise the testing badge is replaced by the masked key.
                 const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
@@ -1374,7 +1390,7 @@ export default function SettingsView({
                     {/* Left: name + description */}
                     <div>
                       {titleNode}
-                      {PROVIDER_TYPE_DESC[p.type] && (
+                      {PROVIDER_TYPE_DESC[p.type] && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                         <div className="text-[12px] text-ink-3 mt-1.5 max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
@@ -1409,7 +1425,7 @@ export default function SettingsView({
                             ariaLabel="Base URL"
                           />
                         )}
-                        {GET_KEY_URL[p.type] && !ssoMindsHub && (
+                        {GET_KEY_URL[p.type] && !ssoMindsHub && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                           <div className="text-[11.5px] text-ink-3">
                             Get your API key at{' '}
                             <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
@@ -1422,7 +1438,7 @@ export default function SettingsView({
                             </Tooltip>
                           </div>
                         )}
-                        {p.type === 'minds-cloud' && !isSsoConnected && (
+                        {PLATFORM_UI && p.type === 'minds-cloud' && !isSsoConnected && (
                           <div className="text-[11.5px] text-ink-3">
                             Don't have an account?{' '}
                             <Tooltip content="Open the MindsHub sign-up page in your browser.">
@@ -1538,10 +1554,9 @@ export default function SettingsView({
                 // any role that hasn't been explicitly assigned an
                 // override (keyed MindsHub, else first configured).
                 const defaultProvider =
-                  providers.find((p) => p.type === defaultModeProviderType) ||
-                  providers.find((p) => p.type === 'minds-cloud') ||
-                  providers[0];
-                const multipleProviders = providers.length > 1;
+                  visibleProviders.find((p) => p.type === defaultModeProviderType) ||
+                  visibleProviders[0];
+                const multipleProviders = visibleProviders.length > 1;
 
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
@@ -1555,7 +1570,7 @@ export default function SettingsView({
                   // to defaultModeProviderType (which prefers the actually-configured
                   // provider — MindsHub if available, else first configured).
                   const rawType = roleProviderType(role) || (defaultProvider?.type || '');
-                  const rawProvider = providers.find((p) => p.type === rawType);
+                  const rawProvider = visibleProviders.find((p) => p.type === rawType);
                   const curType = (rawProvider && providerConfigured(rawProvider))
                     ? rawType
                     : defaultModeProviderType;
@@ -1566,7 +1581,7 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const provider = providers.find((p) => p.type === curType);
+                  const provider = visibleProviders.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
                   // minds-cloud has no free-text mode (unlike a BYOK provider,
                   // where an unlisted id is just a user-typed custom model) —
@@ -1596,7 +1611,7 @@ export default function SettingsView({
                     providerStatusDetails: settings.providerStatusDetails || {},
                     providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
-                    isSsoConnected,
+                    isSsoConnected: PLATFORM_UI && isSsoConnected,
                     testInProgress: testing,
                     initialTestDone: initialProviderTestDone,
                   });
@@ -1699,7 +1714,7 @@ export default function SettingsView({
                               invalid={providerUnusable}
                               aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
-                              options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
+                              options={visibleProviders.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
                           </label>
                         )}
@@ -2059,6 +2074,44 @@ export default function SettingsView({
     reader.readAsDataURL(file);
   };
 
+  const faviconInputRef = useRef(null);
+  const faviconReadRef = useRef(null);
+  const [faviconError, setFaviconError] = useState(null);
+  useEffect(() => () => faviconReadRef.current?.abort(), []);
+  const handleFaviconUpload = (file) => {
+    if (!file) return;
+    faviconReadRef.current?.abort();
+    faviconReadRef.current = null;
+    const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
+    if (!FAVICON_MIME_TYPES.includes(mime)) {
+      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      return;
+    }
+    if (file.size >= 100 * 1024) {
+      setFaviconError('Browser tab icon must be under 100 KB.');
+      return;
+    }
+    setFaviconError(null);
+    const reader = new FileReader();
+    faviconReadRef.current = reader;
+    reader.onload = () => {
+      if (faviconReadRef.current !== reader) return;
+      if (typeof reader.result !== 'string') {
+        setFaviconError("Couldn't read this image. Try another file.");
+        return;
+      }
+      autoSaveSetting('favicon', reader.result);
+    };
+    reader.onerror = () => {
+      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+    };
+    try {
+      reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
+    } catch {
+      setFaviconError("Couldn't read this image. Try another file.");
+    }
+  };
+
   const renderCodingAgentSection = () => (
     <CodingAgentSettingsSection
       settings={settings}
@@ -2287,6 +2340,33 @@ export default function SettingsView({
             <div className="text-[12px] text-danger mt-1.5">{logoError}</div>
           )}
         </Section>
+        {host.isWeb && (
+          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {settings.favicon && (
+                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+              )}
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
+                {settings.favicon ? 'Change icon' : 'Upload icon'}
+              </Button>
+              {settings.favicon && (
+                <Button variant="danger" className="whitespace-nowrap" onClick={() => {
+                  faviconReadRef.current?.abort();
+                  faviconReadRef.current = null;
+                  autoSaveSetting('favicon', '');
+                  setFaviconError(null);
+                }} aria-label="Remove browser tab icon">
+                  {Ico.trash(14)} Remove
+                </Button>
+              )}
+              <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
+                aria-label="Browser tab icon file" className="hidden"
+                onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
+              <AutoSaveTag settingKey="favicon" />
+            </div>
+            {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">

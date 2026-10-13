@@ -40,7 +40,9 @@ import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArti
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -1069,6 +1071,19 @@ function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deletin
   );
 }
 
+function ProviderLimitCard({ time, agentLabel, deleting }) {
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind="Provider"
+      title="Task stopped"
+      body="The provider's usage limit was reached. Contact your administrator before starting another task."
+    />
+  );
+}
+
 // ── AllowanceExhaustedCard: the free allowance, not a drained wallet ───────
 // ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
 // free-bucket model on an org that has NEVER topped up, so this user has not
@@ -1099,6 +1114,7 @@ function refillClause(resetAt, lead) {
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
      carries the same allowance's refill, so the free way forward still has a
@@ -1176,6 +1192,7 @@ function switchToAirButtons(onSwitchToAir) {
 export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
@@ -1230,6 +1247,18 @@ export function BalanceEmptyCard({
 export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind="Provider"
+        title="The provider is temporarily unavailable"
+        body="The provider has paused requests. Try again later or contact your administrator."
+      />
+    );
+  }
   /* The sentence lives in lib/usageWarnings because the Settings probe notice
      says the same thing about the same fuse. */
   return (
@@ -1265,9 +1294,11 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       time={time}
       kind="Connection"
       title="Connect a provider to start chatting"
-      body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
+      body={PLATFORM_UI
+        ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
+        : 'Add an API key or configure an endpoint in Settings. Contact your administrator if provider setup is managed for you.'}
       buttons={[
-        {
+        ...(PLATFORM_UI ? [{
           label: 'Start for free',
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1277,8 +1308,8 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        },
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+        }] : []),
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !PLATFORM_UI },
       ]}
     />
   );
@@ -1290,6 +1321,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+  if (!PLATFORM_UI) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1437,7 +1469,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
 
-  const canReconnect = Boolean(reconnectable) && !isWeb;
+  const canReconnect = PLATFORM_UI && Boolean(reconnectable) && !isWeb;
 
   const reconnect = async () => {
     if (busy) return;
@@ -1481,14 +1513,14 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   const title = done
     ? 'Reconnected'
     : canReconnect ? 'Reconnect to continue'
-    : reconnectable ? 'Sign in again'
+    : PLATFORM_UI && reconnectable ? 'Sign in again'
     : 'Update your API key';
   const body = done
     ? 'Your MindsHub session was refreshed. Send your message again to continue.'
     : err || (
         canReconnect
           ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-          : reconnectable
+          : PLATFORM_UI && reconnectable
             ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
             : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
       );
@@ -1558,15 +1590,17 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
-  if (code === 'model_restricted') {
+  if (code === 'model_restricted' || !PLATFORM_UI) {
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
         kind="Model"
-        title={`${label} is restricted`}
-        body="An admin in your organization restricted this model. Choose another model in Settings."
+        title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
+        body={code === 'model_restricted'
+          ? 'An admin in your organization restricted this model. Choose another model in Settings.'
+          : 'The provider cannot serve this model. Choose another model in Settings or contact your administrator.'}
         buttons={[
           { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
         ]}
@@ -1637,10 +1671,10 @@ function ProviderOverloadedCard({
   deleting = false,
 }) {
   const onManaged = Boolean(reconnectable);
-  const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
-  const base = errorText
+  const who = !PLATFORM_UI ? 'The model provider' : onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const base = (PLATFORM_UI && errorText)
     || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
-  const body = onManaged
+  const body = !PLATFORM_UI || onManaged
     ? base
     : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
 
@@ -1729,9 +1763,16 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // User-input index of the turn whose delete is on the wire, or null. The
-  // same index this view hands to onDeleteTurn.
-  deletingTurnIndex = null,
+  // "Load earlier messages": present only when the task's most recent page
+  // doesn't cover its whole history. Fired both by scrolling to the top of
+  // the transcript and by the explicit button. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see either
+  // affordance — task.hasMoreMessages is falsy for them.
+  onLoadEarlierMessages,
+  loadingEarlierMessages,
+  // Anchor id of the turn whose delete is on the wire, or null. The same id
+  // this view hands to onDeleteTurn.
+  deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1942,8 +1983,22 @@ export default function ChatView({
   // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
   // the FIRST match, which can be the wrong message's step. Prefixing
   // makes the pool unique and keeps focus correlation tight.
-  const messageKey = (m, i) =>
-    `m:${m?.id || `idx-${i}`}`;
+  // A row without an id keys off the nearest id-bearing row before it, so
+  // prepending an older page leaves its key, and its local state, alone.
+  const rowKeys = [];
+  let keyAnchorId = null;
+  let idlessSinceAnchor = 0;
+  visibleMessages.forEach((m, i) => {
+    if (m?.id) {
+      keyAnchorId = m.id;
+      idlessSinceAnchor = 0;
+      rowKeys.push(`m:${m.id}`);
+      return;
+    }
+    idlessSinceAnchor += 1;
+    rowKeys.push(keyAnchorId ? `after:${keyAnchorId}:${m?.role}:${idlessSinceAnchor}` : `m:idx-${i}`);
+  });
+  const messageKey = (_m, i) => rowKeys[i];
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
@@ -1984,9 +2039,71 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [task.messages.length, isStreaming]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+      taskId: task.id,
+      messages: visibleMessages,
+      previousAnchor: scrollAnchorRef.current,
+      scrollHeight: el.scrollHeight,
+    });
+    // Loading an older page prepends content above what's on screen —
+    // shifting scrollTop by the same delta keeps the reader's position
+    // steady instead of yanking them to the bottom.
+    if (isPrepend) {
+      el.scrollTop += scrollHeightDelta;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    scrollAnchorRef.current = anchor;
+    // visibleMessages is a fresh array every render (task.messages.filter(...),
+    // not memoized) — depending on task.messages.length instead keeps this
+    // effect firing only when the count actually changes, same as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.messages.length, isStreaming]);
+
+  // Content can grow while the message count stays put, and the prepend delta
+  // is measured from this snapshot, so it tracks that growth. It never scrolls.
+  useEffect(() => {
+    const col = scrollRef.current?.querySelector('.chat-transcript-col');
+    if (!col) return undefined;
+    const ro = new ResizeObserver(() => {
+      const el = scrollRef.current;
+      const anchor = scrollAnchorRef.current;
+      if (!el || anchor?.taskId !== task.id) return;
+      scrollAnchorRef.current = { ...anchor, scrollHeight: el.scrollHeight };
+    });
+    ro.observe(col);
+    return () => ro.disconnect();
+  }, [task.id]);
+
+  // Inverted infinite scroll: reaching the top of the transcript pulls the
+  // next older page in, which is the behaviour a long conversation is
+  // expected to have. The button below stays as the explicit affordance and
+  // as the fallback wherever IntersectionObserver is unavailable.
+  //
+  // Firing repeatedly is safe: onLoadEarlierMessages guards its own dispatch
+  // against a fetch already in flight and against there being nothing more to
+  // load. Re-running once a load settles re-checks a reader who is still
+  // parked at the top and needs the page after this one.
+  const loadEarlierSentinelRef = useRef(null);
+  useEffect(() => {
+    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const root = scrollRef.current;
+    const sentinel = loadEarlierSentinelRef.current;
+    if (!root || !sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
+      // Start the fetch slightly before the top is actually reached, so the
+      // page is usually already there by the time the reader gets there.
+      { root, rootMargin: '200px 0px 0px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -2013,7 +2130,7 @@ export default function ChatView({
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
-  const deleteInFlight = deletingTurnIndex != null;
+  const deleteInFlight = deletingTurnMessageId != null;
 
   return (
     <div
@@ -2292,21 +2409,42 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+            {task.hasMoreMessages && (
+              // Adapted from Sidebar's dashed-pill "Show more" idiom.
+              <button
+                type="button"
+                ref={loadEarlierSentinelRef}
+                onClick={() => onLoadEarlierMessages?.()}
+                disabled={loadingEarlierMessages}
+                className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
+              >
+                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+              </button>
+            )}
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
-              let assistantTurnIdx = -1;
-              let userInputIdx = -1;
               // Skip + orphan rules live together in lib/turnVisibility so a
               // user message whose only assistant bubble is skipped keeps the
               // delete affordance the hidden bubble used to carry (ENG-1304,
               // PR #580 review).
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
+              // The id this turn hands to onDeleteTurn: its assistant reply,
+              // or the user row itself when nothing answered it. Resolved from
+              // any row in the turn, so an activity or error card dims with the
+              // exchange it belongs to rather than on its own.
+              const turnAnchorIdAt = (atIdx) => {
+                let start = atIdx;
+                while (start > 0 && visibleMessages[start]?.role !== 'user') start -= 1;
+                if (visibleMessages[start]?.role !== 'user') return null;
+                if (isOrphanUser(start)) return visibleMessages[start].id ?? null;
+                for (let k = start + 1; k < visibleMessages.length; k++) {
+                  if (visibleMessages[k]?.role === 'user') break;
+                  // A reply with no id was never persisted, so the user row still anchors the turn.
+                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? visibleMessages[start].id ?? null;
+                }
+                return visibleMessages[start].id ?? null;
+              };
+              const isTurnBeingDeleted = (atIdx) => deletingTurnMessageId != null
+                && turnAnchorIdAt(atIdx) === deletingTurnMessageId;
               // Index of the last user or assistant message that renders —
               // its actions stay always-visible (Claude pattern: most recent
               // exchange shows its toolbar). Skipped failed-assistant bubbles
@@ -2316,12 +2454,17 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
-                userInputIdx += 1;
-                const turnIdxForThisUser = userInputIdx;
                 const orphan = isOrphanUser(i);
+                // A question the server never saw has no id; it is removed
+                // locally, by the row itself, once nothing is streaming.
+                const neverSent = !m.id && !isStreaming
+                  && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
+                let deleteThisTurn = null;
+                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
+                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
                 return (
                   <UserTurn
-                    key={i}
+                    key={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2331,11 +2474,10 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    // No turn offers a delete while one is out: every other
-                    // turn's index is about to shift when the server reindexes
-                    // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
-                    deleting={deletingTurnIndex === turnIdxForThisUser}
+                    // A row the server has seen is hidden until it has an id, not
+                    // sent to 422; no turn offers a delete while one is out.
+                    onDelete={deleteThisTurn}
+                    deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
@@ -2350,9 +2492,9 @@ export default function ChatView({
                   />
                 );
               }
-              // Past the user branch, userInputIdx names the turn this
-              // message belongs to, whatever kind of row it renders as.
-              const deletingThisTurn = deletingTurnIndex === userInputIdx;
+              // Every row of a turn dims together, so this resolves the
+              // turn's own anchor id from whatever kind of row this is.
+              const deletingThisTurn = isTurnBeingDeleted(i);
               if (m.role === 'activity') {
                 // Activity rows normally live in the rail's Progress
                 // only. Exception: when this is the just-sent
@@ -2364,7 +2506,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                    <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
                       <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
@@ -2388,7 +2530,7 @@ export default function ChatView({
                   : undefined;
                 return (
                   <ConnectIntroBubble
-                    key={i}
+                    key={messageKey(m, i)}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
@@ -2417,7 +2559,7 @@ export default function ChatView({
                   const balanceResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <BalanceEmptyCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2439,7 +2581,7 @@ export default function ChatView({
                 if (m.code === 'free_serving_paused') {
                   return (
                     <FreeServingPausedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2453,7 +2595,7 @@ export default function ChatView({
                 if (m.code === 'provider_auth') {
                   return (
                     <ReconnectCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2475,7 +2617,7 @@ export default function ChatView({
                   const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2498,7 +2640,7 @@ export default function ChatView({
                   const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2533,7 +2675,7 @@ export default function ChatView({
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2561,7 +2703,7 @@ export default function ChatView({
                 if (m.code === 'image_format') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2583,7 +2725,7 @@ export default function ChatView({
                   const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2615,7 +2757,7 @@ export default function ChatView({
                 if (m.code === 'content_too_large') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2632,13 +2774,15 @@ export default function ChatView({
                   const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Billing"
-                      title="Billing is temporarily unavailable"
-                      body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      kind={PLATFORM_UI ? 'Billing' : 'Provider'}
+                      title={PLATFORM_UI ? 'Billing is temporarily unavailable' : 'The provider is temporarily unavailable'}
+                      body={PLATFORM_UI
+                        ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                        : "The provider couldn't authorize this request. Try again in a moment."}
                       buttons={resend
                         ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                         : []}
@@ -2657,7 +2801,7 @@ export default function ChatView({
                   const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2726,7 +2870,7 @@ export default function ChatView({
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <AllowanceExhaustedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2743,7 +2887,7 @@ export default function ChatView({
                   const rlResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2792,7 +2936,7 @@ export default function ChatView({
                    lands here too: the server's sentence tells the user to wait
                    for the running answer, and nothing resends it for them. */
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
+                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
@@ -2807,37 +2951,32 @@ export default function ChatView({
               if (m.role === 'provider_required') {
                 return (
                   <ConnectProviderCard
-                    key={i}
+                    key={messageKey(m, i)}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
                     onOpenSettings={onOpenSettings}
                   />
                 );
               }
-              assistantTurnIdx += 1;
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Same predicate keeps isOrphanUser's delete affordance honest.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
-              const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
-                  key={i}
+                  key={messageKey(m, i)}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
                   // start time supplies this — and a replay with no steps has
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={deleteInFlight ? null : () => onDeleteTurn?.(turnIdxForThisBubble)}
+                  // Anchored on this assistant message's own id; hidden, not
+                  // disabled, without one. A partial kept after a transport
+                  // failure whose recovery also failed has none until reload.
+                  onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}

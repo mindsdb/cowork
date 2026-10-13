@@ -22,6 +22,17 @@ import {
   routerRoleSubtitle,
 } from './settingsTransform';
 
+describe('favicon settings translation', () => {
+  it('round-trips the image, commits it, and writes an empty removal', () => {
+    const favicon = 'data:image/png;base64,aWNvbg==';
+    expect(transformSettingsRows([{ key: 'favicon', value: favicon, is_sensitive: false }]).favicon).toBe(favicon);
+    expect(diffSettingsForWrite({ favicon }, { favicon: '' })).toEqual({ favicon });
+    expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
+    expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
+    expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
 describe('modelLabel', () => {
   it('formats named GPT coding models without a version hyphen', () => {
     expect(modelLabel('gpt-codex')).toBe('GPT Codex');

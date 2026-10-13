@@ -574,7 +574,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // route via `wireMethodId` so modify-flow submissions
           // resolve to the saved method's real id, not the
           // synthetic `__edit_current__`.
-          onSubmit({
+          await onSubmit({
             formId: spec.form_id,
             formSpec: wireMethodId
               ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
@@ -615,7 +615,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       // The agent does the validation / save / patch decisions
       // server-side without round-tripping through the LLM.
       if (onSubmit) {
-        onSubmit({
+        await onSubmit({
           formId: spec.form_id,
           // Spread the chosen auth_method into the spec we send so
           // the server-side agent reads it from `spec.auth_method`
@@ -633,9 +633,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           name: connectionName,
           method: wireMethodId || null,
         });
-        // Don't await — the stream pumps events into ChatView state
-        // directly. We can drop the local busy flag; the Composer's
-        // streaming indicator picks up from here.
+        // The stream itself is not awaited; it pumps events into ChatView
+        // state directly. Only a submission the host holds back returns a
+        // promise, and the panel stays busy until that one has started.
       } else {
         // Legacy fallback — used by any host that hasn't wired
         // onSubmit (older tests, embeds). Stages the values without

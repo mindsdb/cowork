@@ -7,6 +7,7 @@ const compilerPreset = reactCompilerPreset();
 // Main (node), renderer (happy-dom), and compiled credential-refresh regressions.
 // setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
+  define: { __PLATFORM_UI__: 'true' },
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },

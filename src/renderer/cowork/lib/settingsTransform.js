@@ -56,6 +56,7 @@ export const SETTINGS_KEY_MAP = {
   nav_title: 'navTitle',
   nav_title_color: 'navTitleColor',
   nav_logo: 'navLogo',
+  favicon: 'favicon',
   show_theme_toggle: 'showThemeToggle',
   show_8bit_toggle: 'show8bitToggle',
   show_coding_mode_toggle: 'showCodingModeToggle',

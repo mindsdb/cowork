@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
@@ -231,8 +232,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
     setSortBy('default');
     // Cloud: also pull what only the desktop app can run, so the directory
     // can list it under DESKTOP_ONLY_TITLE. Desktop already gets everything.
-    fetchConnectors({ includeUnavailable: orgMode })
-      .then((list) => setConnectors(Array.isArray(list) ? list : []))
+    fetchConnectors({ includeUnavailable: PLATFORM_UI && orgMode })
+      .then((list) => setConnectors(Array.isArray(list)
+        ? list.filter((connector) => PLATFORM_UI || connector.cloud_available !== false)
+        : []))
       .catch((e) => setError(e?.message || 'Failed to load connectors'))
       .finally(() => setLoading(false));
   }, [open, orgMode]);
@@ -357,7 +360,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             response to what auth's catalogue authorizes (currently Google
             Drive + Gmail) — this note just explains the short list rather
             than doing any filtering of its own. */}
-        {orgMode && (
+        {PLATFORM_UI && orgMode && (
           <div>
             <Alert variant="info">
               The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
@@ -416,7 +419,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             // Featured. Show all of them as one block instead; the desktop
             // catalogue below is what gives the directory its body.
             <ConnectorSection
-              title={CLOUD_AVAILABLE_TITLE}
+              title={PLATFORM_UI ? CLOUD_AVAILABLE_TITLE : 'Available connectors'}
               connectors={available}
               onPick={onPick}
               className="mb-6"
@@ -445,12 +448,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               ))}
             </>
           )}
-          <ConnectorSection
+          {PLATFORM_UI && <ConnectorSection
             title={DESKTOP_ONLY_TITLE}
             count={desktopOnly.length}
             connectors={desktopOnly}
             onPick={onDesktopOnly}
-          />
+          />}
         </ModalBody>
     </Modal>
   );

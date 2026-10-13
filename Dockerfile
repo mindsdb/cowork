@@ -40,6 +40,8 @@ COPY package.json package-lock.json ./
 # native modules) — the web SPA has no native dependencies.
 RUN npm ci --ignore-scripts
 COPY . ./
+ARG VITE_PLATFORM_UI=false
+ENV VITE_PLATFORM_UI=${VITE_PLATFORM_UI}
 RUN npm run build:web
 # Output lives at /build/dist/renderer-web/
 

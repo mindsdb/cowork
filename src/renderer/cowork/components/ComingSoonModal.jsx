@@ -9,6 +9,7 @@
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button } from './ui';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 
 // Marketing download page. `os=auto` lets that page detect the visitor's OS
 // server-side and serve the right installer; `from` tags the referral source
@@ -25,33 +26,42 @@ export default function ComingSoonModal({ feature, onClose }) {
     >
       <ModalHeader
         id="coming-soon-title"
-        title="Coming soon to Cloud"
+        title={PLATFORM_UI ? 'Coming soon to Cloud' : 'Feature unavailable'}
         onClose={onClose}
       />
       <ModalBody>
         <p className="s-body">
           {feature ? `${feature} isn’t` : 'This feature isn’t'}{' '}
-          available on Cloud just yet. In the meantime, you can use it in the
-          desktop app.
+          {PLATFORM_UI
+            ? 'available on Cloud just yet. In the meantime, you can use it in the desktop app.'
+            : 'available in this deployment.'}
         </p>
       </ModalBody>
-      <ModalFooter
-        cancel={(
-          <Button variant="subtle" onClick={onClose}>
-            Not now
-          </Button>
-        )}
-      >
-        <Button
-          variant="primary"
-          onClick={() => {
-            host.openExternal(DOWNLOAD_URL);
-            onClose();
-          }}
+      {PLATFORM_UI ? (
+        <ModalFooter
+          cancel={(
+            <Button variant="subtle" onClick={onClose}>
+              Not now
+            </Button>
+          )}
         >
-          Download the app
-        </Button>
-      </ModalFooter>
+          <Button
+            variant="primary"
+            onClick={() => {
+              host.openExternal(DOWNLOAD_URL);
+              onClose();
+            }}
+          >
+            Download the app
+          </Button>
+        </ModalFooter>
+      ) : (
+        <ModalFooter>
+          <Button variant="subtle" onClick={onClose}>
+            Close
+          </Button>
+        </ModalFooter>
+      )}
     </Modal>
   );
 }

@@ -6,6 +6,8 @@ export default defineConfig({
   root: __dirname,
   publicDir: path.resolve(__dirname, '../../src/renderer/public'),
   plugins: [react()],
+  // Standalone desktop fixture: supply the renderer's compile-time capability.
+  define: { __PLATFORM_UI__: 'true' },
   server: { host: '127.0.0.1', port: 5208, strictPort: true, fs: { allow: [path.resolve(__dirname, '../..')] } },
   resolve: { alias: { '@shared': path.resolve(__dirname, '../../src/shared') } },
 });

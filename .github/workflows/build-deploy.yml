@@ -88,6 +88,7 @@ jobs:
           # stale package.json version without it.
           extra-build-args: >-
             -f Dockerfile.frontend
+            --build-arg VITE_PLATFORM_UI=true
             --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ inputs.build-environment == 'production' && secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || '' }}
             --build-arg VITE_APP_VERSION=${{ env.SLUG }}
           build-for-environment: ${{ inputs.build-environment }}
