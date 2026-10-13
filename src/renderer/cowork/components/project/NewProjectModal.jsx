@@ -42,7 +42,7 @@ function FileList({ files, onRemove }) {
         >
           <span className="inline-flex text-ink-3">{Ico.doc(14)}</span>
           <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
-          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
+          <span className="text-xs tabular-nums text-ink-4">
             {Math.ceil(f.size / 1024)} KB
           </span>
           <Tooltip content="Remove">

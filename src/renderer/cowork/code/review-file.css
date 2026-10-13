@@ -1,4 +1,4 @@
-.code-diff-file__empty { padding: 14px 10px; border-top: 1px solid var(--line); background: var(--bg); color: var(--ink-4); font: 9.5px var(--font-mono); }
+.code-diff-file__empty { padding: 14px 10px; border-top: 1px solid var(--line); background: var(--bg); color: var(--ink-4); font-size: var(--text-xs); }
 .code-diff-patch { max-height: 520px; overflow: auto; border-top: 1px solid var(--line); background: var(--bg); user-select: text; }
 .code-diff-line { min-width: max-content; display: grid; grid-template-columns: 62px minmax(320px, 1fr); color: var(--ink-3); font: 9.5px/1.55 var(--font-mono); }
 .code-diff-line.is-header { color: var(--accent); background: var(--accent-bg); }

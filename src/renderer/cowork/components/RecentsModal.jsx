@@ -45,7 +45,7 @@ function Row({ task, onSelect, onDelete }) {
           </button>
         </Tooltip>
       ) : (
-        <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.02em] whitespace-nowrap">
+        <span className="text-xs text-ink-4 whitespace-nowrap">
           {relativeAge(task.updatedAt || task.subtitle) || task.subtitle || ''}
         </span>
       )}
@@ -136,7 +136,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
             aria-label="Search recent tasks"
             className="flex-1 min-w-0 bg-transparent border-0 [outline:none] font-[family-name:var(--font-body)] text-[13.5px] text-ink"
           />
-          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]">
+          <span className="text-xs tabular-nums text-ink-4">
             {filtered.length} of {tasks.length}
           </span>
           <Tooltip content="Close">
