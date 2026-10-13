@@ -15,6 +15,7 @@ import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import { AppHeader } from '../components/appHeader';
+import { overlayAppRegion } from '../lib/appRegion';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
@@ -3309,13 +3310,11 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          // no-drag only while open: closed, it still spans the window and
-          // would cancel the titlebar's drag region.
           className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
-            WebkitAppRegion: railOverlayOpen ? 'no-drag' : undefined,
+            WebkitAppRegion: overlayAppRegion(railOverlayOpen),
           }}
         />
       )}

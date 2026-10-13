@@ -51,9 +51,13 @@
 
   /* App chrome. One fixed titlebar row spans the window (window controls,
      sidebar toggle, brand menu, the active view's header, app-wide actions);
-     the sidebar docks flush below it at --sidebar-w. */
+     the sidebar docks flush below it at --sidebar-w. The floor keeps the
+     titlebar's sidebar zone wide enough for its core controls on macOS
+     (window controls, toggle, "MindsHub" and the Cowork/Code icons), about
+     30% of the narrowest docked window; the ceiling is where the switch
+     has room for its labels. Narrower windows use the drawer. */
   --titlebar-h:   52px;
-  --sidebar-w:    clamp(240px, 24vw, 320px);
+  --sidebar-w:    clamp(268px, 24vw, 344px);
 
   /* Aqua (primary) — palette base, used by both themes */
   --primary-50:  #CBF1F9;
@@ -527,6 +531,7 @@ input, textarea { font-family: inherit; }
 .app-titlebar__zone > .icon-btn { flex: none; }
 .app-titlebar__zone.is-docked {
   width: var(--sidebar-w);
+  container: brand-zone / inline-size;
   background: var(--sidebar-bg, var(--surface));
   border-right: 1px solid var(--line);
 }
@@ -589,60 +594,41 @@ input, textarea { font-family: inherit; }
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  flex: 0 1 auto;
+  gap: 4px;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   height: 28px;
   margin-left: 4px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: var(--r-8);
-  background: transparent;
   color: var(--ink-2);
   font: 500 13px var(--font-body);
 }
-.app-brand--menu { cursor: pointer; transition: background .12s, color .12s; }
-.app-brand--menu:hover,
-.app-brand--menu[data-popup-open] { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
 /* In the titlebar the wordmark is the product name, set bold in title case
-   rather than the spaced caps label; the workspace mode beside it is a
-   small muted pill, so it reads as a qualifier of the product name. A custom
-   nav title colour (--nav-title-color) still applies. */
+   rather than the spaced caps label; the Cowork/Code switch beside it is
+   icon-only. A custom nav title colour (--nav-title-color) still applies. */
 .app-brand .anton-sidebar__wordmark {
   padding-right: 0;
   font-size: 14.5px;
   font-weight: 620;
   letter-spacing: -0.012em;
   text-transform: none;
-  /* The docked zone is only --sidebar-w wide, and on macOS the traffic
-     lights take ~80px of it: a long nav title ellipsizes instead of running
-     past the sidebar edge. */
+  /* A custom nav title longer than "MindsHub" ellipsizes instead of
+     running past the sidebar edge. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .app-brand .anton-sidebar__logo,
-.app-brand__mode,
-.app-brand__chevron { flex: none; }
-body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
-.app-brand__mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 7px;
-  border-radius: var(--r-pill);
-  background: var(--surface-3);
-  color: var(--ink-3);
-  font-size: 11.5px;
-  font-weight: 500;
+.app-brand__switch { flex: none; }
+/* The switch sits at the zone's right edge, over the sidebar's edge. */
+.app-brand__switch { margin-left: auto; }
+/* The switch shows its labels only where they fit beside the wordmark. The
+   query sees the zone's content box (the macOS window-controls inset is
+   already taken off); toggle, wordmark and labelled switch need ~253px. */
+@container brand-zone (max-width: 252px) {
+  .app-brand__switch-label { display: none; }
 }
-.app-brand__mode-labels { display: inline-grid; }
-.app-brand__mode-labels > span { grid-area: 1 / 1; text-align: center; }
-.app-brand__mode-labels > span:not(.is-current) { visibility: hidden; }
-/* Compact (sidebar collapsed): the pill holds only the mode glyph. */
-.app-titlebar__zone:not(.is-docked) .app-brand__mode { padding: 3px 5px; }
-.app-brand__chevron { display: inline-flex; color: var(--ink-4); }
+body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
 .drag-region { -webkit-app-region: drag; }
 /* The titlebar (.app-titlebar) is the window's drag region. Form controls
    and interactive surfaces opt OUT so clicks, text selection, and scrolling
@@ -3713,6 +3699,16 @@ body[data-theme="dark"] .mshell__drawer-title {
    the head stop holding a readable title beside the button, and it drops
    under the title in the text column, so the tile column stays a column
    instead of leaving a hole beside a right-aligned button. */
+/* Home greeting: at rest the orb sits 58px left of the 640px text column.
+   Below ~756px of home width (676px inside its 40px side padding) there is
+   no room for it and it would run into the sidebar edge, so it hides; the
+   column stays put. Phone widths stack the orb above the text instead. */
+@media (min-width: 640px) {
+  @container home (max-width: 675px) {
+    .home-greeting-row[data-orb-rest] .home-orb { visibility: hidden; }
+  }
+}
+
 @container chat-col (max-width: 400px) {
   .card.chat-artifact-card {
     grid-template-areas:

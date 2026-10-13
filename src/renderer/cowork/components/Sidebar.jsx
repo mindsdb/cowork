@@ -445,9 +445,25 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
+  // Width animates only while collapsing or expanding. The open width is
+  // --sidebar-w (a vw clamp), so a standing width transition also eased every
+  // window resize and the sidebar lagged the titlebar zone above it. The flag
+  // flips in the same render as `collapsed`, so the toggle still animates.
+  const [prevCollapsed, setPrevCollapsed] = useState(collapsed);
+  const [widthAnimating, setWidthAnimating] = useState(false);
+  if (prevCollapsed !== collapsed) {
+    setPrevCollapsed(collapsed);
+    setWidthAnimating(true);
+  }
+
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]`}
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] ${widthAnimating
+        ? '[transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'
+        : '[transition:opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'}`}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === 'width') setWidthAnimating(false);
+      }}
       aria-hidden={collapsed || undefined}
       inert={collapsed ? true : undefined}
       style={{
@@ -536,6 +552,10 @@ export default function Sidebar({
           </Button>
         </div>
 
+        {/* One scroller from the nav down through the task lists, so a long
+            list never squeezes the rest into a sliver; the New task button
+            above and the footer below stay put. */}
+        <div className="scroll-clean flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
         {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
             a mixed rail where switching products and navigating within one
             product look like the same action. */}
@@ -570,6 +590,10 @@ export default function Sidebar({
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
             />
+            {/* What the agent remembers and what it can do sit with the rest
+                of the destinations rather than under their own heading. */}
+            <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+            <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
             {/* Channels used to have a standalone entry here, web-only, purely
                 because the web shell hid Settings entirely — Channels lives
                 under Settings on desktop. Settings is now reachable on web too,
@@ -618,18 +642,6 @@ export default function Sidebar({
           </>
         ) : (
         <>
-        {/* Agent — the agent's own brain: what it remembers (Memories)
-            and what it can do (Skills library). Pulled out of the old
-            bordered inset and presented as a labeled group, so it reads
-            as a category alongside Pinned / Recent instead of a drawn
-            box (fewer edges). Labels name what the user OWNS (plural
-            collections) rather than the engine's abstract concepts. */}
-        <div className="section-label">Agent</div>
-        <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
-        </div>
-
         {/* Pinned — only rendered when there are pinned tasks; an empty
             section just wastes rail space. */}
         {pinnedTasks.length > 0 && (
@@ -690,7 +702,7 @@ export default function Sidebar({
             </button>
           </Tooltip>
         </div>
-        <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+        <div className="px-2.5 pb-2.5 flex flex-col gap-px">
           {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
               excludes pinned items, so keying on it told a user whose tasks
               are all pinned that they have none — while their pinned tasks
@@ -778,6 +790,7 @@ export default function Sidebar({
         </div>
         </>
         )}
+        </div>
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
