@@ -23,6 +23,11 @@ describe('useSidebarNav', () => {
     expect(result.current.sidebarPopout).toBe(true);
   });
 
+  it('the desktop app keeps the sidebar docked in the narrow band', () => {
+    const { result } = render({ isNarrow: true, alwaysDocked: true });
+    expect(result.current.sidebarPopout).toBe(false);
+  });
+
   it('sidebarPopout stays false on a wide desktop', () => {
     const { result } = render({ isNarrow: false });
     expect(result.current.sidebarPopout).toBe(false);

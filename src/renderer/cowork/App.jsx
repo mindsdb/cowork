@@ -16,6 +16,7 @@ import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import AppTitlebar from './components/AppTitlebar';
+import { overlayAppRegion } from './lib/appRegion';
 import { AppHeaderProvider, AppHeaderScope } from './components/appHeader';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
@@ -1714,7 +1715,7 @@ function AppCore() {
     sidebarCollapsed, setSidebarCollapsed,
     navPopoutOpen, setNavPopoutOpen,
     sidebarPopout,
-  } = useSidebarNav({ isNarrow });
+  } = useSidebarNav({ isNarrow, alwaysDocked: !host.isWeb });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -5504,15 +5505,7 @@ function AppCore() {
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
-            // Only opt out of the window drag region while the scrim is
-            // actually up — it's a full-viewport `inset: 0` box, so leaving
-            // it permanently `no-drag` (as when this only fired for the
-            // rare narrow band) killed dragging the whole window the
-            // moment Coding Mode made this common, even while invisible:
-            // Electron computes the drag region from app-region CSS, not
-            // from opacity/pointer-events. Closed, it just inherits the
-            // ancestor `drag` region again.
-            WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
+            WebkitAppRegion: overlayAppRegion(navPopoutOpen),
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
             transition: 'opacity var(--dur-layout) var(--ease-out)',

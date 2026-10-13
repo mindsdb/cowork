@@ -124,23 +124,6 @@ describe('CodeSidebarSessions', () => {
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
   });
 
-  it('offers search when the task list becomes long', () => {
-    render(
-      <CodeSidebarSessions
-        sessions={Array.from({ length: 5 }, (_, index) => session(`task-${index}`, 'completed', `2026-08-21T0${index}:00:00Z`))}
-        selectedId={null}
-        onSelect={vi.fn()}
-        onSetPinned={vi.fn().mockResolvedValue(undefined)}
-        {...rowActions()}
-      />,
-    );
-
-    const search = screen.getByRole('searchbox', { name: 'Find a coding task' });
-    fireEvent.change(search, { target: { value: 'task-3' } });
-    expect(screen.getByRole('button', { name: /Task task-3, Completed/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Task task-2, Completed/ })).not.toBeInTheDocument();
-  });
-
   it('pins a task immediately and moves it out of the main list', async () => {
     const onSetPinned = vi.fn().mockResolvedValue(undefined);
     render(

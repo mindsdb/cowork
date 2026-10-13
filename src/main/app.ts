@@ -398,12 +398,12 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    // 640 is the floor of the tablet popout band (see lib/breakpoints.js):
-    // it lets the window shrink far enough to reveal the off-canvas sidebar
-    // popout, but never into the phone layout (< 640), whose MobileShell top
-    // bar would collide with the embedded traffic lights. The web build has
-    // no minimum and no traffic lights, so it keeps the phone layout safely.
-    minWidth: 640,
+    // The sidebar stays docked at every desktop width (it only becomes a
+    // drawer on web) and holds at its 268px floor, so narrowing the window
+    // only narrows the main content; 720 leaves that ~450px. It also keeps
+    // the window out of the phone layout (< 640), whose MobileShell top bar
+    // would collide with the embedded traffic lights.
+    minWidth: 720,
     minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',

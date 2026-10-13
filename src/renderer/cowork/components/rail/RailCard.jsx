@@ -1,7 +1,8 @@
 // Section used by every right-rail block in chat and project views. The
 // rail itself is the one card, so sections are borderless: a label in the
 // sidebar's group-heading style over the body, separated by the rail's gap.
-// No box sits inside the rail's box.
+// No box sits inside the rail's box. The label is inset px-1 like the rows
+// below it, so its text starts where their icons do (as in the sidebar).
 //
 // Body always has maxBodyHeight + overflow-y: auto so a long card
 // scrolls inside itself rather than pushing the rail off-screen.
@@ -25,7 +26,7 @@ export function RailCard({
   return (
     <div className="shrink-0 min-w-0">
       {noChevron ? (
-        <div className="pb-2 w-full flex items-center text-left">
+        <div className="px-1 pb-2 w-full flex items-center text-left">
           <span className="font-sans text-[13px] font-semibold text-ink-3 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
           </span>
@@ -34,7 +35,7 @@ export function RailCard({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="cursor-pointer bg-transparent border-0 p-0 pb-2 w-full flex items-center justify-between text-left [font:inherit] text-inherit"
+          className="cursor-pointer bg-transparent border-0 p-0 px-1 pb-2 w-full flex items-center justify-between text-left [font:inherit] text-inherit"
         >
           <span className="font-sans text-[13px] font-semibold text-ink-3 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
