@@ -481,7 +481,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-extension-tabs { min-height: 38px; }
 .code-extension-tabs [role="tab"] span { margin-left: 4px; color: var(--ink-4); font: 9px var(--font-mono); }
 .code-extension-tabs > .btn { margin-left: auto; }
-.code-extension-list { max-height: min(360px, 43vh); overflow-y: auto; }
 .code-extension-row { min-height: 58px; padding: 10px 4px; display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid var(--line); }
 .code-extension-row > .code-status-dot { margin-top: 6px; }
 .code-extension-row > div { min-width: 0; flex: 1; }
