@@ -557,6 +557,49 @@ describe('CompareView', () => {
     expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
   });
 
+  it('reads no cost for a refused side while it checks what that side is running', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    let answerB;
+    api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+      ? new Promise((resolve) => { answerB = resolve; })
+      : Promise.resolve({ in_flight: false })));
+    api.tailInFlight.mockReturnValue({ abort: vi.fn() });
+    const reads = api.fetchComparisonUsage.mock.calls.length;
+
+    act(() => openStreams['conv-b'].onError('A turn is already running.', { code: 'turn_in_progress' }));
+    await waitFor(() => expect(answerB).toBeTypeOf('function'));
+
+    // B is still running a turn: nothing about it has finished.
+    expect(api.fetchComparisonUsage.mock.calls.length).toBe(reads);
+    await act(async () => { answerB({ in_flight: true }); });
+    expect(api.fetchComparisonUsage.mock.calls.length).toBe(reads);
+    expect(api.tailInFlight).toHaveBeenCalledWith('conv-b', expect.anything());
+  });
+
+  it('reads no cost for a side whose state is unknown, and reads it once a check finds it idle', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    act(() => openStreams['conv-a'].onDone());
+    await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
+    api.fetchInFlightStatus.mockRejectedValue(new Error('timed out'));
+    const reads = api.fetchComparisonUsage.mock.calls.length;
+
+    act(() => openStreams['conv-b'].onError('The connection was reset.', { code: 'stream_error' }));
+    await screen.findByText("Couldn't check whether a side is still working.");
+    // A read, if one is coming, follows the render that shows the notice.
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 50); }); });
+    expect(api.fetchComparisonUsage.mock.calls.length).toBe(reads);
+
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => expect(api.fetchComparisonUsage.mock.calls.length).toBeGreaterThan(reads));
+  });
+
   it('runs one check at a time from Check again', async () => {
     let answer;
     api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'

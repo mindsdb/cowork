@@ -817,16 +817,22 @@ function useComparisonSides(comparison, { onRefused } = {}) {
         // The side was already running a turn, so the server never took this
         // message: say so, and hand the text back rather than let it vanish.
         if (event?.code === 'turn_in_progress' && sentText !== null) {
-          finish(REFUSED_MESSAGE);
+          // The side stays working while this looks for the turn it is
+          // running: nothing there has finished, so its cost is not read.
+          streams.current[label] = null;
           onRefusedRef.current?.(label, sentText);
-          // Follow the turn it is running, so the side reads as working; a
-          // re-attach clears the side's message, so it is set again after.
+          refresh(label);
+          // A re-attach clears the side's message, so it is set again after.
           // The refusal proves a turn is running there, so a check that does
           // not find one leaves the side unknown rather than ready.
+          const unfound = () => {
+            settle(label, 'unknown');
+            finish(REFUSED_MESSAGE);
+          };
           Promise.resolve(followRunningRef.current?.(label)).then((result) => {
-            if (result !== 'attached') settle(label, 'unknown');
-            setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE }));
-          }, () => settle(label, 'unknown'));
+            if (result !== 'attached') unfound();
+            else setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE }));
+          }, unfound);
           return;
         }
         const ended = () => finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
@@ -1019,7 +1025,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
   const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
-  const usage = useComparisonUsage(comparisonId, busy);
+  // A side whose state is unknown may still be mid-turn: its cost waits too.
+  const holding = Object.fromEntries(SIDE_LABELS.map((label) => [label, !!busy[label] || !!unknown[label]]));
+  const usage = useComparisonUsage(comparisonId, holding);
   const combined = combinedCost(usage);
   // A side is held back for credits while its last turn stopped for them and
   // the account still cannot pay for its model. The next usage refresh (every
