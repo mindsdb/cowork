@@ -274,7 +274,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
       <div className="flex-1 min-h-0 flex flex-col">
         <PageHeader title="Compare Models" />
         <EmptyState
-          icon={Ico.columns(28)}
+          icon={Ico.columns(32)}
           title="Update needed"
           // Desktop updates its own server on restart; on web the server is
           // hosted, so there is nothing for the user to restart.
@@ -698,7 +698,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                   disabled={!ready}
                   onClick={start}
                 >
-                  {Ico.send(15)}
+                  {Ico.send(16)}
                 </button>
               </Tooltip>
             </div>
@@ -713,7 +713,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 aria-label="Swap sides"
                 onClick={() => setSides((prev) => ({ a: prev.b, b: prev.a }))}
               >
-                {Ico.swap(15)}
+                {Ico.swap(16)}
               </Button>
             </Tooltip>
             <SidePicker label="b" value={sides.b} onChange={(next) => setSides((prev) => ({ ...prev, b: next }))} models={models} modelMeta={modelMeta} />
@@ -1161,7 +1161,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 <span className="flex-1" />
                 <SendToPicker target={target} names={names} onChange={setTarget} />
                 <button type="button" className="send-btn" aria-label="Send" disabled={!draft.trim()} onClick={submit}>
-                  {Ico.send(15)}
+                  {Ico.send(16)}
                 </button>
               </div>
             </>
@@ -1236,7 +1236,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
                   : 'border-line bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
-              {selected && <span aria-hidden className="inline-flex">{Ico.check(13)}</span>}
+              {selected && <span aria-hidden className="inline-flex">{Ico.check(14)}</span>}
               {side && <ProviderIcon maker={makerOf(side.model, names[winner])} size={13} />}
               <span>{verdictLabel(winner, names)}</span>
             </button>
