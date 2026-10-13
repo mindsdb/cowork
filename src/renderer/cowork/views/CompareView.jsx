@@ -784,6 +784,11 @@ function useComparisonSides(comparison, { onRefused } = {}) {
   // Set below; an interrupted stream uses it to re-attach.
   const followRunningRef = useRef(null);
 
+  const settle = useCallback((label, result) => {
+    setUnknown((prev) => ({ ...prev, [label]: result === 'unknown' }));
+    setReady((prev) => ({ ...prev, [label]: result !== 'unknown' }));
+  }, []);
+
   const follow = useCallback((label, open, sentText = null) => {
     let state = initialStreamState();
     setBusy((prev) => ({ ...prev, [label]: true }));
@@ -816,9 +821,12 @@ function useComparisonSides(comparison, { onRefused } = {}) {
           onRefusedRef.current?.(label, sentText);
           // Follow the turn it is running, so the side reads as working; a
           // re-attach clears the side's message, so it is set again after.
-          Promise.resolve(followRunningRef.current?.(label)).then(() => {
+          // The refusal proves a turn is running there, so a check that does
+          // not find one leaves the side unknown rather than ready.
+          Promise.resolve(followRunningRef.current?.(label)).then((result) => {
+            if (result !== 'attached') settle(label, 'unknown');
             setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE }));
-          });
+          }, () => settle(label, 'unknown'));
           return;
         }
         const ended = () => finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
@@ -831,10 +839,13 @@ function useComparisonSides(comparison, { onRefused } = {}) {
         // finishing, and its cost is read only once the turn has.
         reattached.current[label] = tries + 1;
         streams.current[label] = null;
-        Promise.resolve(followRunningRef.current?.(label)).then((result) => { if (result !== 'attached') ended(); }, ended);
+        Promise.resolve(followRunningRef.current?.(label)).then((result) => {
+          if (result === 'unknown') settle(label, 'unknown');
+          if (result !== 'attached') ended();
+        }, () => { settle(label, 'unknown'); ended(); });
       },
     });
-  }, [refresh]);
+  }, [refresh, settle]);
 
   // Attach to a turn still running on the server, if there is one:
   // 'attached', 'idle', or 'unknown' when the check itself failed.
@@ -851,11 +862,6 @@ function useComparisonSides(comparison, { onRefused } = {}) {
     follow(label, (callbacks) => tailInFlight(side.conversationId, callbacks));
     return 'attached';
   }, [sideByLabel, follow]);
-
-  const settle = useCallback((label, result) => {
-    setUnknown((prev) => ({ ...prev, [label]: result === 'unknown' }));
-    setReady((prev) => ({ ...prev, [label]: result !== 'unknown' }));
-  }, []);
 
   const recheck = useCallback(async (labels) => {
     for (const label of labels) settle(label, await followRunning(label));
@@ -926,6 +932,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const [error, setError] = useState('');
   const [target, setTarget] = useState('both');
   const [draft, setDraft] = useState('');
+  const [rechecking, setRechecking] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [continuing, setContinuing] = useState(null);
@@ -1176,7 +1183,20 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
               {!block.canSwitch && !block.action && (starting === 'loading' || starting === 'sending' || SIDE_LABELS.some((l) => sideState[l].busy)) && <Spinner />}
               <span className="flex-1">{block.message}</span>
               {block.action === 'recheck' && (
-                <Button size="sm" onClick={() => recheck(SIDE_LABELS.filter((label) => unknown[label]))}>Check again</Button>
+                <Button
+                  size="sm"
+                  disabled={rechecking}
+                  onClick={async () => {
+                    setRechecking(true);
+                    try {
+                      await recheck(SIDE_LABELS.filter((label) => unknown[label]));
+                    } finally {
+                      setRechecking(false);
+                    }
+                  }}
+                >
+                  {rechecking ? 'Checking…' : 'Check again'}
+                </Button>
               )}
               {block.action === 'addFunds' && (
                 <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>

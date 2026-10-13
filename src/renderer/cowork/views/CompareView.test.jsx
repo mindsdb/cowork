@@ -528,6 +528,59 @@ describe('CompareView', () => {
     expect(api.tailInFlight).toHaveBeenCalledWith('conv-b', expect.anything());
   });
 
+  it('takes no follow-up after a dropped stream whose side cannot be checked', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    act(() => openStreams['conv-a'].onDone());
+    api.fetchInFlightStatus.mockRejectedValue(new Error('timed out'));
+
+    act(() => openStreams['conv-b'].onError('The connection was reset.', { code: 'stream_error' }));
+
+    expect(await screen.findByText("Couldn't check whether a side is still working.")).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+  });
+
+  it('takes no follow-up after a refusal whose side cannot be checked', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockRejectedValue(new Error('timed out'));
+
+    act(() => openStreams['conv-b'].onError('A turn is already running.', { code: 'turn_in_progress' }));
+    act(() => openStreams['conv-a'].onDone());
+
+    // The refusal proved B is running: not knowing more is not a reason to send again.
+    expect(await screen.findByText("Couldn't check whether a side is still working.")).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+  });
+
+  it('runs one check at a time from Check again', async () => {
+    let answer;
+    api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+      ? Promise.reject(new Error('timed out'))
+      : Promise.resolve({ in_flight: false })));
+    mockHistory([comparison()]);
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.click(await screen.findByText('Build a dashboard'));
+    const check = await screen.findByRole('button', { name: 'Check again' });
+
+    api.fetchInFlightStatus.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    const before = api.fetchInFlightStatus.mock.calls.length;
+    fireEvent.click(check);
+    const busy = await screen.findByRole('button', { name: 'Checking…' });
+    expect(busy.disabled).toBe(true);
+    fireEvent.click(busy);
+    expect(api.fetchInFlightStatus.mock.calls.length).toBe(before + 1);
+
+    await act(async () => { answer({ in_flight: false }); });
+    expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
   it('says when a running side refuses a follow-up, and hands the text back', async () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
