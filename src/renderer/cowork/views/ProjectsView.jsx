@@ -816,26 +816,28 @@ export default function ProjectsView({
         // the spacing immune to whatever the body below decides to do.
       />
 
-      <FilterRow
-        search={
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            inputRef={searchRef}
-            placeholder="Search projects"
-          />
-        }
-        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<ViewToggle value={view} onValueChange={setView} />}
-        counts={loading ? null : (
-          <ProjectsCounts
-            search={search}
-            total={projects.length}
-            filtered={visibleProjects.length}
-            pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
-          />
-        )}
-      />
+      {(loading || projects.length > 0) && (
+        <FilterRow
+          search={
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              inputRef={searchRef}
+              placeholder="Search projects"
+            />
+          }
+          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          view={<ViewToggle value={view} onValueChange={setView} />}
+          counts={loading ? null : (
+            <ProjectsCounts
+              search={search}
+              total={projects.length}
+              filtered={visibleProjects.length}
+              pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
+            />
+          )}
+        />
+      )}
 
       <CollectionState
         loading={loading}
@@ -847,11 +849,12 @@ export default function ProjectsView({
         skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
         skeletonClassName={effectiveView === 'grid' ? GRID_CLASS : LIST_CLASS}
         empty={{
-          icon: <span className="inline-flex text-ink-4">{Ico.folder(32)}</span>,
+          icon: Ico.folder(20),
           title: 'No projects yet',
           description: 'Create your first project to start grouping conversations and outputs.',
-          action: <NewProjectButton onClick={handleNewProject} />,
-          style: { flex: 1 },
+          // proj-new-action: hidden on phones, where the FAB is the create entry.
+          action: { label: 'Create your first project', onClick: handleNewProject, className: 'proj-new-action' },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (
