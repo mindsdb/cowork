@@ -311,7 +311,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
   };
 
   return (
-    <Modal open={open} onClose={onClose} width="549px" labelledBy="upload-skill-title">
+    <Modal open={open} onClose={onClose} width="min(549px, 92vw)" labelledBy="upload-skill-title" dismissible={!busy}>
       <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-4">
@@ -386,8 +386,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
 
         </div>
       </ModalBody>
-      <ModalFooter align="space-between">
-        <Button variant="subtle" onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         {file && (
           <Button variant="primary" disabled={busy} onClick={upload}>
             {!busy && Ico.upload(14)}

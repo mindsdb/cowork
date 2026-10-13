@@ -158,10 +158,6 @@ describe('UtilitiesView memory editor targeting', () => {
 
 describe('UtilitiesView memory capability gates', () => {
   it('offers edit and delete on a memory the server says is writable', async () => {
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
     render(<UtilitiesView kind="memory" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Rules/ }));
@@ -171,6 +167,9 @@ describe('UtilitiesView memory capability gates', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(api.deleteMemory).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Delete "Rules" memory?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Project',

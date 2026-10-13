@@ -7,7 +7,7 @@
 // Usage pattern: lift state for `open` + `payload` to the parent, then
 // call onConfirm(payload) from inside this modal.
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Alert, Button } from './ui';
 
@@ -107,4 +107,27 @@ export function ConfirmModal({
       </ModalFooter>
     </Modal>
   );
+}
+
+// Awaitable stand-in for window.confirm: `const [confirm, confirmModal] =
+// useConfirm()`, render `confirmModal`, then `if (!(await confirm({ title,
+// message, confirmLabel, destructive }))) return;`.
+export function useConfirm() {
+  const [request, setRequest] = useState(null);
+  const confirm = useCallback((options) => new Promise((resolve) => {
+    setRequest({ options, resolve });
+  }), []);
+  const settle = (answer) => {
+    request?.resolve(answer);
+    setRequest(null);
+  };
+  const element = (
+    <ConfirmModal
+      {...request?.options}
+      open={!!request}
+      onClose={() => settle(false)}
+      onConfirm={() => settle(true)}
+    />
+  );
+  return [confirm, element];
 }

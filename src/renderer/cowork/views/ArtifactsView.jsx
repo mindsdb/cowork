@@ -176,8 +176,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>Cancel</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {draft.mode === AUDIENCE_CHOICE.PASSWORD ? 'Share protected'
             : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? 'Share restricted' : 'Share'}
