@@ -42,6 +42,7 @@ import {
   streamMessage,
   tailInFlight,
   uploadAttachments,
+  SHORT_REQUEST_TIMEOUT_MS,
 } from '../api';
 import {
   SIDE_LABELS,
@@ -754,6 +755,9 @@ function useComparisonSides(comparison) {
   const [tasks, setTasks] = useState({});
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
+  // A side is ready once its history is in and its in-flight check has
+  // answered: until then it may be mid-turn, and a message to it is dropped.
+  const [ready, setReady] = useState({});
   const [lastEventAt, setLastEventAt] = useState({});
   const streams = useRef({});
 
@@ -830,12 +834,20 @@ function useComparisonSides(comparison) {
   // is still running.
   const load = useCallback(async (label) => {
     setErrors((prev) => ({ ...prev, [label]: '' }));
+    setReady((prev) => ({ ...prev, [label]: false }));
     const task = await refresh(label);
     if (!task) {
       setErrors((prev) => ({ ...prev, [label]: "Couldn't load this side." }));
       return null;
     }
-    await followRunning(label);
+    // A check that never answers must not hold the composer shut: past the
+    // short-request budget the side counts as ready, and a late answer still
+    // re-attaches.
+    await Promise.race([
+      followRunning(label),
+      new Promise((resolve) => { setTimeout(resolve, SHORT_REQUEST_TIMEOUT_MS); }),
+    ]);
+    setReady((prev) => ({ ...prev, [label]: true }));
     return task;
   }, [refresh, followRunning]);
 
@@ -881,7 +893,7 @@ function useComparisonSides(comparison) {
     if (side) cancelResponse(side.conversationId);
   }, [sideByLabel]);
 
-  return { tasks, busy, errors, lastEventAt, send, stop, refresh, load };
+  return { tasks, busy, errors, ready, lastEventAt, send, stop, refresh, load };
 }
 
 function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
@@ -906,7 +918,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 
   useEffect(() => { loadComparison(); }, [loadComparison]);
 
-  const { tasks, busy, errors, lastEventAt, send, stop, load } = useComparisonSides(comparison);
+  const { tasks, busy, errors, ready, lastEventAt, send, stop, load } = useComparisonSides(comparison);
   const sides = useMemo(
     () => Object.fromEntries((comparison?.sides || []).map((s) => [s.label, s])),
     [comparison],
@@ -982,9 +994,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
   ));
   // A continued side takes no messages, so it is never waited for.
-  const unloaded = SIDE_LABELS.filter((label) => !tasks[label] && !sides[label]?.continuedAt);
+  const unloaded = SIDE_LABELS.filter((label) => !(tasks[label] && ready[label]) && !sides[label]?.continuedAt);
   let starting = null;
-  if (unloaded.length) starting = unloaded.some((label) => errors[label]) ? 'loadFailed' : 'loading';
+  if (unloaded.length) starting = unloaded.some((label) => !tasks[label] && errors[label]) ? 'loadFailed' : 'loading';
   else if (firstSend) starting = firstSendFailed ? 'firstFailed' : 'sending';
   const block = composerBlock(target, sideState, names, { outOfCredits, starting });
   const cannotJudge = unjudgeableReason(turns.a, turns.b, names);

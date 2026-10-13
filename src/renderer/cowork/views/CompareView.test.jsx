@@ -61,6 +61,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
+import { SHORT_REQUEST_TIMEOUT_MS } from '../api';
 import CompareView, { EXAMPLES, SETTLE_REREAD_MS, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import UsageBar from '../components/UsageBar';
@@ -480,6 +481,51 @@ describe('CompareView', () => {
     await within(paneB).findByText("Couldn't load this side.");
     expect(screen.getByText("A side couldn't load. Retry it above before following up.")).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+  });
+
+  it('takes no follow-up until it knows whether a reopened side is still running', async () => {
+    let answerB;
+    api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+      ? new Promise((resolve) => { answerB = resolve; })
+      : Promise.resolve({ in_flight: false })));
+    api.tailInFlight.mockReturnValue({ abort: vi.fn() });
+    mockHistory([comparison()]);
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.click(await screen.findByText('Build a dashboard'));
+    await waitFor(() => expect(api.fetchSession).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(answerB).toBeDefined());
+
+    // Both histories are in, but B's in-flight check has not answered.
+    expect(screen.getByText('You can follow up once both models have loaded.')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+
+    await act(async () => { answerB({ in_flight: true }); });
+    // B turned out to be mid-turn: a message to both would be dropped on B's side.
+    expect(await screen.findByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy();
+    expect(api.streamMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens the composer once an unanswered in-flight check has had its time', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+        ? new Promise(() => {})
+        : Promise.resolve({ in_flight: false })));
+      mockHistory([comparison()]);
+      api.fetchComparison.mockResolvedValue(comparison());
+      api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+      render(<CompareView models={models} projects={projects} />);
+      fireEvent.click(await screen.findByText('Build a dashboard'));
+      expect(await screen.findByText('You can follow up once both models have loaded.')).toBeTruthy();
+
+      await act(async () => { vi.advanceTimersByTime(SHORT_REQUEST_TIMEOUT_MS); });
+
+      expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('still takes a follow-up for the other side when a continued side cannot load', async () => {
