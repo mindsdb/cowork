@@ -110,12 +110,12 @@ export function RuntimeControlsModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" dismissible={!busy}>
       <ModalHeader
         id="code-controls-title"
         title="Task settings"
         subtitle="These settings apply to future turns in this coding task."
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
       <ModalBody>
         <div className="code-controls-grid">
@@ -238,8 +238,7 @@ export function RuntimeControlsModal({
           {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
         <Tooltip content={applyBlockedReason}>

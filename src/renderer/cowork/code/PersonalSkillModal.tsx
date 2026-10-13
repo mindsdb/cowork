@@ -6,7 +6,7 @@ import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import { Field } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
-import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
+import { Modal, ModalBody, ModalFooter, ModalHeader, ModalToolbar } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
 import Switch from '../components/ui/Switch';
 import { Tabs, TabList, Tab, TabPanel } from '../components/ui/Tabs';
@@ -31,7 +31,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [confirmation, setConfirmation] = useState<'discard' | 'delete' | null>(null);
+  const [confirmation, setConfirmation] = useState<'discard' | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
 
@@ -97,16 +97,25 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   </div>;
 
   return <>
-    <Modal open onClose={close} size="md" labelledBy="personal-skill-title" closeOnBackdrop={!busy} closeOnEsc={!busy} maxHeight="min(820px, 92vh)">
-      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={busy ? undefined : close} />
-      <ModalBody>
+    <Modal open onClose={close} size="md" labelledBy="personal-skill-title" dismissible={!busy} maxHeight="min(820px, 92vh)">
+      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={close} />
+      {skillId ? <ModalBody>
         {loading ? <div className="code-personal-skill__state" role="status"><Spinner /> Loading skill…</div>
-          : skillId && !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>Try again</Button></div>
+          : !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>Try again</Button></div>
             : <fieldset className="code-personal-skill" disabled={busy}>
-              {skillId ? fields : <Tabs value={mode} onValueChange={(value) => { setMode(String(value)); setError(''); }}>
-                <TabList aria-label="Add a personal skill"><Tab value="write" disabled={busy}>Write instructions</Tab><Tab value="import" disabled={busy}>Import file</Tab></TabList>
-                <TabPanel value="write">{fields}</TabPanel>
-                <TabPanel value="import">
+              {fields}
+              {error && !confirmation && <Alert variant="danger">{error}</Alert>}
+            </fieldset>}
+      </ModalBody>
+        // Adding: the Write/Import tabs stay pinned while the body scrolls.
+        : <Tabs className="contents" value={mode} onValueChange={(value) => { setMode(String(value)); setError(''); }}>
+          <ModalToolbar flush>
+            <TabList className="border-b-0" aria-label="Add a personal skill"><Tab value="write" disabled={busy}>Write instructions</Tab><Tab value="import" disabled={busy}>Import file</Tab></TabList>
+          </ModalToolbar>
+          <ModalBody>
+            <fieldset className="code-personal-skill" disabled={busy}>
+                <TabPanel value="write" className="pt-0">{fields}</TabPanel>
+                <TabPanel value="import" className="pt-0">
                   <div className="code-personal-skill__import">
                     <input ref={fileInput} type="file" accept=".md,.skill" aria-label="Skill file" hidden onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ''; }} />
                     <strong>Bring your own SKILL.md</strong>
@@ -116,23 +125,17 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
                   </div>
                   {upload && <div className="code-personal-skill__preview"><strong>{upload.name}</strong><pre>{upload.content}</pre></div>}
                 </TabPanel>
-              </Tabs>}
               {error && !confirmation && <Alert variant="danger">{error}</Alert>}
-            </fieldset>}
-      </ModalBody>
-      <ModalFooter>
-        {skillId && original && <Button variant="danger" onClick={() => { setError(''); setConfirmation('delete'); }} disabled={busy || loading}>Delete skill</Button>}
-        <span className="flex-1" />
-        <Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>
+            </fieldset>
+          </ModalBody>
+        </Tabs>}
+      <ModalFooter cancel={<Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={save} disabled={busy || loading || !valid || (!!skillId && !original)}>{busy ? 'Saving…' : skillId ? 'Save changes' : 'Add skill'}</Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal open={!!confirmation} title={confirmation === 'delete' ? 'Delete personal skill?' : 'Discard changes?'}
-      message={confirmation === 'delete' ? 'This removes the skill from your library. Existing tasks keep their saved copy.' : 'Your unsaved skill changes will be lost.'}
-      confirmLabel={confirmation === 'delete' ? 'Delete skill' : 'Discard changes'} cancelLabel="Keep editing" destructive busy={busy} error={error}
-      onClose={() => setConfirmation(null)} onConfirm={() => {
-        if (confirmation === 'delete' && skillId) void run(() => personalSkillsApi.remove(skillId));
-        else onClose();
-      }} />
+    <ConfirmModal open={!!confirmation} title="Discard changes?"
+      message="Your unsaved skill changes will be lost."
+      confirmLabel="Discard changes" cancelLabel="Keep editing" destructive
+      onClose={() => setConfirmation(null)} onConfirm={onClose} />
   </>;
 }
