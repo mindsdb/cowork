@@ -35,18 +35,17 @@
 .code-task-status.is-danger .code-status-dot { background: var(--danger); }
 
 /* Route-specific session history inside the canonical Cowork sidebar. */
-.code-sidebar-sessions { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.code-sidebar-sessions { display: flex; flex-direction: column; }
 /* Vertical rhythm matches Cowork's sidebar: 30px rows 1px apart, and group
    headings that are .section-label height (16px above, 4px below) with no
    extra gap before or after them. */
 .code-sidebar-sessions__label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* Negative block margins keep the Organize button from making this heading
-   taller than Cowork's text-only headings. */
-.code-sidebar-organize-trigger { margin: -4px -5px -4px 0; text-transform: none; }
+   taller than Cowork's text-only headings; quiet until hovered. */
+.code-sidebar-organize-trigger { margin: -4px -5px -4px 0; color: var(--ink-4); }
 .code-sidebar-organize-menu__heading { color: var(--ink-4); font: 500 11px var(--font-sans); }
-.code-sidebar-session-search { width: auto; flex: none; margin: 0 10px 6px; }
-.code-sidebar-session-search input::-webkit-search-cancel-button { opacity: .55; }
-.code-sidebar-sessions__list { min-height: 0; overflow-y: auto; padding: 0 10px 10px; }
+/* Scrolls with the rest of the sidebar body, not on its own. */
+.code-sidebar-sessions__list { padding: 0 10px 10px; }
 .code-sidebar-sessions__empty { padding: 10px; color: var(--ink-4); font-size: 11.5px; line-height: 1.5; }
 .code-sidebar-sessions__error { margin: 0 20px 6px; color: var(--danger); font-size: 10px; line-height: 1.35; }
 .code-sidebar-session-group + .code-sidebar-session-group { margin-top: 7px; }

@@ -5,7 +5,7 @@
 //
 // Mounting pattern copied from App.deleteTask.test.jsx.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
@@ -82,10 +82,10 @@ vi.mock('./lib/analytics', async (importOriginal) => ({
 import App from './App';
 import { __resetDraftsForTests } from './lib/draftStore';
 
-// The Cowork/Code switch lives in the titlebar brand menu.
+// The Cowork/Code switch is the icon toggle beside the titlebar wordmark.
 const switchTo = async (user, name) => {
-  await user.click(await screen.findByRole('button', { name: /^Workspace:/ }));
-  await user.click(await screen.findByRole('menuitem', { name: new RegExp(name) }));
+  const toggle = await screen.findByRole('group', { name: 'Workspace' });
+  await user.click(within(toggle).getByRole('button', { name }));
 };
 
 beforeEach(() => {
@@ -118,7 +118,7 @@ describe('counting Code visits', () => {
     render(<App />);
 
     await screen.findByRole('button', { name: /New task/ });
-    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Workspace' })).toBeNull();
     expect(spies.trackCodeViewOpened).not.toHaveBeenCalled();
   });
 });
