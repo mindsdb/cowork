@@ -91,8 +91,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
-  // closeOnEsc / closeOnBackdrop). The name field auto-focuses on open.
+  // Esc, backdrop and X dismissal are <Modal>'s job (suppressed while busy
+  // via `dismissible`). The name field auto-focuses on open.
 
   const addFiles = (incoming) => {
     if (!incoming || !incoming.length) return;
@@ -216,15 +216,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       width="min(560px, 92vw)"
       maxHeight="min(680px, 88vh)"
       labelledBy="new-project-title"
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      dismissible={!busy}
     >
       <ModalHeader
         id="new-project-title"
         title="Start a new project"
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
-      <ModalBody padding="16px 18px">
+      <ModalBody>
         <div className="flex flex-col gap-[14px]">
           <Field label="Project name">
             <Input
@@ -365,12 +364,15 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         </div>
       </ModalBody>
 
-      <ModalFooter>
-        <Button
-          variant="subtle"
-          onClick={() => !busy && onClose?.()}
-          disabled={busy}
-        >Cancel</Button>
+      <ModalFooter
+        cancel={(
+          <Button
+            variant="subtle"
+            onClick={() => !busy && onClose?.()}
+            disabled={busy}
+          >Cancel</Button>
+        )}
+      >
         <Button
           variant="primary"
           onClick={create}

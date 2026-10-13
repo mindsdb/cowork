@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { useConfirm } from '../ConfirmModal';
 
 function ConnectionLogo({ engine, label }) {
   const [failed, setFailed] = useState(null);
@@ -23,6 +24,7 @@ function ConnectionLogo({ engine, label }) {
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  const [confirm, confirmModal] = useConfirm();
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
@@ -35,7 +37,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
     : connected ? 'Connected' : humanLabel(connection.status);
 
   const handleRemove = async () => {
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!(await confirm({ title: `Disconnect ${engine}/${name}?`, confirmLabel: 'Disconnect', destructive: true }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -62,6 +64,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
             {busy ? 'Removing…' : 'Disconnect'}
           </Button>
         </ItemActions>
+        {confirmModal}
       </>
     ),
   };

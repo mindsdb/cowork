@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConnectionCard, { ConnectionRow } from './ConnectionCard';
 
@@ -69,13 +69,14 @@ describe('ConnectionCard', () => {
   });
 
   it('disconnects only the selected connection, without opening its details', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     let resolve;
     const onDelete = vi.fn(() => new Promise(r => { resolve = r; }));
     const onModify = vi.fn();
     render(<ConnectionCard connection={connection} onModify={onModify} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-    expect(window.confirm).toHaveBeenCalledWith('Disconnect github/ianu82?');
+    expect(onDelete).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', {name:'Disconnect github/ianu82?'});
+    await userEvent.click(within(dialog).getByRole('button', {name:'Disconnect'}));
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(connection);
     expect(onModify).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name:'Removing…'})).toBeDisabled();
@@ -85,10 +86,11 @@ describe('ConnectionCard', () => {
   });
 
   it('leaves the connection untouched when the user cancels', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const onDelete = vi.fn();
     render(<ConnectionCard connection={connection} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
   });

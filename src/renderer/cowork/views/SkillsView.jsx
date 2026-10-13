@@ -128,7 +128,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
   const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy;
 
   return (
-    <Modal open={open} onClose={handleClose} width="549px" labelledBy="skill-modal-title">
+    <Modal open={open} onClose={handleClose} width="min(549px, 92vw)" labelledBy="skill-modal-title" dismissible={!busy}>
       <ModalHeader
         id="skill-modal-title"
         title={isEdit ? 'Edit Skill' : 'Add a Skill'}
@@ -186,8 +186,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
           </Field>
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={handleClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {!isEdit && !busy && Ico.plus(14)}
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
@@ -228,7 +227,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} width="549px" labelledBy="upload-skill-title">
+    <Modal open={open} onClose={onClose} width="min(549px, 92vw)" labelledBy="upload-skill-title" dismissible={!busy}>
       <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-4">
@@ -290,8 +289,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
 
         </div>
       </ModalBody>
-      <ModalFooter align="space-between">
-        <Button variant="subtle" onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         {file && (
           <Button variant="primary" disabled={busy} onClick={upload}>
             {!busy && Ico.upload(14)}

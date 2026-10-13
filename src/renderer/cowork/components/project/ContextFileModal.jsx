@@ -30,7 +30,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
-import { Modal } from '../ui/Modal';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
+import { useConfirm } from '../ConfirmModal';
 import {
   readProjectFile,
   writeProjectFile,
@@ -178,6 +179,7 @@ export default function ContextFileModal({
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirm, confirmModal] = useConfirm();
   const [error, setError] = useState('');
   // Which render branch the modal is in:
   //   'text'   — Markdown / plain text, the original editable view.
@@ -401,7 +403,12 @@ export default function ContextFileModal({
   const handleDelete = async () => {
     if (!deleteApplicable || !deleteAllowed) return;
     const confirmTarget = title || filePath || 'this file';
-    if (!window.confirm(`Delete ${confirmTarget}? This can't be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete ${confirmTarget}?`,
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) return;
     setBusy(true);
     setError('');
     try {
@@ -419,7 +426,11 @@ export default function ContextFileModal({
     }
   };
 
+  const showFileAccess = (mode === 'html' || mode === 'image' || mode === 'binary') && !loading;
+  const showEdit = mode === 'text' && !editing && !loading;
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -428,54 +439,16 @@ export default function ContextFileModal({
       // FIXED height — toggling view↔edit must feel like the same modal
       // (textarea + preview both flex:1 to fill it, no jump-on-cancel).
       height="min(720px, 88vh)"
-      ariaLabel={headerTitle}
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      labelledBy="context-file-title"
+      dismissible={!busy}
     >
-        <div className="flex items-center justify-between py-[14px] px-[18px]">
-          <div className="min-w-0 flex-1 flex items-baseline gap-[10px]">
-            <h2 className="s-h3 m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{headerTitle}</h2>
-            {headerSubtitle && (
-              <span className="section-label">{headerSubtitle}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-[6px]">
-            {mode === 'text' && !editing && !loading && (
-              <Button
-                disabled={!editable}
-                title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
-                onClick={() => setEditing(true)}
-              >Edit</Button>
-            )}
-            {/* HTML / image / binary modes all expose a "Reveal" /
-                "Open" / "Download" affordance in the header so the user
-                can always get at the file even when the modal renders
-                something else inline. */}
-            {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && (
-              <FileAccessButton
-                projectPath={projectPath}
-                projectName={projectName}
-                filePath={filePath}
-                rawUrl={rawUrl}
-              />
-            )}
-            <Tooltip content="Close">
-              <button
-                type="button"
-                className="hover-tint hover-tint-text bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none"
-                onClick={() => !busy && onClose?.()}
-                aria-label="Close"
-                style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
-              >×</button>
-            </Tooltip>
-          </div>
-        </div>
+        <ModalHeader id="context-file-title" title={headerTitle} subtitle={headerSubtitle} onClose={onClose} />
 
         {/* Body is a flex column so the textarea / pre below can both
-            `flex: 1` and fill the same vertical space identically.
-            The body itself doesn't scroll — content scrolls inside
-            the textarea or the pre. */}
-        <div className="flex-1 min-h-0 py-4 px-[18px] flex flex-col gap-[10px]">
+            `flex: 1` and fill the same vertical space identically. A
+            fixed-height viewer: content scrolls inside the textarea, the
+            pre or the iframe, not the body. */}
+        <ModalBody style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading && (
             <div className="text-ink-3 text-[13px]">Loading…</div>
           )}
@@ -555,21 +528,25 @@ export default function ContextFileModal({
           ) : (
             <pre className="flex-1 min-h-0 m-0 py-[14px] px-4 bg-surface-2 border border-solid border-transparent rounded-card-row font-[family-name:var(--font-mono)] text-[13px] leading-[1.55] text-ink-2 whitespace-pre-wrap break-words overflow-y-auto">{content || emptyText}</pre>
           ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 py-3 px-[18px] bg-surface">
-          <div>
-            {deleteApplicable && !editing && !loading && (
+          {/* Delete lives on the file's own row where it has one; callers
+              without one (memory) get it here, behind its own confirm. */}
+          {deleteApplicable && !editing && !loading && (
+            <div className="shrink-0 flex items-center justify-between gap-3 pt-3 border-t border-x-0 border-b-0 border-solid border-line">
+              <span className="text-[12px] text-ink-3">Delete this permanently.</span>
               <Button
                 variant="danger"
+                size="sm"
                 onClick={handleDelete}
                 disabled={busy || !deleteAllowed}
                 title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
               >{Ico.trash ? Ico.trash(14) : null}Delete</Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {editing && (
+            </div>
+          )}
+        </ModalBody>
+
+        {editing ? (
+          <ModalFooter
+            cancel={(
               <Button
                 variant="subtle"
                 onClick={() => {
@@ -582,23 +559,35 @@ export default function ContextFileModal({
                 disabled={busy}
               >Cancel</Button>
             )}
-            {editing && (
+          >
+            <Button variant="primary" onClick={save} disabled={busy}>
+              {busy ? 'Saving…' : 'Save'}
+            </Button>
+          </ModalFooter>
+        ) : !loading && (
+          <ModalFooter cancel={<Button variant="subtle" onClick={() => onClose?.()}>Close</Button>}>
+            {/* HTML / image / binary modes always offer a way to get at the
+                file, even when the modal renders something else inline. */}
+            {showFileAccess && (
+              <FileAccessButton
+                projectPath={projectPath}
+                projectName={projectName}
+                filePath={filePath}
+                rawUrl={rawUrl}
+              />
+            )}
+            {showEdit && (
               <Button
                 variant="primary"
-                onClick={save}
-                disabled={busy}
-              >
-                {busy ? 'Saving…' : 'Save'}
-              </Button>
+                disabled={!editable}
+                title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
+                onClick={() => setEditing(true)}
+              >Edit</Button>
             )}
-            {!editing && !loading && (
-              <Button
-                variant="subtle"
-                onClick={() => onClose?.()}
-              >Close</Button>
-            )}
-          </div>
-        </div>
+          </ModalFooter>
+        )}
     </Modal>
+    {confirmModal}
+    </>
   );
 }

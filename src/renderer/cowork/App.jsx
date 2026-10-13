@@ -15,7 +15,7 @@ import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
-import { ConfirmModal } from './components/ConfirmModal';
+import { ConfirmModal, useConfirm } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
 import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -723,6 +723,7 @@ function AppCore() {
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  const [confirmDialog, confirmDialogModal] = useConfirm();
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
   /* Keys (id, else name) of the projects whose DELETE is on the wire. The
@@ -2847,7 +2848,7 @@ function AppCore() {
   // to see the connection gone.
   const handleDisconnectFromModify = async (taskId, engine, name) => {
     if (!engine || !name) return;
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!(await confirmDialog({ title: `Disconnect ${engine}/${name}?`, confirmLabel: 'Disconnect', destructive: true }))) return;
     try {
       await deleteDatasource(engine, name);
     } catch (e) {
@@ -6212,6 +6213,7 @@ function AppCore() {
       />
       )}
 
+      {confirmDialogModal}
       <ConfirmModal
         open={pendingDeleteTaskId != null}
         title="Delete this task?"

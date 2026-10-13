@@ -705,19 +705,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
-      // `shrink-0`: the panel sits in the right rail's flex column —
-      // without it, the rail squeezes the panel down to fit its own
-      // height, our `overflow-hidden` clips the content, and the rail's
-      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
-      // to 0 makes the panel claim its full content height so the rail's
-      // scroll engages naturally.
-      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
+      // The <Modal> around it draws the card (border, radius, shadow).
+      className="relative bg-surface"
       style={{
         // Highlight ring driven from outside (e.g. the chat's
-        // connect-intro bubble on hover) — accent border + soft
-        // halo so the form card draws the eye without layout shift.
+        // connect-intro bubble on hover). Inset, so the modal's clipping
+        // can't hide it.
         boxShadow: highlighted
-          ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
+          ? 'inset 0 0 0 2px var(--accent)'
           : 'none',
         transition: 'box-shadow var(--dur-hover) ease',
         animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
