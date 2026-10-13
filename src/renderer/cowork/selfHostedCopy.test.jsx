@@ -67,10 +67,10 @@ describe('platform build', () => {
   it('says scheduled tasks run while the app is open', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Local scheduled Anton tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence.',
+      "Scheduled tasks run while MindsHub Cowork is open. Runs missed while it's closed are skipped — Anton picks up at the next scheduled time.",
     )).toBeInTheDocument();
     expect(screen.getByText(
-      'Create a recurring Anton task — a Monday digest, an hourly log sweep, a daily KPI snapshot. Anton runs them while the desktop app is open.',
+      'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
     )).toBeInTheDocument();
   });
 
