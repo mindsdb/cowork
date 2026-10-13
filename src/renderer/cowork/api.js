@@ -862,11 +862,14 @@ export function streamNewSession(text, opts = {}) {
 // signature as `_streamResponse` so the caller's adapter logic
 // (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
 // is identical between fresh-turn and reconnect paths.
-export async function fetchInFlightStatus(conversationId) {
+/** `strict` rethrows a failed or timed-out check instead of answering "not
+ *  running", for a caller that must tell the two apart. */
+export async function fetchInFlightStatus(conversationId, { strict = false, timeoutMs } = {}) {
   if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
   try {
-    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`);
-  } catch {
+    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`, { timeoutMs });
+  } catch (err) {
+    if (strict) throw err;
     return { in_flight: false, has_buffer: false, latest_seq: 0 };
   }
 }

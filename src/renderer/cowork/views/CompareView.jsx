@@ -85,6 +85,7 @@ const EMPTY_START = '__empty__';
 // with the turn and drawn by the transcript as its error card, so repeating it
 // above the pane would show it twice.
 const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled', 'interrupted']);
+const REFUSED_MESSAGE = "This side was still working on its last turn, so it didn't get your message. It's back in the box below.";
 // The stream stopped, not the turn: it may still be running. `stalled` is not
 // here because the tail cancels a stalled turn before reporting it.
 const DROPPED_STREAM = new Set(['stream_error', 'reconnect_error', 'interrupted']);
@@ -751,13 +752,17 @@ function withStreaming(messages, state) {
   }];
 }
 
-function useComparisonSides(comparison) {
+function useComparisonSides(comparison, { onRefused } = {}) {
   const [tasks, setTasks] = useState({});
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
   // A side is ready once its history is in and its in-flight check has
   // answered: until then it may be mid-turn, and a message to it is dropped.
+  // A check that failed leaves the side `unknown`, not ready.
   const [ready, setReady] = useState({});
+  const [unknown, setUnknown] = useState({});
+  const onRefusedRef = useRef(onRefused);
+  onRefusedRef.current = onRefused;
   const [lastEventAt, setLastEventAt] = useState({});
   const streams = useRef({});
 
@@ -779,7 +784,7 @@ function useComparisonSides(comparison) {
   // Set below; an interrupted stream uses it to re-attach.
   const followRunningRef = useRef(null);
 
-  const follow = useCallback((label, open) => {
+  const follow = useCallback((label, open, sentText = null) => {
     let state = initialStreamState();
     setBusy((prev) => ({ ...prev, [label]: true }));
     setErrors((prev) => ({ ...prev, [label]: '' }));
@@ -804,6 +809,18 @@ function useComparisonSides(comparison) {
         finish('');
       },
       onError(message, event) {
+        // The side was already running a turn, so the server never took this
+        // message: say so, and hand the text back rather than let it vanish.
+        if (event?.code === 'turn_in_progress' && sentText !== null) {
+          finish(REFUSED_MESSAGE);
+          onRefusedRef.current?.(label, sentText);
+          // Follow the turn it is running, so the side reads as working; a
+          // re-attach clears the side's message, so it is set again after.
+          Promise.resolve(followRunningRef.current?.(label)).then(() => {
+            setErrors((prev) => ({ ...prev, [label]: REFUSED_MESSAGE }));
+          });
+          return;
+        }
         const ended = () => finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
         const tries = reattached.current[label] || 0;
         if (!DROPPED_STREAM.has(event?.code) || tries >= MAX_REATTACH) {
@@ -814,20 +831,35 @@ function useComparisonSides(comparison) {
         // finishing, and its cost is read only once the turn has.
         reattached.current[label] = tries + 1;
         streams.current[label] = null;
-        Promise.resolve(followRunningRef.current?.(label)).then((attached) => { if (!attached) ended(); }, ended);
+        Promise.resolve(followRunningRef.current?.(label)).then((result) => { if (result !== 'attached') ended(); }, ended);
       },
     });
   }, [refresh]);
 
-  // Attach to a turn still running on the server, if there is one.
+  // Attach to a turn still running on the server, if there is one:
+  // 'attached', 'idle', or 'unknown' when the check itself failed.
   const followRunning = useCallback(async (label) => {
     const side = sideByLabel[label];
-    if (!side || side.continuedAt) return false;
-    const status = await fetchInFlightStatus(side.conversationId).catch(() => null);
-    if (!status?.in_flight || streams.current[label]) return false;
+    if (!side || side.continuedAt) return 'idle';
+    let status;
+    try {
+      status = await fetchInFlightStatus(side.conversationId, { strict: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+    } catch {
+      return 'unknown';
+    }
+    if (!status?.in_flight || streams.current[label]) return 'idle';
     follow(label, (callbacks) => tailInFlight(side.conversationId, callbacks));
-    return true;
+    return 'attached';
   }, [sideByLabel, follow]);
+
+  const settle = useCallback((label, result) => {
+    setUnknown((prev) => ({ ...prev, [label]: result === 'unknown' }));
+    setReady((prev) => ({ ...prev, [label]: result !== 'unknown' }));
+  }, []);
+
+  const recheck = useCallback(async (labels) => {
+    for (const label of labels) settle(label, await followRunning(label));
+  }, [followRunning, settle]);
   followRunningRef.current = followRunning;
 
   // Load one side, or say it could not be loaded; then re-attach to a turn it
@@ -840,16 +872,9 @@ function useComparisonSides(comparison) {
       setErrors((prev) => ({ ...prev, [label]: "Couldn't load this side." }));
       return null;
     }
-    // A check that never answers must not hold the composer shut: past the
-    // short-request budget the side counts as ready, and a late answer still
-    // re-attaches.
-    await Promise.race([
-      followRunning(label),
-      new Promise((resolve) => { setTimeout(resolve, SHORT_REQUEST_TIMEOUT_MS); }),
-    ]);
-    setReady((prev) => ({ ...prev, [label]: true }));
+    settle(label, await followRunning(label));
     return task;
-  }, [refresh, followRunning]);
+  }, [refresh, followRunning, settle]);
 
   // Load both sides, and re-attach to a turn still running on the server --
   // the sides keep working when the user leaves this screen.
@@ -885,7 +910,7 @@ function useComparisonSides(comparison) {
       ...(EFFORT_SUPPORTED && side.reasoningEffort ? { reasoningEffort: side.reasoningEffort } : {}),
       attachmentIds,
       ...callbacks,
-    }));
+    }), text);
   }, [sideByLabel, follow]);
 
   const stop = useCallback((label) => {
@@ -893,7 +918,7 @@ function useComparisonSides(comparison) {
     if (side) cancelResponse(side.conversationId);
   }, [sideByLabel]);
 
-  return { tasks, busy, errors, ready, lastEventAt, send, stop, refresh, load };
+  return { tasks, busy, errors, ready, unknown, lastEventAt, send, stop, refresh, load, recheck };
 }
 
 function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
@@ -918,7 +943,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 
   useEffect(() => { loadComparison(); }, [loadComparison]);
 
-  const { tasks, busy, errors, ready, lastEventAt, send, stop, load } = useComparisonSides(comparison);
+  const { tasks, busy, errors, ready, unknown, lastEventAt, send, stop, load, recheck } = useComparisonSides(comparison, {
+    onRefused: (_label, text) => setDraft((current) => current || text),
+  });
   const sides = useMemo(
     () => Object.fromEntries((comparison?.sides || []).map((s) => [s.label, s])),
     [comparison],
@@ -996,7 +1023,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // A continued side takes no messages, so it is never waited for.
   const unloaded = SIDE_LABELS.filter((label) => !(tasks[label] && ready[label]) && !sides[label]?.continuedAt);
   let starting = null;
-  if (unloaded.length) starting = unloaded.some((label) => !tasks[label] && errors[label]) ? 'loadFailed' : 'loading';
+  if (unloaded.some((label) => !tasks[label] && errors[label])) starting = 'loadFailed';
+  else if (unloaded.some((label) => unknown[label])) starting = 'checkFailed';
+  else if (unloaded.length) starting = 'loading';
   else if (firstSend) starting = firstSendFailed ? 'firstFailed' : 'sending';
   const block = composerBlock(target, sideState, names, { outOfCredits, starting });
   const cannotJudge = unjudgeableReason(turns.a, turns.b, names);
@@ -1146,6 +1175,9 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
               {!block.canSwitch && !block.action && (starting === 'loading' || starting === 'sending' || SIDE_LABELS.some((l) => sideState[l].busy)) && <Spinner />}
               <span className="flex-1">{block.message}</span>
+              {block.action === 'recheck' && (
+                <Button size="sm" onClick={() => recheck(SIDE_LABELS.filter((label) => unknown[label]))}>Check again</Button>
+              )}
               {block.action === 'addFunds' && (
                 <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
                   Add funds

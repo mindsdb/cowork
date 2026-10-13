@@ -61,7 +61,6 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
-import { SHORT_REQUEST_TIMEOUT_MS } from '../api';
 import CompareView, { EXAMPLES, SETTLE_REREAD_MS, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import UsageBar from '../components/UsageBar';
@@ -507,25 +506,46 @@ describe('CompareView', () => {
     expect(api.streamMessage).not.toHaveBeenCalled();
   });
 
-  it('opens the composer once an unanswered in-flight check has had its time', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
-        ? new Promise(() => {})
-        : Promise.resolve({ in_flight: false })));
-      mockHistory([comparison()]);
-      api.fetchComparison.mockResolvedValue(comparison());
-      api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
-      render(<CompareView models={models} projects={projects} />);
-      fireEvent.click(await screen.findByText('Build a dashboard'));
-      expect(await screen.findByText('You can follow up once both models have loaded.')).toBeTruthy();
+  it('keeps the composer closed when a side cannot be checked, and checks again on request', async () => {
+    api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+      ? Promise.reject(new Error('timed out'))
+      : Promise.resolve({ in_flight: false })));
+    api.tailInFlight.mockReturnValue({ abort: vi.fn() });
+    mockHistory([comparison()]);
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.click(await screen.findByText('Build a dashboard'));
 
-      await act(async () => { vi.advanceTimersByTime(SHORT_REQUEST_TIMEOUT_MS); });
+    // Not knowing is not the same as idle: nothing goes to both on a guess.
+    expect(await screen.findByText("Couldn't check whether a side is still working.")).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
 
-      expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+
+    expect(await screen.findByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy();
+    expect(api.tailInFlight).toHaveBeenCalledWith('conv-b', expect.anything());
+  });
+
+  it('says when a running side refuses a follow-up, and hands the text back', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+
+    api.fetchInFlightStatus.mockImplementation(async (id) => ({ in_flight: id === 'conv-b' }));
+    api.tailInFlight.mockImplementation((_id, callbacks) => { openStreams.tailB = callbacks; return { abort: vi.fn() }; });
+    act(() => openStreams['conv-b'].onError('A turn is already running.', { code: 'turn_in_progress' }));
+
+    const paneB = screen.getByRole('region', { name: 'Side B' });
+    // B follows the turn it was already running, and still says why.
+    await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-b', expect.anything()));
+    expect(await within(paneB).findByText(/didn't get your message/)).toBeTruthy();
+    expect(within(paneB).getByRole('status', { name: 'Side B status' }).textContent).toMatch(/Working/);
+    act(() => openStreams['conv-a'].onDone());
+    act(() => openStreams.tailB.onDone());
+    expect((await screen.findByRole('textbox', { name: 'Follow-up message' })).value).toBe('more');
   });
 
   it('still takes a follow-up for the other side when a continued side cannot load', async () => {

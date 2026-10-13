@@ -227,7 +227,7 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
  * Why the follow-up composer cannot send right now, or null when it can.
  * `canSwitch` is true when picking a different target would let the message
  * go out, so the caller keeps the target picker usable in that case.
- * `starting`: 'loading', 'loadFailed', 'sending' or 'firstFailed' while the
+ * `starting`: 'loading', 'loadFailed', 'checkFailed', 'sending' or 'firstFailed' while the
  * comparison is not yet past its first prompt; null once it is.
  */
 export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { outOfCredits = [], starting = null } = {}) {
@@ -237,6 +237,9 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
     return { message: "A side couldn't load. Retry it above before following up.", canSwitch: false };
   }
   if (starting === 'loading') return { message: 'You can follow up once both models have loaded.', canSwitch: false };
+  if (starting === 'checkFailed') {
+    return { message: "Couldn't check whether a side is still working.", canSwitch: false, action: 'recheck' };
+  }
   if (starting === 'sending') return { message: 'Sending the task to both models…', canSwitch: false };
   if (starting === 'firstFailed') {
     return { message: "The task hasn't reached either model yet. Try sending it again above.", canSwitch: false };
