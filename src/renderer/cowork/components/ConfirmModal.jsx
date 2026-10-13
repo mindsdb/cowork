@@ -39,8 +39,8 @@ export function ConfirmModal({
   onClose,
 }) {
   const locked = busy && !dismissableWhileBusy;
-  // Enter-to-confirm. Esc + backdrop dismissal are Modal's job (disabled
-  // while busy via closeOnEsc / closeOnBackdrop below).
+  // Enter-to-confirm. Esc, backdrop and X dismissal are Modal's job
+  // (disabled while locked via `dismissible` below).
   // Armed a task late so the Enter that opened the dialog can't confirm it.
   // Repeats are swallowed so a held Enter can't click the focused button.
   useEffect(() => {
@@ -66,10 +66,9 @@ export function ConfirmModal({
       // Confirm dialogs are deliberately narrow — keep the prior 420px.
       width="min(420px, 92vw)"
       labelledBy="confirm-modal-title"
-      closeOnBackdrop={!locked}
-      closeOnEsc={!locked}
+      dismissible={!locked}
     >
-      <ModalHeader id="confirm-modal-title" title={title} />
+      <ModalHeader id="confirm-modal-title" title={title} onClose={onClose} />
       {/* ModalBody sets no text typography — carry the muted body style
           (matches ModalHeader's s-h3) so the message stays 14px/--ink-2
           rather than inheriting the larger, darker root default. */}
@@ -82,10 +81,13 @@ export function ConfirmModal({
           </div>
         </ModalBody>
       )}
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={locked}>
-          {cancelLabel}
-        </Button>
+      <ModalFooter
+        cancel={(
+          <Button variant="subtle" onClick={onClose} disabled={locked}>
+            {cancelLabel}
+          </Button>
+        )}
+      >
         <Button
           // The deliberate "yes, do it" moment: destructive confirms use the
           // escalated solid-red variant; everything else, the accent CTA.

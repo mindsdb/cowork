@@ -41,14 +41,13 @@ export function RecoveryModal({
       size="sm"
       width="min(520px, 92vw)"
       labelledBy="code-recovery-title"
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      dismissible={!busy}
     >
       <ModalHeader
         id="code-recovery-title"
         title="Reopen task"
         subtitle="Choose where this task should reopen. Send a message afterwards to continue the interrupted work."
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
       <ModalBody>
         <RadioGroup
@@ -95,8 +94,7 @@ export function RecoveryModal({
         )}
         {error && <Alert variant="danger">{error}</Alert>}
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={() => selected && onConfirm(selected)} disabled={!selected || busy}>
           {busy ? 'Reopening…' : selected?.mode === 'recreate' ? 'Start fresh copy' : 'Reopen task'}
         </Button>
