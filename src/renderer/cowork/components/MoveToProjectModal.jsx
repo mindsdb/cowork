@@ -68,7 +68,7 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
   });
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="move-modal-title">
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="move-modal-title" dismissible={!busy}>
       <ModalHeader
         id="move-modal-title"
         title="Move to project"
@@ -134,8 +134,7 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
           <span>Move everything — the files &amp; artifacts this task created</span>
         </label>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {busy ? 'Moving…' : destName ? `Move to ${destName}` : 'Move'}
         </Button>

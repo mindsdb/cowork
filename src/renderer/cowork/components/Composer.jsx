@@ -1,6 +1,5 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
-import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
@@ -1706,10 +1705,9 @@ export default function Composer({
         </div>
       )}
 
-      {/* Portaled to <body>: the composer sits inside the boot-fadein
-          wrapper whose persistent transform would otherwise make this
-          fixed-position overlay anchor to the card, not the viewport. */}
-      {newProjectOpen && createPortal(
+      {/* <Modal> portals itself to <body>, clear of the boot-fadein
+          wrapper's transform. */}
+      {newProjectOpen && (
         <NewProjectModal
           open={newProjectOpen}
           onClose={() => setNewProjectOpen(false)}
@@ -1725,8 +1723,7 @@ export default function Composer({
             }
             onProjectChange?.(created);
           }}
-        />,
-        document.body,
+        />
       )}
     </div>
   );
