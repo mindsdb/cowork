@@ -70,6 +70,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -5306,6 +5307,14 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
+
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures; clicking it opens that schedule.
+  useAutoPauseNotifications(scheduled, (id) => {
+    setWorkspaceMode('cowork');
+    setSelectedScheduleId(id);
+    setRoute('schedule-detail');
+  });
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
