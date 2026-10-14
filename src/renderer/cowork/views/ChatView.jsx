@@ -426,6 +426,16 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
 
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+const INCOMPLETE_REASON_TEXT = {
+  spend_ceiling: 'Stopped early: this task reached its token budget.',
+  round_cap: 'Stopped early: this task reached its step limit.',
+  handback_budget: 'Stopped early: automatic continuations ran out before the task was done.',
+  handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
+  handback_stuck: 'Stopped early: the agent judged the task stuck.',
+  retry_exhausted: 'Stopped early: the task kept failing.',
+};
+
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
@@ -3006,6 +3016,11 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  {m.incompleteReason && (
+                    <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }} data-testid="incomplete-reason">
+                      {INCOMPLETE_REASON_TEXT[m.incompleteReason] || 'Stopped before it finished.'}
+                    </div>
+                  )}
                 </AnswerTurn>
               );
               });

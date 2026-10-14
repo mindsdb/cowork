@@ -2369,6 +2369,7 @@ function AppCore() {
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -2391,6 +2392,7 @@ function AppCore() {
                 startedAt: finalStartedAt,
                 harness: finalHarness,
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -3672,6 +3674,7 @@ function AppCore() {
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         // Anton sometimes wraps auth failures into a 200 stream that
         // emits the error as plain assistant text. Detect that case
         // and replace the assistant turn with the provider_required
@@ -3698,6 +3701,7 @@ function AppCore() {
                 startedAt: finalStartedAt,
                 harness: finalHarness,
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
@@ -4125,6 +4129,7 @@ function AppCore() {
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -4147,6 +4152,7 @@ function AppCore() {
                 startedAt: finalStartedAt,
                 harness: finalHarness,
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -4455,6 +4461,7 @@ function AppCore() {
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -4466,6 +4473,7 @@ function AppCore() {
                 startedAt: finalStartedAt,
                 harness: finalHarness,
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));

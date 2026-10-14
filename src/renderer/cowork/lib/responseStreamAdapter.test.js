@@ -946,3 +946,25 @@ describe('ToolProgress rows (ENG-2981)', () => {
     ]);
   });
 });
+
+// ENG-3436: an answer that stopped early says why on response.completed.
+describe('incompleteReason', () => {
+  it('starts null', () => {
+    expect(initialStreamState().incompleteReason).toBeNull();
+  });
+
+  it('captures the reason when the response is incomplete', () => {
+    const state = reduceAll([
+      { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } } },
+    ]);
+    expect(state.status).toBe('done');
+    expect(state.incompleteReason).toBe('spend_ceiling');
+  });
+
+  it('stays null for a finished answer, and for a server that sends no status', () => {
+    expect(reduceAll([
+      { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+    ]).incompleteReason).toBeNull();
+    expect(reduceAll([{ type: 'response.completed' }]).incompleteReason).toBeNull();
+  });
+});
