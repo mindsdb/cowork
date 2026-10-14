@@ -4,3 +4,14 @@
 /* The end of the transcript clears the composer floating over it; see
    useDockInset for how --chat-dock-height is measured. */
 .chat-scroller__content { padding-bottom: calc(var(--chat-dock-height, 0px) + var(--chat-end-gap, 30px)); }
+
+/* The reading column: one measure and side gutter for both surfaces. */
+.chat-column {
+  --chat-measure: 720px;
+  --chat-gutter: 28px;
+  width: min(var(--chat-measure), calc(100% - (var(--chat-gutter) * 2)));
+  margin-inline: auto;
+}
+@media (max-width: 639.98px) {
+  .chat-column { --chat-gutter: 14px; }
+}
