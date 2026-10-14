@@ -3778,6 +3778,16 @@ body[data-theme="dark"] .phase-check-done {
   color: var(--accent);
 }
 .turn-action-btn--danger:hover { color: var(--danger); }
+.turn-action-btn.is-done { color: var(--accent); }
+.turn-action-btn:disabled { cursor: default; }
+/* A failed copy says so beside the buttons; success is announced only. */
+.turn-actions__error {
+  align-self: center;
+  margin-left: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--danger);
+}
 /* 28px controls 4px apart put their centres 32px apart, so centred 44px
    overlays would reach 22px either way and Delete's would cover the right
    edge of Copy's visible box. 40px controls with an 8px gap sit 48px apart:
