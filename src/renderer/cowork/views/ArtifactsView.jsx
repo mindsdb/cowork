@@ -234,17 +234,15 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
+  // No raw window.open fallback: host.openExternal is what restricts the
+  // agent-writable URL to http(s)/mailto.
   const onOpenPublished = async () => {
     if (!published) return;
-    try { await host.openExternal(artifact.publishedUrl); } catch {
-      window.open(artifact.publishedUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const onOpenPrivate = async () => {
     if (!privateUrl) return;
-    try { await host.openExternal(privateUrl); } catch {
-      window.open(privateUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(privateUrl); } catch {}
   };
 
   // Not `projectLabel`: that name belongs to the imported
@@ -397,7 +395,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 // lifted above it. The ↗ and ⋯ controls show at rest, like the grid card's.
 
 async function openUrl(url) {
-  try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); }
+  try { await host.openExternal(url); } catch {}
 }
 
 // How a row opens.
@@ -1109,14 +1107,13 @@ export default function ArtifactsView({
               label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(14)),
               /*
-               * Awaited like the card's own onOpenPublished above: a
-               * synchronous try around an async bridge call cannot reach the
-               * fallback, and the rejection escapes unhandled.
+               * Awaited so a rejected bridge call is caught rather than left
+               * unhandled. No raw window.open fallback: host.openExternal is
+               * what restricts the agent-writable URL to http(s)/mailto.
                */
               onClick: async () => {
                 if (a.publishedUrl) {
-                  try { await host.openExternal(a.publishedUrl); }
-                  catch { window.open(a.publishedUrl, '_blank', 'noopener,noreferrer'); }
+                  try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
                   openArtifactFile(a);
                 }

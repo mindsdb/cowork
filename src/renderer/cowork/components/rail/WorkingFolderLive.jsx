@@ -343,12 +343,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     });
     if (target === 'published') {
       /*
-       * Awaited so the catch can see a rejected bridge call — the same reason
-       * `openArtifactExternal` above awaits it. A synchronous try around an
-       * async call leaves the fallback unreachable and the rejection loose.
+       * Awaited so a rejected bridge call is caught rather than left loose.
+       * No raw window.open fallback: host.openExternal is what restricts the
+       * agent-writable URL to http(s)/mailto.
        */
-      try { await host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+      try { await host.openExternal(artifact.publishedUrl); } catch {}
     } else if (target === 'preview') {
       setPreviewArt(artifact);
     } else if (target === 'download') {
