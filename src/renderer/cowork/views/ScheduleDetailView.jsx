@@ -250,6 +250,26 @@ export default function ScheduleDetailView({
           <Alert variant="danger">{error}</Alert>
         )}
 
+        {/* Paused by the server after repeated failures: say why, and offer
+            the way back. Resume also clears the failure streak. */}
+        {!task.enabled && task.autoPausedAt && (
+          <Alert
+            variant="danger"
+            title={task.consecutiveFailures
+              ? `Paused after ${task.consecutiveFailures} failed runs in a row`
+              : 'Paused after repeated failed runs'}
+          >
+            <div className="flex flex-col gap-2">
+              {task.lastError && <span>{task.lastError}</span>}
+              <div>
+                <Button size="sm" onClick={() => withBusy(() => onResume?.(task.id))} disabled={busy}>
+                  Resume
+                </Button>
+              </div>
+            </div>
+          </Alert>
+        )}
+
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
         <div className="sched-hero py-[18px] px-[22px] bg-surface border border-solid border-line rounded-card flex flex-col gap-[14px]">
           <div className="sched-hero-top flex items-start gap-3">
