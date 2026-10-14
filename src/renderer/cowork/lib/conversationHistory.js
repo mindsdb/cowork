@@ -252,8 +252,8 @@ export function dropLegacyIndexKeyedSidecar(cid) {
 
 // Replay the server-persisted event log for one assistant turn
 // through the same reducer the live stream uses. The resulting
-// `steps` and `startedAt` are identical to what the client would
-// have built during a fresh stream — no parity drift.
+// `steps`, `startedAt` and `figureSources` are identical to what the
+// client would have built during a fresh stream — no parity drift.
 export function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
@@ -263,6 +263,7 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    figureSources: state.figureSources,
     // 'done' once the persisted events carried response.completed,
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
@@ -308,7 +309,7 @@ export function failedEventMeta(events) {
 
 // Walk a messages payload from the server and, for any assistant
 // turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
+// `steps`/`startedAt`/`figureSources` via the live reducer. A terminal
 // `response.failed` becomes a client-side error bubble after the
 // partial assistant turn. Drops the raw `events` array.
 export function hydrateMessagesFromServerEvents(messages) {
@@ -333,6 +334,7 @@ export function hydrateMessagesFromServerEvents(messages) {
       ...(reduced.steps.length > 0
         ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
         : {}),
+      ...(reduced.figureSources ? { figureSources: reduced.figureSources } : {}),
     });
     if (reduced.status === 'error') {
       const failed = failedEventMeta(m.events);
@@ -377,12 +379,17 @@ export function applySessionMessages(
 // could land under a DIFFERENT turn's key depending on how much history
 // happened to be in memory, silently overwriting it). An id-keyed write
 // can't collide with another turn's entry regardless of what's loaded.
-export function persistTurnState(cid, messageId, steps, startedAt) {
-  if (!cid || !messageId || !Array.isArray(steps) || steps.length === 0) return;
+// `figureSources` (lib/figureSources) rides along when the turn sent any, so
+// a turn with figures but no steps is still saved.
+export function persistTurnState(cid, messageId, steps, startedAt, figureSources = null) {
+  if (!cid || !messageId) return;
+  const hasSteps = Array.isArray(steps) && steps.length > 0;
+  const hasFigures = Array.isArray(figureSources) && figureSources.length > 0;
+  if (!hasSteps && !hasFigures) return;
   const map = readConvTurns(cid) || {};
   // Strip any non-serialisable fields (refs, functions). The step
   // shape is plain data otherwise.
-  const sanitized = steps.map((s) => ({
+  const sanitized = (hasSteps ? steps : []).map((s) => ({
     id: s.id,
     label: s.label || null,
     badge: s.badge || null,
@@ -409,20 +416,27 @@ export function persistTurnState(cid, messageId, steps, startedAt) {
     _isScratchpad: !!s._isScratchpad,
     _isToolCall: !!s._isToolCall,
     _scratchpadTabId: s._scratchpadTabId || null,
+    /* What a figure's source names (its tool_use_id), so a figure on a
+       reloaded turn can still open the step it came from. */
+    _toolUseId: s._toolUseId || null,
   }));
-  map[messageId] = { steps: sanitized, startedAt: startedAt ?? null };
+  map[messageId] = {
+    steps: sanitized,
+    startedAt: startedAt ?? null,
+    ...(hasFigures ? { figureSources } : {}),
+  };
   writeConvTurns(cid, map);
 }
 
-// Merge persisted step + timing data onto assistant messages by id
-// (previously a counted position, see persistTurnState).
-// Idempotent — if a message already has steps from a fresh stream we
-// don't overwrite (the live data is more accurate). A message with no id
-// yet (a live/local-only row still in flight) has nothing to look up and
-// is left as-is; old position-keyed entries from before this change
-// simply stop matching, which only means those specific turns render
-// without their restored Thinking block until re-run — never a
-// wrong-turn attachment, which is the bug this replaces.
+// Merge persisted step + timing data and figure sources onto assistant
+// messages by id (previously a counted position, see persistTurnState).
+// Idempotent — if a message already has steps or figure sources from a
+// fresh stream we don't overwrite them (the live data is more accurate).
+// A message with no id yet (a live/local-only row still in flight) has
+// nothing to look up and is left as-is; old position-keyed entries from
+// before this change simply stop matching, which only means those specific
+// turns render without their restored Thinking block until re-run — never
+// a wrong-turn attachment, which is the bug this replaces.
 export function mergeConvTurns(cid, messages) {
   if (!cid || !messages) return messages;
   dropLegacyIndexKeyedSidecar(cid);
@@ -433,13 +447,18 @@ export function mergeConvTurns(cid, messages) {
     if (m._turnComplete) return m;
     if (!m.id) return m;
     const saved = map[m.id];
-    if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
+    if (!saved) return m;
+    const hasSavedSteps = Array.isArray(saved.steps) && saved.steps.length > 0;
     const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
-    if (hasLiveSteps) return m;
+    const restoreSteps = hasSavedSteps && !hasLiveSteps;
+    const restoreFigures = Array.isArray(saved.figureSources) && !m.figureSources;
+    if (!restoreSteps && !restoreFigures) return m;
     return {
       ...m,
-      steps: saved.steps,
-      startedAt: m.startedAt || saved.startedAt || null,
+      ...(restoreSteps
+        ? { steps: saved.steps, startedAt: m.startedAt || saved.startedAt || null }
+        : {}),
+      ...(restoreFigures ? { figureSources: saved.figureSources } : {}),
     };
   });
 }

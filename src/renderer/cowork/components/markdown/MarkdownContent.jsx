@@ -21,18 +21,20 @@ import {
   TableHeader,
   TableBody,
 } from './MarkdownTable';
+import { FigureMark } from './FigureMark';
 import { host } from '../../../platform/host';
 import { useSkillNames } from '../../lib/skillsStore';
+import { hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
-// is replaced by the nodes `splitText` returns (kept as-is when it returns
-// null), every other node is walked. `code` / `inlineCode` keep their source
-// in `value`, not in text children, so they are never split.
+// is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
+// returns null), every other node is walked. `code` / `inlineCode` keep their
+// source in `value`, not in text children, so they are never split.
 function expandTextNodes(node, splitText) {
   if (!Array.isArray(node.children)) return;
   const next = [];
   for (const child of node.children) {
-    const parts = child.type === 'text' ? splitText(child.value) : null;
+    const parts = child.type === 'text' ? splitText(child.value, child) : null;
     if (parts) {
       next.push(...parts);
     } else {
@@ -90,6 +92,69 @@ function remarkSoftBreaks() {
     return out;
   };
   return (tree) => expandTextNodes(tree, splitText);
+}
+
+/* Nodes whose figures stay plain text: code and math keep their source
+   verbatim, and a link or image is already its own control. */
+const _FIGURE_SKIPPED_NODES = new Set([
+  'code', 'inlineCode', 'math', 'inlineMath',
+  'link', 'linkReference', 'image', 'imageReference', 'definition', 'html',
+]);
+
+function _figureSkippedRanges(node, out) {
+  if (!Array.isArray(node.children)) return out;
+  for (const child of node.children) {
+    if (_FIGURE_SKIPPED_NODES.has(child.type)) {
+      const start = child.position?.start?.offset;
+      const end = child.position?.end?.offset;
+      if (start != null && end != null) out.push([start, end]);
+    } else {
+      _figureSkippedRanges(child, out);
+    }
+  }
+  return out;
+}
+
+/* remark plugin: mark each figure the server traced (lib/figureSources). A
+   figure is placed by its offsets into the markdown source this plugin is
+   parsing, with locateFigure finding it again when the normalizing passes in
+   MarkdownContent shifted the text, then split out of the text node that holds
+   it into an <anton-figure data-figure={index}> element. The `components` map
+   renders that element as a FigureMark. Raw HTML in an answer never becomes an
+   element, so only this plugin can produce one. Runs before the other
+   text-splitting plugins: the nodes they create carry no source position. */
+function remarkFigureSources(figures) {
+  return (tree, file) => {
+    const skipped = _figureSkippedRanges(tree, []);
+    const marks = placeFigures(String(file.value), figures)
+      .filter((m) => !skipped.some(([start, end]) => m.start < end && m.end > start));
+    if (marks.length === 0) return;
+    expandTextNodes(tree, (value, node) => {
+      const from = node.position?.start?.offset;
+      const to = node.position?.end?.offset;
+      if (from == null || to == null) return null;
+      const out = [];
+      let last = 0;
+      for (const m of marks) {
+        if (m.start < from || m.end > to) continue;
+        const { text } = figures[m.index];
+        /* The node's value can be shorter than its source (an escape, a
+           blockquote marker), so the offset is a hint, not an index. */
+        const at = locateFigure(value, { start: m.start - from, end: m.end - from, text });
+        if (!at || at.start < last) continue;
+        if (at.start > last) out.push({ type: 'text', value: value.slice(last, at.start) });
+        out.push({
+          type: 'figureSource',
+          data: { hName: 'anton-figure', hProperties: { dataFigure: m.index } },
+          children: [{ type: 'text', value: text }],
+        });
+        last = at.end;
+      }
+      if (out.length === 0) return null;
+      if (last < value.length) out.push({ type: 'text', value: value.slice(last) });
+      return out;
+    });
+  };
 }
 
 // Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
@@ -259,9 +324,11 @@ function openMarkdownHref(href) {
 // Allow the extra attributes our chart blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
 // pre-processor (see `_renderEngramComments`) can route metadata
-// through the `a` component override into a styled chip.
+// through the `a` component override into a styled chip. The figure
+// marks remarkFigureSources creates pass through with their index.
 const sanitizeSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'anton-figure'],
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
@@ -270,6 +337,7 @@ const sanitizeSchema = {
     // Artifacts tooltip survives without a span entry, but ['*'] omits
     // className — which the engram chips and this plugin both set.
     span: [...(defaultSchema.attributes?.span || []), ['className']],
+    'anton-figure': ['dataFigure'],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
@@ -611,8 +679,21 @@ export function MarkdownContent({
   // the assistant-only inline-code rewrite (the ask_user prompt) sets it
   // on its own.
   neutralizeLoopback = isAssistant,
+  /* Where each figure in a finished answer came from (lib/figureSources),
+     each with the `stepId` it opens. Null, an empty list, or figures that
+     all come from the question render the text exactly as without it. */
+  figureSources = null,
+  /* Opens a figure's step in the scratchpad; without it marks show only
+     their tooltip. */
+  onOpenFigureStep = null,
 }) {
   const rootRef = useRef(null);
+  /* Read at click time, so a parent passing a fresh callback every render
+     does not rebuild `components`, which would remount every element. */
+  const openFigureStepRef = useRef(onOpenFigureStep);
+  useEffect(() => { openFigureStepRef.current = onOpenFigureStep; });
+  const canOpenFigureStep = !!onOpenFigureStep;
+  const markFigures = hasFigureMarks(figureSources);
   // Only run the form-fence normalization pass when forms are enabled.
   // User messages bypass it so a typed ```data-vault-form block stays
   // a normal fenced code block instead of getting auto-tidied for the
@@ -646,6 +727,7 @@ export function MarkdownContent({
     () => [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
+      ...(markFigures ? [[remarkFigureSources, figureSources]] : []),
       [remarkSkillMentions, skillNames],
       // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
@@ -658,7 +740,7 @@ export function MarkdownContent({
       // Last, so every transform above sees the unchanged tree.
       ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, neutralizeLoopback, softBreaks],
+    [skillNames, neutralizeLoopback, softBreaks, markFigures, figureSources],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
@@ -838,6 +920,18 @@ export function MarkdownContent({
         </a>
       );
     },
+    'anton-figure': ({ node, children, ...rest }) => {
+      const figure = figureSources?.[Number(rest['data-figure'])];
+      if (!figure) return children;
+      return (
+        <FigureMark
+          figure={figure}
+          onOpenStep={canOpenFigureStep ? (stepId) => openFigureStepRef.current?.(stepId) : null}
+        >
+          {children}
+        </FigureMark>
+      );
+    },
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -866,7 +960,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, figureSources, canOpenFigureStep]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>

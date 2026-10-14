@@ -3853,6 +3853,28 @@ body[data-theme="dark"] .phase-check-done {
   color: color-mix(in srgb, var(--accent) 82%, #000);
   font-weight: 500;
 }
+/* A figure in a finished answer marked with where it came from (FigureMark).
+   It is a button for focus and Enter, but reads as the sentence's own text:
+   only a dotted underline says it has a source. Quiet grey for a sourced
+   figure; amber for one no step returned, which the reader should check. */
+.anton-figure {
+  all: unset;
+  cursor: help;
+  border-radius: 2px;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--ink-4);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.anton-figure--opens-step { cursor: pointer; }
+.anton-figure--opens-step:hover { text-decoration-color: var(--ink-2); }
+.anton-figure--unsourced,
+.anton-figure--unsourced:hover { text-decoration-color: var(--warning); }
+.anton-figure:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 body[data-theme="light"] .anton-inline-code {
   /* Darker terracotta on light keeps AA contrast; the chip fill itself is
      the neutral --ink tint inherited from the base rule. */

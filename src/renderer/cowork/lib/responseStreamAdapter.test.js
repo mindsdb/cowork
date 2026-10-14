@@ -946,3 +946,44 @@ describe('ToolProgress rows (ENG-2981)', () => {
     ]);
   });
 });
+
+describe('response.figure_sources', () => {
+  const FIGURES = [
+    { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', page: null }] },
+    { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+  ];
+  const turn = (withFigures) => [
+    { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+    { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01', at_ms: 1100 },
+    { type: 'response.output_text.delta', delta: 'You have 250 units; last year $30.', at_ms: 1200 },
+    ...(withFigures
+      ? [{ type: 'response.figure_sources', sequence_number: 57, item_id: 'msg-1', at_ms: 1300, figures: FIGURES }]
+      : []),
+    { type: 'response.completed', assistant_message_id: 'a1', at_ms: 1400 },
+  ];
+  const fold = (events, replay) => events.reduce(
+    (s, e) => reduceStream(s, e, () => 5000, { replay }),
+    initialStreamState(),
+  );
+
+  it('starts null', () => {
+    expect(initialStreamState().figureSources).toBeNull();
+  });
+
+  it.each([[false], [true]])('keeps the figures on a live stream and on replay (replay=%s)', (replay) => {
+    expect(fold(turn(true), replay).figureSources).toEqual(FIGURES);
+  });
+
+  it('changes nothing else in the state', () => {
+    const { figureSources, ...withEvent } = fold(turn(true), false);
+    const { figureSources: none, ...without } = fold(turn(false), false);
+    expect(figureSources).toEqual(FIGURES);
+    expect(none).toBeNull();
+    expect(withEvent).toEqual(without);
+  });
+
+  it('ignores an event without a figure list', () => {
+    const before = fold(turn(false).slice(0, 3), false);
+    expect(reduceStream(before, { type: 'response.figure_sources' })).toBe(before);
+  });
+});

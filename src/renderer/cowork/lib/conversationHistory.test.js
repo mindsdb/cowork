@@ -407,3 +407,66 @@ describe('applySessionMessages', () => {
     expect(out[0]).not.toHaveProperty('steps');
   });
 });
+
+const FIGURES = [
+  { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', page: null }] },
+  { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+];
+const FIGURE_EVENT = { type: 'response.figure_sources', item_id: 'msg-1', figures: FIGURES };
+
+describe('figure sources on reload', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('reduceServerEvents replays them', () => {
+    expect(reduceServerEvents([FIGURE_EVENT, { type: 'response.completed' }]).figureSources).toEqual(FIGURES);
+    expect(reduceServerEvents([{ type: 'response.completed' }]).figureSources).toBeNull();
+  });
+
+  it('hydrateMessagesFromServerEvents puts them on the assistant turn', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [FIGURE_EVENT, { type: 'response.completed' }] },
+    ]);
+    expect(out[0].figureSources).toEqual(FIGURES);
+  });
+
+  it('hydrateMessagesFromServerEvents adds no field when the turn sent none', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', id: 'a1', content: 'hi', events: [{ type: 'response.completed' }] },
+    ]);
+    expect(out[0]).not.toHaveProperty('figureSources');
+  });
+
+  it("persistTurnState keeps each step's tool_use_id and the figure sources", () => {
+    persistTurnState('c1', 'a1', [{ id: 'step-1', status: 'completed', _isScratchpad: true, _toolUseId: 'toolu_01' }], 5, FIGURES);
+    const saved = readConvTurns('c1').a1;
+    expect(saved.steps[0]._toolUseId).toBe('toolu_01');
+    expect(saved.figureSources).toEqual(FIGURES);
+  });
+
+  it('persistTurnState saves a turn with figures and no steps', () => {
+    persistTurnState('c1', 'a1', [], 5, FIGURES);
+    expect(readConvTurns('c1').a1).toEqual({ steps: [], startedAt: 5, figureSources: FIGURES });
+  });
+
+  it('persistTurnState writes no figure field for a turn without figures', () => {
+    persistTurnState('c1', 'a1', [{ id: 'step-1' }], 5, null);
+    expect(readConvTurns('c1').a1).not.toHaveProperty('figureSources');
+  });
+
+  it('mergeConvTurns restores the figure sources and steps that can still be opened', () => {
+    persistTurnState('c1', 'a1', [{ id: 'step-1', status: 'completed', _isScratchpad: true, _toolUseId: 'toolu_01' }], 5, FIGURES);
+    const [out] = mergeConvTurns('c1', [assistant({ id: 'a1' })]);
+    expect(out.figureSources).toEqual(FIGURES);
+    expect(out.steps[0]._toolUseId).toBe('toolu_01');
+  });
+
+  it('mergeConvTurns restores figure sources beside live steps, and never replaces live ones', () => {
+    persistTurnState('c1', 'a1', [{ id: 'saved' }], 5, FIGURES);
+    const [beside] = mergeConvTurns('c1', [assistant({ id: 'a1', steps: [{ id: 'live' }] })]);
+    expect(beside.steps).toEqual([{ id: 'live' }]);
+    expect(beside.figureSources).toEqual(FIGURES);
+    const live = [FIGURES[1]];
+    const [kept] = mergeConvTurns('c1', [assistant({ id: 'a1', figureSources: live })]);
+    expect(kept.figureSources).toBe(live);
+  });
+});

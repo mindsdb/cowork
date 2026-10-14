@@ -311,8 +311,8 @@ function _failedEventMeta(events) {
 }
 
 // Replay the server-persisted SSE event log through the live stream
-// reducer to reconstruct `steps` + `startedAt` for each assistant
-// turn. The server saves raw events in a sidecar file and returns
+// reducer to reconstruct `steps`, `startedAt` and `figureSources` for each
+// assistant turn. The server saves raw events in a sidecar file and returns
 // them inline on `/conversations/{id}/items`; doing the replay
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
@@ -335,6 +335,7 @@ function _hydrateAssistantEvents(messages) {
       ...(state.steps?.length > 0
         ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
         : {}),
+      ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
     });
     if (state.status === 'error') {

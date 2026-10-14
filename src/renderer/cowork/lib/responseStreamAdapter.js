@@ -1,4 +1,5 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { parseFigureSources } from './figureSources';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -18,6 +19,8 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //                                 replacing; carries the set-aside answer
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
+//   response.figure_sources     — where each figure in the final answer came
+//                                 from; sent once, before response.completed
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
@@ -75,6 +78,10 @@ export function initialStreamState() {
      *  only thing that gives that row a real id during its own turn. Null on
      *  a producer that persists no user row (the probe path). */
     userMessageId: null,
+    /** Where each figure in the final answer came from, off
+     *  `response.figure_sources` (lib/figureSources). Null when the turn sent
+     *  none: an answer with no figure, or a server that predates the event. */
+    figureSources: null,
   };
 }
 
@@ -584,6 +591,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       };
     });
     return found ? { ...state, steps } : state;
+  }
+
+  /* The figures of the final answer and the steps they came from. Sent once,
+     just before response.completed, and replayed from the saved events on
+     reload; the chat marks each figure once the answer is finished. */
+  if (type === 'response.figure_sources') {
+    const figureSources = parseFigureSources(event.figures);
+    return figureSources ? { ...state, figureSources } : state;
   }
 
   // ── thought.* sub-events live under response.in_progress ──────────

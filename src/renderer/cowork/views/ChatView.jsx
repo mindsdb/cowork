@@ -55,6 +55,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
+import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -457,11 +458,32 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
   );
 }
 
-function TextBlock({ text, id, complete = true, conversationId = null }) {
+export function TextBlock({
+  text,
+  id,
+  complete = true,
+  conversationId = null,
+  /* A finished answer's figure sources (lib/figureSources), the turn's steps
+     they name, and the opener for one of those steps by its id. */
+  figureSources = null,
+  steps = null,
+  onOpenStep = null,
+}) {
+  const figures = useMemo(() => linkFigureSteps(figureSources, steps), [figureSources, steps]);
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
-  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} isAssistant />;
+  return (
+    <MarkdownContent
+      text={text}
+      id={id}
+      complete={complete}
+      conversationId={conversationId}
+      isAssistant
+      figureSources={figures}
+      onOpenFigureStep={onOpenStep}
+    />
+  );
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -2996,7 +3018,15 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
                   />
-                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
+                  <TextBlock
+                    text={m.content}
+                    id={m.id || `msg-${i}`}
+                    complete
+                    conversationId={task.id}
+                    figureSources={m.figureSources}
+                    steps={m.steps}
+                    onOpenStep={(stepId) => setOpenScratchpadStepId(prefixId(messageKey(m, i), stepId))}
+                  />
                   {m.artifact && (
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
