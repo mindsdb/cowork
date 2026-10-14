@@ -533,6 +533,9 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  /* Resolves true once the connection is gone and false when the delete
+     failed, after telling the person why; a caller that goes on to reconnect
+     must stop on false. */
   const handleDelete = async (connection, savedDetail) => {
     try {
       // For builtin OAuth connections in Electron, keychain:revoke stops the
@@ -556,7 +559,7 @@ export default function CustomizeView({
           // list and has no other way to learn a connection just vanished
           // (and with it, that connection's _picked_files grant).
           window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-          return;
+          return true;
         }
       }
       await deleteDatasource(connection.engine, connection.name);
@@ -565,10 +568,12 @@ export default function CustomizeView({
       setList(next);
       onConnectionsSyncedRef.current?.(next);
       window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      return true;
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
       alert(`Could not disconnect: ${e?.message || e}`);
+      return false;
     }
   };
 
@@ -665,7 +670,9 @@ export default function CustomizeView({
             setSelectedConn(null);
           }}
           onReconnect={async (conn, spec) => {
-            await handleDelete(conn);
+            /* A failed delete leaves the old connection in place, so don't
+               start a new connect flow for it; the panel stays open. */
+            if (!await handleDelete(conn)) return;
             setSelectedConn(null);
             onReconnect?.(spec);
           }}
