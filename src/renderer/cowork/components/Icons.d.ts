@@ -7,6 +7,7 @@ declare const Ico: {
   attach: IconRenderer;
   brain: IconRenderer;
   building: IconRenderer;
+  arrowDown: IconRenderer;
   arrowUpLeft: IconRenderer;
   arrowUpRight: IconRenderer;
   appWindow: IconRenderer;
