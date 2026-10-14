@@ -61,6 +61,7 @@ vi.mock('./api', () => ({
       last_seen_at: '2026-08-23T09:00:00Z',
       capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
     }] })),
+    workspaceModes: vi.fn(async () => ({ supported: ['worktree'], default: 'worktree' })),
     computers: vi.fn(async () => ({ items: [{
       schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
       last_seen_at: '2026-08-23T09:00:00Z',
@@ -152,6 +153,8 @@ const projectProps = {
 describe('NewTaskPanel', () => {
   beforeEach(() => {
     localStorage.removeItem('mindshub-code:last-folder');
+    localStorage.removeItem('mindshub-code:workspace-mode');
+    vi.mocked(codingApi.workspaceModes).mockReset().mockResolvedValue({ supported: ['worktree'], default: 'worktree' });
     vi.mocked(codingApi.repositoryBranches).mockReset().mockResolvedValue({ items: ['staging', 'main'] });
     vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
     pickCodeFolder.mockReset();
@@ -1454,6 +1457,8 @@ describe('NewTaskPanel', () => {
     await waitFor(() => expect(start).toBeEnabled());
     expect(screen.getByRole('button', { name: /Change folder, currently plain folder/ })).toHaveTextContent('plain folder');
     expect(screen.queryByText(/Git repository/i)).not.toBeInTheDocument();
+    // This computer only isolates tasks, so there is nothing to choose.
+    expect(screen.queryByRole('combobox', { name: 'Where the task works' })).not.toBeInTheDocument();
 
     await user.click(start);
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
@@ -1469,6 +1474,75 @@ describe('NewTaskPanel', () => {
     expect(pickCodeFolder).toHaveBeenCalledOnce();
     expect(inspectFolder).toHaveBeenCalledWith('C:\\Users\\Ian & Team\\plain folder');
     expect(onOpenProjectSettings).not.toHaveBeenCalled();
+  });
+
+  it('offers Local or Worktree for a folder task when this computer can run it in place, and remembers the choice', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'worktree' });
+    const onCreate = vi.fn(async () => {});
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
+        projects={[project]}
+        selectedProjectId={null}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const picker = await screen.findByRole('combobox', { name: 'Where the task works' });
+    expect(picker).toHaveTextContent('Worktree');
+    expect(codingApi.workspaceModes).toHaveBeenCalledWith(null, undefined);
+    await user.click(picker);
+    await user.click(screen.getByRole('option', { name: 'Local' }));
+    expect(localStorage.getItem('mindshub-code:workspace-mode')).toBe('in_place');
+
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix the bug');
+    const start = screen.getByRole('button', { name: /start task/i });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(start);
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: null,
+      workspaceMode: 'in_place',
+    })));
+  });
+
+  it('does not carry a remembered Local choice to a task that can only be isolated', async () => {
+    localStorage.setItem('mindshub-code:workspace-mode', 'in_place');
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
+        projects={[project]}
+        selectedProjectId={null}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Choose folder' }));
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix the bug');
+    const start = screen.getByRole('button', { name: /start task/i });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(start);
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.not.objectContaining({
+      workspaceMode: expect.anything(),
+    })));
+    expect(screen.queryByRole('combobox', { name: 'Where the task works' })).not.toBeInTheDocument();
   });
 
   it('keeps readiness feedback outside the stable composer surface', async () => {
