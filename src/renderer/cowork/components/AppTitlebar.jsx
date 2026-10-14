@@ -1,5 +1,5 @@
 import Ico from './Icons';
-import BrandMenu from './BrandMenu';
+import WorkspaceBrand from './WorkspaceBrand';
 import { Kbd, Tooltip } from './ui';
 import { useAppHeaderSlots } from './appHeader';
 
@@ -45,7 +45,7 @@ export default function AppTitlebar({
             </button>
           </Tooltip>
         )}
-        <BrandMenu {...brand} compact={!docked} />
+        <WorkspaceBrand {...brand} compact={!docked} />
       </div>
       <div className="app-titlebar__main">
         <div ref={setHeader} className="app-titlebar__slot" />

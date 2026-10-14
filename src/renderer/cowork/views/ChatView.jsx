@@ -33,7 +33,7 @@ import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
-import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
+import { ProgressBox, WorkingFolderBox, ContextBox, RAIL_DOCKED_CLASS, RailToggle } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
@@ -2400,17 +2400,11 @@ export default function ChatView({
               Hidden on phones, where the panel opens from its own
               surfaces (.chat-rail-toggle in globals.css). */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <Tooltip content={(effectiveRailOpen || railOverlayOpen) ? 'Collapse panel' : 'Expand panel'}>
-              <button
-                type="button"
-                onClick={() => railFloats ? setRailNarrowOpen((open) => !open) : setRailOpen((open) => !open)}
-                aria-label={(effectiveRailOpen || railOverlayOpen) ? 'Collapse panel' : 'Expand panel'}
-                aria-pressed={effectiveRailOpen || railOverlayOpen}
-                className={`chat-rail-toggle w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag] ${(effectiveRailOpen || railOverlayOpen) ? 'bg-surface-2 text-ink' : 'bg-transparent'}`}
-              >
-                {(effectiveRailOpen || railOverlayOpen) ? Ico.panelCollapseRight(16) : Ico.panelExpandLeft(16)}
-              </button>
-            </Tooltip>
+            <RailToggle
+              open={effectiveRailOpen || railOverlayOpen}
+              onToggle={() => railFloats ? setRailNarrowOpen((open) => !open) : setRailOpen((open) => !open)}
+              className="chat-rail-toggle"
+            />
           </div>
         </AppHeader>
         {/* Task menu — anchored to the kebab next to the title.
@@ -3325,11 +3319,9 @@ export default function ChatView({
       <aside
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
-          railFloats
-            ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-surface min-w-0 self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-4 px-5 gap-6 transition-opacity duration-layout ease-[ease]'
-        }`}
+        className={cn('chat-rail-aside', railFloats
+          ? 'flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+          : cn(RAIL_DOCKED_CLASS, 'transition-opacity duration-layout ease-[ease]'))}
         style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         } : {

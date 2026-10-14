@@ -15,7 +15,8 @@ vi.mock('../api', () => ({
   countNonEmptyMemory: vi.fn(() => 0),
 }));
 
-vi.mock('../components/rail', () => ({
+vi.mock('../components/rail', async (importOriginal) => ({
+  ...(await importOriginal()),
   WorkingFolderBox: () => null,
   ContextBox: ({ project }) => (
     <div data-testid="context-box">Context and instructions for {project.name}</div>

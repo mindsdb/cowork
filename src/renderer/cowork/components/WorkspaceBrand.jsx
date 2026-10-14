@@ -12,7 +12,7 @@ const MODES = [
 // and it is icon-only otherwise. Without Code it is only the wordmark, so
 // nothing appears or disappears for people who don't have Code. Compact
 // (sidebar collapsed) drops the wordmark and the labels.
-export default function BrandMenu({ wordmark, logo, mode, showSwitch, onChange, compact = false }) {
+export default function WorkspaceBrand({ wordmark, logo, mode, showSwitch, onChange, compact = false }) {
   if (compact && !showSwitch && !logo) return null;
   return (
     <div className="app-brand">
