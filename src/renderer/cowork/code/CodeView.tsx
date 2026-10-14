@@ -14,6 +14,7 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
 import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
@@ -118,17 +119,7 @@ export default function CodeView({
     setPreviewOpen(false);
   }, []);
   // The transcript reserves the floating dock's height so its end scrolls clear.
-  const dockObserver = useRef<ResizeObserver | null>(null);
-  const dockRef = useCallback((dock: HTMLDivElement | null) => {
-    dockObserver.current?.disconnect();
-    dockObserver.current = null;
-    const stage = dock?.parentElement;
-    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
-    sync();
-    dockObserver.current = new ResizeObserver(sync);
-    dockObserver.current.observe(dock);
-  }, []);
+  const dockRef = useDockInset();
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);

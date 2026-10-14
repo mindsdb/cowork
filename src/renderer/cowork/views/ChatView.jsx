@@ -61,6 +61,9 @@ import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
+import { useDockInset } from '../components/chat/useDockInset';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -2038,11 +2041,14 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const stick = useStickToBottom(scrollRef);
+  const { scrollToBottom, follow: followEnd } = stick;
+  const dockRef = useDockInset();
   const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+    const { action, scrollHeightDelta, anchor } = nextScrollAnchor({
       taskId: task.id,
       messages: visibleMessages,
       previousAnchor: scrollAnchorRef.current,
@@ -2050,12 +2056,11 @@ export default function ChatView({
     });
     // Loading an older page prepends content above what's on screen —
     // shifting scrollTop by the same delta keeps the reader's position
-    // steady instead of yanking them to the bottom.
-    if (isPrepend) {
-      el.scrollTop += scrollHeightDelta;
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
+    // steady instead of yanking them to the bottom. A reply landing only
+    // follows a reader who was already at the end.
+    if (action === 'hold') el.scrollTop += scrollHeightDelta;
+    else if (action === 'end') scrollToBottom();
+    else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
     // not memoized) — depending on task.messages.length instead keeps this
@@ -2392,20 +2397,13 @@ export default function ChatView({
           />
         ) : (
         <>
-        {/* Scrollable conversation.
-            Bottom padding clears the floating composer so every
-            message is reachable when scrolled to the end. Sized
-            generously (~180px) because the composer grows multi-line
-            as the user types longer drafts, plus the attachments
-            row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions.
-            `marginBottom: 25` shortens the scroll container so the
-            chat surface ends with a calm gap above the window edge
-            instead of butting flush against it. */}
-        <div
-          ref={scrollRef}
-          data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+        {/* Scrollable conversation. Its end is padded by the measured
+            height of the floating composer (useDockInset), so the last
+            reply always scrolls clear however tall the draft grows. */}
+        <ChatScroller
+          stick={stick}
+          scrollProps={{ 'data-scroll': 'true' }}
+          className="scroll-clean pt-8 px-7 max-sm:px-3.5 bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {task.hasMoreMessages && (
@@ -3084,7 +3082,7 @@ export default function ChatView({
               {deleteInFlight ? 'Deleting the selected exchange.' : ''}
             </div>
           </div>
-        </div>
+        </ChatScroller>
 
         {/* Floating composer — no gradient fade behind it. Earlier we
             had a 220px linear-gradient(transparent → var(--bg)) overlay
@@ -3092,7 +3090,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div ref={dockRef} className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
