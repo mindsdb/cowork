@@ -18,9 +18,9 @@ type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'chil
  * of the content is padded by `--chat-dock-height` (see useDockInset) so the
  * last message scrolls clear of a composer floating over the transcript.
  * A reader scrolled away from the end gets a button back to it. Longer
- * conversations get a turn
- * minimap on the right edge (TurnMinimap). `overlay` renders over the scroll box
- * too: the place for other controls that float rather than scroll.
+ * conversations get a turn minimap on the left edge (TurnMinimap). `overlay`
+ * renders over the scroll box too: the place for other controls that float
+ * rather than scroll.
  */
 export function ChatScroller({
   stick,
