@@ -512,10 +512,12 @@ const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
 const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
 
-function nextPollDelay(schedules) {
-  // A run in flight: poll at the floor so the Running state clears soon
-  // after the run finishes — nothing else refreshes it.
-  if ((schedules || []).some((s) => s.running)) return SCHEDULE_POLL_MIN_DELAY_MS;
+export function nextPollDelay(schedules) {
+  // A run in flight, or a failed run waiting to retry: poll at the floor so
+  // the state clears soon after it changes, and an auto-pause that the last
+  // retry triggers is noticed (and notified) within a minute. Nothing else
+  // refreshes it.
+  if ((schedules || []).some((s) => s.running || s.retryAt)) return SCHEDULE_POLL_MIN_DELAY_MS;
   const dueTimes = (schedules || [])
     .filter((s) => s.enabled && s.nextRunAt)
     .map((s) => new Date(s.nextRunAt).getTime())

@@ -143,8 +143,8 @@ export default function ScheduledView({
       <PageHeader
         title="Scheduled Tasks"
         subtitle={PLATFORM_UI
-          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`
-          : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. Runs that slip while the server is down are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while the app was closed, ${agentLabel} runs the latest one when it reopens.`
+          : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
