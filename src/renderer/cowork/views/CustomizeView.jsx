@@ -546,9 +546,27 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  /* Re-reads the list after a delete. Best effort: the connection is already
+     gone, so a failed refresh must never turn the delete into a failure. */
+  const syncAfterDelete = async () => {
+    try {
+      const fresh = await fetchDatasources();
+      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+      setList(next);
+      onConnectionsSyncedRef.current?.(next);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[connectors] refresh after delete failed', e);
+    }
+    // Project files' Context card holds its own Google Drive file list and
+    // has no other way to learn a connection just vanished (and with it,
+    // that connection's _picked_files grant).
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
   /* Resolves true once the connection is gone and false when the delete
      failed, after telling the person why; a caller that goes on to reconnect
-     must stop on false. */
+     must stop on false. A 404 from the delete counts as gone. */
   const handleDelete = async (connection, savedDetail) => {
     try {
       // For builtin OAuth connections in Electron, keychain:revoke stops the
@@ -564,30 +582,25 @@ export default function CustomizeView({
         // 'browser_oauth_builtin' checks found and fixed in app.ts.
         if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
-          const fresh = await fetchDatasources();
-          const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-          setList(next);
-          onConnectionsSyncedRef.current?.(next);
-          // Project files' Context card holds its own Google Drive file
-          // list and has no other way to learn a connection just vanished
-          // (and with it, that connection's _picked_files grant).
-          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+          await syncAfterDelete();
           return true;
         }
       }
-      await deleteDatasource(connection.engine, connection.name);
-      const fresh = await fetchDatasources();
-      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-      setList(next);
-      onConnectionsSyncedRef.current?.(next);
-      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-      return true;
+      try {
+        await deleteDatasource(connection.engine, connection.name);
+      } catch (e) {
+        /* A 404 means someone already removed it, from another tab or, on a
+           shared vault, another person. That is the outcome asked for. */
+        if (e?.status !== 404) throw e;
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
       alert(`Could not disconnect: ${e?.message || e}`);
       return false;
     }
+    await syncAfterDelete();
+    return true;
   };
 
   const visible = useMemo(() => {
@@ -684,7 +697,8 @@ export default function CustomizeView({
           }}
           onReconnect={async (conn, spec) => {
             /* A failed delete leaves the old connection in place, so don't
-               start a new connect flow for it; the panel stays open. */
+               start a new connect flow for it; the panel stays open. A
+               connection that is already gone counts as deleted. */
             if (!await handleDelete(conn)) return;
             setSelectedConn(null);
             onReconnect?.(spec);

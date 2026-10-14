@@ -1,9 +1,9 @@
 // Operator-managed connections are read-only on the Connections page, and a
-// Reconnect whose delete fails never opens a new connect flow. Follows
-// CustomizeView.identity.test.jsx's mocking convention, on the web host the
-// self-hosted stack serves.
+// Reconnect whose delete fails never opens a new connect flow, while one whose
+// connection is already gone does. Follows CustomizeView.identity.test.jsx's
+// mocking convention, on the web host the self-hosted stack serves.
 
-import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
+import { beforeEach, afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -55,6 +55,10 @@ beforeEach(() => {
   vi.mocked(fetchSavedConnection).mockReset().mockImplementation(() => Promise.resolve(state.saved));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+function refusal(status, message) {
+  return Object.assign(new Error(message), { status });
+}
 
 async function openPanel(connections, saved, props = {}) {
   state.connections = connections;
@@ -110,7 +114,7 @@ describe('CustomizeView Reconnect', () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error(OPERATOR_NOTE));
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(refusal(403, OPERATOR_NOTE));
     const onReconnect = vi.fn();
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
 
@@ -134,5 +138,69 @@ describe('CustomizeView Reconnect', () => {
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
     expect(window.alert).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens the connect flow when the connection was already removed', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    // Someone else removed it first, so the vault no longer lists it and the
+    // DELETE answers 404.
+    vi.mocked(deleteDatasource).mockImplementationOnce(() => {
+      state.connections = [];
+      return Promise.reject(refusal(404, 'Connection not found.'));
+    });
+    const onReconnect = vi.fn();
+    const onConnectionsSynced = vi.fn();
+    const dialog = await openPanel([CONNECTION], SAVED, { onReconnect, onConnectionsSynced });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(onConnectionsSynced).toHaveBeenLastCalledWith([]);
+  });
+
+  it('opens the connect flow when the refresh fails after a successful delete', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(deleteDatasource).mockImplementationOnce(() => {
+      vi.mocked(fetchDatasources).mockRejectedValueOnce(new Error('API /connectors/connections/ returned 504'));
+      return Promise.resolve({ ok: true });
+    });
+    const changed = vi.fn();
+    window.addEventListener('anton:connections-changed', changed);
+    onTestFinished(() => window.removeEventListener('anton:connections-changed', changed));
+    const onReconnect = vi.fn();
+    const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    // Once on mount, once for the refresh that failed.
+    expect(fetchDatasources).toHaveBeenCalledTimes(2);
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(changed).toHaveBeenCalledOnce();
+  });
+});
+
+describe('CustomizeView Disconnect', () => {
+  it('drops a card whose connection was already removed, without an alert', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    vi.mocked(deleteDatasource).mockImplementationOnce(() => {
+      state.connections = [];
+      return Promise.reject(refusal(404, 'Connection not found.'));
+    });
+    state.connections = [CONNECTION];
+    render(<CustomizeView connectors={[CONNECTION]} />);
+
+    await userEvent.click(within(screen.getByRole('article')).getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
+    expect(window.alert).not.toHaveBeenCalled();
   });
 });
