@@ -3,10 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import { Alert } from '../components/ui/Alert';
+import Badge from '../components/ui/Badge';
+import Checkbox from '../components/ui/Checkbox';
+import { Collapsible } from '../components/ui/Collapsible';
+import { Field, FieldSet } from '../components/ui/Field';
+import Input, { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import { ConfirmModal } from '../components/ConfirmModal';
 import type { ConnectorConnection } from '../api';
 import {
   buildModelPickerOptions,
@@ -30,7 +34,7 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
-import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -60,7 +64,6 @@ export function ProjectSettingsModal({
   busy,
   onClose,
   onSave,
-  onDelete,
   onOpenConnectors = () => {},
   onOpenSkills = () => {},
   defaultEngineId = 'codex',
@@ -76,7 +79,6 @@ export function ProjectSettingsModal({
   busy: boolean;
   onClose: () => void;
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => Promise<CodeProject>;
-  onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
   onOpenSkills?: () => void;
   defaultEngineId?: string;
@@ -102,13 +104,9 @@ export function ProjectSettingsModal({
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
-  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
@@ -177,9 +175,6 @@ export function ProjectSettingsModal({
     setProjectPermission(project?.permission_mode || 'supervised');
     setProjectReasoningEffort(project?.default_reasoning_effort || null);
     setError('');
-    setDeleteOpen(false);
-    setDeleteBusy(false);
-    setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
       codingApi.playbook(project.id).then((status) => {
@@ -194,6 +189,18 @@ export function ProjectSettingsModal({
   // object here would erase the in-progress playbook fields on a recoverable
   // clone/fetch error.
   }, [defaultEngineId, defaultModel, open, project?.id, suspended]);
+
+  // Connecting an account from the Connectors detour adds it to the saved
+  // project; carry it into a draft that survived the detour so Save keeps it.
+  // Only newly saved accounts are added: a project refresh must not re-tick
+  // one the user cleared in this draft.
+  const savedConnectionKeys = useRef<string[]>([]);
+  useEffect(() => {
+    const keys = (project?.connections || []).map((item) => `${item.provider}:${item.name}`);
+    const added = keys.filter((key) => !savedConnectionKeys.current.includes(key));
+    savedConnectionKeys.current = keys;
+    if (added.length) setSelectedConnections((current) => [...new Set([...current, ...added])]);
+  }, [project?.connections]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -239,13 +246,6 @@ export function ProjectSettingsModal({
   }, [projectEffortLevels]);
 
   const availableEngines = engines.filter((engine) => engine.available);
-  const defaultsSummary = describeTaskDefaults({
-    agent: availableEngines.find((engine) => engine.id === projectEngineId)?.label || projectEngineId,
-    model: projectModelOptions.find((option) => option.value === projectModel)?.label || projectModel,
-    permission: PERMISSION_OPTIONS.find((option) => option.value === projectPermission)?.label || projectPermission,
-    variableCount: countEnvironmentVariables(environmentText),
-    portNames: parsePortNames(portNames),
-  });
 
   const updateCommand = (folderId: string, phase: CommandPhase, value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
@@ -292,22 +292,33 @@ export function ProjectSettingsModal({
   };
 
   return (
-    <>
-    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy && !skillsSaving} closeOnEsc={!busy && !skillsSaving}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      // Creating asks only for a name and code, so it keeps the narrower width.
+      width={project ? undefined : 'min(560px, 92vw)'}
+      maxHeight="min(720px, 88vh)"
+      labelledBy="code-project-settings-title"
+      closeOnBackdrop={!busy && !skillsSaving}
+      closeOnEsc={!busy && !skillsSaving}
+    >
       <ModalHeader
         id="code-project-settings-title"
-        title={project ? 'Project settings' : 'New Code Project'}
-        subtitle="Code, connectors, skills, and defaults shared by every task in this project."
+        title={project ? 'Project settings' : 'New code project'}
+        subtitle={project ? 'Tasks in this project share its code, connectors, and defaults.' : undefined}
         onClose={onClose}
       />
-      <ModalBody padding="0">
+      <ModalBody>
         <div className="code-project-settings">
-          <label className="code-project-field">
-            <span>Name</span>
-            <Input value={name} onChange={setName} placeholder="Project name" autoFocus />
-          </label>
+          <Field label="Project name" heading>
+            <Input value={name} onChange={setName} placeholder="atlas" spellCheck={false} autoFocus />
+          </Field>
 
           <ProjectResourcesEditor
+            connections={connections}
+            onOpenConnectors={onOpenConnectors}
+            onRepositoryConnection={(connectionName) => setSelectedConnections((current) => [...new Set([...current, `github:${connectionName}`])])}
             resources={resources}
             computers={computers}
             availability={availability}
@@ -317,35 +328,35 @@ export function ProjectSettingsModal({
             onCommandChange={updateCommand}
             onFirstResource={(resourceName) => { if (!name) setName(resourceName); }}
             onError={setError}
+            allowMultiple={!!project}
           />
 
-          <ProjectConnectedTools
+          {/* Creating asks only for a name and code. Connectors, skills and
+              task defaults are optional, so they wait for Project settings.
+              A repository picked through a GitHub account still records that
+              connection, it just isn't shown here. */}
+          {project && <ProjectConnectedTools
+            required={resources.flatMap((resource) => resource.kind === 'repository' && resource.connector_name ? [`github:${resource.connector_name}`] : [])}
             connections={availableConnections}
             selected={selectedConnections}
             onChange={setSelectedConnections}
             onOpenConnectors={onOpenConnectors}
-            canManage={project !== null}
-          />
+          />}
 
-          <section className="code-project-section code-project-skills">
-            <div className="code-project-section__heading">
-              <div><strong>Skills</strong><span>Team standards and workflows available to every task in this project</span></div>
-            </div>
-            <ProjectSkillSelector
-              items={skillLibrary.items}
-              selected={selectedSkillSources}
-              loading={skillsLoading}
-              error={skillsError}
-              onChange={setSelectedSkillSources}
-              onOpenSkills={onOpenSkills}
-            />
+          {project && <>
+            <FieldSet legend="Skills">
+              <ProjectSkillSelector
+                items={skillLibrary.items}
+                selected={selectedSkillSources}
+                loading={skillsLoading}
+                error={skillsError}
+                onChange={setSelectedSkillSources}
+                onOpenSkills={onOpenSkills}
+              />
+            </FieldSet>
 
-            {project?.playbook && (
-              <details className="code-project-legacy-setup">
-                <summary>
-                  <span><strong>Project-only Team Setup</strong><small>{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>
-                  <i>{Ico.chevDown(11)}</i>
-                </summary>
+            {project.playbook && (
+              <FieldSet legend="Team Setup">
                 <div className="code-team-setup__connected">
                 <div className="code-team-setup__summary">
                   <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
@@ -353,7 +364,7 @@ export function ProjectSettingsModal({
                     <strong>{repositoryLabel(project.playbook.repository)}</strong>
                     <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
                   </div>
-                  {playbookStatus?.update_available && <em>Update available</em>}
+                  {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
                 </div>
                 <div className="code-playbook-actions">
                   <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
@@ -365,8 +376,7 @@ export function ProjectSettingsModal({
                 </div>
 
                 {playbookStatus?.update_available && (
-                  <details className="code-playbook-update">
-                    <summary>Review update <span>{Ico.chevDown(11)}</span></summary>
+                  <Collapsible className="code-playbook-update" title="Review update">
                     <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
                     <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                       setPlaybookBusy(true); setError('');
@@ -374,20 +384,19 @@ export function ProjectSettingsModal({
                       catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
                       finally { setPlaybookBusy(false); }
                     }}>Apply update</Button>
-                  </details>
+                  </Collapsible>
                 )}
 
                 {!!playbookStatus?.items.length && (
-                  <details className="code-playbook-items">
-                    <summary>
-                      <span>Included guidance</span>
-                      <small>{playbookStatus.items.filter((item) => item.enabled).length} of {playbookStatus.items.length}</small>
-                      <i>{Ico.chevDown(11)}</i>
-                    </summary>
+                  <Collapsible
+                    className="code-playbook-items"
+                    title="Included guidance"
+                    meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
+                  >
                     <div>
                       {playbookStatus.items.map((item) => (
                         <label key={item.path}>
-                          <input type="checkbox" checked={item.enabled} disabled={playbookBusy} onChange={async () => {
+                          <Checkbox size="sm" aria-label={item.name} checked={item.enabled} disabled={playbookBusy} onCheckedChange={async () => {
                             const enabled = playbookStatus.items
                               .filter((candidate) => candidate.path === item.path ? !item.enabled : candidate.enabled)
                               .map((candidate) => candidate.path);
@@ -396,15 +405,14 @@ export function ProjectSettingsModal({
                             catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
                             finally { setPlaybookBusy(false); }
                           }} />
-                          <span><strong>{item.name}</strong><small>{item.kind}</small></span>
+                          <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
                         </label>
                       ))}
                     </div>
-                  </details>
+                  </Collapsible>
                 )}
 
-                <details className="code-team-setup__details">
-                  <summary>Details <span>{Ico.chevDown(11)}</span></summary>
+                <Collapsible className="code-team-setup__details" title="Details">
                   <dl>
                     <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
                     <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
@@ -413,81 +421,47 @@ export function ProjectSettingsModal({
                     <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
                     {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
                   </div>
-                </details>
-                {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}
+                </Collapsible>
+                {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
                 </div>
-              </details>
+              </FieldSet>
             )}
-          </section>
 
-          <section className="code-project-section code-project-defaults-section">
-            <div className="code-project-section__heading">
-              <div>
-                <strong>Task defaults and environment</strong>
-                <span>{defaultsSummary}</span>
+            <FieldSet legend="Task defaults">
+              <div className="code-project-columns">
+                <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
+                <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
+                {projectEffortLevels && (
+                  <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
+                )}
+                <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
+                  if (isPermissionMode(value)) setProjectPermission(value);
+                }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
               </div>
-              <Button
-                size="sm"
-                variant="subtle"
-                aria-expanded={defaultsOpen}
-                aria-controls="code-project-defaults"
-                onClick={() => setDefaultsOpen((open) => !open)}
-              >
-                {defaultsOpen ? 'Hide' : 'Edit'}
-              </Button>
-            </div>
-            {defaultsOpen && (
-              <div id="code-project-defaults" className="code-project-defaults__body">
-                <div className="code-project-defaults">
-                  <label><span>Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
-                  <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
-                  <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
-                    if (isPermissionMode(value)) setProjectPermission(value);
-                  }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
-                  {projectEffortLevels && (
-                    <label><span>Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} size="sm" ariaLabel="Default reasoning effort" /></label>
-                  )}
-                </div>
-                <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
-                <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
-                <p>Each task receives its own available port numbers under these names.</p>
+            </FieldSet>
+
+            <FieldSet legend="Environment">
+              <div className="grid gap-3">
+                <Field label="Development ports" help="Each task gets its own free port under each name.">
+                  <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
+                </Field>
+                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
+                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
+                </Field>
               </div>
-            )}
-          </section>
-          {error && <div className="code-project-error" role="alert">{error}</div>}
+            </FieldSet>
+          </>}
+          {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
-        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>Delete project</Button>}
-        <div className="code-project-footer-actions">
-          <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
-        </div>
+      <ModalFooter>
+        <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
+          {busy || skillsSaving || playbookBusy
+            ? (project ? 'Saving…' : 'Creating…')
+            : project ? 'Save changes' : <>{Ico.plus(14)} Create project</>}
+        </Button>
       </ModalFooter>
     </Modal>
-    <ConfirmModal
-      open={deleteOpen}
-      title="Delete this Code Project?"
-      message="This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted."
-      confirmLabel="Delete project"
-      destructive
-      busy={busy || deleteBusy}
-      busyLabel="Deleting…"
-      error={deleteError}
-      onClose={() => { setDeleteOpen(false); setDeleteError(''); }}
-      onConfirm={async () => {
-        setDeleteBusy(true);
-        setDeleteError('');
-        try {
-          await onDelete?.();
-          setDeleteOpen(false);
-        } catch (reason) {
-          setDeleteError(reason instanceof Error ? reason.message : 'Could not delete this Code Project.');
-        } finally {
-          setDeleteBusy(false);
-        }
-      }}
-    />
-    </>
   );
 }

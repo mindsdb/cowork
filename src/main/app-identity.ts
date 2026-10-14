@@ -1,5 +1,5 @@
 // Per-channel Electron app identity, IMPORTED FOR ITS SIDE EFFECT. Must be the
-// FIRST local import in src/main/index.ts: it calls app.setName() to pick the
+// FIRST local import in src/main/app.ts: it calls app.setName() to pick the
 // userData dir, and modules like token-store.ts read app.getPath('userData') at
 // load time, so the name has to be set before any of them import.
 //
@@ -8,15 +8,21 @@
 // re-set (its userData has always been "anton", where real users' data lives),
 // so leaving app.name untouched keeps prod byte-for-byte as shipped.
 //
+// Also starts the crash reporter, which must follow the final app name (see
+// crash-reporter.ts). Only this module's own imports load before it.
+//
 // Covers only the RUNTIME name; the packaged bundle identity (appId/productName/
 // icon) is set at build time — see scripts/channel-identity.mjs.
 
 import { app } from 'electron';
 import { buildKind } from './cowork-home';
 import { CHANNELS } from './channels';
+import { startCrashReporter } from './crash-reporter';
 
 const kind = buildKind();
 if (kind !== 'prod') {
   app.setName(CHANNELS[kind].appName);
   console.log(`[app-identity] build kind "${kind}" → app name "${app.getName()}" (userData isolated)`);
 }
+
+startCrashReporter();

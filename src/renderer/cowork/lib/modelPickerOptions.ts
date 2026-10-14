@@ -1,4 +1,5 @@
-import { isModelLocked, orderByFamily } from './modelCatalog';
+import { orderByFamily, unavailableModelFields } from './modelCatalog';
+import type { ModelDisabledReason } from './modelCatalog';
 
 
 export interface ModelPickerSource {
@@ -10,6 +11,9 @@ export interface ModelPickerMeta {
   modelProviders?: Record<string, string>;
   modelFamilies?: Record<string, string>;
   modelEnabled?: Record<string, boolean>;
+  /** Why MindsHub lists a model as unavailable, id → reason. Only rows with
+   * `modelEnabled[id] === false` carry one; absent on older servers. */
+  modelDisabledReasons?: Record<string, ModelDisabledReason>;
   /** Per-model reasoning effort levels the gateway advertises: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default?: string }>;
   onRefresh?: () => Promise<unknown> | unknown;
@@ -21,7 +25,12 @@ export interface ModelPickerOption {
   tag?: string;
   provider?: string;
   disabled?: boolean;
+  /** The wallet or the spent allowance closes this row; ModelSelect adds "Add credits". */
   locked?: boolean;
+  /** An org admin's model rule closes this row; no credits action applies. */
+  restricted?: boolean;
+  /** Row tooltip. */
+  title?: string;
 }
 
 /** Keep a configured/current model usable while a live catalog is empty or no
@@ -49,7 +58,9 @@ export function buildModelPickerOptions(
   models: ModelPickerSource[] = [],
   modelMeta: ModelPickerMeta = {},
 ): ModelPickerOption[] {
-  const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
+  const {
+    modelProviders = {}, modelFamilies = {}, modelEnabled = {}, modelDisabledReasons = {},
+  } = modelMeta || {};
   const list = (models || []).filter(Boolean);
   const ids = list.map((model) => model.id);
   const byId = new Map(list.map((model) => [model.id, model]));
@@ -58,15 +69,16 @@ export function buildModelPickerOptions(
     .filter((model: ModelPickerSource | undefined): model is ModelPickerSource => Boolean(model));
 
   return ordered.map((model: ModelPickerSource) => {
-    const locked = isModelLocked(modelEnabled, model.id);
     return {
       value: model.id,
       label: model.name,
-      // Wallet state is the only row tag (ENG-2591). Version state needs none:
-      // the name carries the version and orderByFamily seats a pinned version
-      // under its head. The old "Latest" / "Older version" pills sat on most
-      // rows and pushed long names into an ellipsis.
-      ...(locked ? { disabled: true, locked: true, tag: 'Needs credits' } : {}),
+      /* Availability is the only row tag: "Needs credits" for the
+         wallet or the allowance, "Restricted" for an admin's model rule, from
+         the helper the Settings builder shares. Version state needs none: the
+         name carries the version and orderByFamily seats a pinned version
+         under its head. The old "Latest" / "Older version" pills sat on most
+         rows and pushed long names into an ellipsis. */
+      ...unavailableModelFields(modelEnabled, modelDisabledReasons, model.id),
       ...(modelProviders[model.id] ? { provider: modelProviders[model.id] } : {}),
     };
   });

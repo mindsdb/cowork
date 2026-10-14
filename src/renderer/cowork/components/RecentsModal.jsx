@@ -24,7 +24,7 @@ function Row({ task, onSelect, onDelete }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={onSelect}
-      className="flex items-center justify-between gap-2 py-[6px] px-[10px] rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] [transition:background_.1s_ease,color_.12s_ease]"
+      className="flex items-center justify-between gap-2 py-[6px] px-[10px] rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
       style={{
         background: hover ? 'color-mix(in srgb, var(--ink) 4%, transparent)' : 'transparent',
         color: hover ? 'var(--ink)' : 'var(--ink-2)',
@@ -39,9 +39,9 @@ function Row({ task, onSelect, onDelete }) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
             aria-label="Delete this task"
-            className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_120ms_ease]"
+            className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_var(--dur-hover)_ease]"
           >
-            {Ico.trash(13)}
+            {Ico.trash(14)}
           </button>
         </Tooltip>
       ) : (
@@ -157,14 +157,14 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           ) : (
             groupByProject(filtered).map((group) => (
               <div key={group.projectName} className="flex flex-col gap-px mb-[6px]">
-                {/* Project header — small uppercase mono label with a
-                    count chip. Reads as a section divider, not as a
+                {/* Project header — a section label with a
+                    count. Reads as a section divider, not as a
                     clickable row, so each task underneath stays the
                     primary affordance. */}
-                <div className="flex items-center gap-2 pt-2 px-3 pb-1 font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.12em] uppercase text-ink-4">
+                <div className="section-label flex items-center gap-2 pt-2 px-3 pb-1">
                   <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabelByName(projects, group.projectName)}</span>
                   <span className="flex-1 h-px bg-line" />
-                  <span className="text-ink-4">{group.items.length}</span>
+                  <span className="text-ink-4 tabular-nums">{group.items.length}</span>
                 </div>
                 {group.items.map((t) => (
                   <Row

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runPostAuthHandshake, type PostAuthDeps } from './postAuth';
+import { syncSettingsToDb } from './syncSettings';
 
 function makeDeps(over: Partial<PostAuthDeps> = {}): PostAuthDeps {
   return {
@@ -12,6 +13,30 @@ function makeDeps(over: Partial<PostAuthDeps> = {}): PostAuthDeps {
 }
 
 describe('runPostAuthHandshake', () => {
+  // Settings saves memory prefs to the DB only, so the .env still holds the
+  // first onboarding's defaults. Signing in must not write those back.
+  it('a stale .env memory mode does not overwrite the stored one on sign-in', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({ ok: true }) as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const deps = makeDeps({
+        readSettings: vi.fn(async () => ({
+          ANTON_PLANNING_PROVIDER: 'minds-cloud',
+          ANTON_MEMORY_MODE: 'autopilot',
+          ANTON_EPISODIC_MEMORY: 'true',
+        })),
+        syncSettingsToDb,
+      });
+      expect(await runPostAuthHandshake(deps)).toEqual({ next: 'terminal', clearDeferred: true });
+      const written = fetchMock.mock.calls.map(([url]) => String(url).split('/settings/')[1]);
+      expect(written).toContain('planning_provider');
+      expect(written).not.toContain('memory_mode');
+      expect(written).not.toContain('episodic_memory');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('no deferred model → terminal, payload cleared', async () => {
     const deps = makeDeps({ deferredModelLines: null });
     expect(await runPostAuthHandshake(deps)).toEqual({ next: 'terminal', clearDeferred: true });

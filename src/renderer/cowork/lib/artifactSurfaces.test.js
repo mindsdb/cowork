@@ -64,6 +64,28 @@ describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
   });
 });
 
+// The "Another member" marker (ENG-2979) must come from the shared helper. A
+// surface deciding on its own would key it on canEdit (wrong for an owner
+// without artifact.manage) or miss ownerUnknown. The inline chat card is not
+// listed: it belongs to the conversation that created the artifact.
+const AUTHORSHIP_SURFACES = [
+  ['artifacts panel (grid + list)', 'cowork/views/ArtifactsView.jsx'],
+  ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
+  ['artifact viewer', 'cowork/components/artifact/ArtifactViewer.jsx'],
+];
+
+describe.each(AUTHORSHIP_SURFACES)('%s authorship marker', (_name, rel) => {
+  const src = readFileSync(resolve(ROOT, rel), 'utf-8');
+
+  it('derives the marker from the shared helper', () => {
+    expect(src).toContain('artifactAuthorship(');
+  });
+
+  it('does not test the reviewer role itself', () => {
+    expect(src).not.toMatch(/role\s*===\s*['"]reviewer['"]/);
+  });
+});
+
 // An artifact the agent creates mid-session is absent from an index loaded
 // before it existed, and would be reported as deleted. The live stream is the
 // only place that knows it was just born, and App owns every live stream — a

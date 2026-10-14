@@ -25,3 +25,29 @@ describe('ThinkingStep in-progress row height', () => {
     expect(dots.className).toContain('text-[12.5px]');
   });
 });
+
+describe('ThinkingStep badges (ENG-2981)', () => {
+  it('shows no duration for a ToolProgress row', () => {
+    const { container } = render(
+      <ThinkingStep step={{
+        id: 's1', label: 'Writing the page (step 3 of 4)', badge: 'ToolProgress',
+        status: 'completed', startedAt: 1000, completedAt: 6000,
+      }} />,
+    );
+    expect(container.textContent).not.toContain('5s');
+  });
+
+  it('still shows the duration for other steps', () => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 's1', label: 'Running code', status: 'completed', startedAt: 1000, completedAt: 6000 }} />,
+    );
+    expect(container.textContent).toContain('5s');
+  });
+
+  it('shows no question chip: AskUser steps render as cards, not rows', () => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 'question-q1', label: 'Prompt', badge: 'AskUser', status: 'in_progress' }} />,
+    );
+    expect(container.textContent).not.toContain('question');
+  });
+});

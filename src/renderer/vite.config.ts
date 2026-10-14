@@ -1,10 +1,11 @@
-import { createLogger, defineConfig } from 'vite';
+import { createLogger, defineConfig, loadEnv } from 'vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
+import { platformUiEnabled } from '../shared/ui-capabilities';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -76,7 +77,7 @@ const webSpaFallback = {
   },
 };
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     // React Compiler (React 19) — auto-memoizes components and handlers at
     // build time, cutting cascade re-renders (e.g. one Sidebar state change
@@ -90,6 +91,10 @@ export default defineConfig({
   ],
   customLogger: logger,
   define: {
+    __PLATFORM_UI__: JSON.stringify(platformUiEnabled(
+      process.env.BUILD_TARGET,
+      loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_PLATFORM_UI,
+    )),
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_HASH__: JSON.stringify(gitHash),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
@@ -123,4 +128,4 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared'),
     },
   },
-});
+}));

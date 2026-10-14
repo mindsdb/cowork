@@ -5,9 +5,9 @@
 // from data (`Ico[connector.logo]`, `Ico[item.icon]`), so never rename or
 // remove a key without grepping for its string form too.
 //
-// Stroke width is UNIFIED at 1.5 across the entire app (CEO call, ENG-634) —
-// no per-icon weights. If you need a heavier glyph, that's a design-system
-// conversation, not a local override.
+// Stroke weight and the size scale live in ui/Icon.tsx: the line is fixed
+// per size step and sizes snap to 12/14/16/20/32. No per-icon weights; a
+// heavier glyph is a design-system conversation, not a local override.
 //
 // Kept hand-rolled: brand marks (mindsdb, googleDrive) — Lucide ships no
 // brand icons — and the composer's solid stop/pause glyphs, which are
@@ -84,15 +84,17 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  TriangleAlert,
   Upload,
+  UserRound,
   Users,
   Wifi,
   X,
 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 
-// (Component, default size) → the old call-style drawer fn. Lucide adds
-// aria-hidden itself on childless icons, so no a11y props needed here.
-const ico = (Cmp, d = 16) => (s = d) => <Cmp size={s} strokeWidth={1.5} />;
+// (Component, default size) → the old call-style drawer fn.
+const ico = (Cmp, d = 16) => (s = d) => <Icon of={Cmp} size={s} />;
 
 const Ico = {
   search:   ico(Search),
@@ -167,6 +169,9 @@ const Ico = {
   key:      ico(KeyRound),
   lock:     ico(Lock),
   people:   ico(Users),
+  // A single person — "created by another member" marker (ENG-2979).
+  // Not `people`: that one already means "Restricted" access.
+  user:     ico(UserRound),
   robot:    ico(Bot),
   link:     ico(Link),
   // Isometric cube — a discrete composable unit; Skills library nav.
@@ -183,6 +188,8 @@ const Ico = {
   openFolder:   ico(FolderOpen),
   // Manual reload of the preview.
   reload:       ico(RefreshCw),
+  // Errors the previewed page reported about itself (ENG-3002).
+  warning:      ico(TriangleAlert),
   // "Open in the default browser".
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).

@@ -1,13 +1,15 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubUsage } from '../api';
 
-// The signed-in account's usage: free monthly tokens, paid balance, auto top up.
-//
-// Same shape and the same failure philosophy as useHubWorkspaces: `reachable`
-// false is the resting state, so every surface renders exactly as it did before
-// this existed until the sidecar definitely says otherwise. Polled while signed
-// in so a warning appears (and clears after a top up) without a restart; the
-// sidecar caches the read for 30s, so a poll costs it nothing most of the time.
+/* The signed-in account's usage: the free MindsHub Air allowance, paid
+   balance, auto top up.
+
+   Same shape and the same failure philosophy as useHubWorkspaces: `reachable`
+   false is the resting state, so every surface renders exactly as it did before
+   this existed until the sidecar definitely says otherwise. Polled while signed
+   in so a warning appears (and clears after a top up) without a restart; the
+   sidecar caches the read for 30s, so a poll costs it nothing most of the time. */
 
 export const HUB_USAGE_POLL_MS = 30_000;
 
@@ -25,7 +27,7 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
 
   const refresh = useCallback(async () => {
     const mine = generation.current;
-    if (!sub) {
+    if (!PLATFORM_UI || !sub) {
       setUsage(DARK);
       return;
     }
@@ -44,7 +46,7 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
   useEffect(() => {
     generation.current += 1;
     refresh();
-    if (!sub) return undefined;
+    if (!PLATFORM_UI || !sub) return undefined;
     // Coming back from the console after a top up should clear the bar at
     // once, not on the next tick.
     const onFocus = () => { refresh(); };

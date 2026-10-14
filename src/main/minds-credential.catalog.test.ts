@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '../shared/ipc-channels';
@@ -24,15 +24,21 @@ vi.mock('./token-store', () => ({
   clearTokens: () => { state.accessToken = null; state.version += 1; },
 }));
 vi.mock('./keychain-service', () => ({
-  getMindsApiKey: async () => state.apiKey,
-  setMindsApiKey: async (key: string) => { state.apiKey = key; },
-  deleteMindsApiKey: async () => { state.apiKey = null; },
+  getMindsApiKey: async (_scope: string | null) => state.apiKey,
+  setMindsApiKey: async (_scope: string | null, key: string) => { state.apiKey = key; },
+  deleteMindsApiKey: async (_scope: string | null) => { state.apiKey = null; },
 }));
 vi.mock('./server-process', () => ({
   getServerPort: () => 8765,
   isServerRunning: () => state.running,
   isServerStarting: () => false,
   startServer: vi.fn(), stopServer: vi.fn(),
+  // These sign-ins never change the account data root, so commitMindsSignIn
+  // takes its no-restart path and the catalog sees one credential hand-over.
+  sidecarIsOnCurrentStores: () => true,
+  // An organization switch moves the sidecar onto that organization's stores;
+  // here it always succeeds, so the catalog assertions are about the hand-over.
+  ensureSidecarOnCurrentAccountRoot: vi.fn(async () => true),
 }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer synthetic-owner' }) }));
 vi.mock('./installer', () => ({ checkInstallStatus: async () => ({ antonInstalled: true }) }));
@@ -41,6 +47,10 @@ vi.mock('./cowork-home', async (importOriginal) => ({
   coworkHome: () => state.home,
   coworkEnvPath: () => join(state.home, '.env'),
   coworkStatePath: () => join(state.home, 'state.json'),
+  // Overridden too: the real ones resolve through the module's own coworkHome,
+  // which no export-level mock reaches, and would mkdir the developer's home.
+  accountDataRoot: () => state.home,
+  ensureAccountDataRoot: () => { mkdirSync(state.home, { recursive: true }); return state.home; },
 }));
 
 let auth: typeof import('./minds-auth');
@@ -152,7 +162,10 @@ describe('model catalog notifications at auth lifecycle boundaries', () => {
   it('refreshes the catalog on a real org switch, but not when choosing the current org', async () => {
     await expect(auth.switchMindsOrg('org-b')).resolves.toMatchObject({ ok: true, activeOrgId: 'org-b' });
     expectNotifications(1);
-    expect(writes).toHaveLength(2); // Token exchange + explicit switch commit.
+    // One write, not two: the token exchange the switch performs is fenced,
+    // because at that point the sidecar is still serving the organization being
+    // left. The explicit commit after the stores move is the only hand-over.
+    expect(writes).toHaveLength(1);
     await expect(auth.switchMindsOrg('org-b')).resolves.toMatchObject({ ok: true });
     expectNotifications(1);
   });

@@ -20,10 +20,38 @@ import * as path from 'path';
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
 }));
+/** The account's dotenv. Empty for every test but the account-root one, which
+ *  needs the value to CHANGE to see whether the cached token was re-read. */
+const envState = vi.hoisted(() => ({ authToken: null as string | null }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
+  // The organization store root resolves through this. A mock without it fails
+  // every test in this file, not only the organization ones.
+  accountDataRoot: () => accountState.dataRoot,
   buildKind: () => 'prod',
-  readEnvFile: () => ({}),
+  readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
+}));
+/** Only the root resolution is faked; the rest of account-data stays real so
+ *  the owner token every other test in this file depends on is unchanged. */
+const accountState = vi.hoisted(() => ({
+  root: null as string | null,
+  /** Where the organization store resolution runs. A real directory, so
+   *  orgStoreRoot/orgStoreEnv stay REAL and the spawn env is what ships. */
+  dataRoot: '/tmp/cowork-test-home',
+  /** Which organization's stores this session resolves to, and what the
+   *  overrides for them are. Driven like `root`, because `fs` is automocked
+   *  here so a real claim file cannot be written. The CONTENT of the overrides
+   *  is covered against a real filesystem in account-data.test.ts; what these
+   *  cover is the restart decision and that the overrides reach the spawn. */
+  orgStoreRoot: null as string | null,
+  orgEnv: {} as Record<string, string>,
+}));
+vi.mock('./account-data', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./account-data')>()),
+  resolveAccountRoot: () => accountState.root,
+  readActiveOrg: () => (accountState.orgStoreRoot ? 'org-b' : null),
+  orgStoreRoot: (accountRoot: string) => accountState.orgStoreRoot ?? accountRoot,
+  orgStoreEnv: () => accountState.orgEnv,
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -53,7 +81,10 @@ import {
   resolveServerPort,
   stopServer,
   setServerStartedHook,
+  ensureSidecarOnCurrentAccountRoot,
+  sidecarIsOnCurrentStores,
 } from './server-process';
+import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
@@ -102,6 +133,12 @@ function setPlatform(value: string): void {
 let signals: Array<[number, string]> = [];
 
 beforeEach(() => {
+  envState.authToken = null;
+  accountState.root = null;
+  accountState.dataRoot = '/tmp/cowork-test-home';
+  accountState.orgStoreRoot = null;
+  accountState.orgEnv = {};
+  resetServerAuthTokenCache();
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
@@ -753,5 +790,200 @@ describe('post-start credential hook', () => {
 
     expect(result.ok).toBe(true);
     expect(isServerRunning()).toBe(true);
+  });
+});
+
+describe('the sidecar account root', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawn a child that comes up healthy, the way a real start does. */
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('drops the cached bearer token when it moves the sidecar to another root', async () => {
+    // The token lives in the account's own dotenv, so a root change changes
+    // which token is valid. Nothing else clears this cache: it is main-process
+    // module state, so the renderer reload that follows a root change does not
+    // touch it, and every request would carry a token the new sidecar refuses.
+    accountState.root = null;
+    envState.authToken = 'token-for-the-shared-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await ensureSidecarOnCurrentAccountRoot();
+
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(sidecarIsOnCurrentStores()).toBe(true);
+  });
+
+  it('picks up a token the FIRST start generated, with no restart to hang it on', async () => {
+    // The fresh-install shape, and the one the restart sites cannot reach. The
+    // dotenv does not exist when the app first reads it, so the cache latches
+    // "no token" — and with the server requiring auth by default that is every
+    // authenticated request refused for the life of the process, with only
+    // /health answering.
+    accountState.root = null;
+    envState.authToken = null;
+    expect(getServerAuthToken()).toBeNull();
+
+    // The server generates one during startup and writes it to the dotenv it
+    // has certainly written by the time it answers /health.
+    envState.authToken = 'token-the-server-generated';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(getServerAuthToken()).toBe('token-the-server-generated');
+  });
+
+  it('picks up the new root token when a sign-in STARTS a sidecar rather than moving one', async () => {
+    // Sign-in only resets around a sidecar it restarts. When none is running it
+    // starts one instead, on the new account's root — whose dotenv holds a
+    // different token — and that path reaches no reset site at all.
+    accountState.root = null;
+    envState.authToken = 'token-for-the-shared-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+
+    await stopServer();
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+  });
+
+  it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    // A restart here would kill a live turn for nothing.
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      throw new Error('the sidecar must not be restarted when the root is unchanged');
+    }) as never);
+
+    await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+  });
+});
+
+// An organization switch keeps the same ACCOUNT, so nothing comparing account
+// ids can see it. The store root is what changes, and these cover that the
+// restart decision reads it and that the overrides reach the spawned process.
+describe('the sidecar organization stores', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedEnv = (): Record<string, string> =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+
+  it('hands the organization store overrides to the spawned sidecar', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    accountState.orgEnv = {
+      DATABASE_URI: 'sqlite:////root/orgs/org-b/cowork.db',
+      COWORK_CODING_DIR: '/root/orgs/org-b/coding',
+    };
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
+    expect(spawnedEnv().COWORK_CODING_DIR).toBe('/root/orgs/org-b/coding');
+  });
+
+  it('reads as foreign after an organization switch, so it is restarted', async () => {
+    // The regression that matters: the account never changes across a switch,
+    // so an account-id comparison reads as unchanged and the sidecar is left
+    // serving the previous organization's database.
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(sidecarIsOnCurrentStores()).toBe(true);
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    expect(sidecarIsOnCurrentStores()).toBe(false);
+  });
+
+  it('moves the sidecar when the organization changed', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    accountState.orgEnv = { DATABASE_URI: 'sqlite:////root/orgs/org-b/cowork.db' };
+    spawnHealthy();
+    await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
+
+    expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
+  });
+});
+
+// Adoption matches the owner token exactly, so an orphan from another
+// organization must not match — while OUR OWN stale orphan still must, or the
+// documented rule breaks: it would keep the preferred port while we move to a
+// random one and the renderer keeps reading the previous organization's data.
+describe('adopting a sidecar across organizations', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedOwner = (): string =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> })
+      .env.COWORK_SERVER_OWNER;
+
+  it('stamps a different owner for a partitioned organization', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const owningOrg = spawnedOwner();
+    await stopServer();
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedOwner()).not.toBe(owningOrg);
+  });
+
+  it('stamps the owning organization exactly as before it was partitioned', async () => {
+    // An install upgrading into this change must still adopt its own running
+    // sidecar; a changed token there would strand the preferred port.
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const withNoRecord = spawnedOwner();
+    await stopServer();
+
+    accountState.orgStoreRoot = null;   // the organization that owns the root
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedOwner()).toBe(withNoRecord);
   });
 });

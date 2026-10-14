@@ -22,7 +22,8 @@ files:
   - "!node_modules/macos-alias/**"
 
 mac:
-  icon: icon.png
+  # .icns, not the PNG: see scripts/generate-mac-icons.sh.
+  icon: icon.icns
   artifactName: "mindshub-cowork-update-${version}.${ext}"
   category: public.app-category.developer-tools
   target:

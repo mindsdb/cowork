@@ -4,9 +4,9 @@ import { render } from '@testing-library/react';
 // MarkdownContent pulls in the platform host bridge, the skills store, and
 // the code/table renderers. None are relevant to math rendering, so stub
 // them to keep the test focused on the remark-math + rehype-katex pipeline.
-vi.mock('../../../platform/host', () => ({
-  host: { openExternal: vi.fn() },
-}));
+// The host bridge is stubbed once, below, together with the `isWeb` gate.
+// Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
+// and the loser taking `isWeb` with it fails every web case in this file.
 vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
@@ -23,10 +23,14 @@ vi.mock('./MarkdownTable', () => ({
 // Flippable surface: the plugin passes `host.isWeb` into isArtifactLocalPath,
 // and the two ENG-2421 end-to-end cases below need to prove BOTH sides of that
 // gate — with a hard-coded value, dropping the flag pass would stay green.
+// The `openExternal` stub lives here too, so this stays the only host mock.
 const hostState = vi.hoisted(() => ({ isWeb: false }));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const mod = await importOriginal();
-  return { ...mod, host: { ...mod.host, get isWeb() { return hostState.isWeb; } } };
+  return {
+    ...mod,
+    host: { ...mod.host, openExternal: vi.fn(), get isWeb() { return hostState.isWeb; } },
+  };
 });
 
 import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
@@ -560,5 +564,66 @@ describe('MarkdownContent streaming performance', () => {
     expect(container.querySelector('.stream-word')).toBeNull();
     expect(container.querySelector('.is-streaming')).toBeNull();
     expect(container).toHaveTextContent('The agent is still working on this change.');
+  });
+});
+
+describe('MarkdownContent softBreaks', () => {
+  it.each(['line one\nline two', 'line one\r\nline two'])(
+    'keeps the single line ending in %j as a line break when enabled',
+    (text) => {
+      const { container } = render(<MarkdownContent text={text} softBreaks />);
+      // mdast-util-to-hast emits a "\n" text node after every <br>.
+      expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
+    },
+  );
+
+  it('leaves a single newline as a soft break by default', () => {
+    const { container } = render(<MarkdownContent text={'line one\nline two'} />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('p').textContent).toBe('line one\nline two');
+  });
+
+  it('puts a bold heading and its body on separate lines', () => {
+    const { container } = render(<MarkdownContent text={'**Goal**\nbody'} softBreaks />);
+    const p = container.querySelector('p');
+    expect([...p.childNodes].map((n) => n.nodeName)).toEqual(['STRONG', 'BR', '#text', '#text']);
+    expect([...p.childNodes].map((n) => n.textContent)).toEqual(['Goal', '', '\n', 'body']);
+  });
+
+  it('does not touch newlines inside a fenced code block', () => {
+    const { container } = render(
+      <MarkdownContent text={'```\nline a\nline b\n```'} softBreaks />,
+    );
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.textContent).toContain('line a\nline b');
+  });
+
+  it('breaks lines inside nested blocks such as a list item', () => {
+    const { container } = render(<MarkdownContent text={'- first line\n  second line'} softBreaks />);
+    const li = container.querySelector('li');
+    expect(li.querySelector('br')).not.toBeNull();
+    expect(li.textContent).toBe('first line\nsecond line');
+  });
+
+  it('adds no break inside inline code', () => {
+    const { container } = render(<MarkdownContent text={'run `a\nb` now'} softBreaks />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('code').textContent).toBe('a b');
+  });
+});
+
+describe('MarkdownContent neutralizeLoopback', () => {
+  const PANEL_HINT = 'Live Artifacts panel';
+  const LOOPBACK = '[Open the preview](http://localhost:3000/)';
+
+  it('neutralises a loopback link on web without the assistant-only rewrites', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent text={LOOPBACK} neutralizeLoopback />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+    } finally {
+      hostState.isWeb = false;
+    }
   });
 });

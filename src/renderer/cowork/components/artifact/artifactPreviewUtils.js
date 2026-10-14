@@ -73,6 +73,26 @@ export function canFetchDraftWithCredentials(url, apiOrigin) {
   }
 }
 
+// Whether an iframe *navigation* to a same-origin draft URL is already
+// authorized, so the fetch+srcdoc path is not needed to carry a credential.
+//
+// True only on Desktop against the local loopback server: there the main
+// process injects the server's bearer into every loopback request at the
+// network layer — "images, iframes and their relative sub-resources" included
+// (`src/main/app.ts`, `onBeforeSendHeaders`) — so a plain `src=` navigation
+// arrives authenticated. On an org deployment nothing attaches the Keycloak
+// bearer to a navigation and the forward-auth ingress answers 401, which is
+// the case the srcdoc path exists for.
+//
+// This matters beyond authentication: a `srcdoc` document inherits the
+// shell's CSP (`index.html` / `index-web.html`), which blocks an artifact's
+// CDN scripts, web fonts and remote images, while a navigated document
+// carries its own policy and renders what a browser would (ENG-2818). So
+// navigation is preferred wherever it is authorized.
+export function draftNavigationIsAuthorized(isElectron, isLocalApiOrigin) {
+  return !!isElectron && !!isLocalApiOrigin;
+}
+
 function appendPreviewParam(url, key, value) {
   if (!url || value == null || value === '') return url;
   // blob: and data: URLs are already content-addressed. Adding a query suffix
@@ -142,21 +162,13 @@ function draftDirectoryUrl(fetchUrl) {
  *
  * Known limitation: `location.hash` and CSS `:target` do not update. Scroll
  * position is what matters for a preview; accepted.
+ *
+ * Written as one line on purpose: this markup is inserted into <head>, and
+ * every newline here shifts the reported line number of every inline script
+ * below it. The preview shim corrects for its own injection server-side and
+ * cannot see this one, so this one has to add nothing.
  */
-export const DRAFT_FRAGMENT_GUARD_SCRIPT = `(function () {
-  document.addEventListener('click', function (event) {
-    var anchor = event.target && event.target.closest ? event.target.closest('a') : null;
-    if (!anchor) return;
-    var href = anchor.getAttribute('href');
-    if (!href || href.charAt(0) !== '#') return;
-    event.preventDefault();
-    if (href.length === 1) { window.scrollTo(0, 0); return; }
-    var name = href.slice(1);
-    try { name = decodeURIComponent(name); } catch (e) { /* malformed percent-encoding, use raw */ }
-    var target = document.getElementById(name) || document.getElementsByName(name)[0];
-    if (target && target.scrollIntoView) target.scrollIntoView();
-  });
-})();`;
+export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListener('click',function(event){var anchor=event.target&&event.target.closest?event.target.closest('a'):null;if(!anchor)return;var href=anchor.getAttribute('href');if(!href||href.charAt(0)!=='#')return;event.preventDefault();if(href.length===1){window.scrollTo(0,0);return;}var name=href.slice(1);try{name=decodeURIComponent(name);}catch(e){}var target=document.getElementById(name)||document.getElementsByName(name)[0];if(target&&target.scrollIntoView)target.scrollIntoView();});})();";
 
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would
@@ -173,6 +185,11 @@ export function injectDraftBaseHref(html, fetchUrl) {
   // string with no such sequence today; this guards against a future edit
   // introducing one silently breaking the injected markup.
   const guardScript = DRAFT_FRAGMENT_GUARD_SCRIPT.replace(/<\/script>/gi, '<\\/script>');
+  // On the org-mode draft path this lands BEFORE the script cowork-server
+  // already injected as the document's first script (see its own docstring
+  // and tests). Harmless only because this guard registers a listener,
+  // touches no storage API and cannot throw — anything added here runs
+  // ahead of the server's script and must keep that same property.
   const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
   return HEAD_OPEN_RE.test(html)
     ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)

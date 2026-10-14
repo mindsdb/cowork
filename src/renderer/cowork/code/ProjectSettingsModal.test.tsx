@@ -5,7 +5,8 @@ import { useCodingCatalog } from './useCodingCatalog';
 
 import type { CodeProject, PlaybookStatus, SkillLibraryItem } from './api';
 
-const { engines, models, pickCodeFolder, playbook, skillLibrary } = vi.hoisted(() => ({
+const { engines, models, pickCodeFolder, playbook, skillLibrary, githubRepositories } = vi.hoisted(() => ({
+  githubRepositories: vi.fn(async () => ({ items: [{ full_name: 'acme/private', clone_url: 'https://github.com/acme/private.git', private: true, default_branch: 'develop', archived: false, connection_name: 'work' }], next_page: null })),
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
@@ -36,6 +37,7 @@ vi.mock('../../platform/host', () => ({
 
 vi.mock('./api', () => ({
   codingApi: {
+    githubRepositories,
     engines,
     models,
     playbook,
@@ -74,6 +76,86 @@ describe('ProjectSettingsModal', () => {
     resetSkillLibraryCache();
   });
 
+  it('saves a picked repository and its required connection together, with the default branch', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={null} busy={false} connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
+    await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('private');
+    // Creating shows no Connectors section, yet the picked account is still saved with the project.
+    expect(screen.queryByRole('checkbox', { name: /Work/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
+      connections: [{ provider: 'github', name: 'work', label: 'Work' }],
+    })));
+  });
+
+  it.each([undefined, false, true])('preserves saved clone authentication (%s) without inferring it from the connection', async (useConnector) => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    const savedProject = {
+      ...project,
+      resources: project.resources.map((resource) => ({ ...resource, connector_name: 'work', use_connector_for_clone: useConnector })),
+      connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
+    };
+    render(<ProjectSettingsModal open project={savedProject} busy={false}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].resources[0].use_connector_for_clone).toBe(useConnector);
+    expect(onSave.mock.calls[0][0].resources[0].connector_name).toBe('work');
+  });
+
+  it('does not bind a pasted public GitHub URL to a connected account', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={null} busy={false}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
+    await user.click(screen.getByRole('button', { name: 'Paste repository URL' }));
+    await user.type(screen.getByRole('textbox', { name: 'Git repository URL' }), 'https://github.com/acme/public.git{Enter}');
+    await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].resources[0].use_connector_for_clone).toBeUndefined();
+    expect(onSave.mock.calls[0][0].resources[0].connector_name).toBeUndefined();
+  });
+
+  it('keeps non-GitHub URL entry working and prevents URL-variant duplicates', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={project} busy={false} connections={[]} onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
+    await user.click(screen.getByRole('button', { name: 'Paste repository URL' }));
+    const input = screen.getByRole('textbox', { name: 'Git repository URL' });
+    await user.type(input, 'https://github.com/mindsdb/cowork/{Enter}');
+    expect(screen.getByText('That repository is already in this project.')).toBeInTheDocument();
+    await user.clear(input);
+    await user.type(input, 'https://gitlab.com/acme/api.git{Enter}');
+    await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'MindsHub', resources: [project.resources[0], expect.objectContaining({ source_url: 'https://gitlab.com/acme/api.git' })], connections: [],
+    })));
+  });
+
+  it('can restore a missing project connection used by an existing repository', async () => {
+    const user = userEvent.setup();
+    render(<ProjectSettingsModal open busy={false}
+      project={{ ...project, resources: project.resources.map((resource) => ({ ...resource, connector_name: 'work' })) }}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={vi.fn()} />);
+    const checkbox = screen.getByRole('checkbox', { name: /Work/ });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toBeEnabled();
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it.each(['local', 'shared'])('refreshes an open project’s %s catalogue without resetting its draft', async (source) => {
     const user = userEvent.setup();
     const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
@@ -83,12 +165,11 @@ describe('ProjectSettingsModal', () => {
         catalog={source === 'shared' ? catalog : undefined} onClose={vi.fn()} onSave={onSave} />;
     }
     render(<Editor />);
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding model' }));
     expect(screen.getByRole('option', { name: /fable/ })).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    await user.clear(screen.getByRole('textbox', { name: 'Name' }));
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Keep my project draft');
+    await user.clear(screen.getByRole('textbox', { name: 'Project name' }));
+    await user.type(screen.getByRole('textbox', { name: 'Project name' }), 'Keep my project draft');
 
     models.mockResolvedValueOnce({ items: ['gpt-5.6-sol', 'new-account-model'] });
     act(() => credentialListeners.forEach((listener) => listener()));
@@ -97,29 +178,55 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('option', { name: /new-account-model/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /fable/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: /new-account-model/ }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Keep my project draft', default_model: 'new-account-model', resources: project.resources,
     })));
   });
 
-  it('keeps account management out of an unsaved project draft while making skills selectable', async () => {
+  it('asks only for a name and code while creating a project', () => {
+    render(<ProjectSettingsModal open project={null} connections={[]} busy={false} onClose={vi.fn()} onSave={vi.fn()} onOpenConnectors={vi.fn()} />);
+
+    expect(screen.getByRole('dialog', { name: 'New code project' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Choose a folder/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Connectors' })).toBeNull();
+    expect(screen.queryByText(/^(Skills|Task defaults|Environment)$/)).toBeNull();
+  });
+
+  it('offers Connectors in Project settings and keeps skills in their own group', async () => {
+    const user = userEvent.setup();
+    const onOpenConnectors = vi.fn();
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
         onSave={vi.fn()}
-        onOpenConnectors={vi.fn()}
+        onOpenConnectors={onOpenConnectors}
       />,
     );
 
-    expect(screen.getByText('Save this project, then add GitHub or Linear.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open Connectors' }));
+    expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(await screen.findByText('1 available')).toBeInTheDocument();
     expect(screen.getByText('Choose skills')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open Connectors' })).not.toBeInTheDocument();
+  });
+
+  it('enables Create project once a folder names the project', async () => {
+    const user = userEvent.setup();
+    render(<ProjectSettingsModal open project={null} connections={[]} busy={false} onClose={vi.fn()} onSave={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Create project' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /^Choose a folder/ }));
+    // The first folder names the project, so nothing is missing any more.
+    expect(await screen.findByText('new-project')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('new-project');
+    expect(screen.getByRole('button', { name: 'Create project' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Add repository' })).toBeNull();
   });
 
   it('turns an empty project skill picker into a path to the Skills library', async () => {
@@ -143,7 +250,7 @@ describe('ProjectSettingsModal', () => {
     expect(onOpenSkills).toHaveBeenCalledOnce();
   });
 
-  it('shows MindsHub-maintained skills as included while creating a project', async () => {
+  it('shows MindsHub-maintained skills as included in Project settings', async () => {
     const user = userEvent.setup();
     skillLibrary.mockResolvedValueOnce({
       sources: [],
@@ -158,7 +265,7 @@ describe('ProjectSettingsModal', () => {
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
@@ -191,18 +298,17 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    expect(screen.getByText('2 skills added')).toBeInTheDocument();
-    await user.click(screen.getByText('2 skills added'));
+    await user.click(screen.getByText('2 skills added', { selector: 'strong' }));
     expect(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ })).toBeChecked();
   });
 
-  it('assigns team skills while creating a project for the first time', async () => {
+  it('assigns team skills to an existing project', async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn(async (values) => ({ ...project, ...values, id: 'created-project' } as CodeProject));
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
@@ -210,10 +316,9 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Add a local folder' }));
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md'] }],
@@ -237,9 +342,9 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('1 skill added'));
+    await user.click(screen.getByText('1 skill added', { selector: 'strong' }));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ skill_sources: [] })));
   });
@@ -261,34 +366,11 @@ describe('ProjectSettingsModal', () => {
 
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await screen.findByText('Could not assign this skill.')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('keeps a failed project deletion actionable and visible', async () => {
-    const user = userEvent.setup();
-    const onDelete = vi.fn(async () => { throw new Error('Delete the project tasks first.'); });
-    render(
-      <ProjectSettingsModal
-        open
-        project={project}
-        connections={[]}
-        busy={false}
-        onClose={vi.fn()}
-        onSave={vi.fn()}
-        onDelete={onDelete}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Delete project' }));
-    await user.click(screen.getByRole('button', { name: 'Delete project' }));
-
-    expect(await screen.findByText('Delete the project tasks first.')).toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: 'Delete this Code Project?' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Delete project' })).toBeEnabled();
   });
 
   it('uses the first-class Connectors section and routes account management to Connectors', async () => {
@@ -312,7 +394,7 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByText('Connectors')).toBeInTheDocument();
     expect(screen.getByText('MindsDB GitHub')).toBeInTheDocument();
     expect(screen.queryByText('Slack')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Manage' }));
+    await user.click(screen.getByRole('button', { name: 'Manage connectors' }));
     expect(onOpenConnectors).toHaveBeenCalledOnce();
   });
 
@@ -335,12 +417,11 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(await screen.findByRole('combobox', { name: 'Default coding model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Fable 5' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
     await user.click(screen.getByRole('option', { name: 'Workspace auto' }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       default_engine_id: 'codex',
@@ -359,23 +440,43 @@ describe('ProjectSettingsModal', () => {
       onSave: vi.fn(),
     };
     const { rerender } = render(<ProjectSettingsModal {...props} open suspended={false} />);
-    const name = screen.getByRole('textbox', { name: 'Name' });
+    const name = screen.getByRole('textbox', { name: 'Project name' });
     await user.clear(name);
     await user.type(name, 'Unsaved project name');
 
     rerender(<ProjectSettingsModal {...props} open={false} suspended />);
     rerender(<ProjectSettingsModal {...props} open suspended={false} />);
 
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved project name');
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Unsaved project name');
+  });
+
+  it('keeps a cleared connection cleared when the project refreshes', async () => {
+    const user = userEvent.setup();
+    const saved = { ...project, connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }] };
+    const props = {
+      open: true,
+      connections: [{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' as const }],
+      busy: false,
+      onClose: vi.fn(),
+      onSave: vi.fn(),
+      onOpenConnectors: vi.fn(),
+    };
+    const { rerender } = render(<ProjectSettingsModal {...props} project={saved} />);
+    const checkbox = screen.getByRole('checkbox', { name: /Work/ });
+    expect(checkbox).toBeChecked();
+    await user.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+
+    rerender(<ProjectSettingsModal {...props} project={{ ...saved, connections: [...saved.connections] }} />);
+    expect(screen.getByRole('checkbox', { name: /Work/ })).not.toBeChecked();
   });
 
   it('resolves the legacy default id to the live GPT 5.6 Sol catalog model', async () => {
-    const user = userEvent.setup();
     models.mockResolvedValueOnce({ items: ['gpt', 'gpt-codex'] });
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         defaultModel="gpt-5.6-sol"
@@ -389,8 +490,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex'));
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
 
@@ -425,9 +525,8 @@ describe('ProjectSettingsModal', () => {
 
     rerender(<ProjectSettingsModal {...props} open />);
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_model: 'gpt' })));
   });
@@ -446,19 +545,13 @@ describe('ProjectSettingsModal', () => {
     const view = render(<ProjectSettingsModal {...props} open project={withPlaybook('project-a')} />);
 
     view.rerender(<ProjectSettingsModal {...props} open project={withPlaybook('project-b')} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Details' }));
     expect(await screen.findByText('bbbbbbbb')).toBeInTheDocument();
     await act(async () => { await late; });
 
     expect(screen.getByText('bbbbbbbb')).toBeInTheDocument();
     expect(screen.queryByText('Update available')).toBeNull();
   });
-
-  // The section opens from its heading here and from an Edit button once the
-  // project-defaults section lands (#817); accept either so the two merge cleanly.
-  async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
-    const edit = screen.queryByRole('button', { name: 'Edit' });
-    await user.click(edit ?? screen.getByText('Task defaults and environment'));
-  }
 
   it('saves a default reasoning effort for the project', async () => {
     const onSave = vi.fn(async () => project);
@@ -479,7 +572,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openTaskDefaults(user);
     const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
     expect(effort).toHaveTextContent('Model default');
     await user.click(effort);
@@ -487,13 +579,12 @@ describe('ProjectSettingsModal', () => {
       'Model defaultMedium', 'None', 'Low', 'Medium', 'High', 'Xhigh', 'Max',
     ]);
     await user.click(screen.getByRole('option', { name: /^Low/ }));
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_reasoning_effort: 'low' })));
   });
 
   it('offers no reasoning default for a model that advertises no levels', async () => {
-    const user = userEvent.setup();
     render(
       <ProjectSettingsModal
         open
@@ -507,37 +598,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openTaskDefaults(user);
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
-  });
-
-  it('summarises the task defaults while the section is collapsed and reveals the fields on Edit', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectSettingsModal
-        open
-        project={{
-          ...project,
-          environment: { variables: { API_URL: 'http://127.0.0.1', NODE_ENV: 'development' }, port_names: ['PORT', 'API_PORT'] },
-        }}
-        connections={[]}
-        busy={false}
-        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
-        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
-        onClose={vi.fn()}
-        onSave={vi.fn()}
-      />,
-    );
-
-    // The heading tells the reader the current defaults without opening anything.
-    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first · 2 variables · PORT, API_PORT')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Default coding model' })).toBeNull();
-
-    const toggle = screen.getByRole('button', { name: 'Edit' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await user.click(toggle);
-    expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

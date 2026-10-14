@@ -28,7 +28,6 @@ vi.mock('../../../platform/host', () => ({
   getAccessToken: vi.fn(async () => null),
 }));
 vi.mock('../../lib/analytics', () => ({
-  trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));

@@ -91,6 +91,25 @@ describe('coding-workspace', () => {
       expect(gitignore).toContain('.claude-mindshub/');
     });
 
+    it('enables long paths on every git call on Windows only', async () => {
+      const { ensureTaskWorktree } = await import('./coding-workspace');
+      const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        await ensureTaskWorktree('/proj', 'task-win');
+      } finally {
+        Object.defineProperty(process, 'platform', original);
+      }
+
+      const calls = execFileMock.mock.calls.map((c: any[]) => c[1]);
+      expect(calls.length).toBeGreaterThan(0);
+      for (const args of calls) expect(args.slice(0, 2)).toEqual(['-c', 'core.longpaths=true']);
+      expect(calls).toContainEqual([
+        '-c', 'core.longpaths=true',
+        'worktree', 'add', '/proj/.claude-mindshub/tasks/task-win', '-b', 'claude/task-win', 'main',
+      ]);
+    });
+
     it('skips git init when the repo already exists, but still creates the worktree', async () => {
       const { ensureTaskWorktree } = await import('./coding-workspace');
       // rev-parse succeeds (default `succeed()`) — already a repo.

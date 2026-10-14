@@ -61,3 +61,44 @@ export async function copyText(value) {
     return false;
   }
 }
+
+// A selection that runs to the end of a block — a triple-click, or a drag
+// past the last word — ends at the start of whatever block follows, and
+// Chromium serializes every block boundary it crossed as a trailing newline.
+// Copying a message should copy the message, so this `copy` handler drops
+// that trailing whitespace. A selection without any leaves the default copy.
+export function trimCopiedSelection(event) {
+  const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+  if (!selection || selection.isCollapsed || !event?.clipboardData) return;
+  const text = selection.toString();
+  const trimmed = text.replace(/\s+$/, '');
+  if (!trimmed || trimmed === text) return;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', trimmed);
+  // Keep the rich copy so a paste into a doc still gets lists and emphasis.
+  const holder = document.createElement('div');
+  for (let i = 0; i < selection.rangeCount; i += 1) {
+    holder.appendChild(cloneRangeInContext(selection.getRangeAt(i), event.currentTarget));
+  }
+  event.clipboardData.setData('text/html', holder.innerHTML);
+}
+
+// `cloneContents()` leaves out the range's common ancestor, so a selection
+// inside one <strong> loses the bold, and one spanning <li>s loses its <ul>.
+// Re-wrap the fragment in shallow clones of each ancestor up to `boundary`,
+// skipping the layout divs and spans and dropping the app's own styling.
+function cloneRangeInContext(range, boundary) {
+  let content = range.cloneContents();
+  let node = range.commonAncestorContainer;
+  if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
+  while (node && node !== boundary && boundary?.contains(node)) {
+    if (node.tagName !== 'DIV' && node.tagName !== 'SPAN') {
+      const wrapper = node.cloneNode(false);
+      ['class', 'style', 'id'].forEach((name) => wrapper.removeAttribute(name));
+      wrapper.appendChild(content);
+      content = wrapper;
+    }
+    node = node.parentNode;
+  }
+  return content;
+}

@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 /**
  * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
  * placeholder), display name, and org, opening a dropdown with the account
@@ -34,7 +35,9 @@ import {
   Settings,
   UsersRound,
 } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import Menu from './ui/Menu';
+import Spinner from './ui/Spinner';
 import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
@@ -48,12 +51,13 @@ import {
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
+  consoleUrlFor,
 } from '../../lib/mindsUrls';
 
-const icon = (I) => <I size={14} strokeWidth={1.5} aria-hidden="true" />;
+const icon = (I) => <Icon of={I} size={14} />;
 
 // Right-aligned ↗ on items that leave the app for the OS browser.
-const EXTERNAL_HINT = <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />;
+const EXTERNAL_HINT = <Icon of={ArrowUpRight} size={12} />;
 const OPENS_IN_BROWSER = 'Opens in your browser';
 
 // `beforeOpen` runs just before the jump out, for the one destination that is
@@ -116,13 +120,42 @@ export function UserMenu({ user, onOpenSettings }) {
   // `Personal` whether or not the listing has landed. Reading `displayName`
   // directly here is what made the row paint `Personal` and then swap to auth's
   // long `<email>'s organization` (ENG-2109).
-  const activeOrgName = organizationLabel(activeOrg) || user.org || null;
+  const activeOrgName = PLATFORM_UI ? organizationLabel(activeOrg) || user.org || null : null;
+  /* Console links say which organization and account they were opened for
+     (ENG-3274), so the browser lands on this organization's page rather than
+     whatever its own session has active. The listing's id is the one the
+     switch uses; the token claim is the fallback before it lands. */
+  const consoleLink = (url) => consoleUrlFor(url, {
+    organizationId: activeOrg?.id ?? user.orgId ?? null,
+    subject: user.sub ?? null,
+  });
   // The console heads its menu with the email; fall back to whatever else names
   // the account so the header is never empty.
   const identity = user.email || user.username || user.name || null;
 
+  /**
+   * Which organization the person is waiting on, so the row they clicked can
+   * say so. Separate from the hook's `switching`, which knows a switch is in
+   * flight but not which row asked for it.
+   *
+   * Progress, never a result: the check stays where it is until the host says
+   * the switch happened. Moving it here would paint the answer on a row that
+   * can still be refused, which is how the app ends up disagreeing with the
+   * organization its requests are scoped to.
+   */
+  const [pendingOrgId, setPendingOrgId] = useState(null);
+
   const pick = async (organizationId) => {
-    const result = await switchOrg(organizationId);
+    setPendingOrgId(organizationId);
+    let result;
+    try {
+      result = await switchOrg(organizationId);
+    } finally {
+      // A committed desktop switch replaces the document, so this state is
+      // about to stop existing either way; clearing it matters for the
+      // refusals, which leave the menu open and the row live again.
+      setPendingOrgId(null);
+    }
     /**
      * A possibly committed web switch reloads immediately. Do not paint an
      * error into the old tenant while navigation is tearing that UI down.
@@ -135,10 +168,18 @@ export function UserMenu({ user, onOpenSettings }) {
   };
 
   const sectionHeading = (text) => (
-    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+    <div className="section-label">{text}</div>
   );
 
-  const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+  const activeRowHint = <Icon of={Check} size={14} className="text-accent" />;
+  // Same slot as the check, so the row acknowledges the click in the place the
+  // answer will appear. Labelled for screen readers, which the check is not:
+  // the check reads from the row it sits on, where this reports a state.
+  const pendingRowHint = (
+    <span role="status" aria-label="Changing organization">
+      <Spinner className="text-ink-3" />
+    </span>
+  );
 
   /**
    * One row per organization, the active one checked. Shown for a single
@@ -149,14 +190,24 @@ export function UserMenu({ user, onOpenSettings }) {
    */
   const listedOrgRows = orgs.map((org) => {
     const isActive = org.id === activeOrg?.id;
+    const isPending = org.id === pendingOrgId;
     const label = organizationLabel(org);
     return {
       id: `organization-${org.id}`,
       label,
       // Long names truncate in the row, so hover carries the whole one.
       title: label,
-      hint: isActive ? activeRowHint : undefined,
+      hint: isPending ? pendingRowHint : (isActive ? activeRowHint : undefined),
       disabled: isActive || switching,
+      /**
+       * Held open for the whole switch. A desktop switch takes a second or
+       * more — a Keycloak round trip, a token exchange and a sidecar restart
+       * onto the new stores — and dismissing the menu on the click left that
+       * second looking like nothing had happened at all, so people clicked
+       * again. The spinner is only visible if the surface it sits on survives
+       * long enough to show it.
+       */
+      keepOpen: true,
       onClick: isActive ? undefined : () => pick(org.id),
     };
   });
@@ -176,7 +227,7 @@ export function UserMenu({ user, onOpenSettings }) {
   }] : [];
 
   const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
-  const orgRows = organizationRows.length ? [
+  const orgRows = PLATFORM_UI && organizationRows.length ? [
     { id: 'organization-group', heading: sectionHeading('Organization') },
     ...organizationRows,
     { divider: true },
@@ -207,13 +258,13 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL, () => trackBillingOpened('nav')),
-    externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
-    externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    PLATFORM_UI && externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
+    PLATFORM_UI && externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a
     // browser anyway. Shown whenever there is an organization to manage.
-    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', MINDS_GENERAL_URL)] : []),
+    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', consoleLink(MINDS_GENERAL_URL))] : []),
     // Logout on both shells: Electron clears the refresh token + stored keys via
     // the bridge; web ends the Keycloak browser session (host.logout()). Both
     // funnel through useLogout() and the ConfirmModal below.
@@ -248,7 +299,7 @@ export function UserMenu({ user, onOpenSettings }) {
         )}
       </span>
       <span className="inline-flex shrink-0 text-ink-3">
-        <EllipsisVertical size={15} strokeWidth={1.5} aria-hidden="true" />
+        <Icon of={EllipsisVertical} size={16} />
       </span>
     </button>
   );

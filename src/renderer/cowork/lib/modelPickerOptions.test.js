@@ -34,6 +34,32 @@ describe('buildModelPickerOptions', () => {
     ]);
   });
 
+  it('tags a row an admin restricted, with no credits route, while wallet rows keep Needs credits', () => {
+    const models = [
+      { id: 'mindshub_air', name: 'MindsHub Air' },
+      { id: 'opus', name: 'Claude Opus 5' },
+      { id: 'fable', name: 'Claude Fable 5' },
+      { id: 'sonnet', name: 'Claude Sonnet 5' },
+    ];
+    const options = buildModelPickerOptions(models, {
+      modelEnabled: { mindshub_air: true, opus: false, fable: false, sonnet: false },
+      // sonnet has no reason: an older server, or one the map missed.
+      modelDisabledReasons: { opus: 'model_restricted', fable: 'wallet_empty' },
+    });
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.opus).toEqual({
+      value: 'opus',
+      label: 'Claude Opus 5',
+      disabled: true,
+      restricted: true,
+      tag: 'Restricted',
+      title: 'An admin in your organization restricted this model.',
+    });
+    expect(byValue.fable).toEqual({ value: 'fable', label: 'Claude Fable 5', disabled: true, locked: true, tag: 'Needs credits' });
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'Claude Sonnet 5', disabled: true, locked: true, tag: 'Needs credits' });
+    expect(byValue.mindshub_air).toEqual({ value: 'mindshub_air', label: 'MindsHub Air' });
+  });
+
   it('keeps an unannotated catalog usable', () => {
     expect(buildModelPickerOptions([{ id: 'custom', name: 'Custom model' }])).toEqual([
       { value: 'custom', label: 'Custom model' },

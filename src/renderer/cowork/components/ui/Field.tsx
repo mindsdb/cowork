@@ -5,8 +5,7 @@ import { cn } from '../../lib/cn';
 // Form field wrapper — standardizes the label + control + help/error layout
 // and the `htmlFor` / `aria-describedby` / `aria-invalid` wiring that ~10+
 // forms currently hand-roll with inline `flexDirection:'column'` labels
-// (ENG-1147). The label reuses the Eyebrow (uppercase mono) treatment the app
-// already uses for field labels.
+// (ENG-1147). Labels are sentence case, like the app's other form labels.
 //
 //   <Field label="Project name" help="Lowercase, no spaces.">
 //     <Input value={name} onChange={setName} />
@@ -21,12 +20,17 @@ import { cn } from '../../lib/cn';
 // set) — so callers don't repeat that wiring. Pass an explicit `htmlFor`/`id`
 // to opt out of the generated id.
 
+const headingClass = 'mb-2 text-base font-semibold text-ink';
+
 export interface FieldProps {
   label?: ReactNode;
   help?: ReactNode;
   error?: ReactNode;
   required?: boolean;
   optional?: boolean;
+  // A field that sits beside FieldSets takes their heading size so the
+  // form's top level reads evenly.
+  heading?: boolean;
   // Override the generated control id (must match the control's own `id`).
   htmlFor?: string;
   children: ReactNode;
@@ -34,7 +38,7 @@ export interface FieldProps {
   className?: string;
 }
 
-export function Field({ label, help, error, required, optional, htmlFor, children, className }: FieldProps) {
+export function Field({ label, help, error, required, optional, heading, htmlFor, children, className }: FieldProps) {
   const generatedId = useId();
 
   // Wire id + aria onto a single control child. Anything that isn't a single
@@ -76,18 +80,15 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
       })
     : children;
 
-  // No flex `gap`: `.eyebrow` carries its own `margin-bottom` for label→control
-  // spacing (its designed behaviour), so a uniform gap would double-count it.
-  // The message gets its own top margin instead.
+  // No flex `gap`: the label carries its own bottom margin, and the message
+  // gets its own top margin.
   return (
     <div className={cn('flex flex-col', className)}>
       {label != null && (
-        // The shared `.eyebrow` treatment (uppercase mono) the app already uses
-        // for field labels — same class Eyebrow paints, on a real <label>.
-        <label htmlFor={controlId} className="eyebrow">
+        <label htmlFor={controlId} className={heading ? headingClass : 'mb-1.5 text-sm font-medium text-ink-2'}>
           {label}
           {required && <span className="text-danger"> *</span>}
-          {optional && <span className="normal-case tracking-normal font-normal text-ink-4"> (optional)</span>}
+          {optional && <span className="font-normal text-ink-4"> (optional)</span>}
         </label>
       )}
       {control}
@@ -101,6 +102,18 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
         </p>
       ) : null}
     </div>
+  );
+}
+
+// Groups related fields under a heading one step above Field labels, after
+// shadcn's FieldSet/FieldLegend; the fieldset names the group for assistive
+// tech. min-w-0 undoes the fieldset's min-content width so rows can truncate.
+export function FieldSet({ legend, children }: { legend: ReactNode; children: ReactNode }) {
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-col border-0 p-0">
+      <legend className={cn('p-0', headingClass)}>{legend}</legend>
+      {children}
+    </fieldset>
   );
 }
 

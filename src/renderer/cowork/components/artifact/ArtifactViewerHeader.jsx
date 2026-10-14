@@ -1,66 +1,22 @@
-import { forwardRef } from 'react';
 import Ico from '../Icons';
 import { Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
-
-// Ghost icon button shared by every top-bar affordance (folder, reload,
-// open-in-browser, kebab, close). forwardRef so it can be the render
-// target of a Base UI Tooltip/Menu trigger (those inject a ref).
-//
-// `active` gives a persistent toggled-on state (accent-tinted fill + accent
-// glyph) that survives mouse-leave — used by the comments switch so it reads
-// as on/off, not just a hover. Hover-idle colors are resolved from `active`
-// so the two states never fight over the inline background.
-const IconButton = forwardRef(function IconButton(
-  { size = 30, disabled = false, active = false, style, children, ...rest }, ref,
-) {
-  const idleBg = active ? 'var(--accent-bg)' : 'transparent';
-  const idleFg = active ? 'var(--accent)' : 'var(--ink-3)';
-  return (
-    <button
-      ref={ref}
-      type="button"
-      disabled={disabled}
-      aria-pressed={active}
-      {...rest}
-      style={{
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        background: idleBg, border: 0, color: idleFg,
-        width: size, height: size, borderRadius: 8, flexShrink: 0,
-        display: 'inline-grid', placeItems: 'center',
-        transition: 'background .12s ease, color .12s ease',
-        ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = active
-            ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
-            : 'var(--surface-2)';
-          e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--ink)';
-        }
-        rest.onMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = idleBg;
-        e.currentTarget.style.color = idleFg;
-        rest.onMouseLeave?.(e);
-      }}
-    >
-      {children}
-    </button>
-  );
-});
+import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
+import { IconButton } from './ArtifactViewerIconButton';
+import { PreviewErrorsButton } from './PreviewErrorsButton';
 
 export function ArtifactViewerHeader({
   title,
+  authorship = null,
   workspace,
   review,
   publication,
   actions,
+  // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
+  diagnostics,
   onClose,
 }) {
   const orgMode = useOrgMode();
@@ -130,6 +86,11 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
+        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+            the viewer's own artifact. A direct flex child of this zone
+            (Tooltip renders the badge as its own trigger), so `shrink-0`
+            keeps it whole while the title truncates. */}
+        <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
       </div>
 
       {/* Middle — the artifact's three working modes. */}
@@ -150,14 +111,15 @@ export function ArtifactViewerHeader({
         {canOpenInBrowserTab && (
           <Tooltip content="Open in a browser tab">
             <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
-              {Ico.arrowUpRight(15)}
+              {Ico.arrowUpRight(16)}
             </IconButton>
           </Tooltip>
         )}
       </div>
 
-      {/* Right — comments, publishing, more actions, and close. */}
+      {/* Right — preview errors, comments, publishing, more actions, and close. */}
       <div className="artifact-viewer-action-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {commentsEnabled && (
           <div style={{ position: 'relative' }}>
             <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
@@ -168,7 +130,7 @@ export function ArtifactViewerHeader({
                 onClick={toggleComments}
                 active={commentsOpen}
               >
-                {Ico.chats(18)}
+                {Ico.chats(16)}
               </IconButton>
             </Tooltip>
             {comments.unreadCount > 0 && (
@@ -205,36 +167,36 @@ export function ArtifactViewerHeader({
             items={[
               {
                 label: 'Reload preview',
-                icon: Ico.reload(13),
+                icon: Ico.reload(14),
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
               ...(canOpenInBrowser ? [{
                 label: isPublished ? 'Open shared link' : 'Open in browser',
-                icon: Ico.arrowUpRight(13),
+                icon: Ico.arrowUpRight(14),
                 onClick: onOpenInBrowser,
               }] : []),
               ...(canOpenLocalFile ? [{
                 label: 'Open folder',
-                icon: Ico.openFolder(13),
+                icon: Ico.openFolder(14),
                 onClick: onOpenFolder,
               }] : []),
               ...(host.isWeb ? [] : [{
                 label: 'Open in OS',
-                icon: Ico.externalLink(13),
+                icon: Ico.externalLink(14),
                 disabled: !hasActionPath || (isBackendArtifact && !backendPort),
                 title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
                 onClick: onOpenOS,
               }]),
               ...(artifact?.serveUrl ? [{
                 label: 'Download',
-                icon: Ico.download(13),
+                icon: Ico.download(14),
                 onClick: onDownload,
               }] : []),
               { divider: true },
               {
                 label: 'Delete',
-                icon: Ico.trash(13),
+                icon: Ico.trash(14),
                 danger: true,
                 disabled: deleteBusy || !hasActionPath || !canManage,
                 onClick: onTrash,
@@ -243,7 +205,7 @@ export function ArtifactViewerHeader({
           />
         )}
         <Tooltip content="Close">
-          <IconButton onClick={onClose} aria-label="Close">{Ico.close(15)}</IconButton>
+          <IconButton onClick={onClose} aria-label="Close">{Ico.close(16)}</IconButton>
         </Tooltip>
       </div>
     </div>

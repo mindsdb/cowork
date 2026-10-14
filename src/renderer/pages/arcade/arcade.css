@@ -474,38 +474,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 .arc-bar-cell.on.warm { background: var(--arc-yellow); box-shadow: 0 0 8px color-mix(in srgb, var(--arc-yellow) 50%, transparent); }
 .arc-bar-cell.on.hot { background: var(--arc-purple); box-shadow: 0 0 8px color-mix(in srgb, var(--arc-purple) 50%, transparent); }
 
-/* ── Stat bars (coworker detail panel) ─────────────────────────────── */
-
-.arc-stat-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.arc-stat-name {
-  width: 92px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--arc-muted);
-  text-align: right;
-  flex: none;
-}
-
-.arc-stat-cells { display: flex; gap: 4px; }
-
-.arc-stat-cell {
-  width: 16px;
-  height: 11px;
-  border-radius: 1px;
-  border: 1px solid var(--arc-edge-2);
-  background: transparent;
-}
-
-.arc-stat-cell.on {
-  border-color: transparent;
-}
-
 /* ── Coworker cartridge cards ──────────────────────────────────────── */
 
 .arc-cart-row {
@@ -539,9 +507,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   background: var(--arc-card-2);
 }
 
-.arc-cart.locked { cursor: pointer; }
-.arc-cart.locked .arc-cart-sprite { filter: saturate(0.55) brightness(0.8); }
-
 .arc-cart-name {
   font-size: 13px;
   font-weight: 700;
@@ -550,16 +515,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 }
 
 .arc-cart.focused .arc-cart-name { color: var(--cart-color, var(--arc-cyan)); }
-
-.arc-cart-lock {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--arc-dim);
-}
 
 .arc-cart:focus-visible { outline: none; }
 
@@ -595,37 +550,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 .arc-brackets span:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
 .arc-brackets span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
 .arc-brackets span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
-
-/* Locked-cartridge "nope" shake */
-.arc-cart.shake { animation: arc-shake 300ms steps(6); }
-
-/* Detail panel under the cartridges */
-.arc-cart-detail {
-  width: 100%;
-  max-width: 640px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 20px 26px;
-  margin-top: 26px;
-}
-
-.arc-cart-detail-name {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  color: var(--cart-color, var(--arc-cyan));
-}
-
-.arc-cart-detail-tag {
-  margin-top: 8px;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  color: var(--arc-muted);
-  text-transform: uppercase;
-}
 
 /* ── Sprite housing ────────────────────────────────────────────────── */
 

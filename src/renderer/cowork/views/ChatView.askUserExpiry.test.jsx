@@ -17,7 +17,7 @@ import ChatView from './ChatView';
 
 const askStep = (qid, answer = null) => ({
   id: `question-${qid}`,
-  label: `Prompt ${qid}`,
+  label: 'Question for you',
   badge: 'AskUser',
   icon: 'question',
   status: answer ? 'completed' : 'in_progress',

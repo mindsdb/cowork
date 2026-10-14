@@ -30,6 +30,9 @@ describe('responseStreamAdapter — ask_user', () => {
     const step = question(state);
     expect(step).toBeTruthy();
     expect(step.badge).toBe('AskUser');
+    // Fixed label: the prompt can be a long markdown brief, and the label is
+    // shown as one truncated line in the ThinkingBlock header / step list.
+    expect(step.label).toBe('Question for you');
     expect(step.status).toBe('in_progress');
     expect(step._questionKey).toBe('ask:1');
     expect(step.data.prompt).toBe('Which database?');
@@ -175,7 +178,7 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
 
-  it('clears the burst when a Hermes tool call starts', () => {
+  it('clears the burst when a tool call starts', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'thinking', content: 'Deciding…' },
@@ -215,6 +218,132 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
   });
 });
 
+describe('model_wait: the still-working line while a model call is silent', () => {
+  const now = () => 1000;
+  const tick = (message, at_ms) => ({
+    type: 'response.in_progress',
+    thought_role: 'thought.progress',
+    phase: 'model_wait',
+    message,
+    content: `Still working: ${message}`,
+    eta_seconds: 60,
+    at_ms,
+  });
+  const reasoning = (content, at_ms) => ({
+    type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content, at_ms,
+  });
+  const waiting = { text: 'Waiting for the model (1m 0s)', startedAt: 100, kind: 'model_wait' };
+
+  it('shows the server\'s message as a live line and adds no step', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      tick('Waiting for the model (1m 0s)', 100),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual(waiting);
+    expect(state.steps).toEqual([]);
+    expect(state.status).not.toBe('error');
+  });
+
+  it('falls back to a generic line when the frame has no message', () => {
+    const state = reduceStream(initialStreamState(), { ...tick('', 100), message: undefined }, now);
+    expect(state.currentThought).toEqual({ text: 'Waiting for the model', startedAt: 100, kind: 'model_wait' });
+  });
+
+  it('replaces the line on the next tick instead of appending to it', () => {
+    const state = reduceAll([
+      tick('Waiting for the model (1m 0s)', 100),
+      tick('The model is still writing (1m 20s)', 120),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'The model is still writing (1m 20s)', startedAt: 120, kind: 'model_wait',
+    });
+  });
+
+  it('shows the line during a tool call\'s arguments after narration already streamed', () => {
+    /* The wire order of a non-scratchpad tool: narration, then the
+     * formatter's phase-less tool-start progress, then nothing but ticks while
+     * the arguments stream. The tick is the only live sign of work there. */
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'Building the deck.' },
+      { type: 'response.in_progress', thought_role: 'thought.progress', content: 'generate_artifact', at_ms: 110 },
+      tick('The model is still writing (1m 0s)', 120),
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'The model is still writing (1m 0s)', startedAt: 120, kind: 'model_wait',
+    });
+    expect(state.bodyText).toBe('Building the deck.');
+    expect(state.status).toBe('streaming');
+  });
+
+  it('a later reasoning delta replaces the line instead of appending to it', () => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    const state = reduceAll([reasoning('Comparing ', 200), reasoning('the options.', 210)], afterTick, now);
+    expect(state.currentThought).toEqual({ text: 'Comparing the options.', startedAt: 200 });
+  });
+
+  /* The tool call start, tool progress and scratchpad start cases pin
+   * clearing those branches already did (reclassifyPreambleOnToolStart);
+   * the other cases fail without the model-wait clear rule. */
+  it.each([
+    ['a tool call start', { thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' }],
+    ['a tool progress line', { thought_role: 'thought.tool_call.progress', tool_use_id: 'a', tool_name: 'generate_artifact', content: 'Writing the page' }],
+    ['a scratchpad start', { thought_role: 'thought.scratchpad.start', tool_use_id: 'a' }],
+    ['a scratchpad result', { thought_role: 'thought.scratchpad.result', tool_use_id: 'a', content: '{}' }],
+    ['a context compaction notice', { thought_role: 'thought.context_compacted', content: 'Compacted' }],
+    ['another progress phase', { thought_role: 'thought.progress', phase: 'reasoning_start' }],
+  ])('%s clears the line', (_name, frame) => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    const state = reduceStream(afterTick, { type: 'response.in_progress', at_ms: 200, ...frame }, now);
+    expect(state.currentThought).toBeNull();
+  });
+
+  it.each([
+    ['answer text', { type: 'response.output_text.delta', delta: 'Here' }],
+    ['response.completed', { type: 'response.completed' }],
+    ['response.failed', { type: 'response.failed', error: 'boom', code: 'model_timeout' }],
+  ])('%s clears the line', (_name, frame) => {
+    const afterTick = reduceStream(initialStreamState(), tick('Waiting for the model (1m 0s)', 100), now);
+    expect(afterTick.currentThought).toEqual(waiting);
+
+    expect(reduceStream(afterTick, frame, now).currentThought).toBeNull();
+  });
+
+  it('an ask_user question clears the line, and its answer leaves it cleared', () => {
+    const afterTick = reduceAll([
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'a', tool_name: 'generate_artifact', content: 'Preparing a short brief', at_ms: 50 },
+      tick('Waiting for the model (40s)', 100),
+    ], initialStreamState(), now);
+    expect(afterTick.currentThought).toEqual({ text: 'Waiting for the model (40s)', startedAt: 100, kind: 'model_wait' });
+
+    const asked = reduceStream(afterTick, {
+      type: 'response.ask_user', question_id: 'q1', prompt: 'Which one?', options: ['A', 'B'], at_ms: 200,
+    }, now);
+    expect(asked.currentThought).toBeNull();
+    expect(asked.steps.at(-1)).toMatchObject({ badge: 'AskUser', status: 'in_progress' });
+
+    const answered = reduceStream(asked, {
+      type: 'response.ask_user_answered', question_id: 'q1', status: 'answered', values: ['A'], at_ms: 300,
+    }, now);
+    expect(answered.currentThought).toBeNull();
+  });
+
+  it('leaves a reasoning burst alone when another progress phase arrives', () => {
+    const state = reduceAll([
+      reasoning('Thinking it through.', 100),
+      { type: 'response.in_progress', thought_role: 'thought.progress', phase: 'reasoning_start', at_ms: 200 },
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({ text: 'Thinking it through.', startedAt: 100 });
+  });
+});
+
 describe('preamble reclassification (ENG-1108 — narration before a tool call is not the answer)', () => {
   const now = () => 1000;
 
@@ -238,7 +367,7 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
 
-  it('moves preamble before a Hermes tool_call.start too', () => {
+  it('moves preamble before a tool_call.start too', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.output_text.delta', delta: 'Checking the docs.' },
@@ -325,6 +454,9 @@ describe('truncateLabel', () => {
 describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool progress display)', () => {
   const now = () => 1000;
 
+  const toolSteps = (state) => state.steps.filter((s) => s._isToolCall);
+  const rows = (state) => state.steps.filter((s) => s.badge === 'ToolProgress');
+
   it('creates a step lazily on the first progress event for a tool call', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
@@ -337,7 +469,7 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
+    expect(state.steps).toHaveLength(2); // parent tool step + one row
     const step = state.steps[0];
     expect(step._isToolCall).toBe(true);
     expect(step._toolUseId).toBe('tc_1');
@@ -345,15 +477,16 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
     expect(step.data.one_line_description).toBe('step 1');
   });
 
-  it('patches the same step in place on subsequent progress events, overwriting the text', () => {
+  it('keeps one parent step and adds a row per line; the parent tracks the latest line', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', content: 'step 2' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
-    expect(state.steps[0].data.one_line_description).toBe('step 2');
+    expect(toolSteps(state)).toHaveLength(1);
+    expect(toolSteps(state)[0].data.one_line_description).toBe('step 2');
+    expect(rows(state).map((r) => r.label)).toEqual(['step 1', 'step 2']);
   });
 
   it('closes the step as completed on tool_call.end', () => {
@@ -363,8 +496,8 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', content: '' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
-    expect(state.steps[0].status).toBe('completed');
+    expect(state.steps).toHaveLength(2);
+    expect(state.steps.map((s) => s.status)).toEqual(['completed', 'completed']);
   });
 
   it('marks the step cellStatus "error" when tool_call.end carries ok: false', () => {
@@ -451,13 +584,18 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(2);
-    const [a, b] = state.steps;
+    expect(toolSteps(state)).toHaveLength(2);
+    const [a, b] = toolSteps(state);
     expect(a._toolUseId).toBe('tc_1');
     expect(a.status).toBe('completed');
     expect(b._toolUseId).toBe('tc_2');
     expect(b.status).toBe('in_progress');
     expect(b.data.one_line_description).toBe('step 1');
+    // tc_1's end closes tc_1's row only.
+    expect(rows(state).map((r) => [r._scratchpadTabId, r.status])).toEqual([
+      ['tc_1', 'completed'],
+      ['tc_2', 'in_progress'],
+    ]);
   });
 
   it('gives each tool call its own _scratchpadTabId instead of sharing null', () => {
@@ -474,10 +612,11 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_2', tool_name: 'test_tool', content: 'step 1' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(2);
-    expect(state.steps[0]._scratchpadTabId).toBe('tc_1');
-    expect(state.steps[1]._scratchpadTabId).toBe('tc_2');
-    expect(state.steps[0]._scratchpadTabId).not.toBe(state.steps[1]._scratchpadTabId);
+    const tools = toolSteps(state);
+    expect(tools).toHaveLength(2);
+    expect(tools[0]._scratchpadTabId).toBe('tc_1');
+    expect(tools[1]._scratchpadTabId).toBe('tc_2');
+    expect(tools[0]._scratchpadTabId).not.toBe(tools[1]._scratchpadTabId);
   });
 });
 
@@ -616,5 +755,194 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
     ]);
     expect(thinking.currentThought).not.toBeNull();
     expect(reduceStream(thinking, RESET).currentThought).toBeNull();
+  });
+});
+
+// The persisted assistant message id rides response.completed/
+// response.failed at the frame ROOT (not nested under `response`) — same
+// placement as conversation_id/harness on response.created.
+describe('assistantMessageId', () => {
+  it('starts null', () => {
+    expect(initialStreamState().assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.completed', () => {
+    const state = reduceAll([
+      { type: 'response.completed', assistant_message_id: 'msg-123' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-123');
+  });
+
+  it('stays null when response.completed omits the field (an empty turn persisted nothing)', () => {
+    const state = reduceAll([{ type: 'response.completed' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.failed when a partial row was persisted', () => {
+    const state = reduceAll([
+      { type: 'response.failed', error: 'boom', assistant_message_id: 'msg-456' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-456');
+  });
+
+  it('stays null when response.failed omits the field (nothing persisted)', () => {
+    const state = reduceAll([{ type: 'response.failed', error: 'boom' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('does not read event.response.id — the field is root-level, not nested', () => {
+    const state = reduceAll([
+      { type: 'response.completed', response: { id: 'resp-not-this-one' } },
+    ]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('captures the user message id from response.created', () => {
+    // The user's own row is appended optimistically on send and has no id
+    // until this frame supplies one.
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1', user_message_id: 'u-real',
+    });
+    expect(state.userMessageId).toBe('u-real');
+  });
+
+  it('leaves the user message id null when the frame omits it', () => {
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1',
+    });
+    expect(state.userMessageId).toBeNull();
+  });
+});
+
+// ─── ENG-2981: every tool progress line is its own step ────────────────────
+//
+// generate_artifact announces each pipeline step as a tool_call.progress line.
+// The chat shows steps, so each line becomes a 'ToolProgress' row kept in event
+// order (like the CLI prints them), and a row ends when the tool moves on, asks
+// the user, finishes, or the turn ends.
+
+describe('ToolProgress rows (ENG-2981)', () => {
+  const now = () => 1000;
+  const progress = (content, at_ms, tool_use_id = 'tc_1') => ({
+    type: 'response.in_progress',
+    thought_role: 'thought.tool_call.progress',
+    tool_use_id,
+    tool_name: 'generate_artifact',
+    content,
+    at_ms,
+  });
+  const ask = (qid, at_ms) => ({ ...ASK, question_id: qid, at_ms });
+  const answer = (qid, at_ms) => ({ ...ANSWERED, question_id: qid, at_ms });
+  const rows = (state) => state.steps.filter((s) => s.badge === 'ToolProgress');
+
+  it('adds one row per line, linked to its tool, and closes the previous row', () => {
+    const state = reduceAll([
+      progress('Gathering what the artifact needs', 100),
+      progress('Preparing a short brief for you', 200),
+    ], initialStreamState(), now);
+
+    const [parent, first, second] = state.steps;
+    expect(parent._isToolCall).toBe(true);
+    expect(parent.label).toBe('generate_artifact');
+    expect(first).toMatchObject({
+      label: 'Gathering what the artifact needs',
+      badge: 'ToolProgress',
+      icon: parent.icon,
+      status: 'completed',
+      startedAt: 100,
+      completedAt: 200,
+      _isToolCall: false,
+      _isScratchpad: false,
+      _scratchpadTabId: 'tc_1',
+    });
+    expect(second).toMatchObject({ status: 'in_progress', startedAt: 200, completedAt: null });
+    expect(new Set(state.steps.map((s) => s.id)).size).toBe(3);
+  });
+
+  it('keeps the same line twice when a question separates them', () => {
+    const state = reduceAll([
+      progress('Updating the brief with your changes', 100),
+      ask('q1', 150),
+      answer('q1', 300),
+      progress('Updating the brief with your changes', 310),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => r.label)).toEqual([
+      'Updating the brief with your changes',
+      'Updating the brief with your changes',
+    ]);
+  });
+
+  it('adds a retry line as a new row', () => {
+    const state = reduceAll([
+      progress('Writing the page (step 3 of 4)', 100),
+      progress('Writing the page (step 3 of 4, attempt 2)', 200),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => r.label)).toEqual([
+      'Writing the page (step 3 of 4)',
+      'Writing the page (step 3 of 4, attempt 2)',
+    ]);
+  });
+
+  it('closes the open row when a question is asked, and the answer does not reopen it', () => {
+    const asked = reduceAll([
+      progress('Preparing a short brief for you', 100),
+      ask('q1', 150),
+    ], initialStreamState(), now);
+
+    expect(rows(asked)[0]).toMatchObject({ status: 'completed', completedAt: 150 });
+    // The tool itself is still running.
+    expect(asked.steps.find((s) => s._isToolCall).status).toBe('in_progress');
+
+    const answered = reduceStream(asked, answer('q1', 300), now);
+    expect(rows(answered)[0]).toMatchObject({ status: 'completed', completedAt: 150 });
+  });
+
+  it('leaves rows alone when an ignored ask_user arrives', () => {
+    const state = reduceAll([progress('Preparing a short brief for you', 100)], initialStreamState(), now);
+    const noId = reduceStream(state, { ...ASK, question_id: '', at_ms: 150 }, now);
+    expect(noId).toBe(state);
+
+    const asked = reduceStream(state, ask('q1', 150), now);
+    const reopened = reduceStream(
+      { ...asked, steps: asked.steps.map((s) => (s.badge === 'ToolProgress' ? { ...s, status: 'in_progress', completedAt: null } : s)) },
+      ask('q1', 160), // duplicate question id → ignored before any row is touched
+      now,
+    );
+    expect(rows(reopened)[0].status).toBe('in_progress');
+  });
+
+  it('closes the last row on tool_call.end and marks it failed when ok is false', () => {
+    const state = reduceAll([
+      progress('Verifying the page (step 4 of 4)', 100),
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', ok: false, at_ms: 400 },
+    ], initialStreamState(), now);
+
+    expect(rows(state)[0]).toMatchObject({ status: 'completed', completedAt: 400, cellStatus: 'error' });
+  });
+
+  it('closes an open row on response.completed and on response.failed', () => {
+    const open = reduceAll([progress('Writing the page (step 3 of 4)', 100)], initialStreamState(), now);
+
+    const done = reduceStream(open, { type: 'response.completed', at_ms: 500 }, now);
+    expect(rows(done)[0]).toMatchObject({ status: 'completed', completedAt: 500 });
+
+    const failed = reduceStream(open, { type: 'response.failed', error: 'boom', at_ms: 600 }, now);
+    expect(rows(failed)[0]).toMatchObject({ status: 'completed', completedAt: 600 });
+  });
+
+  it('with interleaved tools, a line closes only its own tool\'s previous row', () => {
+    const state = reduceAll([
+      progress('Writing the backend (step 4 of 9)', 100, 'tc_1'),
+      progress('other tool line', 150, 'tc_2'),
+      progress('Verifying the backend (step 5 of 9)', 200, 'tc_1'),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => [r.label, r.status])).toEqual([
+      ['Writing the backend (step 4 of 9)', 'completed'],
+      ['other tool line', 'in_progress'],
+      ['Verifying the backend (step 5 of 9)', 'in_progress'],
+    ]);
   });
 });

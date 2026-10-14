@@ -46,9 +46,9 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
         }}
       />
       <div>
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
         <Button disabled={!text.trim() || busy} onClick={submit}>
-          {Ico.send(13)} Comment
+          {Ico.send(14)} Comment
         </Button>
       </div>
     </aside>

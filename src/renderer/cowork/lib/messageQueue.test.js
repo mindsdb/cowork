@@ -47,6 +47,29 @@ describe('selectNextQueuedTask', () => {
     expect(selectNextQueuedTask(queues, new Set(['a', 'b']), 'a')).toBe('b');
     expect(selectNextQueuedTask(queues, ['a', 'b'], 'a')).toBe('b');
   });
+
+  // A follow-up sent while its own task's turn still runs would replace that
+  // turn's stream, so a running task's queue waits for its own turn to end.
+  it('skips a task whose turn is still running and drains the next one', () => {
+    const queues = { a: [item('a1')], b: [item('b1')] };
+    expect(selectNextQueuedTask(queues, ['a', 'b'], undefined, ['a'])).toBe('b');
+  });
+
+  it('skips a preferred task whose turn is still running', () => {
+    const queues = { a: [item('a1')], b: [item('b1')] };
+    expect(selectNextQueuedTask(queues, ['a', 'b'], 'a', new Set(['a']))).toBe('b');
+  });
+
+  it('returns null when every queued task is still running', () => {
+    const queues = { a: [item('a1')], b: [item('b1')] };
+    expect(selectNextQueuedTask(queues, ['a', 'b'], 'a', new Set(['a', 'b']))).toBeNull();
+  });
+
+  it('accepts either a Set or an array for running task ids', () => {
+    const queues = { a: [item('a1')], b: [item('b1')] };
+    expect(selectNextQueuedTask(queues, ['a', 'b'], undefined, new Set(['a']))).toBe('b');
+    expect(selectNextQueuedTask(queues, ['a', 'b'], undefined, ['a'])).toBe('b');
+  });
 });
 
 describe('reservationReleaseDecision', () => {

@@ -1,4 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 import { Badge, Button, Meter } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
@@ -7,18 +8,20 @@ import { trackBillingOpened } from '../../lib/analytics';
 import {
   USAGE_ACTIONS,
   usageActionUrl,
-  formatTokensShort,
+  formatPercentShort,
   formatUsd,
   formatResetDate,
+  formatResetTime,
   FREE_TOKENS_LOW_FRACTION,
+  isBalanceEmpty,
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
 
-// Settings → Usage (ENG-1782). The lightweight view of what the console's
-// billing page shows: free monthly Air tokens with their reset date, the paid
-// balance with this period's credit spend, and auto top up when it matters. No
-// per-model breakdown. Every action opens the MindsHub console, where funds and
-// auto top up are actually managed.
+/* Settings → Usage (ENG-1782). The lightweight view of what the console's
+   billing page shows: the free MindsHub Air allowance with when it refills, the
+   paid balance with this period's credit spend, and auto top up when it
+   matters. No per-model breakdown. Every action opens the MindsHub console,
+   where funds and auto top up are actually managed. */
 
 const CARD = 'border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] px-[18px] py-4';
 
@@ -31,7 +34,7 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
       {action.label}
-      <ExternalLink size={12} strokeWidth={1.5} aria-hidden="true" />
+      <Icon of={ExternalLink} size={12} />
     </Button>
   );
 }
@@ -43,22 +46,24 @@ const describableGrant = (free) => !!free && (free.limit === -1 || free.limit > 
 function FreeTokensCard({ free, isBillingOwner }) {
   if (!describableGrant(free)) return null;
   const unlimited = free.limit === -1;
-  const used = Math.max(0, free.used || 0);
   const remaining = Math.max(0, free.remaining || 0);
-  const fraction = unlimited ? 0 : used / free.limit;
+  const fractionLeft = unlimited ? 0 : remaining / free.limit;
+  const fraction = unlimited ? 0 : 1 - fractionLeft;
   const exhausted = !unlimited && remaining <= 0;
   // Same line as the composer bar, read from the one constant, so the meter's
   // warning tint and the bar cannot drift apart.
-  const low = !unlimited && !exhausted && remaining / free.limit <= FREE_TOKENS_LOW_FRACTION;
-  const reset = formatResetDate(free.resetsAt);
+  const low = !unlimited && !exhausted && fractionLeft <= FREE_TOKENS_LOW_FRACTION;
+  // A clock time, like the other two surfaces. `periodLabel` below keeps a
+  // date, because a billing period is one.
+  const reset = formatResetTime(free.resetsAt);
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          <div className="text-base font-semibold text-ink">Free monthly tokens</div>
+          <div className="text-base font-semibold text-ink">Free Air allowance</div>
           <Badge variant="muted" size="xs">MindsHub Air only</Badge>
         </div>
-        {reset && <div className="text-[12px] text-ink-3">Resets {reset}</div>}
+        {reset && <div className="text-[12px] text-ink-3">Resets at {reset}</div>}
       </div>
       {unlimited ? (
         <div className="text-[13px] text-ink-2">Unlimited on this account.</div>
@@ -66,16 +71,16 @@ function FreeTokensCard({ free, isBillingOwner }) {
         <>
           <div className="flex items-baseline justify-between mb-2">
             <div className="text-[13px] text-ink-2 tabular-nums">
-              <span className="text-[20px] font-semibold text-ink">{formatTokensShort(used)}</span>
-              {' '}/ {formatTokensShort(free.limit)} tokens used
+              <span className="text-[20px] font-semibold text-ink">{formatPercentShort(fraction)}</span>
+              {' '}of your allowance used
             </div>
-            <div className="text-[13px] text-ink-3 tabular-nums">{Math.floor(fraction * 100)}%</div>
+            <div className="text-[13px] text-ink-3 tabular-nums">{formatPercentShort(fractionLeft)} left</div>
           </div>
-          <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label="Free monthly tokens used" />
+          <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label="Free Air allowance used" />
           <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
-              ? `Used up. MindsHub Air is billing your balance${reset ? ` until ${reset}` : ' until they reset'}.`
-              : `${formatTokensShort(remaining)} left. After that, MindsHub Air uses your balance${reset ? ` until ${reset}` : ''}.`}
+              ? `Used up. MindsHub Air is billing your balance${reset ? ` until it refills at ${reset}` : ' until it refills'}.`
+              : `After that, MindsHub Air uses your balance${reset ? ` until it refills at ${reset}` : ''}.`}
           </div>
         </>
       )}
@@ -113,7 +118,7 @@ function periodLabel(spend) {
 
 function BalanceCard({ balance, auto, spend, isBillingOwner }) {
   if (!balance) return null;
-  const empty = balance.alert === 'depleted' || balance.canConsume === false;
+  const empty = isBalanceEmpty(balance);
   const low = !empty && balance.alert === 'low';
   const amountTone = empty ? 'text-danger-text' : low ? 'text-warning-text' : 'text-ink';
   const autoLine = autoTopUpLine(auto);
@@ -163,7 +168,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">Sign in to see your usage</div>
-        <div className="text-[13px] text-ink-3">Free monthly tokens and your balance show up here once you're signed in to MindsHub.</div>
+        <div className="text-[13px] text-ink-3">Your free Air allowance and your balance show up here once you're signed in to MindsHub.</div>
         {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>Go to Account</Button>}
       </div>
     );
@@ -180,7 +185,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>
-              <RefreshCw size={12} strokeWidth={1.5} aria-hidden="true" />
+              <Icon of={RefreshCw} size={12} />
               Try again
             </Button>
           )}

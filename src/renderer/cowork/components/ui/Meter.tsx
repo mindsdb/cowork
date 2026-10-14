@@ -1,12 +1,12 @@
 import { cn } from '../../lib/cn';
 
-// A thin, read-only progress bar. First use: Settings → Usage (ENG-1782).
-// Read-only by design; anything interactive is a Slider, not a Meter.
-//
-//   <Meter value={0.87} tone="warning" label="Free monthly tokens used" />
-//
-// Fill colors use the bare `accent` / `warning` / `danger` tokens, which paint
-// solid; the -bg variants are pre-mixed tints meant for surfaces, not fills.
+/* A thin, read-only progress bar. First use: Settings → Usage (ENG-1782).
+   Read-only by design; anything interactive is a Slider, not a Meter.
+
+     <Meter value={0.87} tone="warning" label="Free Air allowance used" />
+
+   Fill colors use the bare `accent` / `warning` / `danger` tokens, which paint
+   solid; the -bg variants are pre-mixed tints meant for surfaces, not fills. */
 const FILL: Record<MeterTone, string> = {
   accent: 'bg-accent',
   warning: 'bg-warning',

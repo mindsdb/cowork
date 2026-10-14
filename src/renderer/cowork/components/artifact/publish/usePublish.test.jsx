@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePublish } from './usePublish';
+import { OWNED_BY_OTHER_USER_MESSAGE } from './publishErrors';
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
 
 // Regression coverage for ENG-931: the restricted-access list must always
 // reflect the server's real list — on any open, and it must never be
@@ -106,6 +113,25 @@ describe('usePublish — server is the source of truth for the access list (ENG-
     expect(result.current.accessEmails).toEqual(['alice@x.com', 'bob@x.com']);
   });
 
+  // The viewer turns the key into the preview's comment bridge, so losing it
+  // here flips the bridge off and back on with every refresh (ENG-3070).
+  it('keeps the loaded artifactKey when onChange feeds back into the prop', async () => {
+    let artifact = { path: '/p/a.html' };
+    const onChange = vi.fn((updated) => { artifact = updated; });
+    const { result, rerender } = renderHook(
+      ({ a }) => usePublish(a, { onChange, enabled: true }),
+      { initialProps: { a: artifact } },
+    );
+
+    await waitFor(() => expect(result.current.artifactKey).toBe('user/report'));
+    expect(artifact.artifactKey).toBeUndefined();
+    rerender({ a: artifact });
+    expect(result.current.artifactKey).toBe('user/report');
+
+    rerender({ a: { path: '/p/b.html' } });
+    expect(result.current.artifactKey).toBe('');
+  });
+
   it('publish(restricted) shows the new list immediately and marks it loaded (same-session)', async () => {
     apiMock.publishArtifact.mockResolvedValue({
       url: 'https://share/abc', accessMode: 'restricted',
@@ -164,5 +190,75 @@ describe('usePublish — ownerOnly (ENG-1769)', () => {
       await result.current.publish({ mode: 'public' });
     });
     expect(result.current.ownerOnly).toBe(false);
+  });
+});
+
+describe('usePublish — a late refresh for another artifact (ENG-3070 review)', () => {
+  it("drops the previous artifact's status when it lands after a switch", async () => {
+    const statusA = deferred();
+    const statusB = deferred();
+    apiMock.fetchArtifactStatus.mockImplementation((path) => (path === '/p/b.html' ? statusB.promise : statusA.promise));
+    const A = { path: '/p/a.html' };
+    const B = { path: '/p/b.html' };
+    const onChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ artifact, enabled }) => usePublish(artifact, { onChange, enabled }),
+      { initialProps: { artifact: A, enabled: true } },
+    );
+
+    rerender({ artifact: A, enabled: false });
+    rerender({ artifact: B, enabled: true });
+    await act(async () => {
+      statusB.resolve({ ...STATUS_RESTRICTED, publishedUrl: 'https://share/b', accessEmails: ['bob@x.com'] });
+    });
+    await act(async () => {
+      statusA.resolve({ ...STATUS_RESTRICTED, publishedUrl: 'https://share/a', accessEmails: ['alice@x.com'] });
+    });
+
+    expect(result.current.accessEmails).toEqual(['bob@x.com']);
+    expect(result.current.publishedUrl).toBe('https://share/b');
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ publishedUrl: 'https://share/a' }));
+  });
+});
+
+describe('usePublish — an artifact published by another owner', () => {
+  // What `req()` throws for cowork-server's 409: the server's sentence as the
+  // message and its code beside it.
+  const ownedElsewhere = () => Object.assign(
+    new Error('This artifact was published by another owner.'),
+    { status: 409, code: 'artifact_owned_by_other_user' },
+  );
+
+  it('publish() shows the owner message, not "Sharing failed"', async () => {
+    apiMock.publishArtifact.mockRejectedValue(ownedElsewhere());
+    const { result } = renderHook(() => usePublish({ path: '/p/a.html' }, { enabled: false }));
+
+    let ok;
+    await act(async () => { ok = await result.current.publish({ mode: 'public' }); });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toBe(OWNED_BY_OTHER_USER_MESSAGE);
+    expect(result.current.publishedUrl).toBe('');
+  });
+
+  it('update() shows the same message', async () => {
+    apiMock.updateArtifact.mockRejectedValue(ownedElsewhere());
+    const artifact = { path: '/p/a.html', publishedUrl: 'https://share/abc', accessMode: 'public' };
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+
+    await act(async () => { await result.current.update(); });
+
+    expect(result.current.error).toBe(OWNED_BY_OTHER_USER_MESSAGE);
+  });
+
+  it('keeps the existing wording for every other failure', async () => {
+    apiMock.publishArtifact.mockRejectedValue(
+      Object.assign(new Error('Conflict'), { status: 409, code: null }),
+    );
+    const { result } = renderHook(() => usePublish({ path: '/p/a.html' }, { enabled: false }));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(result.current.error).toBe('Sharing failed: Conflict');
   });
 });

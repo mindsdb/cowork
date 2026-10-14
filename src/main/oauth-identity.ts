@@ -5,6 +5,9 @@
 // spec-JSON data — it's provider-specific code, not configuration. New
 // OAuth-builtin connectors add one entry to FETCHERS below.
 
+import { getServerPort } from './server-process';
+import { authHeader } from './server-auth';
+
 export interface OAuthIdentity {
   email: string;
   name?: string;
@@ -205,6 +208,31 @@ async function fetchSupabaseIdentity(accessToken: string): Promise<OAuthIdentity
   return { email: slug ? `org:${slug}` : '', name };
 }
 
+// HubSpot's MCP Auth App issues a token that can only call HubSpot's remote
+// MCP server, never a REST/GraphQL endpoint — Electron can't speak MCP
+// itself (it's TypeScript, the client is Python), so unlike every other
+// entry in FETCHERS, this calls cowork-server's own local identity-bridge
+// endpoint instead of the provider directly. That endpoint calls anton's
+// MCP client (get_user_details/get_organization_details) and returns the
+// same {account_email, account_name} shape every other FETCHERS entry
+// resolves to on its own.
+async function fetchHubspotIdentity(accessToken: string): Promise<OAuthIdentity> {
+  const res = await fetch(
+    `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/hubspot/mcp/identity`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ access_token: accessToken }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({})) as { detail?: string };
+    return { email: '', reason: detail.detail || `HubSpot identity lookup failed (${res.status}).` };
+  }
+  const data = await res.json() as { account_email?: string; account_name?: string };
+  return { email: data.account_email || '', name: data.account_name || undefined };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -215,6 +243,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> 
   github: fetchGithubIdentity,
   posthog: fetchPostHogIdentity,
   supabase: fetchSupabaseIdentity,
+  hubspot: fetchHubspotIdentity,
 };
 
 export async function fetchAccountIdentity(engine: string, accessToken: string): Promise<OAuthIdentity> {

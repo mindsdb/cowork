@@ -25,6 +25,7 @@ export interface RepositoryResource extends ProjectResourceBase {
   provider?: 'github' | 'gitlab' | 'bitbucket' | 'git';
   repository?: string | null;
   connector_name?: string | null;
+  use_connector_for_clone?: boolean;
   local_path?: string | null;
   computer_id?: string | null;
   default_branch?: string | null;

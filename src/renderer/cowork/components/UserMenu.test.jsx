@@ -39,6 +39,7 @@ import {
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
+  consoleUrlFor,
 } from '../../lib/mindsUrls';
 
 // `useToastManager` throws outside a provider, and the real tree always has
@@ -149,15 +150,29 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(hostMock.openExternal).not.toHaveBeenCalled();
   });
 
+  /* Console links carry the account they were opened for (ENG-3274); with no
+     organization listed yet, that is all they can carry. Support is not the
+     console and stays bare. */
   it.each([
-    ['Billing & Usage', MINDS_BILLING_URL],
-    ['Members', MINDS_MEMBERS_URL],
+    ['Billing & Usage', consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' })],
+    ['Members', consoleUrlFor(MINDS_MEMBERS_URL, { subject: 'user-1' })],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it('names the active organization on console links so the browser lands on it (ENG-3274)', () => {
+    orgsMock.state = { orgs: [ACME, PERSONAL], activeOrg: ACME, activeOrgId: ACME.id, switching: false };
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Members/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_MEMBERS_URL);
+    expect(opened.searchParams.get('organization')).toBe(ACME.id);
+    expect(opened.searchParams.get('subject')).toBe('user-1');
   });
 
   // On web, host.logout() ends the Keycloak browser session, so Logout is a
@@ -196,7 +211,9 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Billing & Usage/ }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('nav');
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' }),
+    );
   });
 
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
@@ -284,6 +301,44 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
+  it('acknowledges the click on the row that was clicked, before the switch lands', async () => {
+    // A desktop switch takes a second or more — a Keycloak round trip, a token
+    // exchange and a sidecar restart — and the menu used to close on the click,
+    // so that second looked like nothing had happened and people clicked again.
+    let settle;
+    orgsMock.switchOrg.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+    // The menu is still on screen to carry it, and the row says it is working.
+    expect(await screen.findByRole('status', { name: 'Changing organization' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Personal/ })).toBeInTheDocument();
+
+    settle({ ok: true, reloadRequired: true });
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Changing organization' })).toBeNull());
+  });
+
+  it('acknowledges progress without moving the check onto a row that can still be refused', async () => {
+    // Nothing is applied optimistically: the host decides whether the switch
+    // happened. Painting the answer here is how the app ends up disagreeing
+    // with the organization its requests are scoped to.
+    let settle;
+    orgsMock.switchOrg.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+    await screen.findByRole('status', { name: 'Changing organization' });
+
+    // The one the app is actually working in is still the one named.
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+    settle({ ok: false, error: 'Nothing changed.' });
+    expect(await screen.findByText('Nothing changed.')).toBeInTheDocument();
+  });
+
   it('still names the only organization, and leaves nothing to switch to', () => {
     /*
      * The console shows the section for one organization too. A checked row
@@ -362,6 +417,8 @@ describe('UserMenu — organization picker', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Manage organization/ }));
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_GENERAL_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_GENERAL_URL, { organizationId: ACME.id, subject: 'user-1' }),
+    );
   });
 });

@@ -13,6 +13,7 @@
 //   />
 //
 //   <ToggleGroup size="sm" ... />
+//   <ToggleGroup disabled={busy} ... />
 
 import { Fragment } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
@@ -44,6 +45,7 @@ export interface ToggleGroupProps {
   onValueChange: (value: string) => void;
   options: ToggleGroupOption[];
   size?: 'sm' | 'md';
+  disabled?: boolean;
   className?: string;
   'aria-label'?: string;
 }
@@ -53,6 +55,7 @@ export function ToggleGroup({
   onValueChange,
   options,
   size = 'md',
+  disabled = false,
   className,
   'aria-label': ariaLabel,
 }: ToggleGroupProps) {
@@ -69,7 +72,8 @@ export function ToggleGroup({
         const next = newValue.find((v) => v !== value);
         if (next) onValueChange(next);
       }}
-      className={cn('inline-flex items-center', className)}
+      disabled={disabled}
+      className={cn('inline-flex items-center', disabled && 'opacity-[0.55]', className)}
       style={{
         padding: cs.padding,
         borderRadius: cs.borderRadius,
@@ -101,7 +105,7 @@ export function ToggleGroup({
                   // items.
                   background: 'color-mix(in srgb, var(--line) 55%, transparent)',
                   opacity: dividerHidden ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
+                  transition: 'opacity var(--dur-hover) ease',
                 }}
               />
             )}
@@ -109,7 +113,7 @@ export function ToggleGroup({
               value={opt.value}
               aria-label={opt['aria-label'] || opt.title}
               title={opt.title}
-              className="inline-flex items-center gap-[6px] cursor-pointer"
+              className={cn('inline-flex items-center gap-[6px]', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
               style={(state: { pressed: boolean }) => ({
                 padding: is.padding,
                 borderRadius: is.borderRadius,
@@ -123,7 +127,7 @@ export function ToggleGroup({
                 boxShadow: state.pressed
                   ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
                   : 'none',
-                transition: 'background 0.15s ease, color 0.15s ease',
+                transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
               })}
             >
               {opt.icon && <span className="inline-flex">{opt.icon}</span>}

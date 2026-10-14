@@ -41,7 +41,6 @@ vi.mock('../../../platform/host', () => ({
   getAccessToken: spies.getAccessToken,
 }));
 vi.mock('../../lib/analytics', () => ({
-  trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: spies.resetDeviceIdentity,
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));

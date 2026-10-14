@@ -411,6 +411,19 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
  * the one in-flight run.
  */
 let _applyInFlight: Promise<boolean> | null = null;
+// The manifest version the last apply downloaded, or null when it stopped
+// before downloading (no manifest, quarantined, not newer, held for server
+// compat). Read-only observability: the orchestrator credits a failed apply
+// to the version it actually tried, which can differ from the one the earlier
+// check offered when a release publishes in between.
+let _lastAttemptedVersion: string | null = null;
+
+/** The version the last `applyUIUpdate` run tried to install, or null if it
+ *  stopped before downloading anything. */
+export function lastUiApplyAttempt(): string | null {
+  return _lastAttemptedVersion;
+}
+
 export function applyUIUpdate(): Promise<boolean> {
   if (_applyInFlight) return _applyInFlight;
   _applyInFlight = runApplyUIUpdate().finally(() => { _applyInFlight = null; });
@@ -418,6 +431,7 @@ export function applyUIUpdate(): Promise<boolean> {
 }
 
 async function runApplyUIUpdate(): Promise<boolean> {
+  _lastAttemptedVersion = null;
   if (!otaEnabled()) return false;
   warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
@@ -435,6 +449,7 @@ async function runApplyUIUpdate(): Promise<boolean> {
   // forces a UI apply without a fresh checkForUIUpdate).
   if (await serverCompatSkip(manifest)) return false;
 
+  _lastAttemptedVersion = manifest.version;
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 

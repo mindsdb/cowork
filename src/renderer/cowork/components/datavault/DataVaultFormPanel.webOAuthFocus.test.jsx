@@ -29,6 +29,12 @@ const CID = 'conv-datavault-web-oauth-focus';
 // Mirrors specs/google_drive.json's recommended, no-fields method — the
 // ordinary "click Connect" path most users take, distinct from the
 // separate BYOK "oauth"/oauth_launch method elsewhere in this file.
+//
+// Trimmed to that one method, where the real spec also carries "oauth" and
+// "service-account". That makes it a SOLE one-click OAuth method, which
+// renders the "Authorize with <Provider>" hero rather than a fields form —
+// hence the button matchers below accept /authorize/ too. Focus-reclaim,
+// what this file actually tests, is the same on either path.
 const DRIVE_BUILTIN_SPEC = {
   form_id: 'drive-builtin-f1',
   _connector_id: 'google_drive',
@@ -70,7 +76,7 @@ describe('DataVaultFormPanel — web OAuth reclaims focus on success', () => {
     setForm(CID, DRIVE_BUILTIN_SPEC);
     render(<DataVaultFormPanel conversationId={CID} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /submit|connect/i }));
+    fireEvent.click(screen.getByRole('button', { name: /submit|connect|authorize/i }));
     // startConnectorOAuth() is awaited before the poll interval is armed.
     await vi.waitFor(() => expect(startConnectorOAuth).toHaveBeenCalled());
 
@@ -88,7 +94,7 @@ describe('DataVaultFormPanel — web OAuth reclaims focus on success', () => {
     setForm(CID, DRIVE_BUILTIN_SPEC);
     render(<DataVaultFormPanel conversationId={CID} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /submit|connect/i }));
+    fireEvent.click(screen.getByRole('button', { name: /submit|connect|authorize/i }));
     await vi.waitFor(() => expect(startConnectorOAuth).toHaveBeenCalled());
 
     await vi.advanceTimersByTimeAsync(3000);

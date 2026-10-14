@@ -61,7 +61,7 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
   oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 
-  // MindsHub onboarding — see main/index.ts for the rationale on
+  // MindsHub onboarding — see main/app.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
@@ -69,9 +69,11 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
     ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
   // Deliberately a separate method rather than the second argument above.
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a new renderer routinely runs against an older shell —
-  // and an older shell's `mindshubFinalize` silently drops a second argument.
+  // Renderer bundles update over the air while `src/main/**` only arrives when
+  // the shell relaunches into a new build, so a new renderer routinely runs
+  // against an older shell (docs/update-behavior.md, "Supported desktop
+  // window") — and an older shell's `mindshubFinalize` silently drops a second
+  // argument.
   // A method the old preload does not have is something the renderer can
   // actually test for, which the established `typeof bridge.x === 'function'`
   // checks in host.ts already rely on (ENG-2199).
@@ -162,6 +164,20 @@ contextBridge.exposeInMainWorld('antontron', {
   // Auth (Electron-only)
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
+  accountOwnershipPending: () => ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_PENDING),
+  // Resolved at preload time, which re-runs on every reload, so it is never the
+  // stale value an additionalArguments entry would be after a sign-out reload.
+  accountSession: (() => {
+    try {
+      return ipcRenderer.sendSync(IPC.ACCOUNT_SIGNED_IN_SYNC) as {
+        accountId: string | null;
+        legacyState: 'keep' | 'purge' | 'undecided';
+        organizationId: string | null;
+      };
+    } catch { return { accountId: null, legacyState: 'keep' as const, organizationId: null }; }
+  })(),
+  decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
+    ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),
 
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
@@ -179,12 +195,14 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // UI Updates
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
-  applyUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY),
+  // `options.force` skips the running-task confirmation (ENG-3291); the renderer
+  // sets it only after the user has confirmed.
+  applyUpdate: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY, options),
   getShellUpdate: () => ipcRenderer.invoke(IPC.UI_SHELL_UPDATE_GET),
   getShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_GET),
   checkShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_CHECK),
   downloadShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_DOWNLOAD),
-  installShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_INSTALL),
+  installShellAutoUpdate: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.SHELL_UPDATE_INSTALL, options),
   onShellAutoUpdate: (cb: (snapshot: Record<string, unknown>) => void) => {
     const listener = (_: any, snapshot: Record<string, unknown>) => cb(snapshot);
     ipcRenderer.on(IPC.SHELL_UPDATE_STATUS, listener);
@@ -195,6 +213,10 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
   },
+  // UI/server update outcomes main journaled while the window was reloading.
+  // The renderer reports them to PostHog on boot and acks what landed.
+  drainUpdateJournal: () => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_DRAIN),
+  ackUpdateJournal: (ids: string[]) => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_ACK, ids),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

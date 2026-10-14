@@ -46,15 +46,16 @@
 import { useMemo } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
+import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
-const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CARET_UP_DOWN = <Icon of={ChevronsUpDown} size={12} />;
 
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={12} />;
 
-const SEARCH = <Search size={14} strokeWidth={1.5} aria-hidden="true" />;
+const SEARCH = <Icon of={Search} size={14} />;
 
 export function Combobox({
   value,
@@ -114,6 +115,9 @@ export function Combobox({
     <BaseCombobox.Root
       items={groups}
       value={selected}
+      // No null guard needed, unlike Select (ENG-2416): Base UI's Combobox
+      // only changes the value on user action, never when the item list
+      // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       open={open}
       onOpenChange={onOpenChange}

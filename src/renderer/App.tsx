@@ -1,21 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { Icon, type IconSize } from './cowork/components/ui/Icon';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
-import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
+import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
+import RestartConfirmHost from './RestartConfirmHost';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host } from './platform/host';
+import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
+import { ShellTooOldNotice } from './ShellTooOldNotice';
+import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
-import { trackBootScreenResolved } from './cowork/lib/analytics';
+import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
-import type { SpriteName } from './pages/arcade/sprites';
+import { PLATFORM_UI } from './lib/deployment';
+import { checkServiceReady } from './lib/serviceReady';
+import ServiceUnavailable from './ServiceUnavailable';
 import './styles.css';
 
 // Onboarding flow:
@@ -27,7 +34,6 @@ type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
-const COWORKER_KEY = 'anton.coworker';
 // Minimum time the welcome orb stays up so it doesn't flash on fast boots.
 // The boot veil only briefly masks the window-show moment (~140ms + ~260ms
 // fade), so the animated orb is on screen almost immediately and stays for
@@ -53,35 +59,12 @@ function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
 }
 
-// Agent defaults to Anton (no picker in onboarding). A previously-selected
-// coworker in localStorage is still honored if present.
-function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
-  let id = 'anton';
-  try { id = window.localStorage.getItem(COWORKER_KEY) || 'anton'; } catch {}
-  const cw = COWORKERS.find((c) => c.id === id && !c.locked);
-  return cw
-    ? { id: cw.id, label: cw.name, sprite: cw.sprite }
-    : { id: 'anton', label: 'ANTON', sprite: 'anton' };
+function SunIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Sun} size={size} />;
 }
 
-// Map skin + theme → the onboarding shell's look. arcade.css reads
-// body[data-arcade-preset]: 'midnight'/'daylight' = clean (Inter, no CRT),
-// 'gameboy' = 8-bit light, default (no preset) = 8-bit dark CRT.
-function applyArcadePreset(skin: string): void {
-  const theme = document.body.dataset.theme === 'light' ? 'light' : 'dark';
-  const preset = skin === '8bit'
-    ? (theme === 'light' ? 'gameboy' : null)         // null → default arcade dark
-    : (theme === 'light' ? 'daylight' : 'midnight'); // clean / "normal"
-  if (preset) document.body.dataset.arcadePreset = preset;
-  else delete document.body.dataset.arcadePreset;
-}
-
-function SunIcon({ size = 15 }: { size?: number }) {
-  return <Sun size={size} strokeWidth={1.5} aria-hidden="true" />;
-}
-
-function MoonIcon({ size = 15 }: { size?: number }) {
-  return <Moon size={size} strokeWidth={1.5} aria-hidden="true" />;
+function MoonIcon({ size = 16 }: { size?: IconSize }) {
+  return <Icon of={Moon} size={size} />;
 }
 
 export default function App() {
@@ -89,7 +72,6 @@ export default function App() {
   // first-run/auth routing so interrupted, approval, failure, dense, and
   // responsive states stay deterministic even on a clean local profile.
   const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
-  const [coworker] = useState(recallCoworker);
   // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
   // setup/install screen (server wasn't up to take the DB write). Consumed once
   // by handlePostAuth after install. A ref (not state) — it drives a one-shot
@@ -99,20 +81,38 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // ENG-749/ENG-2296: progress line under the welcome orb while the loading
-  // screen is held open through a boot-time update, so a download isn't a silent
-  // stall. Derived from the OTA phase, the shell-auto phase, and the manual
-  // shell-reinstall notice (deriveBootStatus) so the overlay never shows the
-  // completion-ish "Almost ready…" while a shell update still needs a relaunch
-  // to take effect.
+  const [serviceUnconfigured, setServiceUnconfigured] = useState(false);
+  const enterService = useCallback(async () => {
+    setRetrying(true);
+    try {
+      const result = await checkServiceReady(() => host.checkConfigured());
+      setOrgMode(result.orgMode ?? host.isWeb);
+      setServiceUnconfigured(result.state === 'unconfigured');
+      setPage(result.state === 'ready' ? 'terminal' : 'auth');
+    } finally {
+      setRetrying(false);
+    }
+  }, []);
+  // ENG-749: progress line under the welcome orb while the loading screen is
+  // held open through a boot-time update: an OTA, or the boot install of a
+  // stranded shell update.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const [shellPhase, setShellPhase] = useState<string | null>(null);
-  const [manualShellPending, setManualShellPending] = useState(false);
-  const bootStatus = deriveBootStatus({
-    ota: { phase: otaPhase },
-    shell: { phase: shellPhase },
-    manualShellPending,
-  });
+  const [shellAuto, setShellAuto] = useState<ShellAutoUpdateSnapshot | null>(null);
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } });
+  // ENG-1047: is the installed shell inside the supported desktop window? The
+  // UI hot-updates while the shell waits for a relaunch, so a newer UI on a
+  // shell weeks old is routine — and until now silent. Resolved once per
+  // launch from the bridge and the live manifest; null means show nothing.
+  // Dismissal is this mount's state only, so the notice is back next launch.
+  const [shellSupport, setShellSupport] = useState<ShellSupportVerdict | null>(null);
+  const [tooOldDismissed, setTooOldDismissed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellSupport()
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -147,46 +147,37 @@ export default function App() {
 
   // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
   // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` isn't an OTA phase but the manual shell-reinstall notice
-  // (ENG-849), so route it to the pending flag — never claim completion while a
-  // reinstall is outstanding — rather than the OTA phase (ENG-2296).
+  // `shell-available` is the manual reinstall notice (ENG-849), which the
+  // sidebar banner owns.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') { setManualShellPending(true); return; }
+      if (status?.phase === 'shell-available') return;
       setOtaPhase(status?.phase ?? null);
     });
   }, []);
 
-  // Also reflect shell auto-update progress (ENG-2296): the boot line was
-  // previously blind to the shell channel and could claim "Almost ready…" while
-  // a shell relaunch was still pending. Pull once for reload recovery, then
-  // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  // Report shell auto-update milestones to PostHog, and feed the boot line.
+  // Pull once for reload recovery, then subscribe. No-ops in web.
+  // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;
-    host.getShellAutoUpdate()
-      .then((snapshot) => { if (!cancelled) setShellPhase(snapshot?.phase ?? null); })
-      .catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellPhase(snapshot?.phase ?? null);
-    });
+    const receive = (snapshot: ShellAutoUpdateSnapshot) => {
+      if (cancelled) return;
+      setShellAuto(snapshot ?? null);
+      trackShellUpdatePhase(snapshot);
+    };
+    host.getShellAutoUpdate().then(receive).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate(receive);
     return () => { cancelled = true; unsubscribe(); };
-  }, []);
-
-  // Recover the manual shell-reinstall notice after an OTA reload drops the
-  // original `shell-available` push, and surface it on old shells that never
-  // push it at all (ENG-1103 manifest fallback in getShellUpdate). Latch-only:
-  // a null result never clears a notice a push already established.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate()
-      .then((update) => { if (!cancelled && update) setManualShellPending(true); })
-      .catch(() => {});
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (hasCodeFixture()) return;
     async function init() {
+      if (!PLATFORM_UI) {
+        await enterService();
+        return;
+      }
       const started = Date.now();
       // Whether this browser has booted before is read up front: the web SPA
       // re-mounts on every refresh, and a returning session shouldn't replay the
@@ -222,6 +213,9 @@ export default function App() {
       // healthy server is measurable (app_installed only fires once the server
       // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
       void trackBootScreenResolved(target);
+      // The UI/server update outcomes of the launch that just reloaded into
+      // this renderer. After the boot gate, so a boot-time apply is in it.
+      void drainUpdateJournal();
       // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
       // start — but skip that floor on a web refresh, where it was pure latency
       // on every reload (ENG-1232).
@@ -245,7 +239,7 @@ export default function App() {
       setPage(target);
     }
     init();
-  }, []);
+  }, [enterService]);
 
   // Common final step for every path that leads to the chat UI:
   // push any credentials sitting in ~/.cowork/.env into the server DB so
@@ -301,6 +295,45 @@ export default function App() {
     await handlePostAuth();
   };
 
+  // Who owns the data already on this machine, when nothing on disk can say.
+  //
+  // Mounted HERE, in the shell, rather than inside CoworkApp: an account that has
+  // been resolved onto its own empty root has no credentials in that root, so
+  // config_ready is false and boot routes to 'auth'. A dialog living on the
+  // 'terminal' route would be unreachable in exactly the state that needs it.
+  const [ownership, setOwnership] = useState<AccountOwnershipQuestion | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    host.accountOwnershipPending()
+      .then((question) => { if (!cancelled) setOwnership(question); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, [page]);
+
+  const [ownershipError, setOwnershipError] = useState<string | null>(null);
+  const decideOwnership = useCallback(async (keepExisting: boolean) => {
+    if (!ownership) return;
+    const { ok, reason } = await host.decideAccountOwnership(ownership.accountId, keepExisting);
+    if (!ok) {
+      // The claim can fail to write or lose a race to another launch. Closing
+      // the dialog here would leave the person on an empty app having just said
+      // the history was theirs, with nothing said about why it is not.
+      setOwnershipError(
+        reason === 'account-changed'
+          ? 'The signed-in account changed. Sign in again to answer this.'
+          : 'Could not take that data. Nothing was changed — try again.',
+      );
+      return;
+    }
+    setOwnershipError(null);
+    setOwnership(null);
+    // Reload on BOTH answers. Taking the data restarted the sidecar onto it;
+    // declining moved the sidecar off it. Either way everything already on
+    // screen, and the conversation caches behind it, came from the other
+    // database.
+    window.location.reload();
+  }, [ownership]);
+
   const isMac = host.isMac();
   const isArcadePage = page !== 'terminal';
 
@@ -309,25 +342,41 @@ export default function App() {
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
 
-      {page === 'loading' && (
-        <div
-          className="arc-root welcome-loading"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}
-        >
-          <OrbitMorph state="thinking" size={72} />
-          <div className="arc-welcome-title">
-            Welcome to MindsHub Cowork
-          </div>
-          {bootStatus && (
-            <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>
-              {bootStatus}
-            </div>
-          )}
-        </div>
+      {/* The restart confirmation behind every update Restart (ENG-3291). Mounted
+          here for the same reason as the ownership dialog: it must reach a
+          restart asked from any page, including onboarding. */}
+      <RestartConfirmHost />
+
+      {ownership && (
+        <AccountOwnershipModal
+          open
+          accountLabel={ownership.accountLabel}
+          error={ownershipError}
+          onDecide={decideOwnership}
+          onDismiss={() => { setOwnershipError(null); setOwnership(null); }}
+        />
+      )}
+
+      {page === 'loading' && <WelcomeLoading status={bootStatus} />}
+
+      {/* Too-old shell notice (ENG-1047). Mounted here, like the ownership
+          dialog above, so it reaches the first screen after launch whether
+          that is onboarding or the chat app. Hidden only while the welcome
+          orb is up, and on web, stable and preview, where the verdict is
+          never `too-old`. */}
+      {page !== 'loading' && shellSupport?.status === 'too-old' && !tooOldDismissed && (
+        <ShellTooOldNotice
+          verdict={shellSupport}
+          shellAuto={shellAuto}
+          onDismiss={() => setTooOldDismissed(true)}
+          topOffset={isMac ? 40 : 12}
+        />
       )}
 
       {page === 'auth' && (
-        <OnboardingScreen coworker={coworker} onComplete={handleAuthComplete} />
+        PLATFORM_UI
+          ? <OnboardingScreen onComplete={handleAuthComplete} />
+          : <ServiceUnavailable unconfigured={serviceUnconfigured} retrying={retrying} onRetry={enterService} />
       )}
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
@@ -371,7 +420,7 @@ export default function App() {
             className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
-            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            {theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
           </button>
         </Tooltip>
       )}

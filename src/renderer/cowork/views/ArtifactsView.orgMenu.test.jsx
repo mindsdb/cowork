@@ -1,7 +1,7 @@
 // The org-mode action gate has to be applied at BOTH menu sites.
 //
-// ArtifactsView builds its kebab menu twice: the list view's `ArtifactMenu`
-// component owns its own item list, and the grid view's items are assembled
+// ArtifactsView builds its kebab menu twice: the list view's `rowMenuItems`
+// builds its own item list, and the grid view's items are assembled
 // inline by the page-level shared `HoverMenu`. They are separate arrays, so
 // wiring the gate into one leaves the other offering filesystem and publish
 // controls on a deployment where none of them can work. Preview is available
@@ -310,11 +310,10 @@ describe.each([
 describe('grid view shared link when the bridge rejects', () => {
   /*
    * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
-   * is async, so the item has to await it for its catch to fire — unawaited,
-   * this fallback was dead code. The list row routes through `openUrl`, which
-   * already awaits.
+   * is what restricts the agent-writable URL to safe schemes, so a rejection
+   * must not hand the raw URL to window.open.
    */
-  it('falls back to window.open', async () => {
+  it('does not fall back to window.open', async () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     host.openExternal.mockClear();
@@ -326,9 +325,38 @@ describe('grid view shared link when the bridge rejects', () => {
 
       fireEvent.click(screen.getByText('Open shared link'));
 
-      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
-        'https://view.mindshub.ai/r/md1', '_blank', 'noopener,noreferrer',
-      ));
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/md1'));
+      expect(opened).not.toHaveBeenCalled();
+    } finally {
+      opened.mockRestore();
+    }
+  });
+});
+
+describe('grid card open when the bridge rejects', () => {
+  /*
+   * The card body and its ↗ button reach the published URL through the card's
+   * own openBest, not the HoverMenu item above, so they need their own check.
+   */
+  const unsafe = { ...published, publishedUrl: 'javascript:alert(1)' };
+
+  it.each([
+    ['the card body', () => fireEvent.click(screen.getByText('Weather Dashboard'))],
+    ['the ↗ Open button', () => fireEvent.click(screen.getByLabelText('Open'))],
+  ])('%s does not fall back to window.open', async (_label, click) => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    host.openExternal.mockClear();
+    host.openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ArtifactsView artifacts={[unsafe]} />);
+      click();
+
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('javascript:alert(1)'));
+      // Let the rejection reach the handler's catch before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }
@@ -490,6 +518,7 @@ describe('delete gives feedback while it runs', () => {
   it('marks the card Deleting… and disables the menu item', async () => {
     const gate = deferred();
     api.deleteArtifact.mockReturnValueOnce(gate.promise);
+    toastAdd.mockClear();
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     render(<ArtifactsView artifacts={[published]} />);
@@ -501,7 +530,10 @@ describe('delete gives feedback while it runs', () => {
     expect(screen.getAllByText('Deleting…').length).toBeGreaterThan(0);
 
     gate.resolve();
-    await vi.waitFor(() => expect(screen.queryByText('Weather Dashboard')).toBeNull());
+    // Dropping the card is App's job (it owns the list); see App.artifactsCount.test.jsx.
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Deleted.', type: 'success' }),
+    ));
   });
 
   it('clears the phase when the delete fails, so the card is usable again', async () => {
@@ -574,5 +606,24 @@ describe.each([
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
     expect(toastAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe('publish state belongs to the owner of the list', () => {
+  // App owns the list (it also feeds the sidebar count). A change kept only in
+  // a local copy was wiped by the next prop, e.g. the one a delete produces.
+  it('reports a stopped share upward and renders the prop it gets back', async () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    api.unpublishArtifact.mockResolvedValue({});
+    const onArtifactChanged = vi.fn();
+    render(<ArtifactsView artifacts={[published]} onArtifactChanged={onArtifactChanged} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Stop sharing'));
+
+    await vi.waitFor(() => expect(onArtifactChanged).toHaveBeenCalledWith(
+      expect.objectContaining({ path: published.path, publishedUrl: '' }),
+    ));
   });
 });

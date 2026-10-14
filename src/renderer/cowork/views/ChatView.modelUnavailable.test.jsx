@@ -50,6 +50,25 @@ describe('ModelUnavailableCard', () => {
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).not.toBeInTheDocument();
   });
 
+  it('admin-restricted leads with Open Settings only: no top-up, no Air switch', async () => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    render(
+      <ModelUnavailableCard
+        code="model_restricted"
+        failedModel="mindshub_air"
+        modelLabels={{ mindshub_air: 'MindsHub Air' }}
+        onOpenSettings={onOpenSettings}
+        onSwitchToAir={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('MindsHub Air is restricted')).toBeInTheDocument();
+    expect(screen.getByText('An admin in your organization restricted this model. Choose another model in Settings.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Open Settings']);
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
   it('names the model with the catalog label the picker uses, not the id prettifier (ENG-1638)', () => {
     // Before: modelLabel('mindshub_air') → "Mindshub air needs credits", under a
     // picker whose row for the same model read "MindsHub Air".

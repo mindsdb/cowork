@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
+import { Alert, Button, Card, Field, EmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
+import { host } from '../../platform/host';
 import {
   deleteDatasource,
   deleteMemory,
@@ -26,10 +27,6 @@ const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
   publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
-
-function EmptyState({ children }) {
-  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
-}
 
 function credentialTemplate(engineDef) {
   return Object.fromEntries(activeCredentialFields(engineDef).map((field) => [field.name, field.default || '']));
@@ -92,7 +89,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
           keep the plain header here. */}
       {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
       {status && <Alert variant="danger" role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Alert>}
-      {!data ? <EmptyState>Loading…</EmptyState> : null}
+      {!data ? <EmptyState size="sm" title="Loading…" /> : null}
       {data && kind === 'memory' && (
         <MemoryView
           data={data}
@@ -223,7 +220,9 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
-      <div className="h-[14px]" />
+      {/* shrink-0: a flex child of the page column — without it the spacer
+          collapses when the content below needs the height. */}
+      <div className="h-[14px] shrink-0" />
       <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
@@ -247,7 +246,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
+          {totalFiles === 0 && <EmptyState size="sm" title="No memory entries found." />}
         </Card>
         <div className="scroll-clean overflow-y-auto min-h-0">
           {editing === 'edit' && selected ? (
@@ -316,7 +315,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
             </>
           ) : (
             <div className="h-full flex items-center justify-center">
-              <UiEmptyState description="Select a memory entry to inspect it." />
+              <EmptyState description="Select a memory entry to inspect it." />
             </div>
           )}
         </div>
@@ -328,10 +327,10 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
     <div className="flex flex-col gap-px">
-      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
+      <div className="section-label px-1 pb-1 flex items-center gap-[6px]">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-[10.5px]">· active</span>}
-        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
+        {isActive && <span className="text-accent">· active</span>}
+        <span className="ml-auto text-ink-4 tabular-nums">{files.length}</span>
       </div>
       {files.length === 0 ? (
         <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
@@ -345,7 +344,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
           style={{ height: 'auto', minHeight: 26, padding: '4px 10px' }}
           onClick={() => onSelect(file)}
         >
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(14)}</span>
           <span className="flex-1 whitespace-normal">{labelCategory(file.category)}</span>
         </button>
       ))}
@@ -466,7 +465,7 @@ function ConnectView({ data, setData, setStatus }) {
             </div>
             <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
-        )) : <EmptyState>No data vault connections found.</EmptyState>}
+        )) : <EmptyState size="sm" title="No data vault connections found." />}
       </div>
       <form onSubmit={save} className="flex flex-col gap-[10px]">
         <Select
@@ -563,17 +562,17 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
-          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(14)}</span>
           <div className="flex-1 min-w-0">
             <div className="text-[13.5px] font-[650] text-strong">{artifact.title}</div>
             <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
             {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => host.openExternal(artifact.publishedUrl)}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
-      )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
+      )) : <EmptyState size="sm" title="No HTML artifacts found in output folders." />}
       {(data.history || []).length > 0 && (
         <div className="mt-[18px]">
           <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>

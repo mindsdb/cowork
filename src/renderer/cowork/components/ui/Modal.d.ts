@@ -4,7 +4,7 @@ export interface ModalProps {
   open: boolean;
   onClose?: () => void;
   size?: 'sm' | 'md' | 'lg';
-  layer?: 'default' | 'system';
+  layer?: 'default' | 'palette' | 'system';
   labelledBy?: string;
   ariaLabel?: string;
   closeOnBackdrop?: boolean;
@@ -14,6 +14,8 @@ export interface ModalProps {
   height?: string | number;
   maxHeight?: string | number;
   fullBleed?: boolean;
+  placement?: 'center' | 'left' | 'top';
+  leftOffset?: number;
   children?: ReactNode;
 }
 

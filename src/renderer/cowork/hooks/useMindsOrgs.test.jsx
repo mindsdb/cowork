@@ -4,6 +4,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 const hostMock = vi.hoisted(() => ({
   mindshubListOrgs: vi.fn(),
   mindshubSwitchOrg: vi.fn(),
+  // Desktop and web take different reload paths; the existing cases are web.
+  isElectron: false,
 }));
 vi.mock('../../platform/host', () => hostMock);
 
@@ -12,6 +14,7 @@ vi.mock('../lib/organizationTransition', () => transitionMock);
 
 import { useMindsOrgs } from './useMindsOrgs';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
+import { getDraft, setDraft, __resetDraftsForTests } from '../lib/draftStore';
 
 const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
 const PERSONAL = {
@@ -104,7 +107,7 @@ describe('useMindsOrgs', () => {
     expect(result.current.orgs).toEqual([PERSONAL]);
   });
 
-  it('keeps the desktop switch result as local state without reloading', async () => {
+  it('keeps a switch result carrying no reload requirement as local state', async () => {
     hostMock.mindshubSwitchOrg.mockResolvedValue({
       ok: true,
       activeOrgId: PERSONAL.id,
@@ -471,5 +474,128 @@ describe('useMindsOrgs', () => {
     await waitFor(() => expect(hostMock.mindshubListOrgs).toHaveBeenCalled());
     expect(result.current.orgs).toEqual([]);
     expect(result.current.activeOrgId).toBeNull();
+  });
+});
+
+// Desktop does not share the web reload path. Its budget ends in "staying put
+// and refusing tokens", which in a desktop window is wedged, and it returns
+// before the in-app refresh signal mounted readers depend on.
+describe('useMindsOrgs on desktop', () => {
+  let reload;
+
+  beforeEach(() => {
+    hostMock.isElectron = true;
+    reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    localStorage.clear();
+    __resetDraftsForTests();
+  });
+
+  afterEach(() => {
+    hostMock.isElectron = false;
+    vi.unstubAllGlobals();
+  });
+
+  const switched = () => ({
+    ok: true,
+    reloadRequired: true,
+    clearTenantState: true,
+    activeOrgId: PERSONAL.id,
+    orgs: [ACME, PERSONAL],
+  });
+
+  it('purges, notifies mounted readers, then reloads', async () => {
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+    expect(organizationChanged).toHaveBeenCalledWith('user-1');
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a pending draft write so pagehide cannot restore it', async () => {
+    // Deleting the key is not enough on its own. Text typed within 400 ms of
+    // the switch leaves a flush timer armed, and pagehide fires it during the
+    // reload — writing the organization being LEFT back to a key the next
+    // document reads under the destination's marker.
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    setDraft('new', 'unsent text belonging to acme');
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+    window.dispatchEvent(new Event('pagehide'));
+
+    const draftKeys = Object.keys(localStorage).filter((k) => k.startsWith('anton.composerDrafts'));
+    expect(draftKeys).toEqual([]);
+    expect(getDraft('new')).toBe('');
+  });
+
+  it('reloads even when an organization-change listener throws', async () => {
+    // The reload is the only thing that reconciles this document with the
+    // stores the sidecar has already moved to. A reader that throws must not
+    // be able to strand the document on the previous organization's data.
+    const thrower = vi.fn(() => { throw new Error('a mounted reader blew up'); });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unsubscribeThrower = subscribeOrganizationChanges(thrower);
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(thrower).toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+    // And the listeners after the thrower still hear about it.
+    expect(organizationChanged).toHaveBeenCalledWith('user-1');
+    unsubscribeThrower();
+    errors.mockRestore();
+  });
+
+  it('does not take the web reload path', async () => {
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(transitionMock.prepareForOrganizationReload).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the requested organization when the result names none', async () => {
+    // A refusal that still requires a reload can come back without an
+    // activeOrgId; the purge still has to be keyed to something, and the
+    // organization that was asked for is the only thing known here.
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue({
+      ok: false, reloadRequired: true, clearTenantState: true, orgs: [ACME, PERSONAL],
+    });
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton.lastOrganization')).toBe(PERSONAL.id);
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+  });
+
+  it('keeps local state when the switch says not to clear it', async () => {
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue({ ...switched(), clearTenantState: false });
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

@@ -2,7 +2,7 @@
 // search) used to only focus the search input — visually nothing happened.
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
@@ -398,16 +398,6 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(queryEffortPill()).toBeNull();
   });
 
-  it('hides the effort pill under the Hermes harness, which has no effort knob', () => {
-    renderComposer({
-      models: MODELS,
-      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS, harness: 'hermes' },
-      model: MODELS[1],
-      effort: 'medium',
-    });
-    expect(queryEffortPill()).toBeNull();
-  });
-
   it('is fixed with the model under modelReadOnly', () => {
     renderComposer({
       models: MODELS,
@@ -646,53 +636,31 @@ describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
 
 // ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
 //
-// The pill's options come from the harnessHermesEnabled / harnessClaudeCodeEnabled
-// props (default true), not a fixed Anton/Claude-Code list — Hermes is now
-// offerable too. Anton has no enable prop: it's the default agent and is
-// always offered, so the pill can never be hidden entirely.
+// The pill's options come from the harnessClaudeCodeEnabled prop (default
+// true), not a fixed list. Anton has no enable prop and is always offered,
+// so with Claude-Code off there is one option and the picker is hidden
+// rather than shown as a control that cannot change anything.
 
 describe('Composer — harness picker honors the per-harness enable flags', () => {
-  it('offers all three harnesses by default', async () => {
-    const user = userEvent.setup();
+  it('offers both harnesses by default', async () => {
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true });
 
     expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Hermes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Claude-Code' })).toBeInTheDocument();
   });
 
-  it('hides Hermes when harnessHermesEnabled is false', async () => {
-    renderComposer({
-      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
-      harnessHermesEnabled: false,
-    });
-
-    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
-  });
-
-  it('hides Claude-Code when harnessClaudeCodeEnabled is false', async () => {
+  it('hides the picker entirely when Claude-Code is disabled and Anton is the only option', async () => {
     renderComposer({
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
       harnessClaudeCodeEnabled: false,
     });
 
-    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    await screen.findByRole('textbox');
     expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Anton' })).toBeNull();
   });
 
-  it('still offers Anton when Hermes and Claude-Code are both disabled', async () => {
-    renderComposer({
-      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
-      harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
-    });
-
-    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
-  });
-
-  it('falls back to a still-enabled harness if the picked one gets disabled underneath it (e.g. Settings changed elsewhere)', async () => {
+  it('never sends a harness that got disabled after it was picked (e.g. Settings changed elsewhere)', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
     const baseProps = {
@@ -703,15 +671,13 @@ describe('Composer — harness picker honors the per-harness enable flags', () =
     };
     const { rerender } = render(<Composer {...baseProps} />);
 
-    await user.click(await screen.findByRole('button', { name: 'Hermes' }));
-    // Hermes gets disabled from underneath the already-open composer.
-    rerender(<Composer {...baseProps} harnessHermesEnabled={false} />);
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+    // Claude-Code gets disabled from underneath the already-open composer.
+    rerender(<Composer {...baseProps} harnessClaudeCodeEnabled={false} />);
 
-    // The reset effect corrects the pill itself...
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
-    expect(await screen.findByRole('button', { name: 'Anton', pressed: true })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
 
-    // ...and a send reflects the corrected value, never the disabled one.
+    // The send falls back to what is still offered, never the disabled pick.
     await user.type(screen.getByRole('textbox'), 'hello');
     await user.keyboard('{Enter}');
     expect(onSend).toHaveBeenCalledWith('hello', expect.objectContaining({ harness: 'anton' }));
@@ -805,5 +771,31 @@ describe('Composer — pasted image names (ENG-1100)', () => {
     pasteFiles([new File([new Uint8Array([1])], 'chart.png', { type: 'image/png' })]);
 
     expect(onAttachFiles.mock.calls[0][0][0].name).toBe('chart.png');
+  });
+});
+
+// The legacy `.menu` keyframe rises from below, which only suits a menu that
+// opens upward. A menu placed below the composer has to slide down instead.
+describe('Composer — slash menu entrance direction', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const openSlashWithComposerAt = (top) => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top, bottom: top + 80, left: 0, right: 600, width: 600, height: 80, x: 0, y: top,
+    });
+    renderComposer();
+    const ta = screen.getByRole('textbox');
+    fireEvent.change(ta, { target: { value: '/' } });
+    ta.setSelectionRange(1, 1);
+    fireEvent.select(ta);
+    return screen.getByRole('listbox', { name: 'Skills and actions' });
+  };
+
+  it('slides down when it opens below a composer near the top of the window', () => {
+    expect(openSlashWithComposerAt(100)).toHaveClass('menu--drop-down');
+  });
+
+  it('keeps the upward entrance when it opens above the composer', () => {
+    expect(openSlashWithComposerAt(600)).not.toHaveClass('menu--drop-down');
   });
 });

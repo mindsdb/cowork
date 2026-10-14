@@ -24,6 +24,11 @@ describe('Button', () => {
     }
   });
 
+  it('emits the dense xxs size token', () => {
+    render(<Button size="xxs" icon aria-label="Pin">x</Button>);
+    expect(screen.getByRole('button', { name: 'Pin' })).toHaveClass('btn', 'default', 'xxs', 'icon', { exact: true });
+  });
+
   it('falls back to default variant/size on unknown values instead of leaking junk classes', () => {
     render(<Button variant="sparkly" size="xxl">Odd</Button>);
     expect(screen.getByRole('button', { name: 'Odd' })).toHaveClass('btn', 'default', { exact: true });

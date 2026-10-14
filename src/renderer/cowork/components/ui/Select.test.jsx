@@ -49,6 +49,30 @@ describe('Select', () => {
     expect(onValueChange).not.toHaveBeenCalled();
   });
 
+  // Regression (ENG-2416): Base UI ≥ 1.7 fires onValueChange(null) when the
+  // selected value drops out of a shrinking option list, even if the caller
+  // moved `value` onto the new list in the same render. A listbox user can never
+  // pick null, so the wrapper drops it instead of letting it overwrite the
+  // caller's choice.
+  it('does not forward the null Base UI emits when options shrink under the value', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    const five = ['low', 'medium', 'high', 'xhigh', 'max'].map((v) => ({ value: v, label: v }));
+    const three = five.slice(0, 3);
+    const { rerender } = render(<Harness initial="max" options={five} onValueChange={onValueChange} />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('{Escape}');
+    // Precondition: the closed popup stays mounted. That is what lets Base UI
+    // re-register the shrunk list and emit the null. If this ever fails, the
+    // rest of the test no longer exercises the guard.
+    expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+    rerender(<Harness initial="high" options={three} onValueChange={onValueChange} />);
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox')).toHaveTextContent('high');
+  });
+
   it('shows the placeholder when no value is selected', () => {
     render(<Harness initial={null} placeholder="Pick one…" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Pick one…');
@@ -145,11 +169,16 @@ describe('Select', () => {
     expect(document.querySelector('.shadow-sh-popup').style.minWidth).toBe('280px');
   });
 
+  // Base UI 1.7.0 repointed `Select.Separator` from the generic Separator
+  // (role="separator") at ListboxSeparator (role="presentation"): ARIA allows
+  // only `option` and `group` children inside a `listbox`, so the old role was
+  // itself the bug. Assert on the rendered divider instead, the way the popup
+  // tests above target `.shadow-sh-popup`.
   it('renders a separator between option groups', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole('combobox'));
-    expect(screen.getByRole('separator')).toBeInTheDocument();
+    expect(document.querySelector('.shadow-sh-popup .h-px.bg-line')).not.toBeNull();
   });
 
   // A leading option `icon` renders inside the open list item (used to set a

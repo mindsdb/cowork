@@ -18,8 +18,26 @@
          docs.google.com, and the file-type icons it draws come from
          gstatic/googleusercontent. Web only — Electron's picker runs in
          the OS browser instead, so index.html needs none of them.
-         Tighten per-deployment via reverse-proxy headers if needed. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com; child-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com" />
+         Tighten per-deployment via reverse-proxy headers if needed.
+
+         cdn.jsdelivr.net is TEMPORARY and is not for this app's own code — it
+         is for artifact previews (ENG-2818). On web an artifact is rendered
+         into the preview iframe via `srcdoc`, and a srcdoc document inherits
+         this policy, so the chart library anton's own skill mandates
+         (build-html-dashboard/SKILL.md: "ALWAYS use Apache ECharts… via CDN"
+         from exactly this host) is blocked and every chart renders blank while
+         the rest of the page looks fine.
+
+         One host, not an allowlist to grow: that skill requires CSS, JS and
+         data inlined, and images as data: URIs or sibling files, so this is
+         the single deliberate remote reference. Desktop does not need it —
+         ENG-2818 made Desktop navigate the iframe, so artifacts there no
+         longer inherit anything, which is why index.html is untouched.
+
+         Remove this when ENG-2822 gives web the same treatment. Until then a
+         web artifact still inherits the rest of this policy, so remote images
+         and web fonts stay blocked — this fixes charts, not the class. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com; child-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com" />
     <title>MindsHub Cowork</title>
     <!-- Brand favicon: the same MindsHub "minds" mark as the desktop app icon,
          so the web tab matches the dock/taskbar glyph. SVG for crisp tabs on

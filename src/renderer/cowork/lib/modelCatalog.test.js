@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, isModelLocked, orderByFamily, OTHER_MAKER,
+  modelMaker, groupModelOptions, isModelLocked, isModelRestricted, unavailableModelFields,
+  knownModelDisabledReasons, orderByFamily, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -242,5 +243,77 @@ describe('isModelLocked', () => {
   it('only a real false locks, never a falsy lookalike', () => {
     expect(isModelLocked({ fable: 0 }, 'fable')).toBe(false);
     expect(isModelLocked({ fable: 'false' }, 'fable')).toBe(false);
+  });
+});
+
+/* An org admin's model rule closes a row too, but for a reason money cannot
+   lift. The reason map says which rows those are; the enabled map stays the
+   authority on whether a row runs at all. */
+describe('isModelRestricted / unavailableModelFields', () => {
+  const ENABLED = { mindshub_air: true, opus: false, fable: false, haiku: false };
+  const REASONS = { opus: 'model_restricted', fable: 'wallet_empty', haiku: 'included_allowance_exhausted' };
+
+  it('names a disabled row with the model_restricted reason as restricted', () => {
+    expect(isModelRestricted(ENABLED, REASONS, 'opus')).toBe(true);
+    expect(unavailableModelFields(ENABLED, REASONS, 'opus')).toEqual({
+      disabled: true,
+      restricted: true,
+      tag: 'Restricted',
+      title: 'An admin in your organization restricted this model.',
+    });
+  });
+
+  it.each([
+    ['the wallet', 'fable'],
+    ['the spent allowance', 'haiku'],
+  ])('keeps a row closed by %s on Needs credits, with the credits route', (_label, id) => {
+    expect(isModelRestricted(ENABLED, REASONS, id)).toBe(false);
+    expect(unavailableModelFields(ENABLED, REASONS, id)).toEqual({ disabled: true, locked: true, tag: 'Needs credits' });
+  });
+
+  it('reads a disabled row with no reason, as an older server sends it, as Needs credits', () => {
+    expect(unavailableModelFields(ENABLED, undefined, 'opus')).toEqual({ disabled: true, locked: true, tag: 'Needs credits' });
+    expect(unavailableModelFields(ENABLED, {}, 'opus')).toEqual({ disabled: true, locked: true, tag: 'Needs credits' });
+  });
+
+  it('leaves an available row alone, whatever a stale reason says', () => {
+    expect(unavailableModelFields(ENABLED, REASONS, 'mindshub_air')).toEqual({});
+    expect(isModelRestricted({ opus: true }, REASONS, 'opus')).toBe(false);
+    expect(unavailableModelFields({ opus: true }, REASONS, 'opus')).toEqual({});
+    expect(unavailableModelFields({}, REASONS, 'opus')).toEqual({});
+  });
+
+  it('never marks a restricted row locked, which is what would attach Add credits', () => {
+    expect(unavailableModelFields(ENABLED, REASONS, 'opus').locked).toBeUndefined();
+  });
+});
+
+/* cowork-server relays any non-empty `disabled_reason` string, so the renderer
+   narrows the relay to the reasons it knows before anything reads it. */
+describe('knownModelDisabledReasons', () => {
+  it('keeps each of the three known reasons', () => {
+    const relayed = { opus: 'model_restricted', fable: 'wallet_empty', haiku: 'included_allowance_exhausted' };
+    expect(knownModelDisabledReasons(relayed)).toEqual(relayed);
+  });
+
+  it('drops an unknown reason, so its row reads as Needs credits', () => {
+    const narrowed = knownModelDisabledReasons({ opus: 'org_budget_cap', fable: 'model_restricted' });
+    expect(narrowed).toEqual({ fable: 'model_restricted' });
+    expect(unavailableModelFields({ opus: false }, narrowed, 'opus'))
+      .toEqual({ disabled: true, locked: true, tag: 'Needs credits' });
+  });
+
+  it('drops a value that is not a known reason string', () => {
+    expect(knownModelDisabledReasons({ a: '', b: null, c: 7, d: ['model_restricted'], e: 'MODEL_RESTRICTED' }))
+      .toEqual({});
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['a string', 'model_restricted'],
+    ['an array', ['model_restricted']],
+  ])('gives an empty map for %s', (_label, raw) => {
+    expect(knownModelDisabledReasons(raw)).toEqual({});
   });
 });

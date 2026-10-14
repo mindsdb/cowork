@@ -47,10 +47,10 @@ import { deleteDatasource, fetchDatasources } from '../api';
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('CustomizeView connection cards — ENG-1705 wiring', () => {
-  it.each(['Connect', 'New connection'])('opens the existing connect flow from %s', async (name) => {
+  it('opens the existing connect flow from Connect', async () => {
     const onConnectNew = vi.fn();
     render(<CustomizeView connectors={CONNECTIONS} onConnectNew={onConnectNew} />);
-    await userEvent.click(screen.getByRole('button', { name, exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect', exact: true }));
     expect(onConnectNew).toHaveBeenCalledTimes(1);
   });
 
@@ -91,13 +91,15 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     render(<CustomizeView connectors={CONNECTIONS} />);
     await userEvent.type(screen.getByPlaceholderText('Search connections'), query);
     expect(screen.getAllByRole('article')).toHaveLength(count);
-    expect(screen.getByText(`Showing ${count} of 6`)).toBeInTheDocument();
+    expect(screen.getByText(`${count} of 6 connections`)).toBeInTheDocument();
   });
 
   it('sorts by the app names users see, instead of internal connection IDs', async () => {
     render(<CustomizeView connectors={CONNECTIONS} />);
-    await userEvent.click(screen.getByRole('button', {name:/Sort: Recent/i}));
-    await userEvent.click(screen.getByRole('button', {name:'Name', exact:true}));
+    const sortPill = screen.getByRole('combobox', { name: 'Sort' });
+    expect(sortPill).toHaveTextContent('Recent');
+    await userEvent.click(sortPill);
+    await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
     const cards = screen.getAllByRole('article');
     expect(within(cards.at(-1)).getByText('Linear')).toBeInTheDocument();
   });
@@ -115,8 +117,10 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     ];
     vi.mocked(fetchDatasources).mockResolvedValueOnce({ connections });
     render(<CustomizeView connectors={connections} />);
-    await userEvent.click(screen.getByRole('button', { name: /Sort: Recent/i }));
-    await userEvent.click(screen.getByRole('button', { name: sort, exact: true }));
+    const sortPill = screen.getByRole('combobox', { name: 'Sort' });
+    expect(sortPill).toHaveTextContent('Recent');
+    await userEvent.click(sortPill);
+    await userEvent.click(await screen.findByRole('option', { name: sort }));
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(connections.length);
     order.forEach((index, position) => {

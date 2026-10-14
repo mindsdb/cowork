@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
   usageTransitions,
@@ -6,9 +6,15 @@ import {
   balanceDismissStep,
   freeDismissStep,
   countsAsWarning,
-  formatTokensShort,
+  formatPercentShort,
   formatUsd,
   formatResetDate,
+  formatResetTime,
+  freeAllowanceState,
+  isBalanceEmpty,
+  allowanceStopCopy,
+  freeServingPausedCopy,
+  NO_FREE_GRANT_SENTENCE,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
 } from './usageWarnings';
@@ -19,25 +25,42 @@ const RESET = '2099-09-11T12:00:00Z';
 const usage = (over = {}) => ({
   reachable: true,
   isBillingOwner: true,
-  freeTokens: { limit: 5_000_000, used: 1_000_000, remaining: 4_000_000, resetsAt: RESET },
+  freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: RESET },
   balance: { usd: 42.1, canConsume: true, hasToppedUp: true, alert: '' },
   autoTopUp: { enabled: false, thresholdUsd: null, rechargeToUsd: null, status: 'ok' },
   ...over,
 });
 
+// Someone the allowance can actually stop: no wallet to fall through to. The
+// standing figure is theirs alone (ENG-2749), at any level; 28% is just a
+// number to read back. `usage()` above, with $42.10 in the wallet, keeps
+// working when the allowance runs out and gets no figure at any number.
+const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
+const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
+
 const labels = (w) => w.actions.map((a) => a.label);
 
 describe('formatting', () => {
-  it('abbreviates tokens the way the console does', () => {
-    expect(formatTokensShort(620_000)).toBe('620K');
-    expect(formatTokensShort(1_200_000)).toBe('1.2M');
-    expect(formatTokensShort(5_000_000)).toBe('5M');
-    expect(formatTokensShort(900)).toBe('900');
+  it('renders the allowance as a whole percentage', () => {
+    expect(formatPercentShort(0.124)).toBe('12%');
+    expect(formatPercentShort(1)).toBe('100%');
+    expect(formatPercentShort(0)).toBe('0%');
   });
-  it('says 1M, not 1000K, once the K form would round up to a thousand', () => {
-    expect(formatTokensShort(999_999)).toBe('1M');
-    expect(formatTokensShort(999_950)).toBe('1M');
-    expect(formatTokensShort(999_949)).toBe('999.9K');
+  it('keeps a decimal below one percent, so a usable turn does not read as zero', () => {
+    // 0.4% of the allowance is a real small turn for a caller who caches well,
+    // and "0%" next to a working account is the reading this avoids.
+    expect(formatPercentShort(0.004)).toBe('0.4%');
+    expect(formatPercentShort(0.0004)).toBe('0%');
+  });
+  it('keeps a decimal above ninety-nine, so "used" and "left" cannot contradict', () => {
+    // Settings prints the used share beside the remaining one. Rounding 99.6%
+    // used to "100%" puts it next to "0.4% left" on the same row.
+    expect(formatPercentShort(0.996)).toBe('99.6%');
+    expect(formatPercentShort(1)).toBe('100%');
+  });
+  it('clamps a value outside the range rather than trusting it', () => {
+    expect(formatPercentShort(1.5)).toBe('100%');
+    expect(formatPercentShort(-1)).toBe('0%');
   });
   it('formats dollars with two decimals and keeps the sign', () => {
     expect(formatUsd(8.42)).toBe('$8.42');
@@ -49,38 +72,116 @@ describe('formatting', () => {
     expect(formatResetDate('nope')).toBeNull();
     expect(formatResetDate(null)).toBeNull();
   });
+
+  // It refills every few hours, so a date names a day the reader is in already.
+  describe('formatResetTime', () => {
+    const NOW = new Date('2026-09-14T09:00:00Z');
+
+    it('gives the clock time alone when the refill is later today', () => {
+      expect(formatResetTime('2026-09-14T14:15:00Z', NOW)).toBe('2:15 PM');
+    });
+
+    it('adds the date only when the refill lands on another local day', () => {
+      // A window crossing midnight must not read as a time already past.
+      expect(formatResetTime('2026-09-15T02:15:00Z', NOW)).toBe('Sep 15, 2:15 AM');
+    });
+
+    it('says nothing at all about a refill already past', () => {
+      // A stale time reads as imminent in a way a stale date never did.
+      expect(formatResetTime('2026-09-14T08:59:00Z', NOW)).toBeNull();
+      expect(formatResetTime(NOW.toISOString(), NOW)).toBeNull();
+    });
+
+    it('says nothing when there is nothing usable to quote', () => {
+      expect(formatResetTime('nope', NOW)).toBeNull();
+      expect(formatResetTime(null, NOW)).toBeNull();
+    });
+
+    // At TZ=UTC a same-UTC-day test and a same-local-day test agree. West of
+    // UTC they part company, and only the local one is right.
+    describe('west of UTC', () => {
+      const realTz = process.env.TZ;
+      beforeEach(() => { process.env.TZ = 'America/Los_Angeles'; });
+      afterEach(() => { process.env.TZ = realTz; });
+
+      it('keeps the time bare when the refill is a different UTC day but the same local one', () => {
+        // 23:00Z is 4pm in LA and 01:15Z is 6:15pm the same evening. A UTC
+        // comparison would wrongly prepend "Sep 15" to tonight.
+        expect(formatResetTime('2026-09-15T01:15:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('6:15 PM');
+      });
+
+      it('names the LOCAL date when the refill really is another day', () => {
+        expect(formatResetTime('2026-09-15T08:30:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('Sep 15, 1:30 AM');
+      });
+    });
+  });
 });
 
 describe('deriveComposerWarning', () => {
-  it('says where a healthy allowance stands rather than nothing at all', () => {
-    const w = deriveComposerWarning(usage());
+  it('says where a healthy allowance stands to someone it can stop, rather than nothing at all', () => {
+    const w = deriveComposerWarning(unpaid());
     expect(w.kind).toBe('free_at_rest');
     expect(w.resting).toBe(true);
-    expect(w.title).toBe('4M of 5M free tokens left');
-    expect(w.body).toMatch(/^Resets on Sep 1[12]\.$/);
+    expect(w.title).toBe('28% of your free allowance left');
+    expect(w.body).toMatch(/^Resets at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
-    // No dismissal key: the standing figure is not closable, so nothing can
-    // key a dismissal to it.
+    // No dismissal key at all: the figure's close is its own flag (see
+    // useStandingFigureHidden), so there is no step to ask again at.
     expect(w.dismissKey).toBeUndefined();
   });
 
-  it('names the allowance even with no reset date to quote', () => {
+  it('keeps the figure at any level for someone with no wallet, down to the 20% warning', () => {
+    // Exactly as before ENG-2749: for them it is the only place the number
+    // shows before the warning, so an untouched allowance gets one too.
+    for (const percent of [100, 80, 30, 21]) {
+      const w = deriveComposerWarning(unpaid({ freeTokens: at(percent) }));
+      expect(w?.kind, `${percent}% left`).toBe('free_at_rest');
+      expect(w.title).toBe(`${percent}% of your free allowance left`);
+    }
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(20) }))?.kind).toBe('free_low');
+  });
+
+  it('shows no figure to someone with a balance to fall through to', () => {
+    // Air running out does not stop them, so the number is not a budget to
+    // watch; it would just sit above the composer with nothing to inform.
+    for (const model of ['mindshub_air', 'model-router', null]) {
+      expect(deriveComposerWarning(usage({ freeTokens: at(28) }), { model })).toBeNull();
+    }
+    // A wallet auth has not flagged but that holds nothing cannot carry them,
+    // so it rounds toward showing the figure.
+    expect(deriveComposerWarning(usage({
+      freeTokens: at(28), balance: { usd: 0, canConsume: true, hasToppedUp: false, alert: '' },
+    }))?.kind).toBe('free_at_rest');
+    // A low balance still carries them past the allowance, so no figure
+    // either. The low balance itself is a warning on picks that can spend it,
+    // covered below.
+    const low = usage({ freeTokens: at(28), balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
+    expect(deriveComposerWarning(low, { model: 'mindshub_air' })).toBeNull();
+    // The WARNINGS still reach them: falling through to paid changes what they
+    // spend. Only the standing figure goes, so a closed warning steps down to
+    // nothing rather than to a figure they were never shown.
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 1_000_000, remaining: 4_000_000, resetsAt: null },
+      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
     }));
+    expect(w.kind).toBe('free_low');
+    expect(w.whenDismissed).toBeUndefined();
+  });
+
+  it('names the allowance even with no reset date to quote', () => {
+    const w = deriveComposerWarning(unpaid({ freeTokens: { ...at(28), resetsAt: null } }));
     expect(w.kind).toBe('free_at_rest');
     expect(w.body).toBe('Air runs on these until they are used up.');
   });
 
-  it('a free warning carries the figure a dismissal steps down to', () => {
-    const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 4_100_000, remaining: 900_000, resetsAt: RESET },
+  it('a free warning carries the figure a dismissal steps down to, for someone the allowance can stop', () => {
+    const w = deriveComposerWarning(unpaid({
+      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
     // Closing it must leave the allowance somewhere, not nowhere.
     expect(w.whenDismissed.kind).toBe('free_at_rest');
     expect(w.whenDismissed.resting).toBe(true);
-    expect(w.whenDismissed.title).toBe('900K of 5M free tokens left');
+    expect(w.whenDismissed.title).toBe('18% of your free allowance left');
     // And the figure is the same object the healthy state builds.
     expect(w.whenDismissed.dismissKey).toBeUndefined();
   });
@@ -91,35 +192,35 @@ describe('deriveComposerWarning', () => {
     expect(deriveComposerWarning(usage({ freeTokens: { limit: 100, used: 95, remaining: 5 } }), { providerType: 'openai' })).toBeNull();
     // The standing figure obeys the same three silences: a healthy allowance is
     // still nothing to a signed-out, unreachable, or BYOK caller.
-    expect(deriveComposerWarning(usage({ reachable: false }), { model: null })).toBeNull();
-    expect(deriveComposerWarning(usage(), { providerType: 'openai' })).toBeNull();
+    expect(deriveComposerWarning(unpaid({ reachable: false }), { model: null })).toBeNull();
+    expect(deriveComposerWarning(unpaid(), { providerType: 'openai' })).toBeNull();
   });
 
   it('shows no figure for an allowance there is nothing to count', () => {
     // Uncapped is auth's -1 sentinel, and 0 or a missing limit means no grant.
     // Neither has a number to count down, so neither gets a standing figure.
-    expect(deriveComposerWarning(usage({ freeTokens: { limit: -1, used: 30 } }))).toBeNull();
-    expect(deriveComposerWarning(usage({ freeTokens: null }))).toBeNull();
-    expect(deriveComposerWarning(usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: { limit: -1, used: 30 } }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: null }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
   });
 
   it('shows no figure to a pick that cannot spend the allowance', () => {
-    expect(deriveComposerWarning(usage(), { model: 'claude-sonnet-4' })).toBeNull();
+    expect(deriveComposerWarning(unpaid(), { model: 'claude-sonnet-4' })).toBeNull();
   });
 
   it('free tokens running low: names the count and what happens next, no top-up CTA', () => {
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 4_380_000, remaining: 620_000, resetsAt: RESET },
+      freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
-    expect(w.title).toBe('620K free tokens left');
-    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your free tokens reset on Sep 1[12]\.$/);
+    expect(w.title).toBe('12% of your free allowance left');
+    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your allowance refills at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
   it('free tokens low AND balance low on Air: says both and offers funds', () => {
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 4_380_000, remaining: 620_000, resetsAt: RESET },
+      freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
       balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
     }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
@@ -129,12 +230,12 @@ describe('deriveComposerWarning', () => {
 
   it('free tokens used, balance fine: an info note, not an error', () => {
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_used');
     expect(w.tone).toBe('info');
-    expect(w.title).toBe('Free monthly tokens used');
-    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your free tokens reset on Sep 1[12]\.$/);
+    expect(w.title).toBe('Free allowance used up');
+    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your allowance refills at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
@@ -166,14 +267,13 @@ describe('deriveComposerWarning', () => {
     expect(labels(w)).toEqual(['Add funds', 'Manage auto top up']);
   });
 
-  it('balance low while free Air tokens remain: no warning, just the standing figure', () => {
-    const w = deriveComposerWarning(usage({
+  it('balance low while free Air tokens remain: nothing at all', () => {
+    // The low balance is not this pick's problem, and a wallet that can still
+    // pay means the allowance cannot stop them, so there is no figure either.
+    expect(deriveComposerWarning(usage({
+      freeTokens: at(28),
       balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
-    }), { model: 'mindshub_air' });
-    expect(w.kind).toBe('free_at_rest');
-    expect(w.resting).toBe(true);
-    // The low balance is not this pick's problem, so it stays out of the copy.
-    expect(w.body).not.toContain('balance');
+    }), { model: 'mindshub_air' })).toBeNull();
   });
 
   it('the router (the default pick) can spend either resource, so it hears about both', () => {
@@ -208,12 +308,13 @@ describe('deriveComposerWarning', () => {
   it('balance empty but free tokens remain: the router and Air still run, so no stop sign', () => {
     // cowork-server swaps a wallet-locked model for Air while the grant lasts,
     // so the next task starts. Only an explicit paid pick is stuck.
-    const depleted = usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
+    const depleted = usage({ freeTokens: at(28), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
     // A resting figure is a figure, not a stop sign: no danger tone and
     // nothing that reads as the next task being refused. It does still name
     // the empty wallet, in the warning's own words, because that is true and
-    // actionable now rather than at 20% left — the same fact must not appear
-    // to arrive with the threshold that has nothing to do with it.
+    // actionable from the moment the figure shows rather than at 20% left —
+    // the same fact must not appear to arrive with the threshold that has
+    // nothing to do with it.
     for (const model of ['model-router', null, 'mindshub_air']) {
       const w = deriveComposerWarning(depleted, { model });
       expect(w.kind).toBe('free_at_rest');
@@ -223,13 +324,13 @@ describe('deriveComposerWarning', () => {
     }
     // The disclosure does not hinge on the crossing: one token either side of
     // the 20% edge says the same thing about the wallet.
-    const edge = (remaining) => deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000 - remaining, remaining, resetsAt: RESET },
+    const edge = (percent) => deriveComposerWarning(usage({
+      freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
     }), { model: null });
-    expect(edge(1_000_001).kind).toBe('free_at_rest');
-    expect(edge(1_000_000).kind).toBe('free_low');
-    for (const w of [edge(1_000_001), edge(1_000_000)]) {
+    expect(edge(20.0001).kind).toBe('free_at_rest');
+    expect(edge(20).kind).toBe('free_low');
+    for (const w of [edge(20.0001), edge(20)]) {
       expect(w.body).toMatch(/Your balance is empty\.$/);
       expect(labels(w)).toContain('Add funds');
     }
@@ -258,20 +359,20 @@ describe('deriveComposerWarning', () => {
     }), { model: 'mindshub_air' })?.kind).toBe('balance_empty');
   });
 
-  it('balance empty and free tokens used on Air: names both and the reset date', () => {
+  it('balance empty and free tokens used on Air: names both and the refill time', () => {
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'ok' },
     }));
     expect(w.kind).toBe('balance_empty');
-    expect(w.body).toMatch(/^Free tokens are used up too\. Add funds, or wait for them to reset on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^Your free allowance is used up too\. Add funds, or wait for it to refill at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['Add funds']);
   });
 
   it('auto top up failed wins over everything else', () => {
     const w = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'payment_failed' },
     }));
@@ -298,32 +399,32 @@ describe('deriveComposerWarning', () => {
 });
 
 describe('usageTransitions', () => {
-  const free = (remaining) => usage({
-    freeTokens: { limit: 5_000_000, used: 5_000_000 - remaining, remaining, resetsAt: RESET },
+  const free = (percent) => usage({
+    freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
   });
 
   it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(free(2_000_000), free(900_000))).toEqual([
-      { kind: 'free_low', remaining: 900_000, resetsAt: RESET },
+    expect(usageTransitions(free(40), free(18))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
     ]);
   });
 
   it('reports each step it crosses, not each poll', () => {
     // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(free(900_000), free(800_000))).toEqual([]);
+    expect(usageTransitions(free(18), free(16))).toEqual([]);
     // Crossing into the next one is.
-    expect(usageTransitions(free(900_000), free(400_000))).toEqual([
-      { kind: 'free_low', remaining: 400_000, resetsAt: RESET },
+    expect(usageTransitions(free(18), free(8))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
 
   it('says the tokens are gone rather than low when a task empties them', () => {
-    const t = usageTransitions(free(900_000), free(0));
+    const t = usageTransitions(free(18), free(0));
     expect(t.map((c) => c.kind)).toEqual(['free_used']);
   });
 
   it('stays quiet on the low crossing for a task on an explicit paid model', () => {
-    expect(usageTransitions(free(2_000_000), free(900_000), { model: 'claude-sonnet-4' })).toEqual([]);
+    expect(usageTransitions(free(40), free(18), { model: 'claude-sonnet-4' })).toEqual([]);
   });
 
   it('does not read a grant appearing, or an uncapped one, as running low', () => {
@@ -333,15 +434,15 @@ describe('usageTransitions', () => {
     // would not move this test — the comment there says as much.
     const uncapped = usage({ freeTokens: { limit: -1, used: 30 } });
     const none = usage({ freeTokens: null });
-    expect(usageTransitions(none, free(900_000))).toEqual([]);
-    expect(usageTransitions(uncapped, free(900_000))).toEqual([]);
-    expect(usageTransitions(free(900_000), uncapped)).toEqual([]);
+    expect(usageTransitions(none, free(18))).toEqual([]);
+    expect(usageTransitions(uncapped, free(18))).toEqual([]);
+    expect(usageTransitions(free(18), uncapped)).toEqual([]);
   });
 
   it('reports the deepest crossing too, not just the first two', () => {
     // 10% into 5%: the third mark, and the last one before free_used owns it.
-    expect(usageTransitions(free(400_000), free(200_000))).toEqual([
-      { kind: 'free_low', remaining: 200_000, resetsAt: RESET },
+    expect(usageTransitions(free(8), free(4))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.04, resetsAt: RESET },
     ]);
   });
 
@@ -349,8 +450,8 @@ describe('usageTransitions', () => {
     // The poll is keyed on the MindsHub sign-in, not the planning provider, so
     // it keeps answering while a task bills someone else's key. That task
     // never spends these tokens, so a crossing is not its news.
-    expect(usageTransitions(free(2_000_000), free(900_000), { providerType: 'openai' })).toEqual([]);
-    expect(usageTransitions(free(900_000), free(0), { providerType: 'openai' })).toEqual([]);
+    expect(usageTransitions(free(40), free(18), { providerType: 'openai' })).toEqual([]);
+    expect(usageTransitions(free(18), free(0), { providerType: 'openai' })).toEqual([]);
     expect(usageTransitions(
       usage({ autoTopUp: { status: 'ok' } }),
       usage({ autoTopUp: { status: 'payment_failed' } }),
@@ -388,6 +489,162 @@ describe('usageTransitions', () => {
     expect(usageTransitions(usage(), usage())).toEqual([]);
     expect(usageTransitions(null, usage())).toEqual([]);
     expect(usageTransitions(usage(), { reachable: false })).toEqual([]);
+  });
+});
+
+describe('freeAllowanceState', () => {
+  it('says a capped grant with tokens left has room, with its refill time', () => {
+    expect(freeAllowanceState(usage())).toEqual({ status: 'has_room', resetsAt: RESET });
+    // A sliver left is still room: Air runs on it.
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(1), remaining: 0.5 } })).status).toBe('has_room');
+  });
+
+  it('says a capped grant with nothing left is spent, and still carries the refill time', () => {
+    expect(freeAllowanceState(usage({ freeTokens: at(0) }))).toEqual({ status: 'spent', resetsAt: RESET });
+  });
+
+  it('reads a negative remaining count as spent rather than trusting it', () => {
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(0), remaining: -3 } })).status).toBe('spent');
+  });
+
+  it('gives no figure for an uncapped grant, which has nothing to count down', () => {
+    // The uncapped sentinel is -1. Reading it as "room" would put a claim on a
+    // card that no number backs.
+    expect(freeAllowanceState(usage({ freeTokens: { limit: -1, used: 30, resetsAt: RESET } })))
+      .toEqual({ status: 'no_figure', resetsAt: RESET });
+  });
+
+  it('gives no figure when there is no grant to draw from', () => {
+    expect(freeAllowanceState(usage({ freeTokens: null })).status).toBe('no_figure');
+    /* Retargeted from 'no_figure': a limit of 0 is the sidecar's explicit
+       no-grant value, which now has its own status so a card can say "no
+       grant" rather than falling back. It is still never room or spent. */
+    expect(freeAllowanceState(usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } })).status).toBe('no_grant');
+  });
+
+  it('gives no figure and no time when signed out or unreachable', () => {
+    expect(freeAllowanceState(null)).toEqual({ status: 'no_figure', resetsAt: null });
+    expect(freeAllowanceState({ reachable: false })).toEqual({ status: 'no_figure', resetsAt: null });
+    // A dark read never lends its stale refill time to a card.
+    expect(freeAllowanceState({ reachable: false, freeTokens: at(0) })).toEqual({ status: 'no_figure', resetsAt: null });
+  });
+
+  it('carries a missing refill time as null, never as a string to format', () => {
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(0), resetsAt: undefined } })))
+      .toEqual({ status: 'spent', resetsAt: null });
+  });
+
+  describe('an org with no free grant', () => {
+    it('reads limit 0 as no grant, and names no refill time even when a sidecar relays one', () => {
+      /* An older sidecar still passes auth's next_refresh_at through for a
+         no-grant org. Nothing refills there, so the time must not reach a card. */
+      expect(freeAllowanceState(usage({ freeTokens: { limit: 0, used: 0, remaining: 0, resetsAt: RESET } })))
+        .toEqual({ status: 'no_grant', resetsAt: null });
+    });
+
+    it.each([
+      ['a spent capped grant', { ...at(0) }],
+      ['a capped grant with room', { ...at(40) }],
+      ['the uncapped sentinel', { limit: -1, used: 3, resetsAt: RESET }],
+      ['a figure with no limit at all', {}],
+    ])('never reads %s as no grant', (_label, freeTokens) => {
+      expect(freeAllowanceState(usage({ freeTokens })).status).not.toBe('no_grant');
+    });
+
+    it('never reads a missing read as no grant: unknown is not "no grant"', () => {
+      expect(freeAllowanceState(null).status).toBe('no_figure');
+      expect(freeAllowanceState({ reachable: false, freeTokens: { limit: 0 } }).status).toBe('no_figure');
+      expect(freeAllowanceState(usage({ freeTokens: null })).status).toBe('no_figure');
+    });
+  });
+});
+
+describe('NO_FREE_GRANT_SENTENCE', () => {
+  it("is the console's NO_GRANT_SENTENCE word for word", () => {
+    // mindshub_frontend src/features/billing/components/grant-usage-card.jsx.
+    expect(NO_FREE_GRANT_SENTENCE).toBe(
+      'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.',
+    );
+  });
+});
+
+describe('isBalanceEmpty', () => {
+  it.each([
+    ['depleted', { usd: 0, canConsume: false, alert: 'depleted' }],
+    ['flagged depleted while auth still lets it draw', { usd: 0, canConsume: true, alert: 'depleted' }],
+    ['barred from drawing with no alert', { usd: 0.4, canConsume: false, alert: null }],
+  ])('reads a wallet %s as empty', (_label, balance) => {
+    expect(isBalanceEmpty(balance)).toBe(true);
+  });
+
+  it.each([
+    ['funded', { usd: 20, canConsume: true, alert: null }],
+    ['low but still payable', { usd: 3, canConsume: true, alert: 'low' }],
+    ['missing from the read', null],
+  ])('does not read a wallet %s as empty', (_label, balance) => {
+    expect(isBalanceEmpty(balance)).toBe(false);
+  });
+});
+
+describe('allowanceStopCopy', () => {
+  const SOON = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+  const LATER = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
+
+  it('tells a no-grant org so, with no refill clause, even when the gate sent a time', () => {
+    const copy = allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }) });
+    expect(copy).toBe(`${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`);
+    expect(copy).not.toMatch(/refill/i);
+    expect(copy).not.toContain(formatResetTime(SOON));
+  });
+
+  it("names the gate's refill time for an org with a grant", () => {
+    expect(allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+  });
+
+  it('falls back to the hub usage refill time when the gate sent none', () => {
+    expect(allowanceStopCopy({ resetAt: null, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(LATER)}.`);
+  });
+
+  it("keeps the gate's time when hub usage is unknown", () => {
+    expect(allowanceStopCopy({ resetAt: SOON, usage: null }))
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+  });
+
+  it.each([
+    ['no time from the gate and hub usage unreachable', { usage: { reachable: false } }],
+    ['no time from the gate and no hub usage at all', {}],
+    ['an uncapped grant with no time from the gate', { usage: usage({ freeTokens: { limit: -1, used: 3, resetsAt: null } }) }],
+    ['a time from the gate that is already past', { resetAt: new Date(Date.now() - 3600 * 1000).toISOString(), usage: null }],
+  ])('offers funds alone, and promises no refill, with %s', (_label, args) => {
+    /* Without a usable time nothing says the allowance refills at all, and
+       the org may have no grant to refill. */
+    const copy = allowanceStopCopy(args);
+    expect(copy).toBe('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.');
+    expect(copy).not.toMatch(/refill|wait/i);
+  });
+
+  it('never states the size or the length of the allowance, and uses no em-dash', () => {
+    for (const copy of [
+      allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0) } }) }),
+      allowanceStopCopy({ usage: usage({ freeTokens: { limit: 0 } }) }),
+    ]) {
+      expect(copy).not.toMatch(/month|daily|weekly|hour|\d+ ?(k|m|tokens)/i);
+      expect(copy).not.toContain('\u2014');
+    }
+  });
+});
+
+describe('freeServingPausedCopy', () => {
+  it('names when the fuse lifts, or the event when there is no usable time', () => {
+    const lifts = new Date(Date.now() + 6 * 3600 * 1000).toISOString();
+    expect(freeServingPausedCopy(lifts)).toBe(
+      `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
+    );
+    expect(freeServingPausedCopy(null)).toBe(
+      "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+    );
   });
 });
 
@@ -432,25 +689,25 @@ describe('freeDismissStep', () => {
     // `low` is `<=` the edge and a step is `<` each mark, so a read landing on
     // exactly 0.2 shows the bar and sits on step 0. Nothing downstream cares:
     // the key is opaque, and the only lost case is a task whose poll lands on
-    // the edge to the token, which then reports on its next step instead.
+    // the edge exactly, which then reports on its next step instead.
     expect(freeDismissStep(FREE_TOKENS_LOW_FRACTION)).toBe(0);
     const atEdge = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 4_000_000, remaining: 1_000_000, resetsAt: RESET },
+      freeTokens: { percentRemaining: 20, limit: 100, used: 80, remaining: 20, resetsAt: RESET },
     }));
     expect(atEdge.kind).toBe('free_low');
     expect(atEdge.dismissKey).toBe('free_low:0');
   });
 
   it('keys the free warning to the step, so one close does not hide it to zero', () => {
-    const at = (remaining) => deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000 - remaining, remaining, resetsAt: RESET },
+    const at = (percent) => deriveComposerWarning(usage({
+      freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
     }));
-    expect(at(900_000).dismissKey).toBe('free_low:1');
-    expect(at(400_000).dismissKey).toBe('free_low:2');
-    expect(at(200_000).dismissKey).toBe('free_low:3');
-    // Closing at 900K and again at 400K are different keys, which is the whole
+    expect(at(18).dismissKey).toBe('free_low:1');
+    expect(at(8).dismissKey).toBe('free_low:2');
+    expect(at(4).dismissKey).toBe('free_low:3');
+    // Closing at 18% and again at 8% are different keys, which is the whole
     // point: the bar comes back rather than staying shut for the month.
-    expect(at(900_000).dismissKey).not.toBe(at(400_000).dismissKey);
+    expect(at(18).dismissKey).not.toBe(at(8).dismissKey);
   });
 });
 
@@ -460,7 +717,7 @@ describe('countsAsWarning', () => {
     // warning, `usageHealthy` would be false for every free user all month,
     // the dismissal store would never be wiped, and a bar closed at 900K in
     // September would still be closed at 900K in October.
-    const resting = deriveComposerWarning(usage());
+    const resting = deriveComposerWarning(unpaid());
     expect(resting.kind).toBe('free_at_rest');
     expect(countsAsWarning(resting)).toBe(false);
     // Nothing at all is likewise nothing to warn about.
@@ -468,15 +725,15 @@ describe('countsAsWarning', () => {
   });
 
   it('every non-resting descriptor does count, including the one it steps down to', () => {
-    const low = deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 4_100_000, remaining: 900_000, resetsAt: RESET },
+    const low = deriveComposerWarning(unpaid({
+      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
     }));
     expect(countsAsWarning(low)).toBe(true);
     // The figure a dismissal falls back to is still not a warning: closing
     // the bar must not keep the account looking unhealthy forever.
     expect(countsAsWarning(low.whenDismissed)).toBe(false);
     expect(countsAsWarning(deriveComposerWarning(usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
     })))).toBe(true);
     expect(countsAsWarning(deriveComposerWarning(usage({
       autoTopUp: { enabled: true, status: 'payment_failed' },

@@ -43,9 +43,11 @@ import {
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
+import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
+import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 
 (() => {
   let theme: 'light' | 'dark' = 'dark';
@@ -56,7 +58,12 @@ import { loadSkin } from './lib/skins';
   document.body.dataset.theme = theme;
   document.body.dataset.skin = loadSkin();
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+  applyArcadePreset(document.body.dataset.skin);
 })();
+
+// Before the redirect below drops the query string: a console link's
+// ?from=console&mode=…&sample=… has to outlive the Keycloak round trip.
+captureConsoleHandoff();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
@@ -93,7 +100,7 @@ createRoot(root).render(
       <ReactKeycloakProvider
         authClient={keycloak}
         initOptions={initOptions}
-        LoadingComponent={<div style={{ width: '100vw', height: '100vh' }} />}
+        LoadingComponent={<WelcomeLoading />}
         onTokens={bindOrganizationCacheTokens}
       >
         <App />

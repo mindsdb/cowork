@@ -43,6 +43,18 @@ export function clearOptimisticConversation(id) {
   if (id) optimisticIds.delete(id);
 }
 
+// Called before the loader's fetch, so the snapshot predates the page and a
+// late page cannot hide rows that arrived since.
+let knownRowIdsProvider = null;
+
+/**
+ * Sets the function the `/c/:id` loader asks for a conversation's local row
+ * ids (a Set, or undefined when it has none). App registers it; null clears it.
+ */
+export function setKnownRowIdsProvider(provider) {
+  knownRowIdsProvider = provider;
+}
+
 export function isOptimisticConversation(id) {
   return typeof id === 'string' && (id.startsWith('tmp-') || optimisticIds.has(id));
 }
@@ -281,6 +293,7 @@ async function conversationLoader({ params }) {
   const id = params.conversationId;
   // Not-yet-persisted conversation (mid-send): render from local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
+  const knownIds = knownRowIdsProvider?.(id);
   const result = await fetchSessionResult(id);
   // 404 → `redirect('/')`, NOT `replace('/')`. In RR7's data router a loader
   // redirect fires while still committed to the origin — the `/c/:id` entry
@@ -290,7 +303,7 @@ async function conversationLoader({ params }) {
   // a cold deep-link RR already forces the initial redirect to replace.
   if (result.status === 'not_found') return redirect('/');
   if (result.status === 'unavailable') return { unavailable: true, id };
-  return { task: result.task, id };
+  return { task: result.task, id, knownIds };
 }
 
 // Exported for behavior tests; production goes through createCoworkRouter.

@@ -19,6 +19,15 @@ export interface RecommendedModels {
   modelEfforts?: Record<string, { efforts: string[]; default: string }>;
   /** Per-model availability; a model mapped to false renders locked. */
   modelEnabled?: Record<string, boolean>;
+  /**
+   * Why a model mapped to false above is unavailable, from the MindsHub listing
+   * only (never a custom endpoint). cowork-server relays any non-empty
+   * `disabled_reason` string, so this is the raw relay: mergeRecommendedModels
+   * narrows it with `knownModelDisabledReasons` before anything reads it.
+   * `model_restricted` renders "Restricted" with no credits action; any other
+   * known reason, an unknown one, or no entry renders "Needs credits".
+   */
+  modelDisabledReasons?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
   /** MindsHub's authoritative maker per model id, deciding the picker section. */

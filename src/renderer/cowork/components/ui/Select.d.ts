@@ -20,7 +20,9 @@ export interface SelectProps {
   onOpenChange?: (open: boolean) => void;
   options?: SelectOption[];
   placeholder?: string;
-  variant?: 'field' | 'pill' | 'unstyled';
+  variant?: 'field' | 'pill' | 'quiet' | 'unstyled';
+  /** Icon before the value; quiet variant only. */
+  leading?: ReactNode;
   size?: 'md' | 'sm';
   disabled?: boolean;
   loading?: boolean;

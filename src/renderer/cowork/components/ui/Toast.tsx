@@ -34,14 +34,15 @@
 import type { ReactNode } from 'react';
 import { Toast as BaseToast } from '@base-ui/react/toast';
 import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
+import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
 
 export const useToastManager = BaseToast.useToastManager;
 
-const CHECK = <Check size={14} strokeWidth={1.5} aria-hidden="true" />;
-const WARNING_TRIANGLE = <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" />;
-const ALERT_CIRCLE = <CircleAlert size={14} strokeWidth={1.5} aria-hidden="true" />;
-const CLOSE_X = <X size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={14} />;
+const WARNING_TRIANGLE = <Icon of={TriangleAlert} size={14} />;
+const ALERT_CIRCLE = <Icon of={CircleAlert} size={14} />;
+const CLOSE_X = <Icon of={X} size={12} />;
 
 const TYPE_ICON: Record<string, ReactNode> = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIRCLE };
 
@@ -90,9 +91,9 @@ function ToastBubble({ toast }: { toast: any }) {
       className={cn(
         'relative flex items-center gap-[10px] rounded-[10px] border px-4 py-[10px]',
         'font-body text-[13px] shadow-sh-popup bg-surface border-line text-ink',
-        '[transition:opacity_180ms_ease-out,transform_180ms_ease-out]',
+        '[transition:opacity_var(--dur-popover-in)_ease-out,transform_var(--dur-popover-in)_ease-out]',
         'data-[starting-style]:opacity-0 data-[starting-style]:translate-y-2',
-        'data-[ending-style]:opacity-0 data-[ending-style]:duration-100',
+        'data-[ending-style]:opacity-0 data-[ending-style]:duration-popover-out',
         // Tailwind's opacity modifier (bg-x/10) only works when the color
         // is a literal value it can see at build time — danger/warning are
         // `var(--x)` references, so it silently produces no rule at all.

@@ -2,6 +2,9 @@
 
 exports[`IPC channel contract > locks the full channel map (a rename here is a breaking protocol change) 1`] = `
 {
+  "ACCOUNT_OWNERSHIP_DECIDE": "account:ownership-decide",
+  "ACCOUNT_OWNERSHIP_PENDING": "account:ownership-pending",
+  "ACCOUNT_SIGNED_IN_SYNC": "account:signed-in-sync",
   "APP_GET_PLATFORM": "app:get-platform",
   "APP_READY": "app:ready",
   "APP_UI_VERSION": "app:ui-version",
@@ -63,5 +66,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "UI_UPDATE_APPLY": "ui:update-apply",
   "UI_UPDATE_CHECK": "ui:update-check",
   "UI_UPDATE_STATUS": "ui:update-status",
+  "UPDATE_JOURNAL_ACK": "update:journal-ack",
+  "UPDATE_JOURNAL_DRAIN": "update:journal-drain",
 }
 `;

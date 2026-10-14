@@ -23,7 +23,16 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { buildKindStrict, migrateLegacyHomeInto, readBuildConfigKind } from './cowork-home';
+import {
+  accountDataRoot,
+  buildKindStrict,
+  termsConsentToCarry,
+  coworkEnvPath,
+  coworkHome,
+  coworkStatePath,
+  migrateLegacyHomeInto,
+  readBuildConfigKind,
+} from './cowork-home';
 
 let resourcesDir: string;
 let originalResourcesPath: string | undefined;
@@ -279,5 +288,113 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
 
     expect(fs.existsSync(home)).toBe(true);
     expect(fs.readdirSync(home)).toEqual([]);
+  });
+});
+
+// The account's own dotenv and provider state live in its own data root, so a
+// second account cannot write its provider key into the owning account's file —
+// which is where the owner would then import it from on their next sign-in.
+describe('the account data root', () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-env-root-'));
+    process.env.COWORK_DEV_HOME = home;
+    appState.isPackaged = false;
+  });
+
+  afterEach(() => {
+    delete process.env.COWORK_DEV_HOME;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  const record = (value: unknown) =>
+    fs.writeFileSync(path.join(home, 'active-account.json'), JSON.stringify(value), 'utf-8');
+  const claim = (accountId: string) =>
+    fs.writeFileSync(path.join(home, '.account'), JSON.stringify({ accountId }), 'utf-8');
+  const observeFresh = () =>
+    fs.writeFileSync(path.join(home, '.pre-existing-data'), JSON.stringify({ hadData: false }), 'utf-8');
+
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+  it('is the shared home for the account that owns it', () => {
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_A, lastAccountId: ACCOUNT_A });
+    expect(accountDataRoot()).toBe(home);
+    expect(coworkEnvPath()).toBe(path.join(home, '.env'));
+    expect(coworkStatePath()).toBe(path.join(home, 'state.json'));
+  });
+
+  it('is the account subtree for anyone else', () => {
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_B, lastAccountId: ACCOUNT_B });
+    const own = path.join(home, 'accounts', ACCOUNT_B);
+    expect(accountDataRoot()).toBe(own);
+    expect(coworkEnvPath()).toBe(path.join(own, '.env'));
+    expect(coworkStatePath()).toBe(path.join(own, 'state.json'));
+  });
+
+  it('leaves the shared home for a fresh install with nobody signed in', () => {
+    observeFresh();
+    expect(accountDataRoot()).toBe(home);
+  });
+
+  it('does NOT move the identity files, which answer who is signed in', () => {
+    // Those cannot be per-account without a bootstrap cycle: the record is what
+    // tells us which account root to use in the first place.
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_B, lastAccountId: ACCOUNT_B });
+    expect(coworkHome()).toBe(home);
+    expect(accountDataRoot()).not.toBe(home);
+  });
+});
+
+// Starting fresh puts the SAME account on its own root, and the dotenv that
+// carries terms consent is per-account — so without this the answer the person
+// just gave is followed by the terms screen, which reads as a sign-out rather
+// than a fresh start.
+describe('termsConsentToCarry', () => {
+  it('carries an accepted answer onto a destination that has none', () => {
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'true' }, {}))
+      .toEqual({ ANTON_TERMS_CONSENT: 'true' });
+  });
+
+  it('carries nothing else, however much the disclaimed root held', () => {
+    // A fresh root is fresh in every other respect: that is what was asked for.
+    expect(termsConsentToCarry(
+      {
+        ANTON_TERMS_CONSENT: 'true',
+        ANTON_MINDS_API_KEY: 'mdb_secret',
+        ANTON_PLANNING_PROVIDER: 'minds_cloud',
+        COWORK_AUTH_TOKEN: 'not-this-roots-token',
+      },
+      {},
+    )).toEqual({ ANTON_TERMS_CONSENT: 'true' });
+  });
+
+  it('leaves a destination that already answered alone', () => {
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'true' }, { ANTON_TERMS_CONSENT: 'false' }))
+      .toEqual({});
+  });
+
+  it('carries nothing when the disclaimed root never accepted', () => {
+    expect(termsConsentToCarry({}, {})).toEqual({});
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'false' }, {})).toEqual({});
+  });
+});
+
+describe('the start-fresh answer', () => {
+  it('carries the terms answer before it settles ownership', () => {
+    // Pinned mechanically, like the renderer's purge/reload wiring: the carry
+    // has to happen while the decision is still being applied, and a handler
+    // that dropped the call would look identical from the outside.
+    const source = fs.readFileSync(path.join(__dirname, 'app.ts'), 'utf-8');
+    const branch = source.slice(source.indexOf('if (!keepExisting) {'));
+    expect(branch.indexOf('carryTermsConsentToFreshRoot(home)'))
+      .toBeLessThan(branch.indexOf('settleOwnership(home)'));
   });
 });

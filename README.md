@@ -244,6 +244,15 @@ Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
 and point its `/v1` requests at a running cowork-server process.
 
+### Browser tab icon
+
+Settings > Appearance lets web users upload a browser tab icon independently
+of the sidebar logo. PNG, ICO, SVG, and WEBP files must be smaller than 100 KB;
+a square image of at least 32 × 32 pixels works best. Changes preview immediately
+and persist through the settings API. Removing the override restores the page's
+original icon, including a deployment's custom branding. Desktop does not show
+this control, and the browser's home-screen icon is unchanged.
+
 ### Platform abstraction
 
 The cowork tree (`src/renderer/cowork/`) **never** touches
@@ -355,7 +364,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 ### Provider validation is answered in main, not proxied to the sidecar
 
 `settings:validate` is handled entirely in the main process. The IPC handler is in
-`src/main/index.ts` and the validators it calls (`validateMinds`,
+`src/main/app.ts` and the validators it calls (`validateMinds`,
 `validateOpenAICompatible`, `validateAnthropic`) live in
 `src/main/provider-validation.ts`. It never reaches the Python sidecar. The same
 logic also lives in the sidecar (`cowork-server/cowork/services/providers.py`), and
@@ -367,11 +376,7 @@ have drifted before: a fix that moved the MindsHub probe onto the free model
 landed in the sidecar and left main probing a paid one, and probing a paid model
 means an account with an empty wallet is told its working key is invalid.
 
-The rule both copies follow: probe `mindshub_air`, whose usage draws the monthly
-included allowance rather than the wallet, so the result reports reachability and
-key validity instead of billing state. For `openai-compatible` and `anthropic` a
-model the caller asked for explicitly is sent as asked; `provider: 'minds'` always
-sends the probe model and ignores `model` on both copies.
+The rule both copies follow: probe `mindshub_air`, whose usage draws the free included allowance rather than the wallet, so the result reports reachability and key validity instead of billing state. For `openai-compatible` and `anthropic` a model the caller asked for explicitly is sent as asked; `provider: 'minds'` always sends the probe model and ignores `model` on both copies.
 
 Which copy a given build actually runs is decided by the onboarding screen, not by
 the platform alone. The MindsHub card renders a pasted-key form on web and
@@ -384,15 +389,17 @@ the openai-compatible and anthropic ones, from the BYOK step. Main's MindsHub pr
 is kept in step with the sidecar anyway, because the drift is what caused this bug
 and a future caller should not have to rediscover it.
 
-Rollout is not symmetric between the two, and not in the obvious direction. On
-`prod` the renderer bundle hot-updates at boot while the Electron shell (so
-everything under `src/main/**`) only changes when a new installer is applied,
-because shell auto-update is opt-in there. On `stable` it is the other way round:
-UI OTA is prod-only (`otaUiEnabled` in `src/main/update-logic.ts`) and shell
-auto-update is on by default (`shellAutoUpdateEnabledFor` in
-`src/main/shell-auto-update-rollout.ts`), so the shell replaces itself in the
-background and applies on the next relaunch. Either way a main-process change lands
-a relaunch later than a sidecar change. See [Shell updates](#shell-updates-auto-update--installer).
+Rollout is not symmetric between the two. On `prod` the renderer bundle
+hot-updates at boot, while the Electron shell (so everything under `src/main/**`)
+downloads its own update in the background (`shellAutoUpdateEnabledFor` in
+`src/main/shell-auto-update-rollout.ts`, on by default for `prod` and `stable`)
+and only changes on the next relaunch — so each new UI first runs on the previous
+shell until the user quits. On `stable` only the shell moves: UI OTA is prod-only
+(`otaUiEnabled` in `src/main/update-logic.ts`). Either way a main-process change
+lands a relaunch later than a sidecar change, and how far a prod shell may fall
+behind before the UI says so is the "Supported desktop window" in
+[docs/update-behavior.md](docs/update-behavior.md). See
+[Shell updates](#shell-updates-auto-update--installer).
 
 ---
 
@@ -438,7 +445,7 @@ Four consequences worth knowing:
   over-the-air update and its rollback, the sidebar's stop/start, and the
   installer's first start on a fresh machine. Wiring the push into each of those
   is how one gets missed, so it hangs off the single function they all call.
-  `src/main/index.ts` registers `handOffMindsCredentialToStartedSidecar` with
+  `src/main/app.ts` registers `handOffMindsCredentialToStartedSidecar` with
   `setServerStartedHook`, and `startServer` awaits it after every successful
   start (`src/main/server-process.ts`). That hook also releases the wake barrier
   below, because a sidecar restarting mid-hand-over is exactly when a turn is
@@ -484,8 +491,8 @@ if you need one for that.
 
 **Nothing under `/api/v1/hub/*` calls Django auth directly.** The renderer calls
 its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/`
-carries the free monthly grant, the balance, the period's credit spend and auto
-top up state, and backs Settings → Usage. `/api/v1/hub/workspaces/` answers the
+carries the free MindsHub Air allowance, the balance, the period's credit spend
+and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the
 MindsHub workspace listing and backs the workspace selector described in the
 next section.
 
@@ -655,9 +662,10 @@ closed and visibly instead of reloading forever.
 
 Every authenticated browser API request also carries
 `X-Cowork-Expected-Organization-Id`, pinned to the organization in which that
-document started. Once the server boundary is enforced, a missing header from a
-pre-protocol bundle receives an upgrade response, while a header that differs
-from the gateway-resolved organization receives a mandatory-reload response.
+document started. In org tenancy, cowork-server always enforces this boundary
+for browser JWT requests. A missing header from a pre-protocol bundle receives
+HTTP 426; a malformed header or one that differs from the gateway-resolved
+organization receives HTTP 409. Both responses require a reload.
 This closes the gap between the token check and actual request dispatch, and it
 also catches a Keycloak session change made from another origin. The client
 clears tenant state and reloads before consuming such a response.
@@ -671,11 +679,19 @@ organization returns no content after the principal changes. Private artifact
 `serveUrl` routes are unavailable in org tenancy and therefore are not part of
 the organization-switch protocol.
 
-Rollout is ordered: deploy the protocol-capable client with the picker hidden;
-deploy cowork-server in audit mode; enforce the expected-organization boundary
-while the capability remains disabled; then enable the capability only after
-every server replica enforces it. Do not combine enforcement and enablement in
-one rollout.
+The initial four-stage rollout was superseded by
+[cowork-server#524](https://github.com/mindsdb/cowork-server/pull/524), promoted
+to `main` through [#489](https://github.com/mindsdb/cowork-server/pull/489) on
+2026-09-13. It removed `COWORK_ORGANIZATION_BOUNDARY_MODE` and enabled the picker
+in the dev, staging, and production overlays. There is no audit setting that
+can reopen the boundary. The server still logs `organization boundary:` for
+refused requests.
+
+`COWORK_ORGANIZATION_SWITCH_ENABLED=false` remains the deployment control for
+hiding switch targets without weakening enforcement. The capability handshake
+still requires org tenancy and enforced identity before advertising switching.
+Verify every deployed replica and authenticated browser behavior when checking
+a rollout; an enabled source value alone does not prove the deployed state.
 
 ### Shared-resource permissions come from the server
 
@@ -703,15 +719,15 @@ edit, and disable go unavailable for everyone, creators and organization admins
 included. Deploy cowork-server#417, confirm hosted responses carry
 `capabilities`, and only then deploy the renderer.
 
-### A model the wallet can't pay for is not selectable
+### A model that can't run right now is not selectable
 
-MindsHub's `/v1/models` marks each model with whether the org can pay for it
-right now: a paid model on a drained wallet, or any model once a free org has
-spent its monthly included allowance, arrives as `enabled: false`. That map
-reaches the renderer as `settings.modelEnabled`, and `isModelLocked`
-(`lib/modelCatalog.js`) is the single definition both pickers read, so the
-Settings rows and the composer's menu can never disagree about what a user may
-choose.
+MindsHub's `/v1/models` marks each model with whether it can run for the org
+right now: a paid model on a drained wallet, any model once a free org has spent
+its free allowance, or a model an org admin's model rule blocks, arrives as
+`enabled: false`. That map reaches the renderer as `settings.modelEnabled`, and
+`isModelLocked` (`lib/modelCatalog.js`) is the single definition both pickers
+read, so the Settings rows and the composer's menu can never disagree about what
+a user may choose.
 
 A locked model renders **visible, tagged "Needs credits", disabled, and
 carrying an "Add credits" button**. It stays on screen so the model is still
@@ -726,6 +742,24 @@ only when the **current** model is locked — the stranded-pin case, where the
 wallet drained under a model already saved. It says nothing about a row the user
 is merely looking at, which is why the button on the row is the general answer
 and the hint is the specific one.
+
+An admin's model rule is the one reason money cannot fix, so it is told apart.
+MindsHub sends each disabled row's `disabled_reason`, and cowork-server relays it
+from the MindsHub listing only (never a custom endpoint) as
+`modelDisabledReasons`. A row whose reason is `model_restricted` renders
+**disabled and tagged "Restricted"**, with the tooltip "An admin in your
+organization restricted this model.", and is never `locked`, so it carries no
+"Add credits" button. `unavailableModelFields` in `lib/modelCatalog.js` builds
+the row fields for both pickers, so they cannot drift. The Settings hint under a
+restricted current model names the admin and has no billing link, and Code
+Mode's new-task check says "An admin restricted this model. Choose another
+model." A server too old to send reasons leaves every disabled row on "Needs
+credits", exactly as before. cowork-server relays any non-empty reason string,
+so `knownModelDisabledReasons` keeps only `model_restricted`, `wallet_empty` and
+`included_allowance_exhausted`: a row with any other reason reads as having
+none, and shows "Needs credits". `mergeRecommendedModels` replaces the reason map
+whenever it replaces `modelEnabled` and keeps it whenever it keeps that map, so
+a reason never outlives the enabled map it described.
 
 Why it is not merely tagged: `cowork-server` resolves a stored model it knows
 the gateway will deny into an affordable one instead, so allowing the pick meant
@@ -744,8 +778,8 @@ as available, so a degraded response can never empty a picker.
 The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
 and again whenever the window regains focus, so a top-up made in a browser shows
 up without a relaunch. `useHubUsage` holds the answer. One read carries the free
-monthly token grant, the paid balance, auto top up state and credit spend for the
-period. `reachable: false` is the resting state, so every surface renders exactly
+MindsHub Air allowance, the paid balance, auto top up state and credit spend for
+the period. `reachable: false` is the resting state, so every surface renders exactly
 as it did before this existed until the sidecar says otherwise. A sidecar too old
 to serve the route answers 404, which reads as unreachable and paints nothing.
 
@@ -828,6 +862,33 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
 
+A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when auth reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: auth's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only.
+
+To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
+
+Settings > Agent tests each configured provider through the sidecar's
+`/settings/test-providers`. For a failed MindsHub probe the sidecar adds
+`providerStatusReasons`, the gateway's own reason per provider type
+(`{ code, resetAt }`), and only for a response from the configured MindsHub host.
+`mindsProbeNotice` in `lib/providerStatus.js` turns it into the notice under each
+role row: no credits (`wallet_empty`), the spent-allowance copy shared with the
+card (`included_allowance_exhausted`), the paused copy shared with the card
+(the daily fuse), a muted slow-down line (`rate_limited`), or a muted
+billing-outage line (`policy_unavailable`). The LLM Providers row names the same
+stop instead of calling every 429 "Rate limited". A sidecar that sends the map
+but names no reason for a failed probe, such as an upstream vendor's 429 that
+the gateway relays without its own reason, gets the generic "failed its last
+test" warning and no billing notice. Only a sidecar too old to send the map at
+all keeps the old check, where any 402 or 429 in the detail reads as no credits.
+The map lives in the settings blob beside `providerStatusDetails`: it is left
+out of the Save button's dirty check, never written back, cleared for a provider
+whose key is edited, and replaced per provider type on every test (a tested type
+the sidecar named no reason for is held as `null`, which is how the notice tells
+it from a type an old sidecar never classified). To see the notices, the Providers row
+copy, the restricted hint and an open picker with a restricted row, open
+`/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
+per-case `id`s work the same way.
+
 ---
 
 ## Over-the-Air Updates
@@ -889,7 +950,7 @@ How it works:
 
 The Electron **shell** (`src/main/`, preload, native deps) can't hot-swap itself while running, so it updates one of two ways:
 
-- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on both **stable** and **prod** (stable led the rollout ring); `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
+- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h — and every 30 minutes once a build is downloaded and waiting for a restart, so the pending installer can't go stale while the feed moves on — downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on both **stable** and **prod** (stable led the rollout ring); `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
 - **Manual notice (ENG-849)** — a `prod`-only fallback (also shown when auto-update is disabled or has failed): the poll compares the installed shell CalVer against `shellVersion` in `latest.json` and, if newer, shows a dismissible "New version available — Download" banner (per-version dismissal) linking to the installer on `downloads.mindshub.ai`. **Detection only** — it never downloads or installs.
 
 Both surface in the sidebar and in Settings → Updates. See `src/main/shell-auto-update-runtime.ts` (auto-update state machine) and `checkForShellUpdate()` in `src/main/updater.ts` (manual notice).

@@ -112,6 +112,15 @@ describe('inline artifact workspace payload', () => {
       capabilities: { role: 'owner', canEdit: true, canComment: true },
     });
   });
+
+  // ENG-2171: the line under the title is the display path, and it used to be
+  // the stored path verbatim, conversation id and `.anton` folder included.
+  it('shows the path below .anton/artifacts, not the storage path', () => {
+    const stored = 'conversations/d4b2c4ec-2cd0-441c-a94c-e201781d9a7e/.anton/artifacts/q3-deck/index.html';
+    const card = artifactStepToCard(artifactStep({ file_path: stored, path: stored }), '/proj');
+    expect(card.preview).toEqual([{ heading: 'q3-deck/index.html' }]);
+    expect(card.canonicalPath).toBe(`/proj/${stored}`);
+  });
 });
 
 const taskWithArtifact = (step) => ({
@@ -214,11 +223,75 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
-  it('falls back to window.open when the bridge rejects', async () => {
+  it('keeps Download behind "More actions" when the shared link is shown', async () => {
+    // The overflow menu renders in a portal, but React bubbles its events
+    // through the card, which opens the preview on click. The item must save
+    // the file and nothing else.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('runs a focused action on Enter without opening the preview', async () => {
+    // The card opens the preview on Enter/Space. A key pressed on one of its
+    // buttons must run that button and nothing else.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'Shared link' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('downloads from the overflow menu by keyboard without opening the preview', async () => {
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'More actions' }).focus();
+    await user.keyboard('{Enter}');
+    const item = await screen.findByRole('menuitem', { name: 'Download' });
+    item.focus();
+    await user.keyboard('{Enter}');
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('lets app shortcuts through while an action has focus', async () => {
+    // Only Enter/Space stop at the action row. Cmd+K, Cmd+N and the rest are
+    // window listeners and must still fire with a card button focused.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    const onKey = vi.fn();
+    window.addEventListener('keydown', onKey);
+    try {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+      screen.getByRole('button', { name: 'Preview' }).focus();
+      await user.keyboard('{Meta>}k{/Meta}');
+
+      expect(onKey).toHaveBeenCalledWith(expect.objectContaining({ key: 'k', metaKey: true }));
+    } finally {
+      window.removeEventListener('keydown', onKey);
+    }
+  });
+
+  it('does not fall back to window.open when the bridge rejects', async () => {
     /*
-     * `host.openExternal` is async. A synchronous try around it returns before
-     * the promise settles, so the fallback never ran on the one failure it was
-     * written for and the rejection escaped unhandled.
+     * host.openExternal is what restricts the agent-writable URL to safe
+     * schemes, so a rejection is caught and the raw URL never reaches
+     * window.open.
      */
     setOrgMode(true);
     const user = userEvent.setup();
@@ -229,7 +302,8 @@ describe('inline artifact banner in org mode', () => {
 
       await user.click(screen.getByRole('button', { name: 'Shared link' }));
 
-      expect(opened).toHaveBeenCalledWith(PUBLISHED_URL, '_blank', 'noopener,noreferrer');
+      expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }
@@ -635,8 +709,13 @@ describe('inline artifact card layout hooks', () => {
     // keeps its three-track desktop layout at every width.
     expect(card.closest('.chat-transcript-col')).not.toBeNull();
 
-    for (const label of ['Shared link', 'Download', 'Preview']) {
-      expect(actions).toContainElement(screen.getByRole('button', { name: label }));
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Preview' }));
+    // The secondary and the overflow trigger live in the footer's own
+    // grouped element, which the grid places as the location bar's end.
+    const tools = card.querySelector(':scope > .chat-artifact-card__tools');
+    expect(tools).not.toBeNull();
+    for (const label of ['Shared link', 'More actions']) {
+      expect(tools).toContainElement(screen.getByRole('button', { name: label }));
     }
   });
 
@@ -652,12 +731,14 @@ describe('inline artifact card layout hooks', () => {
     const user = userEvent.setup();
     const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
-    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
 
     const card = container.querySelector('.chat-artifact-card');
     const status = card.querySelector(':scope > .chat-artifact-card__status');
     expect(status).not.toBeNull();
     expect(card.querySelector('.chat-artifact-card__actions')).not.toContainElement(status);
+    expect(card.querySelector('.chat-artifact-card__tools')).not.toContainElement(status);
   });
 
   it('announces an action result through a region that was already mounted', async () => {
@@ -676,7 +757,8 @@ describe('inline artifact card layout hooks', () => {
     const card = container.querySelector('.chat-artifact-card');
     expect(card).not.toContainElement(live);
 
-    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
 
     expect(live).toHaveTextContent('This artifact has no downloadable file yet.');
     const visible = card.querySelector('.chat-artifact-card__status');

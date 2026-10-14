@@ -7,7 +7,7 @@ import { ToastProvider } from './ui/Toast';
 // token behind the footer user menu — null (signed out) unless a test sets
 // one; openExternal/logout are consumed by the UserMenu the footer renders
 // when signed in.
-const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {} }));
+const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {}, onWindowVisibility: () => () => {} }));
 const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
@@ -90,20 +90,24 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
   it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
     hostMock.isWeb = false;
     const onOpenCodingProjects = vi.fn();
+    const onOpenCodingTasks = vi.fn();
     const onOpenCodingConnectors = vi.fn();
     render(
       <Sidebar
         {...baseProps}
         activeWorkspace="code"
         onOpenCodingProjects={onOpenCodingProjects}
+        onOpenCodingTasks={onOpenCodingTasks}
         onOpenCodingConnectors={onOpenCodingConnectors}
       />,
     );
     screen.getByRole('button', { name: 'Projects' }).click();
+    screen.getByRole('button', { name: 'All tasks' }).click();
     screen.getByRole('button', { name: 'Connectors' }).click();
     expect(onOpenCodingProjects).toHaveBeenCalledOnce();
+    expect(onOpenCodingTasks).toHaveBeenCalledOnce();
     expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
-    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.getByText('Code tasks')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
@@ -294,9 +298,11 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={vi.fn()}
       />
     );
-    // The OTA "Update ready" pill never stacks under the shell banner anymore.
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /App update ready/ })).toBeInTheDocument();
+    // Both ready banners read "Update ready"; the shell's says "Restart now".
+    const pills = screen.getAllByRole('button', { name: /Update ready/ });
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent(/Restart now/);
+    expect(pills[0]).not.toHaveTextContent('1.2.3');
   });
 
   it('surfaces a labelled retry when an OTA apply failed (does not go silent)', () => {
@@ -325,7 +331,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={onUpdateAction}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Update ready.*Restart now/ }));
     expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
   });
 
@@ -549,5 +555,39 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
     expect(screen.getByText('Real task')).toBeTruthy();
     expect(screen.queryByLabelText('Loading tasks')).toBeNull();
     expect(screen.queryByText('No tasks yet')).toBeNull();
+  });
+});
+
+describe('Sidebar — says why other work is missing (ENG-2169)', () => {
+  // Web and desktop look the same but keep separate work, so an empty
+  // task list points at the other app.
+  afterEach(() => {
+    getAccessTokenMock.mockResolvedValue(null);
+    hostMock.isWeb = true;
+  });
+
+  it('on web, an empty task list points at the desktop app', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument();
+    expect(screen.getByText('Tasks made in the desktop app stay there.')).toBeInTheDocument();
+  });
+
+  it('on desktop, an empty task list points at the web app', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" />);
+    expect(screen.getByText('Tasks made in the web app stay there.')).toBeInTheDocument();
+  });
+
+  it('says nothing about the other app while loading, after a failure, or once there are tasks', () => {
+    hostMock.isWeb = false;
+    const { unmount } = render(<Sidebar {...baseProps} serverOnline tasksStatus="loading" />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
+    unmount();
+    const failed = render(<Sidebar {...baseProps} serverOnline tasksStatus="failed" />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
+    failed.unmount();
+    render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" tasks={[{ id: 't1', title: 'Real task', messages: [] }]} />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
   });
 });

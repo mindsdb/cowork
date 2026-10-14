@@ -16,7 +16,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
       {primaryChange && (
         <div className="artifact-visual-change-summary" aria-label="Changed content summary">
           <div>
-            <span>Before</span>
+            <span className="section-label">Before</span>
             <p>{concise(primaryChange.before)}</p>
           </div>
           <div>
@@ -50,7 +50,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
 
       <div className="artifact-visual-compare-grid" data-active-pane={activePane}>
         <section data-comparison-pane="before">
-          <div className="artifact-compare-label">Before · {beforeLabel}</div>
+          <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
           <iframe
             title={`Artifact before ${beforeLabel}`}
             srcDoc={model.before}
@@ -58,7 +58,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
           />
         </section>
         <section data-comparison-pane="after">
-          <div className="artifact-compare-label">After · {afterLabel}</div>
+          <div className="artifact-compare-label section-label">After · {afterLabel}</div>
           <iframe
             title={`Artifact after ${afterLabel}`}
             srcDoc={model.after}

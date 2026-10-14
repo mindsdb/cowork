@@ -143,6 +143,43 @@ describe('fetchAccountIdentity — PostHog organization-aware identity', () => {
   });
 });
 
+// ENG-487: HubSpot's MCP Auth App issues a token that can only call
+// HubSpot's remote MCP server, not a REST/GraphQL endpoint Electron could
+// hit directly — unlike every other FETCHERS entry, this one calls
+// cowork-server's own local identity-bridge endpoint instead.
+describe('fetchAccountIdentity — HubSpot MCP identity bridge', () => {
+  it('calls the local identity-bridge endpoint with the access token, not HubSpot directly', async () => {
+    let calledUrl = '';
+    let calledBody: unknown;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calledUrl = typeof url === 'string' ? url : url.toString();
+      calledBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return new Response(
+        JSON.stringify({ account_email: 'user@acme.com', account_name: 'Acme Inc' }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('hubspot', 'tok-123');
+
+    expect(new URL(calledUrl).pathname).toBe('/api/v1/connectors/oauth/hubspot/mcp/identity');
+    expect(new URL(calledUrl).hostname).toBe('127.0.0.1');
+    expect(calledBody).toEqual({ access_token: 'tok-123' });
+    expect(identity).toEqual({ email: 'user@acme.com', name: 'Acme Inc' });
+  });
+
+  it('surfaces the bridge endpoint\'s own error detail on failure, not a generic message', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ detail: 'Could not resolve hubspot account identity.' }),
+      { status: 502 },
+    )) as unknown as typeof fetch;
+
+    const identity = await fetchAccountIdentity('hubspot', 'tok-123');
+    expect(identity.email).toBe('');
+    expect(identity.reason).toBe('Could not resolve hubspot account identity.');
+  });
+});
+
 describe('buildRevokeRequest', () => {
   it('builds the generic RFC-7009 form-encoded shape by default', () => {
     const req = buildRevokeRequest('linear', 'refresh-tok', 'cid', 'secret');

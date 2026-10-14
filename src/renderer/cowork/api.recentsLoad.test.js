@@ -144,4 +144,42 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
       : Promise.resolve(jsonRes(conversations(3))));
     await expect(fetchSessions()).resolves.toHaveLength(3);
   });
+
+  it('warms a bounded page and reports how much history is left behind it', async () => {
+    // Warming the FULL history of the 50 most recent conversations did not
+    // remove the unbounded fetch, it moved it to startup — and it pre-filled a
+    // long conversation so completely that the loading state and "load
+    // earlier" never engaged for the tasks most likely to be opened.
+    const urls = [];
+    global.fetch = vi.fn((url) => {
+      urls.push(String(url));
+      return String(url).includes('/items')
+        ? Promise.resolve(jsonRes({
+            items: [{ role: 'user', content: 'newest page' }],
+            hasMore: true,
+            nextBefore: 'cursor-deep',
+          }))
+        : Promise.resolve(jsonRes(conversations(1)));
+    });
+
+    const seen = new Map();
+    await fetchSessions({ onItems: (id, msgs, page) => seen.set(id, { msgs, page }) });
+    await vi.waitFor(() => expect(seen.size).toBe(1));
+
+    const itemsUrl = urls.find((u) => u.includes('/items'));
+    expect(itemsUrl).toMatch(/[?&]limit=50\b/);
+    expect(seen.get('c0').page).toEqual({ hasMoreMessages: true, messagesCursor: 'cursor-deep' });
+  });
+
+  it('treats a bare-array response from an older server as a complete history', async () => {
+    global.fetch = vi.fn((url) => (String(url).includes('/items')
+      ? Promise.resolve(jsonRes([{ role: 'user', content: 'all of it' }]))
+      : Promise.resolve(jsonRes(conversations(1)))));
+
+    const seen = new Map();
+    await fetchSessions({ onItems: (id, msgs, page) => seen.set(id, page) });
+    await vi.waitFor(() => expect(seen.size).toBe(1));
+
+    expect(seen.get('c0')).toEqual({ hasMoreMessages: false, messagesCursor: null });
+  });
 });

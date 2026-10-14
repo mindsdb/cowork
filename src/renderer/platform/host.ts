@@ -16,7 +16,12 @@
 import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
+import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
+import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
+import { normalizeExternalBrowserUrl } from '../../shared/external-url';
+import { guardRestart, type GuardedRestartResult } from './restart-guard';
+import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -226,7 +231,11 @@ export async function openExternal(url: string): Promise<void> {
     await bridge.openExternal(url);
     return;
   }
-  window.open(url, '_blank', 'noopener,noreferrer');
+  // Same rule the Electron main process applies: callers pass URLs read from
+  // agent-writable files (an artifact's .published.json), so only http(s) may
+  // reach window.open.
+  const browserUrl = normalizeExternalBrowserUrl(url);
+  if (browserUrl) window.open(browserUrl, '_blank', 'noopener,noreferrer');
 }
 
 export async function openPath(path: string): Promise<{ ok: boolean; reason?: string }> {
@@ -362,7 +371,8 @@ export async function getUIVersion(): Promise<string> {
 }
 
 export interface VersionInfo {
-  /** Installed Electron shell (App) version — changes only on reinstall. */
+  /** Installed Electron shell (App) version — changes only when the shell
+   *  relaunches into a new build (auto-update or reinstall), never over OTA. */
   app: string;
   /** OTA-activated UI bundle version, or null when running the bundled UI. */
   ui: string | null;
@@ -638,11 +648,37 @@ export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
   return () => {};
 }
 
-export async function applyUpdate(): Promise<boolean> {
+// A restart that stops the sidecar ends running turns, so main may answer
+// either request below with a confirmation report instead of acting (ENG-3291).
+// `guardRestart` asks the person through RestartConfirmHost and re-sends with
+// `force` on a yes, so every button that reaches these two functions inherits
+// the dialog. Shells older than the contract return a plain boolean, which
+// passes straight through. `'cancelled'` means the person kept their tasks.
+export async function applyUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.applyUpdate === 'function') {
-    return bridge.applyUpdate();
+    return guardRestart(options => bridge.applyUpdate(options), hooks);
   }
   return false;
+}
+
+// UI/server update outcomes main journaled on disk (src/main/update-journal.ts).
+// Each is reported once as a PostHog `update_phase` event, then acked. Shells
+// older than the journal hand out nothing, and the ack is a no-op there.
+export type { UpdatePhaseEntry } from '../../shared/update-journal-types';
+
+export async function drainUpdateJournal(): Promise<UpdatePhaseEntry[]> {
+  if (isElectron && typeof bridge.drainUpdateJournal === 'function') {
+    const entries = await bridge.drainUpdateJournal();
+    return Array.isArray(entries) ? entries : [];
+  }
+  return [];
+}
+
+export async function ackUpdateJournal(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  if (isElectron && typeof bridge.ackUpdateJournal === 'function') {
+    await bridge.ackUpdateJournal(ids);
+  }
 }
 
 export interface ShellUpdate {
@@ -665,38 +701,98 @@ export interface ShellUpdate {
 // renderer-side check: fetch the manifest ourselves and compare shellVersion
 // against the installed app version. New shells never take this path (they have
 // the bridge), so there's no double-notify. Web has no shell → null.
-export async function getShellUpdate(): Promise<ShellUpdate | null> {
+// `fresh` re-reads the manifest instead of reusing the launch-time read. The
+// explicit "Check for updates" passes it, so a shell published after launch is
+// reported on legacy shells too; mount-time callers share the one launch fetch.
+export async function getShellUpdate(options: { fresh?: boolean } = {}): Promise<ShellUpdate | null> {
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
     return s?.available && s.latestVersion
       ? { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined }
       : null;
   }
-  if (isElectron) return shellUpdateFromManifest();
+  if (isElectron) return shellUpdateFromManifest(options.fresh === true);
   return null;
 }
 
-// Renderer-side shell-update check for old shells (ENG-1103). Fetches the
-// release manifest directly (the CSP in index.html allows the manifest host)
-// and reports a reinstall only when the published shell is strictly newer by
-// CalVer than the installed app version — failing closed on any fetch error,
-// missing/absent shellVersion, or a non-CalVer version (e.g. a dev/SemVer
-// build). No installer URL is returned: computing the exact per-platform link
-// needs the build kind, which an old shell doesn't expose, so the Download
-// action falls back to the downloads site.
-async function shellUpdateFromManifest(): Promise<ShellUpdate | null> {
+// The newest published prod shell, read straight from the release manifest
+// (the CSP in index.html allows the manifest host). Shared by the ENG-1103
+// reinstall notice and the ENG-1047 supported-window check, so one launch
+// fetches the manifest once: a successful read is cached for the renderer's
+// lifetime, a failed one is not. `fresh` starts a new read and makes it the
+// cached one, for an explicit check that must see a shell published after
+// launch. Fails closed to null on any fetch error or a manifest without a
+// usable `shellVersion`.
+let publishedShellVersion: Promise<string | null> | null = null;
+
+function fetchPublishedShellVersion(fresh = false): Promise<string | null> {
+  if (publishedShellVersion && !fresh) return publishedShellVersion;
+  const attempt = (async (): Promise<string | null> => {
+    try {
+      const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const latest = data?.shellVersion ?? data?.shell_version
+        ?? (data?.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
+      return typeof latest === 'string' && latest ? latest : null;
+    } catch {
+      return null;
+    }
+  })();
+  const cached: Promise<string | null> = attempt.then((v) => {
+    // Only drop the cache if this attempt is still the cached one; a fresh
+    // read that failed must not evict a good launch-time read.
+    if (v === null && publishedShellVersion === cached) publishedShellVersion = null;
+    return v;
+  });
+  publishedShellVersion = cached;
+  return cached;
+}
+
+// Renderer-side shell-update check for old shells (ENG-1103). Reports a
+// reinstall only when the published shell is strictly newer by CalVer than the
+// installed app version — failing closed on any fetch error, missing/absent
+// shellVersion, or a non-CalVer version (e.g. a dev/SemVer build). No installer
+// URL is returned: computing the exact per-platform link needs the build kind,
+// which an old shell doesn't expose, so the Download action falls back to the
+// downloads site.
+async function shellUpdateFromManifest(fresh = false): Promise<ShellUpdate | null> {
   try {
-    const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const latest = data?.shellVersion ?? data?.shell_version
-      ?? (data?.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
-    if (typeof latest !== 'string' || !latest) return null;
+    const latest = await fetchPublishedShellVersion(fresh);
+    if (!latest) return null;
     const { app: installed } = await getVersionInfo();
     const l = parseCalVer(latest);
     const i = parseCalVer(installed);
     if (!l || !i || compareCalVer(l, i) <= 0) return null;
     return { version: latest, currentVersion: installed };
+  } catch {
+    return null;
+  }
+}
+
+// Is the installed shell inside the supported desktop window (ENG-1047)?
+//
+// Runs in the UI bundle on purpose: it is the only code that reaches shells
+// already installed, which keep only the manifest fields they know and never
+// learn a new floor any other way. Reads the installed shell version over the
+// bridge and the newest published shell from the live manifest, then applies
+// the pure rule in src/shared/shell-support.ts. Null — show nothing — on web,
+// when a version it needs cannot be read, or on any error. Stable and preview
+// shells never load OTA bundles, so a `not-applicable` verdict for them is
+// belt and braces (see assessShellSupport).
+export async function getShellSupport(): Promise<ShellSupportVerdict | null> {
+  if (!isElectron) return null;
+  try {
+    const info = await getVersionInfo();
+    if (info.source === 'web') return null;
+    const latest = await fetchPublishedShellVersion();
+    if (!latest) return null;
+    return assessShellSupport({
+      shellVersion: info.app,
+      latestShellVersion: latest,
+      source: info.source,
+      buildKind: info.buildKind,
+    });
   } catch {
     return null;
   }
@@ -730,6 +826,13 @@ export interface ShellAutoUpdateSnapshot {
   errorCode?: string;
   errorMessage?: string;
   disabledReason?: string;
+  trigger?: 'boot' | 'periodic' | 'manual' | 'retry';
+  /** Whether the update downloaded before the last relaunch was applied. Absent
+   *  on older shells. */
+  lastInstall?: { applied: boolean; version: string; expected: string; source?: 'user' | 'boot' };
+  /** Who asked for the current install: a Restart click or the boot install
+   *  of a stranded download. Absent on older shells. */
+  installSource?: 'user' | 'boot';
 }
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
@@ -768,9 +871,9 @@ export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot
   return DISABLED_SHELL_AUTO_UPDATE;
 }
 
-export async function installShellAutoUpdate(): Promise<boolean> {
+export async function installShellAutoUpdate(hooks: { onProceed?: () => void } = {}): Promise<GuardedRestartResult> {
   if (isElectron && typeof bridge.installShellAutoUpdate === 'function') {
-    return bridge.installShellAutoUpdate();
+    return guardRestart(options => bridge.installShellAutoUpdate(options), hooks);
   }
   return false;
 }
@@ -803,7 +906,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
       shellUpdateAvailable: false,
       ...(typeof reply?.newVersion === 'string' ? { uiVersion: reply.newVersion } : {}),
     };
-    return mergeShellUpdate(summary, await getShellUpdate());
+    return mergeShellUpdate(summary, await getShellUpdate({ fresh: true }));
   }
   const summary: UpdateCheckSummary = {
     ok: true,
@@ -814,14 +917,18 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     shellUpdateAvailable: false,
   };
   return isElectron
-    ? mergeShellUpdate(summary, await getShellUpdate())
+    ? mergeShellUpdate(summary, await getShellUpdate({ fresh: true }))
     : summary;
 }
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
 export type OAuthConnectOpts =
-  | { engine: string; name?: string }
+  // extraFields carries a connector's own non-OAuth required fields declared
+  // alongside browser_oauth_builtin (e.g. Google Ads' developer_token) —
+  // persisted into the saved connection's values, same as the web redirect
+  // flow's extraFields already does via startConnectorOAuth.
+  | { engine: string; name?: string; extraFields?: Record<string, string> }
   | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number; tokenAuthStyle?: 'body' | 'basic' };
 
 export interface OAuthConnectResult {
@@ -1198,7 +1305,7 @@ export async function oauthCancel(): Promise<void> {
 }
 
 // ── MindsHub onboarding bridge ──────────────────────────────────
-// See main/index.ts for the rationale on the login/refresh/finalize
+// See main/app.ts for the rationale on the login/refresh/finalize
 // split. Web shells return failure — MindsHub PKCE only runs in
 // Electron; the web shell uses Keycloak redirect auth instead.
 
@@ -1261,9 +1368,10 @@ export async function mindshubFinalize(
 /**
  * Whether this shell can be told that a person chose the organization.
  *
- * Renderer bundles update over the air while `src/main/**` only arrives in a
- * new installer, so a newer renderer runs against an older main process as a
- * matter of course. That shell drops the `chosenByUser` argument, and its
+ * Renderer bundles update over the air while `src/main/**` only arrives when
+ * the shell relaunches into a new build, so a newer renderer runs against an
+ * older main process as a matter of course (the supported window for that gap
+ * is in docs/update-behavior.md). That shell drops the `chosenByUser` argument, and its
  * entitlement fallback then overrides the pick — the exact defect ENG-2199
  * fixes. Asking the question beats making a promise the shell cannot keep, so
  * the onboarding picker is not offered when this is false.
@@ -1480,6 +1588,85 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+export interface AccountSession {
+  accountId: string | null;
+  legacyState: LegacyStateVerdict;
+  /** The organization the session is operating as, so the boot purge can drop
+   *  the previous one's state before React seeds anything from it. */
+  organizationId: string | null;
+}
+
+/**
+ * The signed-in account and the verdict on unmarked browser state, resolved at
+ * preload time and therefore readable synchronously. The async accessors cannot
+ * serve the one caller that needs it — the browser-cache purge, which has to run
+ * before React mounts.
+ *
+ * `null` means this shell has no opinion: the web build, and an Electron shell
+ * older than the bridge field, which a UI bundle can be hot-swapped onto. That
+ * is NOT the same as a shell reporting a signed-out session, and a caller that
+ * collapsed the two would stop marking caches on exactly the pairing that has
+ * no per-account roots to fall back on.
+ */
+export function accountSessionSync(): AccountSession | null {
+  if (!isElectron) return null;
+  const value = (bridge as { accountSession?: unknown }).accountSession;
+  if (!value || typeof value !== 'object') return null;
+  const { accountId, legacyState, organizationId } = value as Partial<AccountSession>;
+  return {
+    accountId: typeof accountId === 'string' && accountId ? accountId : null,
+    legacyState: legacyState === 'purge' || legacyState === 'undecided' ? legacyState : 'keep',
+    organizationId: typeof organizationId === 'string' && organizationId ? organizationId : null,
+  };
+}
+
+export interface AccountOwnershipQuestion {
+  accountId: string;
+  accountLabel: string | null;
+}
+
+/**
+ * Whether the shell needs to ask who owns the data already on this machine, and
+ * who it is asking. Desktop-only: on web the server is org-scoped, so there is
+ * no shared local store to be ambiguous about. Fail-closed to "no question" — a
+ * bridge that cannot answer must not raise a modal nobody can act on.
+ */
+export async function accountOwnershipPending(): Promise<AccountOwnershipQuestion | null> {
+  if (!isElectron || typeof bridge.accountOwnershipPending !== 'function') return null;
+  try {
+    const result = await bridge.accountOwnershipPending();
+    if (!result?.pending || typeof result.accountId !== 'string') return null;
+    return {
+      accountId: result.accountId,
+      accountLabel: typeof result.accountLabel === 'string' ? result.accountLabel : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Answer it. The account id goes back so main can refuse an answer meant for a
+ * different account than the one now signed in.
+ */
+export async function decideAccountOwnership(
+  accountId: string,
+  keepExisting: boolean,
+): Promise<{ ok: boolean; reason: string | null }> {
+  if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') {
+    return { ok: false, reason: 'unsupported' };
+  }
+  try {
+    const result = await bridge.decideAccountOwnership(accountId, keepExisting);
+    return {
+      ok: Boolean(result?.ok),
+      reason: typeof result?.reason === 'string' ? result.reason : null,
+    };
+  } catch {
+    return { ok: false, reason: 'unavailable' };
+  }
+}
+
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
@@ -1489,6 +1676,9 @@ export const host = {
   isMac,
   getApiOrigin,
   isLocalApiOrigin,
+  accountOwnershipPending,
+  decideAccountOwnership,
+  accountSessionSync,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,
@@ -1527,8 +1717,11 @@ export const host = {
   onInstallCancelled,
   onUpdateStatus,
   applyUpdate,
+  drainUpdateJournal,
+  ackUpdateJournal,
   checkForUpdates,
   getShellUpdate,
+  getShellSupport,
   getShellAutoUpdate,
   onShellAutoUpdate,
   checkShellAutoUpdate,

@@ -421,7 +421,7 @@ export interface UpdateApplyDecision {
  *  fixing anything.
  *
  *  ENG-858: `mode` is no longer a user-facing setting — everyone gets `auto`
- *  unless `UI_UPDATE_MODE=manual` is hand-set in `~/.anton/.env` (support /
+ *  unless `UI_UPDATE_MODE=manual` is hand-set in the Cowork home's `.env` (support /
  *  QA escape hatch). The parameter and this decision logic are unchanged;
  *  only the Settings UI control that used to feed it was removed. */
 export function decideUpdateApply(input: {
@@ -777,4 +777,24 @@ export function shellDownloadUrl(
     return `${SHELL_DOWNLOADS_BASE}/linux-${debArch}/mindshub-cowork-${slot}.deb`;
   }
   return null;
+}
+
+/** Should the boot check install a ready shell update on its own? (ENG-2764)
+ *
+ *  Only for a *stranded* update: downloaded by an earlier launch that never
+ *  quit cleanly, so install-on-quit never ran. An update downloaded during this
+ *  launch stays a banner and installs on the next quit. `priorAttemptTarget`
+ *  stops a failed install from being retried every launch. */
+export function decideBootShellInstall(input: {
+  phase: string;
+  mode: string;
+  bytesTransferred?: boolean;
+  targetVersion?: string;
+  priorAttemptTarget?: string | null;
+}): boolean {
+  if (input.phase !== 'ready-to-install') return false;
+  if (input.mode !== 'auto') return false;
+  if (input.bytesTransferred) return false;
+  if (input.priorAttemptTarget && input.priorAttemptTarget === input.targetVersion) return false;
+  return true;
 }

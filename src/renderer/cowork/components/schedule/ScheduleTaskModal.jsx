@@ -237,7 +237,7 @@ export default function ScheduleTaskModal({
           </Field>
 
           <div>
-            <span className="block font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 tracking-[0.02em] uppercase mb-1.5">Status</span>
+            <span className="block mb-1.5 text-sm font-medium text-ink-2">Status</span>
             {/* Block-level `flex` with a fixed height (not `inline-flex`): an
                 inline-flex row sits on a text baseline in the parent's line
                 box, so toggling the label between "Enabled" and "Paused"

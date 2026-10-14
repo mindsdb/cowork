@@ -118,6 +118,26 @@ export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/mem
 // `/settings/workspace/*` redirects to the organization pages.
 export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
 
+/**
+ * A console link that names the organization and account it was opened for
+ * (ENG-3274). The console's active organization is one value per account,
+ * shared by every surface, so a bare link showed whatever the browser session
+ * happened to have active: another organization when the account had been
+ * switched on the web since, or another account's pages entirely when the
+ * browser was signed in as someone else. The console reads these parameters
+ * on landing, switches to the organization when it can, and says so when it
+ * cannot. Either value may be unknown; whatever is known is sent.
+ */
+export function consoleUrlFor(
+  url: string,
+  { organizationId, subject }: { organizationId?: string | null; subject?: string | null },
+): string {
+  const target = new URL(url);
+  if (organizationId) target.searchParams.set('organization', organizationId);
+  if (subject) target.searchParams.set('subject', subject);
+  return target.toString();
+}
+
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
 export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';

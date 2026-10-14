@@ -7,6 +7,7 @@ const compilerPreset = reactCompilerPreset();
 // Main (node), renderer (happy-dom), and compiled credential-refresh regressions.
 // setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
+  define: { __PLATFORM_UI__: 'true' },
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },
@@ -69,6 +70,14 @@ export default defineConfig({
         // right one until the bill arrives somewhere nobody expected.
         'src/shared/minds-orgs.ts': { statements: 100, branches: 100 },
         'src/renderer/cowork/hooks/useMindsOrgs.js': { statements: 100, branches: 100 },
+        // Which account's data root the sidecar is pointed at, and the browser
+        // caches that outlive a switch. Same reasoning as the entries above and
+        // then some: every branch here is a fail-closed guard whose failure is
+        // invisible at runtime — one account quietly reading another's tasks
+        // looks exactly like reading its own. The branch table is the only thing
+        // that proves the refusals still fire.
+        'src/main/account-data.ts': { statements: 99, branches: 98 },
+        'src/renderer/cowork/lib/accountLocalState.ts': { statements: 90, branches: 94 },
       },
     },
     projects: [
@@ -105,7 +114,17 @@ export default defineConfig({
           name: 'renderer-compiled',
           environment: 'happy-dom',
           include: [
+            // App/Settings regressions import these compiled consumers too. Run
+            // their dedicated cases so coverage includes both execution forms.
+            'src/renderer/cowork/hooks/useLogout.test.js',
+            'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
+            'src/renderer/cowork/App.appearancePreview.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
+            'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.discardUnsaved.test.jsx',
             'src/renderer/cowork/code/useCodingCatalog.test.tsx',
+            'src/renderer/cowork/code/CodeComposer.test.tsx',
+            'src/renderer/cowork/code/CodeView.test.tsx',
             'src/renderer/cowork/code/NewTaskPanel.test.tsx',
             'src/renderer/cowork/code/ProjectSettingsModal.test.tsx',
           ],

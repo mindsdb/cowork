@@ -28,7 +28,6 @@ vi.mock('../../../platform/host', () => ({
   getAccessToken: vi.fn(async () => null),
 }));
 vi.mock('../../lib/analytics', () => ({
-  trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
@@ -56,7 +55,7 @@ describe('SettingsView — provider API key Copy button', () => {
     copyText.mockResolvedValueOnce(true);
 
     render(<SettingsView {...baseProps} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy key to clipboard' }).find((button) => !button.disabled));
 
     expect(copyText).toHaveBeenCalledWith('sk-ant-test-key-123');
     expect(await screen.findByRole('button', { name: 'Copied to clipboard' })).toBeInTheDocument();
@@ -66,7 +65,7 @@ describe('SettingsView — provider API key Copy button', () => {
     copyText.mockResolvedValueOnce(false);
 
     render(<SettingsView {...baseProps} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy key to clipboard' }).find((button) => !button.disabled));
 
     expect(copyText).toHaveBeenCalledWith('sk-ant-test-key-123');
     expect(await screen.findByText(/Couldn't copy/)).toBeInTheDocument();
@@ -82,13 +81,13 @@ describe('SettingsView — provider API key Copy button', () => {
     try {
       copyText.mockResolvedValueOnce(false);
       render(<SettingsView {...baseProps} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+      fireEvent.click(screen.getAllByRole('button', { name: 'Copy key to clipboard' }).find((button) => !button.disabled));
 
       await vi.waitFor(() => expect(screen.getByText(/Couldn't copy/)).toBeInTheDocument());
       await vi.advanceTimersByTimeAsync(2000);
       expect(screen.getByText(/Couldn't copy/)).toBeInTheDocument();
 
-      fireEvent.blur(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+      fireEvent.blur(screen.getAllByRole('button', { name: 'Copy key to clipboard' }).find((button) => !button.disabled));
       expect(screen.queryByText(/Couldn't copy/)).toBeNull();
     } finally {
       vi.useRealTimers();

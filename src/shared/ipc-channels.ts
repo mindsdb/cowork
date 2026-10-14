@@ -38,6 +38,14 @@ export const IPC = {
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',
 
+  // UI and server update outcomes main journals on disk, because the window
+  // reloads mid-apply and a renderer-side capture would be lost with it. The
+  // renderer drains the journal on boot, reports one PostHog `update_phase`
+  // event per entry, and acks the ids that landed; the rest stay for the next
+  // launch.
+  UPDATE_JOURNAL_DRAIN: 'update:journal-drain',
+  UPDATE_JOURNAL_ACK: 'update:journal-ack',
+
   // Renderer awaits this before leaving the loading screen, so a boot-time
   // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).
   BOOT_AWAIT_READY: 'boot:await-ready',
@@ -45,6 +53,14 @@ export const IPC = {
   // Auth
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
   AUTH_LOGOUT: 'auth:logout',
+
+  // Who owns the data already on this machine, when the app cannot tell. Asked
+  // once, of the only party who knows.
+  ACCOUNT_OWNERSHIP_PENDING: 'account:ownership-pending',
+  ACCOUNT_OWNERSHIP_DECIDE: 'account:ownership-decide',
+  // Read synchronously in preload, before any page script runs, so the previous
+  // account's browser caches are gone before React can seed state from them.
+  ACCOUNT_SIGNED_IN_SYNC: 'account:signed-in-sync',
 
   // Keychain — where the refresh token is stored (file vs macOS keychain)
   KEYCHAIN_PREF_GET: 'keychain:get',

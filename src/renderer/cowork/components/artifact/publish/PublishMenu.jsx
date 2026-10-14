@@ -16,10 +16,9 @@
 // rich flow — previously only the grid had it.
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
-import { Alert, Button, Spinner, Tooltip } from '../../ui';
+import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -109,7 +108,7 @@ function UpToDateTag() {
   return (
     <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
       {/* var(--ok) has no config utility (distinct from the --success hex) — keep inline. */}
-      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(15)}</span>
+      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
       Up to date
     </span>
   );
@@ -129,7 +128,7 @@ function UrlField({ url }) {
           type="button" onClick={onCopy} aria-label="Copy URL"
           className="shrink-0 w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 cursor-pointer inline-grid place-items-center"
           style={{ color: copied ? 'var(--accent)' : 'var(--ink-4)' }}
-        >{copied ? Ico.check(13) : Ico.copy(13)}</button>
+        >{copied ? Ico.check(14) : Ico.copy(14)}</button>
       </Tooltip>
     </div>
   );
@@ -149,7 +148,7 @@ function AccessSummaryCard({ mode, ownerOnly }) {
         <span className="block font-body font-semibold text-[13px] text-ink">{m.title}</span>
         <span className="block font-body text-[11.5px] text-ink-3 mt-px">{m.desc}</span>
       </span>
-      <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(15)}</span>
+      <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(14)}</span>
     </div>
   );
 }
@@ -305,21 +304,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
 
   return (
     <>
-      {/* Outside-press dismiss. Base UI's own outside-click detection listens
-          on the parent document, but the artifact preview is an <iframe>
-          (ArtifactViewer) — clicks inside it fire in the iframe's own
-          document and never reach a parent-document listener, so almost
-          anywhere the user clicks fails to close this popover (mirrors the
-          drag-region gap documented in ui/Menu.jsx's anchored-mode overlay).
-          A transparent layer positioned just under the popup intercepts
-          those presses directly instead of relying on bubbling. */}
-      {open && createPortal(
-        <div
+      {/* Outside-press dismiss. Clicks inside the artifact preview <iframe>
+          never reach Base UI's parent-document listener, so without this
+          layer almost anywhere the user clicks would leave the popover open.
+          See OutsidePressLayer. */}
+      {open && (
+        <OutsidePressLayer
           data-testid="publish-menu-outside-dismiss"
-          onMouseDown={() => setOpen(false)}
-          className="fixed inset-0 z-[89] bg-transparent [-webkit-app-region:no-drag]"
-        />,
-        document.body,
+          onPress={() => setOpen(false)}
+          zIndex={89}
+        />
       )}
       <Popover.Root open={open} onOpenChange={(v) => { if (!disabled) setOpen(v); }}>
         <Popover.Trigger
@@ -332,7 +326,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               birth — but nobody else can open it, so the button that offers to
               change that still reads "Share". */}
           {isSharedWithSomeone
-            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(13)}</span></>)
+            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(14)}</span></>)
             : 'Share'}
         </Popover.Trigger>
         <Popover.Portal>
@@ -420,7 +414,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                             <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
                               aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
                               className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-                              {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+                              {pwd.reveal ? Ico.eyeOff(16) : Ico.eye(16)}
                             </button>
                           </Tooltip>
                         </div>

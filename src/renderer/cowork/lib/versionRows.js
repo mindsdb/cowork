@@ -23,14 +23,22 @@ const DASH = '—';
  * @param {string} args.bakedVersion  The renderer's own compiled-in version.
  * @param {string} args.serverVersion From /health.
  * @param {string} args.antonVersion  From /health.
+ * @param {boolean} [args.shellTooOld] The shell is outside the supported
+ *   window; its row says so.
+ * @param {string} [args.backendPlaceholder] What the Server and Agent rows
+ *   show while no version has answered. Defaults to an em dash.
  * @returns {[string, string][]} Rows in display order. `Build` appears only
- *   when the build kind is known; every other row falls back to an em dash so
- *   the shape stays fixed.
+ *   when the build kind is known; every other row falls back to a placeholder
+ *   so the shape stays fixed.
  */
-export function versionRows({ versionInfo, bakedVersion, serverVersion, antonVersion }) {
+export function versionRows({
+  versionInfo, bakedVersion, serverVersion, antonVersion,
+  shellTooOld = false, backendPlaceholder = DASH,
+}) {
   const info = versionInfo || {};
   const baked = bakedVersion || '';
-  // App shell = installed Electron shell (changes only on reinstall).
+  // App shell = installed Electron shell (changes only when the shell
+  // relaunches into a new build — auto-update or reinstall).
   const shellVer = info.app || baked;
   // The running renderer's own baked version is authoritative for the UI
   // version — it's compiled into whichever bundle actually loaded (OTA or
@@ -43,10 +51,10 @@ export function versionRows({ versionInfo, bakedVersion, serverVersion, antonVer
   const buildLabel = BUILD_KIND_LABELS[info.buildKind];
 
   return [
-    ['App shell', shellVer || DASH],
+    ['App shell', shellTooOld ? `${shellVer} (too old)` : (shellVer || DASH)],
     ...(buildLabel ? [['Build', buildLabel]] : []),
     ['UI', uiVer ? `${uiVer} (${uiSource})` : DASH],
-    ['Server', serverVersion || DASH],
-    ['Agent', antonVersion || DASH],
+    ['Server', serverVersion || backendPlaceholder],
+    ['Agent', antonVersion || backendPlaceholder],
   ];
 }

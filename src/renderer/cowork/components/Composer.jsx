@@ -55,15 +55,15 @@ function TaskModeChip({ mode, onClear }) {
   return (
     <button
       type="button"
-      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] animate-chip-in motion-reduce:animate-none active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] animate-chip-in active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
       aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
       onClick={onClear}
     >
       <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
           {Ico[mode.icon](14)}
         </span>
-        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
+        <span className="absolute inset-0 inline-flex [transition:opacity_var(--dur-hover)_var(--ease-out),transform_var(--dur-hover)_var(--ease-out)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
           {Ico.close(14)}
         </span>
       </span>
@@ -88,10 +88,10 @@ function AttachmentChip({ attachment, onRemove }) {
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
         {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
-          : src === 'connector' ? Ico.link(13)
-            : src === 'gdrive' ? Ico.googleDrive(13)
-              : isImage ? Ico.image(13)
-                : Ico.doc(13)}
+          : src === 'connector' ? Ico.link(14)
+            : src === 'gdrive' ? Ico.googleDrive(14)
+              : isImage ? Ico.image(14)
+                : Ico.doc(14)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -213,7 +213,6 @@ export default function Composer({
   // (default true — an account that never visits that setting sees every
   // harness it's otherwise eligible for). Anton has no enable flag — it's
   // the default agent and always offered.
-  harnessHermesEnabled = true,
   harnessClaudeCodeEnabled = true,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
@@ -365,7 +364,6 @@ export default function Composer({
   const harnessPickerOptions = useMemo(() => {
     // Anton is always offered — the default agent, with no enable flag.
     const opts = [{ value: 'anton', label: 'Anton' }];
-    if (harnessHermesEnabled) opts.push({ value: 'hermes', label: 'Hermes' });
     if (harnessClaudeCodeEnabled) {
       opts.push({
         value: 'claude-code',
@@ -374,17 +372,7 @@ export default function Composer({
       });
     }
     return opts;
-  }, [harnessHermesEnabled, harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
-
-  // If the currently-picked harness gets disabled out from under it (an
-  // admin turned it off between page loads, or Coding mode just turned on
-  // for the first time), fall back to whatever's still offered rather than
-  // silently sending a harness the pill no longer shows as selected.
-  useEffect(() => {
-    if (!codingModeEnabled || harnessPickerOptions.length === 0) return;
-    if (harnessPickerOptions.some((o) => o.value === codingHarness)) return;
-    setCodingHarness(harnessPickerOptions[0].value);
-  }, [codingModeEnabled, harnessPickerOptions, codingHarness]);
+  }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
 
   // Claude Code needs a real, concrete model for its `--model` flag — no
   // auto-routing concept in the CLI — so Model Router is hidden whenever
@@ -397,28 +385,17 @@ export default function Composer({
   const isClaudeCode = codingModeEnabled && harnessClaudeCodeEnabled && codingHarness === 'claude-code';
 
   // What actually gets sent (handleSend below) — never the raw codingHarness
-  // state directly, so a value that just got disabled (the reset effect
-  // above hasn't re-rendered yet, or every harness is disabled) can't slip
-  // through as e.g. a stale "claude-code" that would launch the external
-  // CLI despite the toggle being off.
+  // state directly, so a pick that has since been disabled (an admin turned
+  // Claude Code off between page loads) can't slip through and launch the
+  // external CLI despite the toggle being off.
   const effectiveHarness = !codingModeEnabled
     ? 'anton'
     : (harnessPickerOptions.some((o) => o.value === codingHarness)
       ? codingHarness
       : (harnessPickerOptions[0]?.value || 'anton'));
 
-  // Harness gate for the effort pill — Hermes has no effort knob, mirroring
-  // SettingsView's harnessSupportsEffort. `effectiveHarness`
-  // already accounts for a coding-mode harness pick (Anton/Hermes/Claude
-  // Code); outside coding mode it's hardcoded 'anton' and says nothing
-  // about the account-wide harness toggle (web-only Settings → Agent
-  // Harness), so fall back to that — threaded in via `modelMeta`, the
-  // existing channel for settings-derived model metadata, rather than a
-  // new prop.
-  const effortHarness = codingModeEnabled ? effectiveHarness : (modelMeta?.harness || 'anton');
-
   // Effort levels the picked model advertises; null (no pill) when it has
-  // none, the catalog hasn't loaded, or the harness has no effort knob. The
+  // none or the catalog hasn't loaded. The
   // pill always shows the level the task will run at: the explicit pick,
   // else the effort saved beside the planning model in Settings, else the
   // model's own default. The middle step mirrors the server: an empty pick
@@ -426,8 +403,8 @@ export default function Composer({
   // planning effort to the turn, whichever model was picked here. Without it
   // a saved High would run while the pill said Medium.
   const effortLevels = useMemo(
-    () => (effortHarness === 'hermes' ? null : effortLevelsFor(model?.id, modelMeta?.modelEfforts)),
-    [effortHarness, model?.id, modelMeta?.modelEfforts],
+    () => effortLevelsFor(model?.id, modelMeta?.modelEfforts),
+    [model?.id, modelMeta?.modelEfforts],
   );
   const resolvedEffort = effortLevels
     ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
@@ -488,7 +465,7 @@ export default function Composer({
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {Ico.settings(13)}
+                {Ico.settings(14)}
               </button>
             </Tooltip>
           ),
@@ -1040,7 +1017,7 @@ export default function Composer({
               role="listbox"
               aria-label="Skills and actions"
               onMouseDown={(e) => e.preventDefault()}
-              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
+              className={`menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto${slashMenuBelow ? ' menu--drop-down' : ''}`}
               style={{
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
@@ -1064,7 +1041,7 @@ export default function Composer({
                     onClick={() => acceptSlash(item)}
                   >
                     <span className="inline-flex text-ink-2">
-                      {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
+                      {item.kind === 'action' ? Ico.upload(14) : Ico.cube(14)}
                     </span>
                     <span className="flex-1 min-w-0 truncate text-left">
                       {item.label}
@@ -1280,7 +1257,7 @@ export default function Composer({
                   setOpenMenu('attach');
                 }}
               >
-                {Ico.plus(15)}
+                {Ico.plus(16)}
               </button>
               </Tooltip>
               {openMenu === 'attach' && (
@@ -1363,7 +1340,7 @@ export default function Composer({
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
-                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
+                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(14)}</span>
                                 <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
                                   <span className="font-medium">{c.name}</span>
                                   <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
@@ -1437,7 +1414,7 @@ export default function Composer({
                     <span className="truncate">{MODEL_ROUTER_LABEL}</span>
                   </span>
                   <span className="inline-flex shrink-0 text-ink-3">
-                    {Ico.settings(13)}
+                    {Ico.settings(14)}
                   </span>
                 </button>
               </Tooltip>
@@ -1528,7 +1505,7 @@ export default function Composer({
                   aria-label="Send"
                   title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
                 >
-                  {Ico.send(15)}
+                  {Ico.send(16)}
                 </button>
               </Tooltip>
             )}
@@ -1566,7 +1543,7 @@ export default function Composer({
                   >
                     {Ico.folder(14)}
                     <span>{project ? projectLabel(project) : 'Work in a project'}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+                    <span className="inline-flex text-ink-4">{Ico.chevDown(14)}</span>
                   </button>
                 </Tooltip>
 
@@ -1594,7 +1571,7 @@ export default function Composer({
                         child of a non-scrolling container). */}
                     <div className="pt-1 px-[6px] pb-[6px]">
                       <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-md py-1 px-2">
-                        <span className="inline-flex text-ink-3">{Ico.folder(13)}</span>
+                        <span className="inline-flex text-ink-3">{Ico.folder(14)}</span>
                         <input
                           ref={projectSearchRef}
                           type="text"
@@ -1707,17 +1684,16 @@ export default function Composer({
               setting — offering it at all only makes sense once it's turned
               on. Options come from Settings → Coding Mode's per-harness
               enable flags (harnessPickerOptions above), not a fixed list —
-              e.g. Claude Code disappears entirely once its toggle is off,
-              same as Hermes when the server doesn't have it installed.
+              e.g. Claude Code disappears entirely once its toggle is off.
               Model selection above applies regardless of which harness is
               picked. Desktop-only regardless of the setting's value: it's
               an account-wide setting, so a web session for the same account
               would otherwise still see the option — launching a terminal
               is an Electron capability the web build has no equivalent
-              for. Same ToggleGroup as the Settings Anton/Hermes control,
-              not a dropdown — a segmented toggle reads better for a small,
-              always-visible choice. */}
-          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 0 && (
+              for. A ToggleGroup, not a dropdown — a segmented toggle reads
+              better for a small choice. Hidden when Anton is the only
+              option: a one-item toggle cannot do anything. */}
+          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 1 && (
             <ToggleGroup
               value={codingHarness}
               onValueChange={setCodingHarness}

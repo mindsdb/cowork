@@ -34,6 +34,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   saveArtifactSource: (...args) => api.saveArtifactSource(...args),
 }));
 
+import { requestAgentRepair } from '../../../lib/artifactWorkspaceApi';
 import { useArtifactWorkspace } from './useArtifactWorkspace';
 
 const artifact = {
@@ -340,6 +341,39 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     expect(result.current.source.artifactId).toBe(artifactB.id);
     expect(result.current.source.content).toBe('<h1>Second</h1>');
+  });
+});
+
+// ENG-2979: a surface that must not let a client-side guess override a
+// server-sent role (the authorship tag) reads this flag instead of trusting
+// `capabilities` alone.
+describe('useArtifactWorkspace capabilitiesFromServer', () => {
+  it('is false for an older server whose source carries no capabilities', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, capabilities: undefined });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(false);
+    // The OWNER_CAPABILITIES guess still drives canEdit exactly as before.
+    expect(result.current.capabilities.canEdit).toBe(true);
+  });
+
+  it('is false for the reviewer fallback on a 403 with no review capabilities', async () => {
+    api.loadArtifactSource.mockRejectedValue(
+      httpError(403, 'Only the artifact owner can change this draft'),
+    );
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(false);
+    expect(result.current.capabilities.role).toBe('reviewer');
+  });
+
+  it('is true once the source answers with its own capabilities', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(true);
   });
 });
 
@@ -713,5 +747,26 @@ describe('useArtifactWorkspace releasing a repair on resolve', () => {
     await act(async () => { await result.current.releaseRepairsForComment('thread-9'); });
 
     expect(result.current.repair.status).toBe('ready');
+  });
+});
+
+describe('useArtifactWorkspace addressWithAgent preview errors', () => {
+  it('sends the preview errors along with the repair request', async () => {
+    requestAgentRepair.mockResolvedValue({ repair: { id: 'r1', status: 'queued' }, prompt: '' });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(() => result.current.addressWithAgent({
+      thread: { id: 't1', payload: { text: 'fix it' } },
+      conversationId: 'c1',
+      previewErrors: [{ message: 'boom', file: 'a.html', line: 44 }],
+    }));
+
+    expect(requestAgentRepair).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        previewErrors: [{ message: 'boom', file: 'a.html', line: 44 }],
+      }),
+    );
   });
 });

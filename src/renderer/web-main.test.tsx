@@ -20,18 +20,26 @@ import { act } from 'react';
 
 const rendered = {
   provider: false,
+  handoffAtProvider: null as string | null,
   app: false,
   identityRequired: false,
   identityToken: null as string | null,
   identityReadyAtApp: false,
 };
 
+// Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
+const keycloakState = { initialized: true };
+const skinState = { skin: 'normal' };
+
 vi.mock('@react-keycloak/web', () => ({
-  ReactKeycloakProvider: ({ children, onTokens }: {
+  ReactKeycloakProvider: ({ children, onTokens, LoadingComponent }: {
     children?: unknown;
     onTokens?: (tokens: { token?: string }) => void;
+    LoadingComponent?: unknown;
   }) => {
     rendered.provider = true;
+    rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
+    if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
     return children ?? null;
   },
@@ -62,7 +70,7 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
 vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
-vi.mock('./lib/skins', () => ({ loadSkin: () => 'default' }));
+vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
 vi.mock('./cowork/styles/skin-8bit.css', () => ({}));
@@ -70,6 +78,7 @@ vi.mock('./styles.css', () => ({}));
 
 async function renderOnHost(hostname: string, search = '') {
   rendered.provider = false;
+  rendered.handoffAtProvider = null;
   rendered.app = false;
   rendered.identityRequired = false;
   rendered.identityToken = null;
@@ -100,6 +109,7 @@ describe('web-main auth wrapper selection', () => {
 
   beforeEach(() => {
     document.body.innerHTML = '';
+    keycloakState.initialized = true;
   });
 
   afterEach(() => {
@@ -143,5 +153,96 @@ describe('web-main auth wrapper selection', () => {
     expect(r.app).toBe(true);
     expect(r.provider).toBe(false);
     expect(r.identityRequired).toBe(false);
+  });
+});
+
+describe('web-main loading view while Keycloak initializes', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    delete document.body.dataset.arcadePreset;
+    keycloakState.initialized = true;
+    skinState.skin = 'normal';
+    window.localStorage.removeItem('anton.theme');
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    window.localStorage.removeItem('anton.theme');
+  });
+
+  // A forced organization reload lands here first; an empty root reads as a crash.
+  it('shows the welcome view, not an empty root, before init resolves', async () => {
+    keycloakState.initialized = false;
+    await renderOnHost('cowork.mindshub.ai');
+    expect(rendered.app).toBe(false);
+    expect(document.getElementById('root')?.textContent).toContain('Welcome to MindsHub Cowork');
+  });
+
+  it('renders App instead of the welcome view once init resolves', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+    expect(rendered.app).toBe(true);
+    expect(document.getElementById('root')?.textContent).not.toContain('Welcome to MindsHub Cowork');
+  });
+
+  it.each([
+    ['normal', 'dark', 'midnight'],
+    ['normal', 'light', 'daylight'],
+    ['8bit', 'light', 'gameboy'],
+    ['8bit', 'dark', undefined],
+  ])('applies the %s %s onboarding look before App mounts', async (skin, theme, preset) => {
+    skinState.skin = skin;
+    window.localStorage.setItem('anton.theme', theme);
+    // A preset from an earlier look must be replaced or cleared, not left behind.
+    document.body.dataset.arcadePreset = 'stale';
+    keycloakState.initialized = false;
+    await renderOnHost('cowork.mindshub.ai');
+    expect(document.body.dataset.arcadePreset).toBe(preset);
+  });
+});
+
+// The Keycloak redirect keeps only the pathname, so a console link's params
+// must be saved before the provider starts the login. Without the capture call
+// every other test here stays green.
+describe('web-main console handoff', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    window.sessionStorage.clear();
+    keycloakState.initialized = true;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+  });
+
+  it('saves a console link before the Keycloak provider renders', async () => {
+    const r = await renderOnHost(
+      'cowork.mindshub.ai',
+      '?from=console&mode=games&sample=classic-snake-game'
+    );
+
+    expect(r.provider).toBe(true);
+    expect(JSON.parse(r.handoffAtProvider ?? 'null')).toMatchObject({
+      entrySource: 'console',
+      modeId: 'games',
+      sampleId: 'classic-snake-game',
+    });
+  });
+
+  it('saves nothing for an ordinary visit', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai');
+
+    expect(r.handoffAtProvider).toBeNull();
   });
 });

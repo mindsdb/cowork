@@ -29,17 +29,23 @@ import * as path from 'path';
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
 
-// `.anton/` (project memory/artifacts, shared by Anton AND Hermes despite
-// the name) and `skills/` (symlinks into the global skills store) are both
+// `.anton/` (project memory/artifacts) and `skills/` (symlinks into the global skills store) are both
 // live, harness-shared state — never git-tracked, so `ensureSharedLinks`
 // below can point each worktree back at the one real copy instead of a
 // frozen snapshot from whenever the repo happened to be initialized.
 const SHARED_DIRS = ['.anton', 'skills'];
 const GITIGNORE_ENTRIES = ['.anton/', 'skills/', `${MINDSHUB_DIRNAME}/`];
 
+// Windows caps paths at 260 characters unless Git opts in, and deep
+// dependency trees in a task worktree routinely exceed that. Passed per
+// command so the user's repo and global config are left untouched.
+function platformConfigArgs(): string[] {
+  return process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
+}
+
 function git(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd }, (err, stdout, stderr) => {
+    execFile('git', [...platformConfigArgs(), ...args], { cwd }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stdout, stderr }));
       else resolve({ stdout, stderr });
     });
@@ -99,7 +105,7 @@ function taskBranchName(taskId: string): string {
 
 /** Symlink `.anton/` and `skills/` from the worktree back to the real
  *  (project-level) directories, so a Claude Code task sees the exact same
- *  live project memory and skills Anton/Hermes do — not a git snapshot
+ *  live project memory and skills Anton does — not a git snapshot
  *  frozen at whenever the repo was first initialized. Idempotent and
  *  best-effort: skips a dir that doesn't exist yet in the repo (e.g. no
  *  harness has ever run there) and leaves anything already at the link

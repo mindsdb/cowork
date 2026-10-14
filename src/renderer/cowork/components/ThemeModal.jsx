@@ -21,7 +21,7 @@ function Choice({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_120ms,border-color_120ms,color_120ms]"
+      className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_var(--dur-hover),border-color_var(--dur-hover),color_var(--dur-hover)]"
       style={{
         // Active-state accent uses the 8-bit skin's --gf-* vars, so it stays inline.
         border: active
@@ -41,7 +41,7 @@ function Choice({ active, onClick, children }) {
 function Group({ label, children }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-[0.08em] opacity-60 mb-2">
+      <div className="mb-2 text-sm font-medium text-ink-2">
         {label}
       </div>
       <div className="flex gap-2">{children}</div>

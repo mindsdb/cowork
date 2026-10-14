@@ -2,12 +2,14 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked } from '../../lib/modelCatalog';
+import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
+import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
-import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
+import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, PROBE_POLICY_UNAVAILABLE_SENTENCE, PROBE_RATE_LIMITED_SENTENCE } from '../../lib/providerStatus';
+import { useHubUsageContext } from '../../lib/hubUsageContext';
+import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy } from '../../lib/usageWarnings';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -28,24 +30,9 @@ import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
-
-// Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
-// freshly auto-saved key, without touching any other field — critical so an
-// Appearance auto-save never marks a genuinely-unsaved Provider/Model edit
-// (tracked in the same snapshot, via the shared page-wide Save button) as
-// saved just because it happened to be present at the same time. Returns
-// the input unchanged if it's null or unparseable (defensive: the caller
-// should never hit that path, but a snapshot must never be corrupted).
-export function patchSavedJson(prevJson, key, value) {
-  if (prevJson == null) return prevJson;
-  try {
-    const parsed = JSON.parse(prevJson);
-    parsed[key] = value;
-    return JSON.stringify(parsed);
-  } catch {
-    return prevJson;
-  }
-}
+import { useSettingsDraft } from './useSettingsDraft';
+import { PLATFORM_UI } from '../../../lib/deployment';
+import { visibleProviderCards } from './providerVisibility';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -60,9 +47,129 @@ const FIELD_ICON_BTN = `${FIELD_ICON_BTN_BASE} absolute right-1 top-1/2 -transla
 const COLOR_SWATCH_INPUT =
   'w-[64px] h-[32px] p-0.5 border border-solid border-line-2 rounded-md bg-surface cursor-pointer';
 
+const FAVICON_MIME_TYPES = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml', 'image/webp'];
+const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp' };
+
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
+
+/* The notice under each Settings > Agent role row after the MindsHub health
+   probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
+   fixture.
+
+   Two stacked lines for the billing stops (ENG-1248): the state and its funds
+   action read first on their own line, and the BYOK escape hatch sits under
+   it. Inline, the escape hatch diluted the one action that matters when the
+   wallet is empty. The velocity limit and a billing outage get one muted line
+   and no billing action: money fixes neither.
+
+   `usage` is the `/hub/usage/` view, which decides the allowance copy (a
+   refill time, or the no-grant sentence). */
+export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
+  if (!PLATFORM_UI) {
+    return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
+  }
+  const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
+  if (notice.kind === 'no_credits') {
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger font-semibold">No credits available. </span>
+          <button
+            type="button"
+            // Recorded before the navigation, so web and
+            // desktop count identically. `host.openExternal` is
+            // always defined and already falls back to window.open
+            // internally (platform/host.ts), with noopener —
+            // guarding it here was dead code that would have opened
+            // an unhardened window if it ever had run.
+            onClick={() => {
+              trackBillingOpened('no_credits_notice');
+              return host.openExternal(MINDS_BILLING_URL);
+            }}
+            className={LINK_BTN}
+          >Top up balance →</button>
+        </div>
+        {byok}
+      </div>
+    );
+  }
+  if (notice.kind === 'allowance_used' || notice.kind === 'paused') {
+    const allowance = notice.kind === 'allowance_used';
+    /* The same sentences the stopped-task cards use for the same stops. Each
+       gets its own trigger, apart from the card's: a funnel reads a failed
+       Settings test and a stopped task as different moments. */
+    const body = allowance
+      ? allowanceStopCopy({ resetAt: notice.resetAt, usage })
+      : freeServingPausedCopy(notice.resetAt);
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger">{body} </span>
+          <button
+            type="button"
+            onClick={() => {
+              // Literal triggers inline, so the analytics vocabulary sweep sees them.
+              trackBillingOpened(allowance ? 'allowance_used_notice' : 'free_air_paused_notice');
+              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            }}
+            className={LINK_BTN}
+          >Add funds →</button>
+        </div>
+        {byok}
+      </div>
+    );
+  }
+  if (notice.kind === 'slow_down') {
+    return (
+      <div className="text-[12px] leading-[1.6] text-ink-3">
+        {`${PROBE_RATE_LIMITED_SENTENCE} This isn't a credits problem.`}
+      </div>
+    );
+  }
+  if (notice.kind === 'billing_unavailable') {
+    return (
+      <div className="text-[12px] leading-[1.6] text-ink-3">
+        {PROBE_POLICY_UNAVAILABLE_SENTENCE}
+      </div>
+    );
+  }
+  return null;
+}
+
+/* The line under a role's picker when the CURRENT model cannot run. The
+   stored pin is never rewritten, so a wallet that drains, or an admin rule
+   that lands, leaves the user sitting on a model they can no longer run. This
+   names it and gives the way out. A restricted model has no billing way out,
+   so its line has no link. Exported for the visual fixture. */
+export function UnavailableModelHint({ label, restricted }) {
+  if (!PLATFORM_UI) {
+    return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
+  }
+  if (restricted) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {label} is restricted by an admin in your organization. Choose another model.
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11.5px] text-ink-3">
+      {label} needs credits.{' '}
+      <button
+        type="button"
+        onClick={() => {
+          trackBillingOpened('locked_model_hint');
+          return host.openExternal(MINDS_BILLING_URL);
+        }}
+        className={LINK_BTN}
+      >Top up your balance</button>
+      {' '}to use it.
+    </div>
+  );
+}
 
 // Numeric input for the Advanced Settings agent budgets. State keeps the
 // server's string form (settings round-trip as strings; the page-wide dirty
@@ -206,7 +313,7 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
             aria-label="Clear value"
             className={FIELD_ICON_BTN}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       )}
@@ -368,7 +475,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
               aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
               className={canCopy ? btnClass : btnClassDisabled}
             >
-              {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
+              {copyState === 'copied' ? Ico.check(14) : Ico.copy(14)}
             </button>
           </Tooltip>
           {(copyState === 'copied' || copyState === 'failed') && (
@@ -382,7 +489,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
                 // only pops in and holds — it's cleared by state (next attempt
                 // or blur), not by the animation, so it stays legible.
-                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
+                animation: copyState === 'failed' ? 'failed-pop var(--dur-layout) ease forwards' : 'copied-pop 1.5s ease forwards',
               }}
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
@@ -396,7 +503,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-pressed={show}
             className={show ? btnClassActive : btnClass}
           >
-            {show ? Ico.eyeOff(13) : Ico.eye(13)}
+            {show ? Ico.eyeOff(14) : Ico.eye(14)}
           </button>
         </Tooltip>
         <Tooltip content="Clear this key (commits on Save settings)">
@@ -407,7 +514,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-label="Clear key"
             className={hasValue ? btnClass : btnClassDisabled}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       </div>
@@ -465,7 +572,7 @@ function SetBadge({ hasValue, active }) {
         // we explicitly clear any inherited shadow.
         boxShadow: active ? undefined : 'none',
         animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
-        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+        transition: 'box-shadow var(--dur-hover) ease, background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
     >
       Set
@@ -566,7 +673,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
     </span>
   );
   return (
-    <div className={`[transition:opacity_.15s_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
+    <div className={`[transition:opacity_var(--dur-hover)_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
       <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
@@ -581,7 +688,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
       aria-label="Settings sections"
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
+      <div className="section-label pt-0 px-2.5 pb-1.5">Settings</div>
       {items.map((item, index) => {
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
@@ -592,17 +699,17 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
           && !serverOnline
           && item.id !== 'backend'
           && item.id !== 'codingAgent';
-        const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        const icon = Ico[item.icon] ? Ico[item.icon](14) : null;
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
-          {showGroup && <div className="mt-3 first:mt-0 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>}
+          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{item.group}</div>}
           <button
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
             aria-disabled={disabled ? 'true' : undefined}
-            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
@@ -623,7 +730,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
 }
 
 export default function SettingsView({
-  settings, setSetting, onSave,
+  settings: committedSettings, setSetting: setSettingProp, onSave, onAppearancePreview,
   theme, onThemeChange,
   skin, onSkinChange, customTheme, onCustomThemeChange,
   agentLabel,
@@ -652,6 +759,14 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const draft = useSettingsDraft(committedSettings);
+  const { settings, setSetting, dirty: settingsDirty } = draft;
+  const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -659,7 +774,13 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
+  // The `/hub/usage/` view App polls: the probe notice reads it for the
+  // allowance copy and the funds link. Null outside the provider (tests).
+  const hubUsageCtx = useHubUsageContext();
+  const hubUsage = hubUsageCtx?.usage || null;
+  const isBillingOwner = !!hubUsage?.isBillingOwner;
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
@@ -712,24 +833,6 @@ export default function SettingsView({
   // Starts empty — providers flip to key-edit mode when the user clicks Edit.
   // Cleared automatically after a successful save+test so the pill re-appears.
   const [editingProviders, setEditingProviders] = useState(new Set());
-  // Snapshot of the last-saved settings JSON. While `settings` matches
-  // this snapshot the Save button reads "Saved" — flips back to "Save
-  // settings" the moment the user changes anything.
-  const [lastSavedJson, setLastSavedJson] = useState(null);
-  // Exclude transient test-result fields from the dirty check — they're not
-  // user-editable settings and flip during Save itself, causing the button to
-  // re-enable immediately after a successful save+test cycle.
-  const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
-  const currentJson = JSON.stringify(settingsForDirty);
-  const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
-  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
-  // use it to revert an emptied field to the last COMMITTED value — the
-  // snapshot is the only place that value survives once drafts land in
-  // `settings` (see BudgetNumberField).
-  const lastSavedSettings = useMemo(() => {
-    if (lastSavedJson == null) return null;
-    try { return JSON.parse(lastSavedJson); } catch { return null; }
-  }, [lastSavedJson]);
   // Capability probe for the Advanced Settings budgets: cowork-server's
   // list_settings returns a row for EVERY UserSettings field, so a server
   // with the budget settings always sends both keys and an older one never
@@ -744,27 +847,21 @@ export default function SettingsView({
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
-  // Ref-mirror of `settings` so the post-Save snapshot can read the
-  // freshly-refetched value (the closure's `settings` is stale after
-  // the await but the ref tracks every render).
+  // Async provider tests merge their status into the latest displayed values.
+  // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; });
 
-  // First load: snapshot once `settings` is populated so the resting
-  // state is "Saved" until the user touches anything.
-  useEffect(() => {
-    if (lastSavedJson === null && settings && Object.keys(settings).length > 0) {
-      setLastSavedJson(currentJson);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentJson]);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
 
   // Providers state — surfaced from the server, edited inline, committed
   // on Save settings. The save handler routes through the providers path
   // when `providers` is included on the patch.
-  const providers = Array.isArray(settings.providers) ? settings.providers : [];
+  const configuredProviders = Array.isArray(settings.providers) ? settings.providers : [];
+  const providers = !PLATFORM_UI || configuredProviders.some((p) => p.type === 'minds-cloud')
+    ? configuredProviders : [makeEmptyProvider('minds-cloud'), ...configuredProviders];
+  const visibleProviders = visibleProviderCards(settings, providers, PLATFORM_UI);
   const modelMode = settings.modelMode === 'custom' ? 'custom' : 'default';
   const overrides = settings.modelOverrides || {};
   const recommendedModels = settings.recommendedModels || {};
@@ -773,7 +870,7 @@ export default function SettingsView({
 
   const updateProviders = (next) => setSetting('providers', dedupeByType(next));
   const availableTypesForAdd = PROVIDER_TYPE_ORDER.filter(
-    (t) => !providers.some((p) => p.type === t),
+    (t) => (PLATFORM_UI || t !== 'minds-cloud') && !providers.some((p) => p.type === t),
   );
 
   const roleOverride = (role) => {
@@ -831,10 +928,10 @@ export default function SettingsView({
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
   const defaultModeProviderType = (() => {
-    const minds = providers.find((p) => p.type === 'minds-cloud');
+    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
-    const configured = providers.find(providerConfigured);
-    return configured ? configured.type : 'minds-cloud';
+    const configured = visibleProviders.find(providerConfigured);
+    return configured ? configured.type : PLATFORM_UI ? 'minds-cloud' : '';
   })();
 
   // Which provider types actually drive planning + coding right now.
@@ -870,15 +967,6 @@ export default function SettingsView({
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
 
-  // MindsHub is the permanent baseline — always show its row so the
-  // user has a path to a working provider without having to add one.
-  useEffect(() => {
-    if (!providers.some((p) => p.type === 'minds-cloud')) {
-      updateProviders([makeEmptyProvider('minds-cloud'), ...providers]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers.length, providers.some((p) => p.type === 'minds-cloud')]);
-
   const updateProviderField = (type, key, value) => {
     setLlmDirty(true);
     updateProviders(providers.map((p) => (p.type === type ? { ...p, [key]: value } : p)));
@@ -891,10 +979,13 @@ export default function SettingsView({
       if (settingKey) setSetting(settingKey, value);
       const nextStatus = { ...(settings.providerStatus || {}) };
       const nextDetails = { ...(settings.providerStatusDetails || {}) };
+      const nextReasons = { ...(settings.providerStatusReasons || {}) };
       delete nextStatus[type];
       delete nextDetails[type];
-      setSetting('providerStatus', nextStatus);
-      setSetting('providerStatusDetails', nextDetails);
+      delete nextReasons[type];
+      setSettingProp('providerStatus', nextStatus);
+      setSettingProp('providerStatusDetails', nextDetails);
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     if (key === 'baseUrl' && (type === 'openai-compatible' || type === 'gemini')) {
       setSetting('openaiBaseUrl', value);
@@ -955,11 +1046,32 @@ export default function SettingsView({
       const current = settingsRef.current?.providerStatus || {};
       const next = { ...current, ...result.providerStatus };
       const changed = Object.keys(result.providerStatus).some((k) => current[k] !== result.providerStatus[k]);
-      if (changed) setSetting('providerStatus', next);
+      if (changed) setSettingProp('providerStatus', next);
     }
     if (result && result.providerStatusDetails) {
       const currentDetails = settingsRef.current?.providerStatusDetails || {};
-      setSetting('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
+      setSettingProp('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
+    }
+    /* Reasons are replaced per type, not merged: every type this result
+       reports a status for loses its held reason first, then takes the new
+       one if there is one. A spread merge would keep a stale "paused" after a
+       re-test that failed for some other reason. A request that failed
+       outright reports no status, so it leaves every held reason alone, as it
+       does the statuses beside them.
+       A sidecar that sends the reasons map has classified every type it
+       reports, so a reported type with no entry is held as null: tested, and
+       not a MindsHub refusal. A sidecar that predates the map sends no key,
+       and its types are left with no entry, which keeps mindsProbeNotice on
+       its legacy detail check for them. */
+    if (result && result.providerStatus) {
+      const reported = Object.keys(result.providerStatus);
+      const held = settingsRef.current?.providerStatusReasons || {};
+      const nextReasons = Object.fromEntries(Object.entries(held).filter(([type]) => !reported.includes(type)));
+      const sent = result.providerStatusReasons;
+      if (sent && typeof sent === 'object') {
+        for (const type of reported) nextReasons[type] = sent[type] || null;
+      }
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     return result;
   };
@@ -971,7 +1083,7 @@ export default function SettingsView({
   const didMountVerify = useRef(false);
   useEffect(() => {
     if (didMountVerify.current) return;
-    const configured = providers.filter(providerConfigured);
+    const configured = visibleProviders.filter(providerConfigured);
     if (configured.length === 0) {
       // Nothing to verify — the picker's warning reflects config, not a
       // pending network result, so let it show without waiting.
@@ -1039,52 +1151,53 @@ export default function SettingsView({
   };
 
   const save = async () => {
-    // Save runs a validation pass so the banner reflects whether the
-    // new config is usable. Provider tests only fire when the LLM
-    // settings actually changed since the last Save — no point hitting
-    // the network when the user just toggled the dot grid.
     const shouldTestLlm = llmDirty || anyProviderFailed;
+    const submitted = draft.capture();
+    const normalized = withResolvedRoles(clampBudgets(settings));
+    const patch = clampBudgets(submitted.patch);
+    // Role resolution can add tombstones/provider changes to the user's patch.
+    // Keep unrelated committed settings and appearance previews out of the write.
+    for (const [key, value] of Object.entries(normalized)) {
+      if (JSON.stringify(value) !== JSON.stringify(settings[key])) patch[key] = value;
+    }
     setTesting(true);
     setTested(false);
+    setSaveError(null);
+    let result;
     try {
-      await onSave(withResolvedRoles(clampBudgets(settings)));
-      // Record the harness swap only now that it's persisted (ENG-385). Compare
-      // against the pre-save snapshot — settingsRef holds the latest value since
-      // the closure `settings` is stale after the await.
-      try {
-        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
-        const savedHarness = settingsRef.current?.harness || 'anton';
-        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
-      } catch { /* analytics must never break Save */ }
-      const result = await validateSettings();
-      setValidation(result);
-      if (shouldTestLlm) {
-        // Use settingsRef.current.providers (post-save, fresh) instead of the
-        // stale closure so newly-added providers with masked keys ('***') are
-        // included — the backend resolves '***' from storage. Running this
-        // after validateSettings (not concurrently) ensures the snapshot below
-        // captures the final 'ok'/'fail' state, not the transient 'testing' state.
-        const freshProviders = settingsRef.current?.providers || [];
-        await runProviderTests(freshProviders.filter(providerConfigured));
+      result = await onSave(patch);
+      if (!mountedRef.current) return;
+      draft.acknowledge(submitted.entries);
+      setSaved(true);
+      if (Object.keys(draft.capture().patch).length === 0) {
         setLlmDirty(false);
         setEditingProviders(new Set());
       }
+    } catch (err) {
+      setSaveError(err.message || 'Settings could not be saved.');
+      setSaved(false);
+      setTesting(false);
+      return;
+    }
+
+    // Persistence and verification have separate outcomes. A failed check
+    // cannot turn an accepted write into a rejected save or restore a draft.
+    try {
+      const validationResult = await validateSettings();
+      setValidation(validationResult);
+      if (shouldTestLlm) {
+        const freshProviders = result?.settings?.providers || normalized.providers || providers;
+        await runProviderTests(visibleProviderCards(normalized, freshProviders, PLATFORM_UI).filter(providerConfigured));
+      }
       setTested(true);
-      // Snapshot the now-current settings so the Save button flips to
-      // "Saved" until the user makes another edit. settingsRef tracks
-      // the latest re-rendered value (the closure's `settings` is the
-      // pre-save copy and stale by now).
-      const { providerStatus: _ps2, providerStatusDetails: _psd2, ...savedForDirty } = settingsRef.current || {};
-      setLastSavedJson(JSON.stringify(savedForDirty));
-      setSaved(true);
       setTimeout(() => setTested(false), 2400);
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
-        configError: err.message || 'Settings could not be saved.',
+        configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
       });
-      setSaved(false);
+      setTested(true);
     } finally {
       setTesting(false);
     }
@@ -1116,7 +1229,7 @@ export default function SettingsView({
   const testButtonLabel = testing
     ? 'Testing…'
     : tested
-      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(13)}</span>Tested</>)
+      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(14)}</span>Tested</>)
       : 'Test';
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
@@ -1131,10 +1244,10 @@ export default function SettingsView({
         className="flex-1 text-[13px] font-medium text-ink-3 inline-flex items-center gap-1.5"
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
-          {testing ? 'Testing configuration…'
+          {saveError ? saveError : testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
               : saved ? 'Settings saved.'
                 : configError ? configError
@@ -1162,14 +1275,14 @@ export default function SettingsView({
   // ───────────────────────── Section renderers ─────────────────────────
 
   const renderAgentSection = () => {
-    const anyProviderConfigured = providers.some(providerConfigured);
+    const anyProviderConfigured = visibleProviders.some(providerConfigured);
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
           {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
           {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
-              {providers.map((p) => {
+              {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
                 const reveal = p.type === 'anthropic' ? 'anthropic'
@@ -1184,14 +1297,20 @@ export default function SettingsView({
                 const st = deriveProviderStatus(p.type, {
                   providerStatus: settings.providerStatus || {},
                   providerStatusDetails: settings.providerStatusDetails || {},
+                  providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
-                  isSsoConnected,
+                  isSsoConnected: PLATFORM_UI && isSsoConnected,
                   testInProgress: testing,
                   initialTestDone: initialProviderTestDone,
                 });
                 const status = st.checking ? 'testing' : st.settled;
                 const detail = configured ? st.detail : '';
-                const friendlyError = friendlyProviderError(detail);
+                // The probe's reason names which MindsHub limit a 402/429 was,
+                // which the detail string alone cannot.
+                const neutralProbeError = !PLATFORM_UI && p.type === 'minds-cloud'
+                  && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
+                  ? PROVIDER_UNAVAILABLE_MESSAGE : '';
+                const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
@@ -1255,7 +1374,7 @@ export default function SettingsView({
                 );
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
-                const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
+                const ssoMindsHub = PLATFORM_UI && p.type === 'minds-cloud' && isSsoConnected;
                 // Keep a stale failed provider in badge mode while its fresh test is
                 // pending; otherwise the testing badge is replaced by the masked key.
                 const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
@@ -1271,7 +1390,7 @@ export default function SettingsView({
                     {/* Left: name + description */}
                     <div>
                       {titleNode}
-                      {PROVIDER_TYPE_DESC[p.type] && (
+                      {PROVIDER_TYPE_DESC[p.type] && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                         <div className="text-[12px] text-ink-3 mt-1.5 max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
@@ -1306,7 +1425,7 @@ export default function SettingsView({
                             ariaLabel="Base URL"
                           />
                         )}
-                        {GET_KEY_URL[p.type] && !ssoMindsHub && (
+                        {GET_KEY_URL[p.type] && !ssoMindsHub && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                           <div className="text-[11.5px] text-ink-3">
                             Get your API key at{' '}
                             <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
@@ -1319,7 +1438,7 @@ export default function SettingsView({
                             </Tooltip>
                           </div>
                         )}
-                        {p.type === 'minds-cloud' && !isSsoConnected && (
+                        {PLATFORM_UI && p.type === 'minds-cloud' && !isSsoConnected && (
                           <div className="text-[11.5px] text-ink-3">
                             Don't have an account?{' '}
                             <Tooltip content="Open the MindsHub sign-up page in your browser.">
@@ -1334,7 +1453,7 @@ export default function SettingsView({
                         )}
                         {status === 'fail' && friendlyError && (
                           <div className="text-[11.5px] text-danger flex items-start gap-1.5">
-                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(11) : '!'}</span>
+                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(12) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
                         )}
@@ -1359,7 +1478,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => removeProvider(p.type)}
                             aria-label="Remove this provider"
-                          >{Ico.trash(13)}</Button>
+                          >{Ico.trash(14)}</Button>
                         </Tooltip>
                       )}
                       {!showKeyInput && (
@@ -1369,7 +1488,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
                             aria-label="Edit API key"
-                          >{Ico.edit(13)}</Button>
+                          >{Ico.edit(14)}</Button>
                         </Tooltip>
                       )}
                     </div>
@@ -1385,20 +1504,20 @@ export default function SettingsView({
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
                     title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
-                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
                       transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
                       pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                       cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                     }}
-                  >{Ico.plus(13)} Add provider</Button>
+                  >{Ico.plus(14)} Add provider</Button>
                 </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
                 <div
-                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_220ms_ease,transform_220ms_ease]"
+                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                   style={{
                     opacity: addPickerOpen ? 1 : 0,
                     transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
@@ -1422,7 +1541,7 @@ export default function SettingsView({
                       onClick={() => setAddPickerOpen(false)}
                       aria-label="Close provider picker"
                       className="ml-1"
-                    >{Ico.close(13)}</Button>
+                    >{Ico.close(14)}</Button>
                   </Tooltip>
                 </div>
               </div>
@@ -1435,10 +1554,9 @@ export default function SettingsView({
                 // any role that hasn't been explicitly assigned an
                 // override (keyed MindsHub, else first configured).
                 const defaultProvider =
-                  providers.find((p) => p.type === defaultModeProviderType) ||
-                  providers.find((p) => p.type === 'minds-cloud') ||
-                  providers[0];
-                const multipleProviders = providers.length > 1;
+                  visibleProviders.find((p) => p.type === defaultModeProviderType) ||
+                  visibleProviders[0];
+                const multipleProviders = visibleProviders.length > 1;
 
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
@@ -1452,7 +1570,7 @@ export default function SettingsView({
                   // to defaultModeProviderType (which prefers the actually-configured
                   // provider — MindsHub if available, else first configured).
                   const rawType = roleProviderType(role) || (defaultProvider?.type || '');
-                  const rawProvider = providers.find((p) => p.type === rawType);
+                  const rawProvider = visibleProviders.find((p) => p.type === rawType);
                   const curType = (rawProvider && providerConfigured(rawProvider))
                     ? rawType
                     : defaultModeProviderType;
@@ -1463,7 +1581,7 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const provider = providers.find((p) => p.type === curType);
+                  const provider = visibleProviders.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
                   // minds-cloud has no free-text mode (unlike a BYOK provider,
                   // where an unlisted id is just a user-typed custom model) —
@@ -1491,20 +1609,21 @@ export default function SettingsView({
                   const st = deriveProviderStatus(curType, {
                     providerStatus: settings.providerStatus || {},
                     providerStatusDetails: settings.providerStatusDetails || {},
+                    providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
-                    isSsoConnected,
+                    isSsoConnected: PLATFORM_UI && isSsoConnected,
                     testInProgress: testing,
                     initialTestDone: initialProviderTestDone,
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;
                   const providerFailed = st.failed;
-                  const providerFailDetail = st.detail;
-                  const isNoCredits = providerFailed && !st.checking && curType === 'minds-cloud'
-                    && (providerFailDetail.includes('402')
-                      || providerFailDetail.includes('429')
-                      || providerFailDetail.toLowerCase().includes('credit')
-                      || providerFailDetail.toLowerCase().includes('quota'));
-                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits && !st.checking;
+                  // Which MindsHub refusal the last probe hit, from the
+                  // sidecar's reason, or the legacy detail check when an older
+                  // sidecar sends no reasons map (see mindsProbeNotice).
+                  const probeNotice = providerFailed && !st.checking && curType === 'minds-cloud'
+                    ? mindsProbeNotice({ reason: st.reason, detail: st.detail })
+                    : null;
+                  const providerUnusable = (providerUnconfigured || providerFailed) && !probeNotice && !st.checking;
                   const providerCheckingNotice = st.checking;
                   const providerWarnId = `agent-model-${role}-provider`;
 
@@ -1512,7 +1631,6 @@ export default function SettingsView({
                   // (ENG-1940, ModelSelect's footer row), only for models that
                   // advertise effort levels (settings.modelEfforts, sourced from
                   // MindsHub /v1/models + the static direct-provider catalog).
-                  // Suppressed for the Hermes harness, which has no effort knob.
                   // Router has no reasoning-effort knob — it's a single cheap
                   // gating call, not a reasoning role. `effortEntry`/`effortOptions`/
                   // `effortValue` still get derived here (ModelSelect needs
@@ -1521,7 +1639,6 @@ export default function SettingsView({
                   const effortKey = role === 'planning' ? 'planningReasoningEffort'
                     : role === 'coding' ? 'codingReasoningEffort'
                     : null;
-                  const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
                   const effortEntry = (settings.modelEfforts || {})[curModel];
                   const effortOptions = effortEntry?.efforts || [];
                   const savedEffort = effortKey ? settings[effortKey] : '';
@@ -1548,31 +1665,8 @@ export default function SettingsView({
                     <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
                   );
 
-                  // Two stacked lines (ENG-1248): the credit state + top-up
-                  // action reads first on its own line, the BYOK escape hatch
-                  // sits under it. Inline, the escape hatch diluted the one
-                  // action that matters when the wallet is empty.
-                  const noCreditsNotice = isNoCredits ? (
-                    <div className="text-[12px] leading-[1.6] grid gap-px">
-                      <div>
-                        <span className="text-danger font-semibold">No credits available. </span>
-                        <button
-                          type="button"
-                          // ENG-1533: recorded before the navigation, so web and
-                          // desktop count identically. `host.openExternal` is
-                          // always defined and already falls back to window.open
-                          // internally (platform/host.ts), with noopener —
-                          // guarding it here was dead code that would have opened
-                          // an unhardened window if it ever had run.
-                          onClick={() => {
-                            trackBillingOpened('no_credits_notice');
-                            return host.openExternal(MINDS_BILLING_URL);
-                          }}
-                          className={LINK_BTN}
-                        >Top up balance →</button>
-                      </div>
-                      <div className="text-ink-3">Or add your own provider and API key below.</div>
-                    </div>
+                  const probeNoticeNode = probeNotice ? (
+                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} />
                   ) : null;
 
                   const subtitle = role === 'planning'
@@ -1586,7 +1680,7 @@ export default function SettingsView({
                       });
 
                   return (
-                    <Section title={label} subtitle={subtitle} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={subtitle} notice={probeNoticeNode}>
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
@@ -1620,7 +1714,7 @@ export default function SettingsView({
                               invalid={providerUnusable}
                               aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
-                              options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
+                              options={visibleProviders.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
                           </label>
                         )}
@@ -1641,7 +1735,11 @@ export default function SettingsView({
                             const modelOptions = buildModelOptions(
                               curModel, modelList, allowOther, showStalePin, modelEnabled,
                               settings.modelLabels || {},
-                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                              {
+                                modelProviders: settings.modelProviders,
+                                modelFamilies: settings.modelFamilies,
+                                modelDisabledReasons: settings.modelDisabledReasons,
+                              },
                             );
                             return (
                               <>
@@ -1687,7 +1785,7 @@ export default function SettingsView({
                                       // when this lands; a reordered list jumps under the cursor.
                                       const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSetting(key, value);
+                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
                                       openState.refreshedAt = performance.now();
                                     }).catch(() => { }).finally(() => {
                                       setModelRefreshing((m) => ({ ...m, [role]: false }));
@@ -1707,7 +1805,6 @@ export default function SettingsView({
                                   modelEfforts={effortKey ? settings.modelEfforts : undefined}
                                   effort={effortValue}
                                   onEffortChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
-                                  harness={settings.harness}
                                 />
                                 {inputMode && allowOther && (
                                   <TextInput
@@ -1718,27 +1815,16 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                              {/* The stored pin is never rewritten, so a wallet
-                                  that drains leaves the user sitting on a model
-                                  they can no longer run. This names it and gives
-                                  the way out. It covers only the CURRENT model —
-                                  a locked row the user is merely looking at
-                                  carries its own "Add credits" button instead.
-                                  Outside the <label> so it doesn't leak into the
-                                  combobox's accessible name. */}
+                              {/* It covers only the CURRENT model: a locked row
+                                  the user is merely looking at carries its own
+                                  "Add credits" button, and a restricted row its
+                                  own tooltip. Outside the <label> so it doesn't
+                                  leak into the combobox's accessible name. */}
                               {!inputMode && !!curModel && isLocked(curModel) && (
-                                <div className="text-[11.5px] text-ink-3">
-                                  {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      trackBillingOpened('locked_model_hint');
-                                      return host.openExternal(MINDS_BILLING_URL);
-                                    }}
-                                    className={LINK_BTN}
-                                  >Top up your balance</button>
-                                  {' '}to use it.
-                                </div>
+                                <UnavailableModelHint
+                                  label={displayModelLabel(curModel, settings.modelLabels || {})}
+                                  restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                />
                               )}
                             </>);
                           })()
@@ -1783,30 +1869,6 @@ export default function SettingsView({
             </SettingsGroup>
           </div>
         </div>
-
-        {/* Coding Mode itself lives in its own top-level nav section (see
-            renderCodingModeSection) — desktop-only, since launching an
-            external CLI in a terminal is an Electron main-process
-            capability with no web equivalent. Web keeps its simple
-            single-select Anton/Hermes toggle here instead, unaffected by
-            Coding Mode since that concept doesn't exist there. */}
-        {host.isWeb && (
-          <SettingsGroup title="Agent Harness">
-            <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-              <ToggleGroup
-                value={settings.harness || 'anton'}
-                onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-                aria-label="Agent harness"
-                options={[
-                  { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
-                  ...((settings.harnessOptions || []).includes('hermes') ? [
-                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-                  ] : []),
-                ]}
-              />
-            </Section>
-          </SettingsGroup>
-        )}
 
         <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
@@ -1880,7 +1942,7 @@ export default function SettingsView({
             {'maxTurnTokens' in settings && (
               <Section
                 title="Max tokens per task"
-                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you. Tokens are what your plan's monthly allowance is measured in, so a task that gets stuck can use up a large share of the month without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you, so a task that gets stuck can't use up a large share of your free allowance or balance without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
@@ -1907,6 +1969,7 @@ export default function SettingsView({
   // at all (see AutoSaveTag and renderAppearanceSection).
   const [autoSaveStatus, setAutoSaveStatus] = useState({});
   const autoSaveTimersRef = useRef({});
+  const pendingAutoSavesRef = useRef({});
   const autoSaveFadeTimersRef = useRef({});
   const autoSaveRemoveTimersRef = useRef({});
 
@@ -1914,22 +1977,25 @@ export default function SettingsView({
   const AUTO_SAVE_FADE_MS = 500;  // opacity transition duration (matches the inline style below)
 
   const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
-    setSetting(key, value);
+    if (!mountedRef.current) return;
+    const submitted = setSetting(key, value, { autoSave: true });
+    onAppearancePreview?.(key, value);
     clearTimeout(autoSaveTimersRef.current[key]);
+    delete pendingAutoSavesRef.current[key];
     clearTimeout(autoSaveFadeTimersRef.current[key]);
     clearTimeout(autoSaveRemoveTimersRef.current[key]);
 
     const commit = async () => {
-      setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      delete pendingAutoSavesRef.current[key];
+      if (mountedRef.current) {
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      }
       try {
         await onSave({ [key]: value });
-        // Narrow the "last saved" snapshot to just this field so the
-        // shared page-wide Save button (used by Providers/Model settings
-        // elsewhere in this view) doesn't mistake an auto-saved Appearance
-        // change for a pending manual one — or, worse, mark a genuinely
-        // unsaved Provider edit as "Saved" just because Appearance also
-        // changed at the same time.
-        setLastSavedJson((prev) => patchSavedJson(prev, key, value));
+        if (!mountedRef.current) return;
+        const cleared = draft.acknowledge({ [key]: submitted });
+        if (!cleared.includes(key)) return;
+        onAppearancePreview?.(key, undefined);
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
         // Hold at full opacity, then fade out, then unmount — a plain status
         // message, not a button, and it disappears on its own.
@@ -1945,6 +2011,7 @@ export default function SettingsView({
           }, AUTO_SAVE_FADE_MS);
         }, AUTO_SAVE_HOLD_MS);
       } catch (err) {
+        if (!mountedRef.current || !draft.isCurrent(key, submitted)) return;
         // Errors don't auto-fade — they stay until the next attempt so a
         // failed save can't go unnoticed.
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
@@ -1953,6 +2020,7 @@ export default function SettingsView({
     };
 
     if (debounceMs > 0) {
+      pendingAutoSavesRef.current[key] = commit;
       autoSaveTimersRef.current[key] = setTimeout(commit, debounceMs);
     } else {
       commit();
@@ -1960,7 +2028,10 @@ export default function SettingsView({
   };
 
   useEffect(() => () => {
+    onAppearancePreview?.(null);
     Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
+    // Appearance promises automatic persistence, including when closed mid-debounce.
+    Object.values(pendingAutoSavesRef.current).forEach((commit) => { commit(); });
     Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
     Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);
   }, []);
@@ -1980,7 +2051,7 @@ export default function SettingsView({
     }
     return (
       <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
-        {Ico.check(11)} Saved
+        {Ico.check(12)} Saved
       </span>
     );
   }
@@ -2001,6 +2072,44 @@ export default function SettingsView({
     const reader = new FileReader();
     reader.onload = () => autoSaveSetting('navLogo', reader.result);
     reader.readAsDataURL(file);
+  };
+
+  const faviconInputRef = useRef(null);
+  const faviconReadRef = useRef(null);
+  const [faviconError, setFaviconError] = useState(null);
+  useEffect(() => () => faviconReadRef.current?.abort(), []);
+  const handleFaviconUpload = (file) => {
+    if (!file) return;
+    faviconReadRef.current?.abort();
+    faviconReadRef.current = null;
+    const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
+    if (!FAVICON_MIME_TYPES.includes(mime)) {
+      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      return;
+    }
+    if (file.size >= 100 * 1024) {
+      setFaviconError('Browser tab icon must be under 100 KB.');
+      return;
+    }
+    setFaviconError(null);
+    const reader = new FileReader();
+    faviconReadRef.current = reader;
+    reader.onload = () => {
+      if (faviconReadRef.current !== reader) return;
+      if (typeof reader.result !== 'string') {
+        setFaviconError("Couldn't read this image. Try another file.");
+        return;
+      }
+      autoSaveSetting('favicon', reader.result);
+    };
+    reader.onerror = () => {
+      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+    };
+    try {
+      reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
+    } catch {
+      setFaviconError("Couldn't read this image. Try another file.");
+    }
   };
 
   const renderCodingAgentSection = () => (
@@ -2032,7 +2141,7 @@ export default function SettingsView({
             options={SKINS.map((s) => ({
               value: s.id,
               label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](13)} {s.label}</span>)
+                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
                 : s.label,
               'aria-label': `${s.label} style`,
               title: s.title,
@@ -2047,13 +2156,13 @@ export default function SettingsView({
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(13)} Light</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>),
                 'aria-label': 'Light theme',
                 title: 'Use the light theme.',
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(13)} Dark</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>),
                 'aria-label': 'Dark theme',
                 title: 'Use the dark theme.',
               },
@@ -2214,7 +2323,7 @@ export default function SettingsView({
                 variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
               >
-                {Ico.trash(13)}
+                {Ico.trash(14)}
                 Remove
               </Button>
             )}
@@ -2231,6 +2340,33 @@ export default function SettingsView({
             <div className="text-[12px] text-danger mt-1.5">{logoError}</div>
           )}
         </Section>
+        {host.isWeb && (
+          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {settings.favicon && (
+                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+              )}
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
+                {settings.favicon ? 'Change icon' : 'Upload icon'}
+              </Button>
+              {settings.favicon && (
+                <Button variant="danger" className="whitespace-nowrap" onClick={() => {
+                  faviconReadRef.current?.abort();
+                  faviconReadRef.current = null;
+                  autoSaveSetting('favicon', '');
+                  setFaviconError(null);
+                }} aria-label="Remove browser tab icon">
+                  {Ico.trash(14)} Remove
+                </Button>
+              )}
+              <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
+                aria-label="Browser tab icon file" className="hidden"
+                onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
+              <AutoSaveTag settingKey="favicon" />
+            </div>
+            {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">
@@ -2252,7 +2388,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
@@ -2262,7 +2398,7 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
+          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
             <div className="flex items-center">
               <Switch
                 checked={settings.show8bitToggle !== false}
@@ -2314,8 +2450,9 @@ export default function SettingsView({
     />
   );
 
-  // Usage (ENG-1782): free monthly tokens, balance, auto top up. Reads the
-  // usage App polls (HubUsageContext); every action deep-links to the console.
+  /* Usage (ENG-1782): the free MindsHub Air allowance, balance, auto top up.
+     Reads the usage App polls (HubUsageContext); every action deep-links to
+     the console. */
   const renderUsageSection = () => (
     <UsageSection
       isSsoConnected={isSsoConnected}
@@ -2357,7 +2494,7 @@ export default function SettingsView({
             aria-label={inDetail ? 'Back to settings' : 'Close settings'}
             onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
-            {Ico.chevLeft(22)}
+            {Ico.chevLeft(20)}
           </button>
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? activeItem.label : 'Settings'}
@@ -2379,11 +2516,11 @@ export default function SettingsView({
                   && !serverOnline
                   && item.id !== 'backend'
                   && item.id !== 'codingAgent';
-                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                const icon = Ico[item.icon] ? Ico[item.icon](16) : null;
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (
-                    <div className="pt-4 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>
+                    <div className="section-label pt-4 px-1 pb-1.5">{item.group}</div>
                   )}
                   <div className="mshell-accordion">
                     <button

@@ -1,5 +1,6 @@
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
+import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
 import type {
   CodeComputer,
   ComputerStatus,
@@ -36,8 +37,23 @@ export type CodingStatus =
 
 export type PermissionMode = 'read_only' | 'supervised' | 'workspace' | 'full_access';
 export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
+export type TaskMode = 'build' | 'plan';
+
+export interface PendingQuestion {
+  id: string;
+  questions: Array<{
+    id: string;
+    header: string;
+    question: string;
+    options?: Array<{ label: string; description: string }> | null;
+    isOther: boolean;
+    isSecret: boolean;
+  }>;
+}
 
 export interface SessionCreateBody {
+  repository_setup?: TaskRepositorySetup;
+  task_mode?: TaskMode;
   path?: string;
   project_id?: string;
   resource_ids?: string[];
@@ -58,6 +74,8 @@ export interface SessionCreateBody {
 }
 
 interface CreateCodeTaskBase {
+  repositorySetup?: TaskRepositorySetup;
+  taskMode?: TaskMode;
   prompt: string;
   engineId: string;
   model: string;
@@ -195,6 +213,8 @@ export interface CodingSession {
   engine_session_id?: string | null;
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
+  pending_question?: PendingQuestion | null;
+  task_mode?: TaskMode;
   queued_instructions?: QueuedInstruction[];
   pinned?: boolean;
   archived?: boolean;
@@ -354,6 +374,12 @@ export interface ProjectActionPage {
   preview_pending?: boolean;
 }
 
+/** Commands a task can run, within its own folders, after adopting the project's current settings. */
+export interface ProjectCommandRefresh {
+  validate_count: number;
+  run_count: number;
+}
+
 export interface ProjectFolderInspection {
   folder: ProjectFolder;
   inspection: WorkspaceInspection;
@@ -364,6 +390,20 @@ export interface ProjectConnection {
   provider: 'github' | 'linear' | 'slack';
   name: string;
   label: string;
+}
+
+export interface GitHubRepository {
+  full_name: string;
+  clone_url: string;
+  private: boolean;
+  default_branch: string | null;
+  archived: boolean;
+  connection_name: string;
+}
+
+export interface GitHubRepositoryPage {
+  items: GitHubRepository[];
+  next_page: number | null;
 }
 
 export interface PlaybookReference {
@@ -748,11 +788,17 @@ async function ensureCodeService(): Promise<void> {
 
 const liveCodingApi = {
   engines: () => requestJson<EngineCapability[]>('/engines'),
+  githubRepositories: (connectionName: string, page = 1) => requestJson<GitHubRepositoryPage>(
+    `/github/repositories?${new URLSearchParams({ connection_name: connectionName, page: String(page) })}`,
+  ),
   models: (engineId: string) => requestJson<{ items: string[] }>(`/models?engineId=${encodeURIComponent(engineId)}`),
   inspect: (path: string) => requestJson<WorkspaceInspection>(`/workspace/inspect?path=${encodeURIComponent(path)}`),
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
+  repositoryStatus: (id: string) => requestJson<{ items: RepositoryStatus[] }>(`/projects/${encodeURIComponent(id)}/repository-status`),
+  repositoryBranches: (id: string, resourceId: string) => requestJson<{ items: string[] }>(`/projects/${encodeURIComponent(id)}/repositories/${encodeURIComponent(resourceId)}/branches`),
+  repositoryDiff: (id: string, resourceId: string) => requestJson<{ files: DiffFile[] }>(`/projects/${encodeURIComponent(id)}/repositories/${encodeURIComponent(resourceId)}/diff`),
   projectResources: (id: string) => requestJson<{ items: ProjectResourceState[] }>(`/projects/${encodeURIComponent(id)}/resources`),
   projectComputers: (id: string, resourceIds: string[] | undefined, engineId?: string) => {
     const query = new URLSearchParams();
@@ -840,6 +886,10 @@ const liveCodingApi = {
     requestJson<CodingSession>('/sessions', { method: 'POST', body: JSON.stringify(body) }),
   turn: (id: string, prompt: string, attachments: InputReference[] = []) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/turns`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
+  modeTurn: (id: string, prompt: string, taskMode: TaskMode, expectedEventCount: number, attachments: InputReference[] = []) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/mode-turns`, { method: 'POST', body: JSON.stringify({ prompt, task_mode: taskMode, expected_event_count: expectedEventCount, attachments }) }),
+  answerQuestion: (id: string, questionId: string, answers: Record<string, string[]>) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/questions/${encodeURIComponent(questionId)}`, { method: 'POST', body: JSON.stringify({ answers }) }),
   steer: (id: string, prompt: string, attachments: InputReference[] = []) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/steer`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
   queue: (id: string, prompt: string, attachments: InputReference[] = []) =>
@@ -880,6 +930,8 @@ const liveCodingApi = {
       method: 'POST', body: JSON.stringify(body),
     }),
   projectActions: (id: string) => requestJson<ProjectActionPage>(`/sessions/${encodeURIComponent(id)}/project-actions`),
+  /** Copies the project's current commands onto an existing task; its resource scope stays frozen. */
+  refreshProjectCommands: (id: string) => requestJson<ProjectCommandRefresh>(`/sessions/${encodeURIComponent(id)}/project-commands/refresh`, { method: 'POST' }),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
   updateDeliveryPolicy: (id: string, body: DeliveryAutomationPolicy) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/delivery-policy`, {
     method: 'PUT', body: JSON.stringify(body),

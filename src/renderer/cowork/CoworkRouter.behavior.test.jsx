@@ -24,6 +24,7 @@ import {
   CoworkProvider,
   markOptimisticConversation,
   clearOptimisticConversation,
+  setKnownRowIdsProvider,
 } from './CoworkRouter';
 
 function makeHarness(initialNav, opts = {}) {
@@ -97,6 +98,25 @@ describe('conversation loader failure handling (ENG-1233 Major 2)', () => {
     expect(id).toBe('known');
     expect(loaded.task).toEqual({ id: 'known', messages: [] });
     expect(router.state.location.pathname).toBe('/c/known');
+  });
+
+  it('carries the row ids the conversation held when its fetch started', async () => {
+    const order = [];
+    setKnownRowIdsProvider((id) => { order.push(`snapshot:${id}`); return new Set(['u1', 'a1']); });
+    fetchSessionResult.mockImplementation(async () => {
+      order.push('fetch');
+      return { status: 'ok', task: { id: 'known', messages: [] } };
+    });
+    try {
+      const { ctl } = renderAt(['/c/known'], { route: 'task', activeTaskId: 'known' });
+
+      await waitFor(() => expect(ctl.openConversation).toHaveBeenCalled());
+      const [, loaded] = ctl.openConversation.mock.calls.at(-1);
+      expect(loaded.knownIds).toEqual(new Set(['u1', 'a1']));
+      expect(order).toEqual(['snapshot:known', 'fetch']);
+    } finally {
+      setKnownRowIdsProvider(null);
+    }
   });
 
   it('redirects a 404 deep link Home without trapping the dead URL in history', async () => {

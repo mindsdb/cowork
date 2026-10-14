@@ -51,6 +51,20 @@ describe('computeHeroView', () => {
     expect(v.rest.map((m) => m.id)).toEqual(['fine-grained-pat', 'oauth']);
   });
 
+  // ENG-487: HubSpot's MCP Auth App drives the identical one-click,
+  // zero-field OAuth flow under a different method id ('mcp' — it
+  // authenticates against a provider's MCP server, not its REST API).
+  // Found in code review: this file's own hero-promotion check wasn't
+  // widened alongside the primary submit handler's.
+  it('promotes the recommended "mcp" method as a one-click hero too', () => {
+    const MCP = { id: 'mcp', label: 'In-Browser Connect', recommended: true, fields: [] };
+    const v = computeHeroView([MCP, PAT], { label: 'HubSpot' });
+    expect(v.hero.id).toBe('mcp');
+    expect(v.heroIsOAuth).toBe(true);
+    expect(v.heroOneClick).toBe(true);
+    expect(v.heroLabel).toBe('Authorize with HubSpot');
+  });
+
   it('does NOT one-click when the OAuth method has a required field (reveal fields first)', () => {
     const oauthWithField = { ...OAUTH, fields: [{ name: 'developer_token', required: true }] };
     const v = computeHeroView([oauthWithField, PAT], { label: 'Google Ads' });

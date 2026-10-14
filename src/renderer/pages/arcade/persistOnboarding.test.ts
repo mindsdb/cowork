@@ -6,7 +6,6 @@ function makeDeps(over: Partial<PersistDeps> = {}): PersistDeps {
     saveSettings: vi.fn(async () => true),
     syncToDb: vi.fn(async () => true),
     syncModels: vi.fn(async () => {}),
-    syncHarness: vi.fn(async () => {}),
     ...over,
   };
 }
@@ -27,7 +26,6 @@ describe('persistOnboarding', () => {
     // instead of erroring when the server just isn't up yet.
     if (!res.ok) expect(res.dbSyncFailed).toBe(true);
     expect(d.syncModels).not.toHaveBeenCalled();
-    expect(d.syncHarness).not.toHaveBeenCalled();
   });
 
   // A real .env write error (non-403, which host.saveSettings now propagates)
@@ -51,19 +49,11 @@ describe('persistOnboarding', () => {
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
 
-  // ENG-848: syncModels/syncHarness run AFTER the authoritative DB write and are
+  // syncModels runs AFTER the authoritative DB write and is
   // best-effort — a throw there must not bounce a user whose config already
   // persisted to the onboarding error screen.
   it('still succeeds when syncModels throws after the DB write lands', async () => {
     const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
-    // The two best-effort syncs are independent (#435 review): a throwing
-    // syncModels must not skip the harness write.
-    expect(d.syncHarness).toHaveBeenCalled();
-  });
-
-  it('still succeeds when syncHarness throws after the DB write lands', async () => {
-    const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
 });

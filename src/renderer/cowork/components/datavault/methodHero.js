@@ -6,6 +6,14 @@
 // methods fall under "See other options".
 
 const OAUTH_BUILTIN_ID = 'browser_oauth_builtin';
+// HubSpot's MCP Auth App (ENG-487) drives the identical one-click,
+// zero-field OAuth flow as browser_oauth_builtin — just a different
+// method id, since it authenticates against a provider's MCP server
+// rather than its REST API. Found in code review: this file's own
+// hero-promotion check wasn't widened alongside the primary submit
+// handler's, so HubSpot's "recommended" hero silently degraded to a
+// two-click flow despite its own copy promising one click.
+const HOSTED_OAUTH_METHOD_IDS = new Set([OAUTH_BUILTIN_ID, 'mcp']);
 
 // Exact display casing for the connector ids that ship the in-browser
 // OAuth method — used as a fallback when neither `label` nor `title`
@@ -76,7 +84,7 @@ export function computeHeroView(methods, spec) {
     return { hero: null, rest: ordered, heroIsOAuth: false, heroOneClick: false, providerName, heroLabel: '', heroHelper: '' };
   }
 
-  const heroIsOAuth = hero.id === OAUTH_BUILTIN_ID;
+  const heroIsOAuth = HOSTED_OAUTH_METHOD_IDS.has(hero.id);
   const fields = Array.isArray(hero.fields) ? hero.fields : [];
   // One-click only when there's nothing to fill first. A method with a
   // required field (e.g. Google Ads' developer token) reveals its fields

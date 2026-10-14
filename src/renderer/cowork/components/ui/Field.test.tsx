@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Field } from './Field';
+import { Field, FieldSet } from './Field';
 
 describe('Field', () => {
   it('renders a label and links it to the control via a generated id', () => {
@@ -101,5 +101,19 @@ describe('Field', () => {
   it('leaves a non-element child untouched instead of throwing', () => {
     expect(() => render(<Field label="Note">just text</Field>)).not.toThrow();
     expect(screen.getByText('just text')).toBeInTheDocument();
+  });
+
+  it('names a field set by its legend', () => {
+    render(
+      <FieldSet legend="Environment">
+        <Field label="Ports"><input /></Field>
+      </FieldSet>,
+    );
+    expect(screen.getByRole('group', { name: 'Environment' })).toContainElement(screen.getByRole('textbox', { name: 'Ports' }));
+  });
+
+  it('sizes a heading label like a field set legend', () => {
+    render(<Field label="Name" heading><input /></Field>);
+    expect(screen.getByText('Name')).toHaveClass('text-base', 'font-semibold');
   });
 });

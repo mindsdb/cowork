@@ -196,37 +196,3 @@ export function PixelMarquee({ cells = 24, style }: { cells?: number; style?: CS
     </div>
   );
 }
-
-/** MEMORY ▰▰▰▱▱-style stat row for the coworker detail panel. */
-export function StatBar({
-  label,
-  value,
-  max = 5,
-  color,
-  unknown = false,
-}: {
-  label: string;
-  value: number;
-  max?: number;
-  color: string;
-  unknown?: boolean;
-}) {
-  return (
-    <div className="arc-stat-row">
-      <span className="arc-stat-name">{label}</span>
-      <span className="arc-stat-cells" aria-label={unknown ? `${label}: unknown` : `${label}: ${value} of ${max}`}>
-        {Array.from({ length: max }, (_, i) => (
-          <span
-            key={i}
-            className={`arc-stat-cell ${i < value && !unknown ? 'on' : ''}`}
-            style={i < value && !unknown ? { background: color, boxShadow: `0 0 6px ${color}66` } : undefined}
-          >
-            {unknown && (
-              <span style={{ display: 'block', textAlign: 'center', fontSize: 8, lineHeight: '11px', color: 'var(--arc-dim)' }}>?</span>
-            )}
-          </span>
-        ))}
-      </span>
-    </div>
-  );
-}

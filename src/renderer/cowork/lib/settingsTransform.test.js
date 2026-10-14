@@ -4,6 +4,7 @@ import {
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
+  committedSettingsPatch,
   effectiveRoleModel,
   effectiveRoleProvider,
   recommendedModelOptions,
@@ -21,10 +22,37 @@ import {
   routerRoleSubtitle,
 } from './settingsTransform';
 
+describe('favicon settings translation', () => {
+  it('round-trips the image, commits it, and writes an empty removal', () => {
+    const favicon = 'data:image/png;base64,aWNvbg==';
+    expect(transformSettingsRows([{ key: 'favicon', value: favicon, is_sensitive: false }]).favicon).toBe(favicon);
+    expect(diffSettingsForWrite({ favicon }, { favicon: '' })).toEqual({ favicon });
+    expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
+    expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
+    expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
 describe('modelLabel', () => {
   it('formats named GPT coding models without a version hyphen', () => {
     expect(modelLabel('gpt-codex')).toBe('GPT Codex');
     expect(modelLabel('gpt-5.6-sol')).toBe('GPT-5.6 Sol');
+  });
+});
+
+describe('provider probe reasons in the settings blob', () => {
+  it('starts every settings load with an empty reasons map beside the status maps', () => {
+    const transformed = transformSettingsRows([]);
+    expect(transformed.providerStatusReasons).toEqual({});
+    expect(transformed.providerStatus).toEqual({});
+    expect(transformed.providerStatusDetails).toEqual({});
+  });
+
+  it('never writes the reasons back to the server', () => {
+    expect(diffSettingsForWrite(
+      { providerStatusReasons: { 'minds-cloud': { code: 'rate_limited', resetAt: null } } },
+      { providerStatusReasons: {} },
+    )).toEqual({});
   });
 });
 
@@ -242,6 +270,30 @@ describe('buildModelOptions', () => {
     expect(options.find((o) => o.value === 'mindshub_air').disabled).toBe(false);
     expect(buildModelOptions('sonnet', MINDS_LIST, false, false, {})
       .every((o) => o.disabled === false)).toBe(true);
+  });
+
+  // An org admin's model rule closes a row as firmly as an empty wallet, but
+  // credits cannot open it, so it must not carry the credits route.
+  it('tags a row an admin restricted, disabled and not locked, beside a wallet-locked one', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false,
+      { opus: false, haiku: false }, {},
+      { modelDisabledReasons: { opus: 'model_restricted', haiku: 'wallet_empty' } });
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.opus).toEqual({
+      value: 'opus',
+      label: 'opus',
+      disabled: true,
+      restricted: true,
+      tag: 'Restricted',
+      title: 'An admin in your organization restricted this model.',
+    });
+    expect(byValue.haiku).toEqual({ value: 'haiku', label: 'haiku', disabled: true, locked: true, tag: 'Needs credits' });
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
+  });
+
+  it('keeps Needs credits on a disabled row when the server sends no reasons at all', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
+    expect(options.find((o) => o.value === 'opus')).toMatchObject({ locked: true, tag: 'Needs credits' });
   });
 
   // The stored pin is never rewritten, so a wallet that drains leaves the user
@@ -471,6 +523,54 @@ describe('mergeRecommendedModels', () => {
     const merged = mergeRecommendedModels({}, { recommendedModels: { 'minds-cloud': ['sonnet'] } });
     expect(merged.recommendedModels).toEqual({ 'minds-cloud': ['sonnet'] });
     expect(merged.modelEnabled).toEqual({});
+    expect(merged.modelDisabledReasons).toEqual({});
+  });
+
+  describe('modelDisabledReasons moves with modelEnabled', () => {
+    const withReasons = {
+      ...held,
+      modelEnabled: { mindshub_air: true, sonnet: false },
+      modelDisabledReasons: { sonnet: 'model_restricted' },
+    };
+
+    it('takes the live reasons whenever it takes the live enabled map', () => {
+      const merged = mergeRecommendedModels(withReasons, {
+        modelEnabled: { mindshub_air: true, sonnet: false, opus: false },
+        modelDisabledReasons: { opus: 'wallet_empty' },
+      });
+      expect(merged.modelDisabledReasons).toEqual({ opus: 'wallet_empty' });
+    });
+
+    it('drops a live reason the renderer does not know, leaving that row with none', () => {
+      /* cowork-server relays any non-empty disabled_reason. An unknown word
+         held here would sit in a map typed as the three known reasons. */
+      const merged = mergeRecommendedModels(withReasons, {
+        modelEnabled: { mindshub_air: true, sonnet: false, opus: false },
+        modelDisabledReasons: { sonnet: 'model_restricted', opus: 'org_budget_cap' },
+      });
+      expect(merged.modelDisabledReasons).toEqual({ sonnet: 'model_restricted' });
+    });
+
+    it('clears held reasons when a live enabled map arrives with none', () => {
+      /* The admin lifted the rule and the wallet is empty: sonnet is still
+         false, but a held "model_restricted" would keep telling the member an
+         admin blocks it. A server too old to send reasons lands here too. */
+      const merged = mergeRecommendedModels(withReasons, {
+        modelEnabled: { mindshub_air: true, sonnet: false },
+      });
+      expect(merged.modelEnabled).toEqual({ mindshub_air: true, sonnet: false });
+      expect(merged.modelDisabledReasons).toEqual({});
+    });
+
+    it('keeps held reasons exactly when it keeps the held enabled map', () => {
+      // A failed MindsHub fetch still answers 200, with an empty enabled map.
+      const merged = mergeRecommendedModels(withReasons, {
+        modelEnabled: {},
+        modelDisabledReasons: {},
+      });
+      expect(merged.modelEnabled).toEqual(withReasons.modelEnabled);
+      expect(merged.modelDisabledReasons).toEqual({ sonnet: 'model_restricted' });
+    });
   });
 });
 
@@ -548,38 +648,14 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
-describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
-  it('transforms the per-harness enable flags into camelCase booleans', async () => {
+describe('harness picker enable flags', () => {
+  it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
     const { transformSettingsRows } = await import('./settingsTransform');
     const rows = [
-      { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
-      { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
+      { key: 'harness_claude_code_enabled', value: 'False', is_sensitive: false, is_set: true },
     ];
-    const s = transformSettingsRows(rows);
-    expect(s.harnessHermesEnabled).toBe(false);
-    expect(s.harnessClaudeCodeEnabled).toBe(true);
-  });
-
-  it('surfaces the harness row\'s `options` as harnessOptions, separate from its own value', async () => {
-    const { transformSettingsRows } = await import('./settingsTransform');
-    const rows = [
-      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true, options: ['anton'] },
-    ];
-    const s = transformSettingsRows(rows);
-    // Server's available_harness_ids() omitted "hermes" (not installed) —
-    // the picker needs this to hide the enable-toggle entirely, distinct
-    // from "hermes is available but the account disabled it."
-    expect(s.harnessOptions).toEqual(['anton']);
-    expect(s.harness).toBe('anton');
-  });
-
-  it('leaves harnessOptions unset when the harness row carries no options', async () => {
-    const { transformSettingsRows } = await import('./settingsTransform');
-    const rows = [
-      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true },
-    ];
-    expect(transformSettingsRows(rows).harnessOptions).toBeUndefined();
+    expect(transformSettingsRows(rows).harnessClaudeCodeEnabled).toBe(false);
   });
 });
 
@@ -981,5 +1057,28 @@ describe('routerRoleSubtitle (ENG-1851)', () => {
       .toMatch(/off until a model is picked here/);
     expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
       .toMatch(/off: no model is available/);
+  });
+});
+
+
+describe('committedSettingsPatch', () => {
+  it('includes only accepted writable keys and masks credential copies', () => {
+    const patch = {
+      anthropicApiKey: 'new-secret',
+      providers: [{ type: 'anthropic', apiKey: 'new-secret', baseUrl: 'https://provider.example' }],
+      maxContinuations: '9',
+      modelEnabled: { opus: true },
+    };
+    expect(committedSettingsPatch(patch, ['anthropic_api_key', 'providers_json'])).toEqual({
+      anthropicApiKey: '***',
+      providers: [{ type: 'anthropic', apiKey: '***', baseUrl: 'https://provider.example' }],
+    });
+  });
+
+  it('preserves credential removal and model tombstones', () => {
+    expect(committedSettingsPatch({ anthropicApiKey: '', planningModel: null },
+      ['anthropic_api_key', 'planning_model'])).toEqual({
+      anthropicApiKey: '', planningModel: null, defaultModel: null,
+    });
   });
 });

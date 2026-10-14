@@ -23,6 +23,7 @@ describe('withProjectConnection', () => {
 describe('connectorReturnLabel', () => {
   it('names the place the user came from', () => {
     expect(connectorReturnLabel('task')).toBe('Back to task');
+    expect(connectorReturnLabel('session')).toBe('Back to task');
     expect(connectorReturnLabel('settings')).toBe('Back to project settings');
   });
 });

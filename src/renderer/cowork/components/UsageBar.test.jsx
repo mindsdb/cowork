@@ -13,7 +13,7 @@ import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
 const freeLow = {
-  kind: 'free_low', tone: 'warning', title: '620K free tokens left',
+  kind: 'free_low', tone: 'warning', title: '12% of your free allowance left',
   body: 'After that, MindsHub Air usage will use your balance until they reset on Sep 11.',
   actions: [USAGE_ACTIONS.viewUsage],
 };
@@ -23,7 +23,7 @@ const balanceLow = {
 };
 const atRest = {
   kind: 'free_at_rest', tone: 'resting', resting: true,
-  title: '3.4M of 5M free tokens left', body: 'Resets on Sep 11.',
+  title: '28% of your free allowance left', body: 'Resets on Sep 11.',
   actions: [USAGE_ACTIONS.viewUsage],
 };
 // What `deriveComposerWarning` attaches to a free warning: the figure the bar
@@ -57,10 +57,65 @@ describe('UsageBar', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 
-  it('the standing figure cannot be closed: no dismiss button at all', () => {
-    render(<UsageBar warning={atRest} usageKnown />);
-    expect(screen.getByText('3.4M of 5M free tokens left.')).toBeTruthy();
+  it('the standing figure can be closed, and stays closed as the number moves', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<UsageBar warning={atRest} usageKnown />);
+    expect(screen.getByText('28% of your free allowance left.')).toBeTruthy();
+    // Its button names what goes: for a free user this is a fixture, not a
+    // passing warning.
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // Still the figure, fresh numbers: not asked again.
+    rerender(<UsageBar warning={{ ...atRest, title: '24% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed standing figure stays closed across a refill (ENG-2749)', async () => {
+    const user = userEvent.setup();
+    // Close the number at 28%...
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    first.unmount();
+    // ...the window refills five hours later and the figure reads 100% again.
+    // The figure is the healthy state, so "healthy again" must not be what
+    // brings it back: that would make the close last one window at most, for
+    // someone who asked for it to go.
+    render(<UsageBar warning={{ ...atRest, title: '100% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed standing figure stays closed when the bar empties for an unrelated reason', async () => {
+    const user = userEvent.setup();
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    first.unmount();
+    // A BYOK provider or an uncapped grant leaves the bar with nothing to show
+    // while usage still reads healthy. Neither is the person changing their
+    // mind about the number.
+    render(<UsageBar warning={null} usageKnown />).unmount();
+    render(<UsageBar warning={atRest} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('walks the whole cycle: close figure, drain, close warning, refill, drain again', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    // Drains into the warning band: the warning shows despite the closed figure.
+    rerender(<UsageBar warning={freeLowWithFallback} usageKnown={false} />);
+    expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // Refills: the figure is back at 100%, still closed, and usage is healthy again.
+    rerender(<UsageBar warning={{ ...atRest, title: '100% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // Drains toward the warning: still closed...
+    rerender(<UsageBar warning={atRest} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // ...and into the warning band: the warning is new again.
+    rerender(<UsageBar warning={freeLowWithFallback} usageKnown={false} />);
+    expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
   });
 
   it('the standing figure announces nothing, so a poll does not interrupt', () => {
@@ -85,7 +140,7 @@ describe('UsageBar', () => {
     rerender(<UsageBar warning={freeLow} usageKnown />);
     // Same region node, filled on a later commit — which is the only form of
     // change aria-live actually announces.
-    expect(liveText()).toBe('620K free tokens left. After that, MindsHub Air usage will use your balance until they reset on Sep 11.');
+    expect(liveText()).toBe('12% of your free allowance left. After that, MindsHub Air usage will use your balance until they reset on Sep 11.');
   });
 
   it('closing a free warning steps down to the standing figure, not to nothing', async () => {
@@ -93,10 +148,35 @@ describe('UsageBar', () => {
     render(<UsageBar warning={freeLowWithFallback} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
     // The number survives the close; only the warning does not.
-    expect(screen.getByText('3.4M of 5M free tokens left.')).toBeTruthy();
-    expect(screen.queryByText('620K free tokens left.')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.getByText('28% of your free allowance left.')).toBeTruthy();
+    expect(screen.queryByText('12% of your free allowance left.')).toBeNull();
     expect(liveText()).toBe('');
+    // And the figure it stepped down to closes in turn.
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a warning does not step down to a figure that was already closed', async () => {
+    const user = userEvent.setup();
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
+    first.unmount();
+    // The allowance drains into the warning band: the warning shows...
+    render(<UsageBar warning={freeLowWithFallback} usageKnown />);
+    expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
+    // ...and closing it lands on nothing, not on the number closed earlier.
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed warning does not count as "healthy", so its dismissal is kept', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<UsageBar warning={freeLow} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // Composer passes usageKnown for "nothing to warn about for ANY pick"; a
+    // warning that is merely closed is still a warning.
+    rerender(<UsageBar warning={{ ...freeLow, title: '9% of your free allowance left' }} usageKnown />);
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
   });
 
   it('a standing figure forgets an earlier dismissal, so next month warns again', async () => {
@@ -111,7 +191,7 @@ describe('UsageBar', () => {
     // outlive the reset.
     render(<UsageBar warning={atRest} usageKnown />).unmount();
     render(<UsageBar warning={freeLowWithFallback} usageKnown />);
-    expect(screen.getByText('620K free tokens left.')).toBeTruthy();
+    expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
   });
 
   it('counts a click on the standing figure apart from a warning click', async () => {
@@ -133,11 +213,11 @@ describe('UsageBar', () => {
     const user = userEvent.setup();
     const { rerender } = render(<UsageBar warning={freeLow} />);
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByText(/free tokens left/)).toBeNull();
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
 
     // Same kind, fresh numbers: still closed.
-    rerender(<UsageBar warning={{ ...freeLow, title: '400K free tokens left' }} />);
-    expect(screen.queryByText(/free tokens left/)).toBeNull();
+    rerender(<UsageBar warning={{ ...freeLow, title: '8% of your free allowance left' }} />);
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
 
     // A different state: shows again.
     rerender(<UsageBar warning={balanceLow} />);
@@ -174,7 +254,7 @@ describe('UsageBar', () => {
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
     rerender(<UsageBar warning={null} usageKnown />);
     rerender(<UsageBar warning={freeLow} usageKnown />);
-    expect(screen.getByText('620K free tokens left.')).toBeInTheDocument();
+    expect(screen.getByText('12% of your free allowance left.')).toBeInTheDocument();
   });
 
   it('keeps a dismissal across a launch: nothing to show yet is not "healthy"', async () => {
@@ -185,10 +265,10 @@ describe('UsageBar', () => {
     // Next launch: the bar mounts before the first poll answers.
     const second = render(<UsageBar warning={null} usageKnown={false} />);
     second.rerender(<UsageBar warning={freeLow} usageKnown />);
-    expect(screen.queryByText(/free tokens left/)).toBeNull();
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
     // Unreachable sidecar is not "healthy" either.
     second.rerender(<UsageBar warning={null} usageKnown={false} />);
     second.rerender(<UsageBar warning={freeLow} usageKnown />);
-    expect(screen.queryByText(/free tokens left/)).toBeNull();
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
   });
 });

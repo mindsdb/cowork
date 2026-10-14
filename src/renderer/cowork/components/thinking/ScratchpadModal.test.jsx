@@ -114,4 +114,29 @@ describe('ScratchpadModal — ENG-763 stage 2 fixes for generic tool-call steps'
     );
     expect(screen.getByRole('switch', { name: /args/i })).toBeTruthy();
   });
+
+  it('opens the parent tool pad when a ToolProgress row is focused, without making the row a cell (ENG-2981)', () => {
+    const row = {
+      id: 'row-1',
+      label: 'Writing the page (step 3 of 4)',
+      badge: 'ToolProgress',
+      icon: 'code',
+      status: 'in_progress',
+      startedAt: 1000,
+      completedAt: null,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _scratchpadTabId: 'tc_1',
+    };
+    render(
+      <ScratchpadModal open onClose={vi.fn()} steps={[toolCallStep(), row]} focusStepId="row-1" />,
+    );
+    // The tool's pad is active (modal titled after the tool) and has one cell.
+    expect(screen.getAllByText('test_tool').length).toBeGreaterThan(0);
+    expect(screen.getByText(/step 1\/1/)).toBeTruthy();
+    expect(screen.queryByText('Writing the page (step 3 of 4)')).toBeNull();
+  });
 });

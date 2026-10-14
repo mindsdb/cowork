@@ -12,6 +12,9 @@ import { CHANNELS } from './channels';
 const appMock = { setName: vi.fn(), getName: vi.fn(() => 'mock-name') };
 vi.mock('electron', () => ({ app: appMock }));
 
+const startCrashReporterMock = vi.fn();
+vi.mock('./crash-reporter', () => ({ startCrashReporter: () => startCrashReporterMock() }));
+
 const buildKindMock = vi.fn();
 vi.mock('./cowork-home', () => ({ buildKind: () => buildKindMock() }));
 
@@ -24,19 +27,25 @@ async function loadForKind(kind: string): Promise<void> {
 describe('app-identity — per-channel app name (userData isolation)', () => {
   beforeEach(() => {
     appMock.setName.mockClear();
+    startCrashReporterMock.mockClear();
   });
 
   it('prod: NEVER calls app.setName (userData stays "anton", unchanged)', async () => {
     await loadForKind('prod');
     expect(appMock.setName).not.toHaveBeenCalled();
+    expect(startCrashReporterMock).toHaveBeenCalledOnce();
   });
 
+  // Order matters: see crash-reporter.ts.
   it.each(['dev', 'preview', 'stable'] as const)(
-    'non-prod %s: sets the channel appName from CHANNELS',
+    'non-prod %s: sets the channel appName from CHANNELS, then starts the crash reporter',
     async (kind) => {
       await loadForKind(kind);
-      expect(appMock.setName).toHaveBeenCalledTimes(1);
-      expect(appMock.setName).toHaveBeenCalledWith(CHANNELS[kind].appName);
+      expect(appMock.setName).toHaveBeenCalledExactlyOnceWith(CHANNELS[kind].appName);
+      expect(startCrashReporterMock).toHaveBeenCalledOnce();
+      expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
+        startCrashReporterMock.mock.invocationCallOrder[0],
+      );
     },
   );
 });

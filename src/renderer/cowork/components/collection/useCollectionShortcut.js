@@ -11,15 +11,22 @@
 
 import { useEffect } from 'react';
 
-export function useCollectionShortcut(searchRef) {
+export function useCollectionShortcut(searchRef, enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (e) => {
+      const input = searchRef?.current;
+      // Both workspaces can stay mounted while App hides the inactive one.
+      if (!input || input.closest('[hidden], [inert]')) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        searchRef?.current?.focus();
+        // Claim local search before App's bubbling global-search listener,
+        // regardless of which view mounted first.
+        e.stopPropagation();
+        input.focus();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [searchRef]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [searchRef, enabled]);
 }

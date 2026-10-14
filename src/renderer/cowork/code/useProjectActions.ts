@@ -91,5 +91,19 @@ export function useProjectActions(sessionId: string | null | undefined) {
     }
   }, [sessionId]);
 
-  return { actions, busy, previewUrl, previewPending, run };
+  // Re-read the catalogue on demand, for when the task's commands change
+  // underneath an open session (adopting Project settings from Review).
+  // A failed read rejects: the caller is about to tell the user which
+  // actions exist, and a stale list would make that claim wrong.
+  const refresh = useCallback(async () => {
+    if (!sessionId) return;
+    const requestedSession = sessionId;
+    const page = await codingApi.projectActions(requestedSession);
+    if (activeSession.current !== requestedSession) return;
+    setActions(page.items);
+    setPreviewUrl(page.preview_url || null);
+    setPreviewPending(!!page.preview_pending);
+  }, [sessionId]);
+
+  return { actions, busy, previewUrl, previewPending, run, refresh };
 }

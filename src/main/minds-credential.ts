@@ -35,8 +35,23 @@ import { getServerPort, isServerRunning, isServerStarting } from './server-proce
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import { settleMindsResumeCredentialGate } from './minds-resume-gate';
+import { readActiveAccount, resolveAccountRoot } from './account-data';
+import { coworkHome } from './cowork-home';
 
 const PUSH_TIMEOUT_MS = 10_000;
+
+/**
+ * The keychain namespace for the stored MindsHub key: same value
+ * `resolveAccountRoot` uses to pick a filesystem root, so the key follows the
+ * account exactly the way its data does. `null` for the account that owns the
+ * shared default root; a distinct scope for any other account switched into on
+ * this machine, so it can never inherit a key that belongs to somebody else's
+ * session.
+ */
+function mindsKeyScope(): string | null {
+  const home = coworkHome();
+  return resolveAccountRoot(home, readActiveAccount(home));
+}
 
 interface ResolvedMindsCredential {
   value: string | null;
@@ -46,7 +61,7 @@ interface ResolvedMindsCredential {
 
 async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredential> {
   try {
-    const supplied = await getMindsApiKey();
+    const supplied = await getMindsApiKey(mindsKeyScope());
     if (supplied) return { value: supplied, userSupplied: true, usable: true };
   } catch (error) {
     // A keychain that cannot be read must not cost a signed-in user their
@@ -247,7 +262,7 @@ export async function establishMindsCredential(
 
 /** Store a user-supplied MindsHub key and hand it to the sidecar immediately. */
 export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
-  await setMindsApiKey(key);
+  await setMindsApiKey(mindsKeyScope(), key);
   const landed = await pushMindsCredential(key, { invalidateCatalog: true });
   if (landed) settleMindsResumeCredentialGate(true);
   return landed;
@@ -277,7 +292,7 @@ export async function clearUserSuppliedMindsKey(): Promise<boolean> {
  */
 async function forgetStoredKey(): Promise<void> {
   try {
-    await deleteMindsApiKey();
+    await deleteMindsApiKey(mindsKeyScope());
   } catch (error) {
     console.warn('[minds-credential] could not delete the stored key', error);
   }
