@@ -143,8 +143,8 @@ export default function ScheduledView({
       <PageHeader
         title="Scheduled Tasks"
         subtitle={host.isElectron
-          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
-          : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one when it reopens.`
+          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
