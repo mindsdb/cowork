@@ -88,9 +88,15 @@ describe('Sidebar — Code workspace and shell controls', () => {
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
-  it('docked, draws no toggle of its own (the titlebar owns it)', () => {
+  it('docked, heads its column with the brand and leaves the toggle to the window', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} onToggleCollapsed={vi.fn()} />);
+    const brand = { wordmark: 'MindsHub', mode: 'cowork', showSwitch: true, onChange: vi.fn() };
+    const { container } = render(<Sidebar {...baseProps} brand={brand} onToggleCollapsed={vi.fn()} />);
+    const head = container.querySelector('.app-sidebar__head');
+    // The brand sits inside the sidebar, so it opens and closes with it.
+    expect(head.closest('aside')).not.toBeNull();
+    expect(head).toHaveTextContent('MindsHub');
+    expect(screen.getByRole('group', { name: 'Workspace' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close sidebar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
   });

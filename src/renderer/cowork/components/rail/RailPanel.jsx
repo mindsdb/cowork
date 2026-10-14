@@ -24,12 +24,12 @@ export function RailToggle({ open, onToggle, className }) {
         aria-pressed={open}
         className={cn(
           'w-7 h-7 rounded-md inline-grid place-items-center shrink-0 cursor-pointer border-0',
-          'text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]',
-          open ? 'bg-surface-2 text-ink' : 'bg-transparent',
+          // Same glyph, size and resting ink as the sidebar toggle opposite it.
+          'bg-transparent text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]',
           className,
         )}
       >
-        {open ? Ico.panelCollapseRight(16) : Ico.panelExpandLeft(16)}
+        {Ico.panel(14)}
       </button>
     </Tooltip>
   );

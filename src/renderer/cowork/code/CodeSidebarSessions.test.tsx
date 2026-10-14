@@ -63,41 +63,23 @@ describe('CodeSidebarSessions', () => {
     expect(onSelect).toHaveBeenCalledWith('newer-complete');
   });
 
-  it('keeps archived tasks discoverable without mixing them into active work', () => {
+  it('leaves archived tasks to All tasks', () => {
     render(
       <CodeSidebarSessions
         sessions={[
           session('active', 'completed', '2026-08-21T09:00:00Z'),
           { ...session('old', 'completed', '2026-08-20T09:00:00Z'), archived: true },
         ]}
-        selectedId={null}
+        selectedId="old"
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
         {...rowActions()}
       />,
     );
 
-    const archivedToggle = screen.getByRole('button', { name: /Archived/ });
-    expect(archivedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /Task active, Completed/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Task old, Completed/ })).toBeNull();
-
-    fireEvent.click(archivedToggle);
-    expect(archivedToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
-  });
-
-  it('opens the archived group when the selected task is archived', () => {
-    const sessions = [
-      session('active', 'completed', '2026-08-21T09:00:00Z'),
-      { ...session('old', 'completed', '2026-08-20T09:00:00Z'), archived: true },
-    ];
-    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined), ...rowActions() };
-    const view = render(<CodeSidebarSessions {...props} selectedId={null} />);
-    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'false');
-
-    view.rerender(<CodeSidebarSessions {...props} selectedId="old" />);
-    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Archived/ })).toBeNull();
   });
 
   it('orders actionable work first in one list and spells out remote status', () => {
@@ -326,15 +308,12 @@ describe('CodeSidebarSessions', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('archives and restores a task from its row menu', async () => {
+  it('archives a task from its row menu', async () => {
     const actions = rowActions();
     render(
       <CodeSidebarSessions
-        sessions={[
-          session('done', 'completed', '2026-08-21T08:00:00Z'),
-          { ...session('old', 'completed', '2026-08-20T08:00:00Z'), archived: true },
-        ]}
-        selectedId="old"
+        sessions={[session('done', 'completed', '2026-08-21T08:00:00Z')]}
+        selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
         {...actions}
@@ -345,10 +324,6 @@ describe('CodeSidebarSessions', () => {
     await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
     await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
     expect(actions.onSetArchived).toHaveBeenCalledWith('done', true);
-
-    await user.click(screen.getByRole('button', { name: 'Actions for Task old' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Restore' }));
-    expect(actions.onSetArchived).toHaveBeenCalledWith('old', false);
   });
 
   it('deletes a task only after confirmation', async () => {

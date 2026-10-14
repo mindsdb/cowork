@@ -533,22 +533,45 @@ input, textarea { font-family: inherit; }
   -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
 }
-.app-titlebar__zone {
+/* Collapsing the sidebar shifts this row's start past the window controls
+   and the toggle; it eases on the sidebar's own curve so the two read as one
+   motion. */
+.app-titlebar { transition: padding-left var(--dur-layout) var(--ease-out); }
+.app-titlebar__lead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  animation: titlebar-lead-in var(--dur-layout) var(--ease-out);
+}
+@keyframes titlebar-lead-in { from { opacity: 0; } }
+/* Controls at the titlebar's start rest in the mode switch's quieter ink so
+   the band reads as one weight. */
+.app-titlebar__lead > .icon-btn,
+.app-sidebar-toggle > .icon-btn { flex: none; color: var(--ink-3); }
+.app-sidebar-toggle {
+  position: absolute;
+  top: 0;
+  height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  z-index: 3;
+}
+/* The sidebar's share of the titlebar band: window controls, the slot the
+   toggle floats over, then the brand. It is the brand's container, so the
+   switch's labels hide when the sidebar is too narrow for them. */
+.app-sidebar__head {
+  height: var(--titlebar-h);
   flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
   padding-right: 10px;
   box-sizing: border-box;
-}
-/* The zone's controls keep their size; only the brand gives way. */
-.app-titlebar__zone > .icon-btn { flex: none; }
-.app-titlebar__zone.is-docked {
-  width: var(--sidebar-w);
   container: brand-zone / inline-size;
-  background: var(--sidebar-bg, var(--surface));
-  border-right: 1px solid var(--line);
+  -webkit-app-region: drag;
 }
+.app-sidebar__toggle-slot { flex: none; width: 28px; }
 .app-titlebar__main {
   flex: 1;
   min-width: 0;
@@ -575,7 +598,7 @@ input, textarea { font-family: inherit; }
   padding-left: 20px;
   overflow: hidden;
 }
-.app-titlebar__zone:not(.is-docked) + .app-titlebar__main .app-titlebar__view { padding-left: 8px; }
+.app-titlebar.is-collapsed .app-titlebar__view { padding-left: 8px; }
 /* A divider between the view's actions and the app controls, only when the
    view has actions on the right (a crumb-only trail sits at the far left). */
 .app-titlebar__app { flex: none; display: flex; align-items: center; gap: 4px; }
@@ -604,7 +627,7 @@ input, textarea { font-family: inherit; }
 .app-titlebar__search:hover { background: var(--surface-3); color: var(--ink); }
 .app-titlebar__search .kbd { margin-left: 8px; }
 
-/* Brand / workspace menu in the sidebar zone. */
+/* Brand / workspace menu in the sidebar's head row. */
 .app-brand {
   display: inline-flex;
   align-items: center;

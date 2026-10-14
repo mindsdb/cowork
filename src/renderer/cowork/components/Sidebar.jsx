@@ -17,6 +17,7 @@ import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import { surfaceCopy } from '../lib/surface';
 import { shortcutLabel } from '../lib/shortcut';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import WorkspaceBrand from './WorkspaceBrand';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -136,7 +137,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         />
       ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
-        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
+        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1">
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -154,14 +155,14 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
+        {/* Right slot: as wide as the timestamp, and never narrower than the
+            kebab that cross-fades over it, so the title keeps the rest. The
             negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so the kebab (and the timestamp it cross-fades
-            with) sit snug against the edge of the hover fill, not a full
-            gutter-width inside it. */}
-        <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
+            10px right padding so both sit snug against the edge of the hover
+            fill, not a full gutter-width inside it. */}
+        <span className="relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
           <span
-            className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_var(--dur-hover)_ease]"
+            className="inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 whitespace-nowrap [transition:opacity_var(--dur-hover)_ease]"
             style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
           >
             {isActive ? (
@@ -248,6 +249,8 @@ export default function Sidebar({
   // spot, past the window controls (`lightsInset`).
   popout = false,
   lightsInset = 12,
+  // The brand and workspace switch for the head row (desktop only).
+  brand = null,
   // Display settings, docked in the footer (was a floating corner button):
   // { label, icon, onClick }, or null when both Appearance switches are off.
   displayToggle = null,
@@ -453,7 +456,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] ${widthAnimating
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] ${widthAnimating
         ? '[transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'
         : '[transition:opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'}`}
       onTransitionEnd={(e) => {
@@ -465,48 +468,45 @@ export default function Sidebar({
         // Dynamic-only: everything else about this transition lives in the
         // className above. These four properties are collapsed-state-driven
         // and can't be static Tailwind classes.
-        // Combine a gentle leftward translate with a slight scale so
-        // the sidebar reads as "settling into place" rather than just
-        // sliding. Origin pinned to the left edge so the scale grows
-        // from the dock side; the eye picks up the easing curve
-        // along with the width interpolation for a single coherent
-        // motion. Scale + filter values are subtle on purpose —
-        // they're the difference between "this animated" and
-        // "this animated nicely."
+        // A short leftward translate with the fade and blur, so the
+        // sidebar settles into place. Horizontal only: a scale would also
+        // shrink it toward its vertical centre and drift the rows up and
+        // down as it opens and closes.
         width: collapsed ? 0 : 'var(--sidebar-w)',
         // Flush to the window: a single right edge marks where the sidebar
         // ends (none while collapsed, where the width is 0).
         borderRightWidth: collapsed ? 0 : 1,
         opacity: collapsed ? 0 : 1,
         transform: collapsed
-          ? 'translateX(-12px) scale(0.985)'
-          : 'translateX(0) scale(1)',
+          ? 'translateX(-12px)'
+          : 'translateX(0)',
         filter: collapsed ? 'blur(6px)' : 'blur(0)',
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
-      {/* Drawer-only top row. Docked, the titlebar's sidebar zone sits above
-          the sidebar instead; the drawer covers that zone, so it repeats the
-          toggle in the same spot. */}
-      {popout && (
-        <div
-          className="flex items-center shrink-0 h-[var(--titlebar-h)]"
-          style={{ paddingLeft: lightsInset }}
-        >
+      {/* Head row: the sidebar's share of the titlebar band, so the brand
+          opens and closes with the sidebar as one box. Docked, the window's
+          sidebar toggle floats over the slot at its start; the drawer covers
+          that toggle, so it puts its own close button in the same spot. */}
+      <div className="app-sidebar__head" style={{ paddingLeft: lightsInset }}>
+        {popout ? (
           <Tooltip content="Close sidebar">
             <button
               type="button"
-              className="icon-btn [-webkit-app-region:no-drag]"
+              className="icon-btn text-ink-3"
               onClick={onToggleCollapsed}
               aria-label="Close sidebar"
             >
-              {Ico.sidebarCollapseLeft(16)}
+              {Ico.sidebar(14)}
             </button>
           </Tooltip>
-        </div>
-      )}
+        ) : (
+          <span className="app-sidebar__toggle-slot" aria-hidden="true" />
+        )}
+        {brand && <WorkspaceBrand {...brand} />}
+      </div>
 
-      {/* Body — fades + slides in slightly behind the container so
+      {/* Body — fades in slightly behind the container so
           the motion staggers. On appearance the body lags two stagger
           steps (--dur-stagger) so
           the surrounding chrome lands first; on dismissal it leads
@@ -515,18 +515,15 @@ export default function Sidebar({
         // px-1.5: flush to the window, the rows need their own inset from the
         // sidebar edges (the floating card used to supply it with its gutter).
         className="flex-1 min-h-0 flex flex-col px-1.5 pt-1"
-        // All dynamic: opacity/transform/pointerEvents/transition-delay are
+        // All dynamic: opacity/pointerEvents/transition-delay are
         // collapsed-state-driven (the transition string embeds a delay that
         // flips between none and two stagger steps), so none of this can be
         // a static Tailwind class.
         style={{
           opacity: collapsed ? 0 : 1,
-          transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
           pointerEvents: collapsed ? 'none' : 'auto',
           transition:
             'opacity var(--dur-layout) var(--ease-out) ' +
-              `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}, ` +
-            'transform var(--dur-layout) var(--ease-out) ' +
               `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
         }}
       >
