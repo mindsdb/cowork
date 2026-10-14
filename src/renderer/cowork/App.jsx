@@ -85,6 +85,7 @@ import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -5685,6 +5686,15 @@ function AppCore() {
     fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
   });
 
+  // Hold off system sleep while a scheduled run is in flight or about to fire.
+  // Desktop only; the bridge is absent on web.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+  });
+  useEffect(() => {
+    window.antontron?.setScheduleKeepAwake?.(keepAwake);
+  }, [keepAwake]);
+  useEffect(() => () => { window.antontron?.setScheduleKeepAwake?.(false); }, []);
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
