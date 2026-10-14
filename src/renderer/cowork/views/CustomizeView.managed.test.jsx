@@ -1,7 +1,8 @@
 // Operator-managed connections are read-only on the Connections page, and a
 // Reconnect whose delete fails never opens a new connect flow, while one whose
 // connection is already gone does. Follows CustomizeView.identity.test.jsx's
-// mocking convention, on the web host the self-hosted stack serves.
+// mocking convention, on the web host the self-hosted stack serves unless a
+// test switches the host to desktop.
 
 import { beforeEach, afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -27,6 +28,10 @@ const SAVED = {
 };
 
 const state = vi.hoisted(() => ({ connections: [], saved: null }));
+const host = vi.hoisted(() => ({
+  isWeb: true, isElectron: false, isMac: () => false,
+  openExternal: vi.fn(), keychainRevoke: vi.fn(), pickDriveFiles: vi.fn(), cancelDrivePicker: vi.fn(),
+}));
 
 vi.mock('../api', () => ({
   CONNECTIONS_VAULT_KEEP: '__KEEP__',
@@ -36,17 +41,15 @@ vi.mock('../api', () => ({
   fetchSavedConnection: vi.fn(),
   patchConnectionAccessMode: vi.fn(),
 }));
-vi.mock('../../platform/host', () => ({
-  host: {
-    isWeb: true, isElectron: false, isMac: () => false,
-    openExternal: vi.fn(), keychainRevoke: vi.fn(), pickDriveFiles: vi.fn(), cancelDrivePicker: vi.fn(),
-  },
-}));
+vi.mock('../../platform/host', () => ({ host }));
 
 import CustomizeView from './CustomizeView';
 import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 
 beforeEach(() => {
+  host.isWeb = true;
+  host.isElectron = false;
+  host.keychainRevoke.mockReset();
   vi.mocked(deleteDatasource).mockReset();
   vi.mocked(fetchConnector).mockReset().mockImplementation(() => Promise.resolve(SPEC));
   // The view refetches on mount and replaces its list, so this must return the
@@ -202,5 +205,31 @@ describe('CustomizeView Disconnect', () => {
 
     await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
     expect(window.alert).not.toHaveBeenCalled();
+  });
+});
+
+describe('CustomizeView Reconnect on desktop', () => {
+  beforeEach(() => {
+    host.isWeb = false;
+    host.isElectron = true;
+  });
+
+  it.each(['browser_oauth_builtin', 'mcp'])('revokes in main and opens the connect flow for a %s connection', async (method) => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    host.keychainRevoke.mockImplementationOnce(() => {
+      state.connections = [];
+      return Promise.resolve({ ok: true });
+    });
+    const onReconnect = vi.fn();
+    const dialog = await openPanel([CONNECTION], { ...SAVED, method }, { onReconnect });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    expect(host.keychainRevoke).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team', 'team@example.com');
+    expect(deleteDatasource).not.toHaveBeenCalled();
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

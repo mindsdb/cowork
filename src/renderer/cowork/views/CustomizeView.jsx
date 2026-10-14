@@ -566,7 +566,10 @@ export default function CustomizeView({
 
   /* Resolves true once the connection is gone and false when the delete
      failed, after telling the person why; a caller that goes on to reconnect
-     must stop on false. A 404 from the delete counts as gone. */
+     must stop on false. A 404 from the delete counts as gone. On desktop, an
+     OAuth or MCP connection resolves true once main's keychain:revoke handler
+     (src/main/app.ts) ran: that handler always answers ok and doesn't report
+     whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
       // For builtin OAuth connections in Electron, keychain:revoke stops the
