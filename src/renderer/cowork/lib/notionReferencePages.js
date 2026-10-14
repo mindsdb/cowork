@@ -1,6 +1,10 @@
 import { fetchNotionPage } from '../api';
 
 const NOTION_PAGE_FETCH_TIMEOUT_MS = 10_000;
+// The included text stays in the conversation and is resent every turn, so
+// pages past this total are left for the agent to read with notion-fetch.
+// Two pages fit at the server's per-page limit of 20,000 characters.
+export const MAX_INCLUDED_NOTION_CHARS = 40_000;
 
 // Fetch each picked Notion page's text before sending, so it rides in the
 // message like an uploaded file's contents. Left to fetch it themselves,
@@ -27,12 +31,17 @@ export function describeNotionReferencePages(reference, texts = new Map()) {
   const pages = (reference || []).filter((a) => a.source === 'notion');
   if (!pages.length) return '';
   const label = (p) => `${p.name || 'Untitled'}${p.workspace ? ` (workspace: ${p.workspace})` : ''}`;
+  let budget = MAX_INCLUDED_NOTION_CHARS;
   const blocks = pages.map((p) => {
     const url = p.url || p.notionPageId;
     const page = texts.get(p.id);
     if (!page) {
       return `- ${label(p)}: ${url}\n  Its contents could not be loaded here. Read it with the notion__notion-fetch tool, passing the URL.`;
     }
+    if (page.text.length > budget) {
+      return `- ${label(p)}: ${url}\n  Its contents are not included, to keep this message short. Read it with the notion__notion-fetch tool, passing the URL.`;
+    }
+    budget -= page.text.length;
     return [
       `--- Notion page: ${label(p)}, ${url} ---`,
       page.text,
