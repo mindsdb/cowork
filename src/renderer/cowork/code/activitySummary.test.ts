@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CodingEvent } from './api';
-import { activityHeadline, displayCommand, fileChanges, isCompaction, isIgnoredActivity, liveStatusLabel, planPosition, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
+import { activityHeadline, displayCommand, errorTitle, fileChanges, isCompaction, isIgnoredActivity, isRetryNotice, liveStatusLabel, planPosition, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
 
 
 function event(overrides: Partial<CodingEvent>): CodingEvent {
@@ -16,6 +16,18 @@ function event(overrides: Partial<CodingEvent>): CodingEvent {
     data: {},
     ...overrides,
   };
+}
+
+
+// Codex sends a reconnect attempt as an "Agent error" whose message counts
+// the attempts; the server's own errors carry a specific title.
+function retry(seq: number, attempt = '1/5'): CodingEvent {
+  return event({ type: 'error', phase: 'failed', seq, title: 'Agent error', text: `Reconnecting... ${attempt}` });
+}
+
+
+function failure(seq: number, title: string, text: string): CodingEvent {
+  return event({ type: 'error', phase: 'failed', seq, title, text });
 }
 
 
@@ -71,8 +83,14 @@ describe('activityHeadline', () => {
   });
 
   it('counts retries after the work', () => {
-    expect(activityHeadline([command('c1', [{ type: 'unknown', command: 'ls' }]), event({ type: 'error', phase: 'failed', seq: 2 })])).toBe('Ran 1 command and retried once');
-    expect(activityHeadline([event({ type: 'error', phase: 'failed', seq: 1 }), event({ type: 'error', phase: 'failed', seq: 2 })])).toBe('Retried 2 times');
+    expect(activityHeadline([command('c1', [{ type: 'unknown', command: 'ls' }]), retry(2)])).toBe('Ran 1 command and retried once');
+    expect(activityHeadline([retry(1, '1/5'), retry(2, '2/5')])).toBe('Retried 2 times');
+  });
+
+  it('names an error instead of calling it a retry', () => {
+    expect(activityHeadline([failure(1, 'Task did not start', 'The task workspace could not be prepared: disk full')])).toBe('Task did not start');
+    expect(activityHeadline([command('c1', [{ type: 'unknown', command: 'ls' }]), failure(2, 'Follow-up not delivered', 'Codex did not accept the instruction.')])).toBe('Ran 1 command and hit an error');
+    expect(activityHeadline([retry(1), failure(2, 'Coding agent failed', 'The turn failed.'), failure(3, 'Queued instruction could not start', 'Busy')])).toBe('Retried once and hit 2 errors');
   });
 
   it('describes groups that hold no countable actions', () => {
@@ -97,6 +115,13 @@ describe('liveStatusLabel', () => {
     expect(liveStatusLabel([summarized([`Looking at ${'the checkout form '.repeat(8)}`])])).toHaveLength(80);
   });
 
+  it('says reconnecting only while Codex retries', () => {
+    expect(liveStatusLabel([retry(1, '1/2')])).toBe('Reconnecting… 1/2');
+    const done = command('c1', [{ type: 'unknown', command: 'npm test' }]);
+    expect(liveStatusLabel([done, failure(2, 'Follow-up not delivered', 'Codex did not accept the instruction.')])).toBe('Thinking…');
+    expect(liveStatusLabel([command('c2', [{ type: 'unknown', command: 'npm test' }], 'started'), failure(3, 'Agent error', 'Usage limit reached.')])).toBe('Running npm test');
+  });
+
   it('falls back to the latest reasoning heading, then to thinking', () => {
     const done = command('c1', [{ type: 'unknown', command: 'npm test' }]);
     expect(liveStatusLabel([done, event({ type: 'reasoning', text: '**Checking the docs**\n\nLooking for…' })])).toBe('Checking the docs');
@@ -113,13 +138,35 @@ describe('stepLabel', () => {
     expect(stepLabel(command('c1', [{ type: 'unknown', command: 'npm test' }]))).toEqual({ icon: 'command', verb: 'Ran', target: 'npm test' });
     expect(stepLabel(event({ type: 'tool', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue' } }))).toEqual({ icon: 'tool', verb: 'Called', target: 'linear · get_issue' });
     expect(stepLabel(event({ type: 'tool', title: '/tmp/shot.png', data: { type: 'imageView' } }))).toEqual({ icon: 'image', verb: 'Viewed', target: 'shot.png' });
-    expect(stepLabel(event({ type: 'error', phase: 'failed', text: 'Reconnecting... 1/2' })).target).toBe('after the connection dropped (1/2)');
+    expect(stepLabel(retry(1, '1/2'))).toEqual({ icon: 'retry', verb: 'Retried', target: 'after the connection dropped (1/2)' });
+  });
+
+  it('labels an error by its title, or by its message when Codex sends the generic one', () => {
+    expect(stepLabel(failure(1, 'Task did not start', 'The task workspace could not be prepared: disk full'))).toEqual({ icon: 'error', verb: 'Task did not start', target: '' });
+    expect(errorTitle(failure(1, 'Agent error', 'usage limit reached. Try again at 4pm.'))).toBe('Usage limit reached.');
+    expect(errorTitle(failure(1, 'Agent error', `Stream ${'closed '.repeat(20)}`))).toHaveLength(80);
+    expect(errorTitle(failure(1, '', ''))).toBe('Something went wrong');
+  });
+
+  it('tells a reconnect notice from an error that ended work', () => {
+    expect(isRetryNotice(retry(1))).toBe(true);
+    expect(isRetryNotice(failure(1, 'Agent error', 'The stream closed early. Reconnecting… 2/5'))).toBe(true);
+    expect(isRetryNotice(failure(1, 'Coding agent failed', 'Reconnecting failed: the computer is offline.'))).toBe(false);
+    expect(isRetryNotice(failure(1, 'Agent error', 'Usage limit reached.'))).toBe(false);
+    expect(isRetryNotice(failure(1, 'Coding agent failed', 'The turn failed.'))).toBe(false);
+    expect(isRetryNotice(event({ text: 'Reconnecting... 1/2' }))).toBe(false);
   });
 
   it('treats a non-zero exit as a failure but not a retry', () => {
     expect(stepFailed(event({ data: { exitCode: 1 } }))).toBe(true);
     expect(stepFailed(event({ data: { exitCode: 0 } }))).toBe(false);
-    expect(stepFailed(event({ type: 'error', phase: 'failed' }))).toBe(false);
+    expect(stepFailed(retry(1))).toBe(false);
+  });
+
+  it('counts an error that ended work as failed', () => {
+    for (const title of ['Task did not start', 'Follow-up not delivered', 'Coding agent failed', 'Agent error']) {
+      expect(stepFailed(failure(1, title, 'It broke.'))).toBe(true);
+    }
   });
 });
 
