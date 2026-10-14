@@ -3,7 +3,7 @@
 // changes layout, not content.
 
 import { useState } from 'react';
-import { Button } from '../ui';
+import { Badge, Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
 
@@ -33,6 +33,9 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const connected = connection.status == null || connection.status === 'connected';
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
+  /* Only an explicit `managed: true` from the server makes the card read-only;
+     a connection without the field keeps its Disconnect button. */
+  const managed = connection.managed === true;
 
   const handleRemove = async () => {
     if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
@@ -47,6 +50,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   return {
     leading: <ConnectionLogo engine={engine} label={title} />,
     title,
+    badges: managed ? <Badge variant="muted" size="sm">Managed</Badge> : undefined,
     description: subtitle,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
     activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
@@ -57,11 +61,13 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         <StatusDot tone={needsReconnect ? 'warning' : connected ? 'success' : 'muted'}>{statusLabel}</StatusDot>
         {/* Shown at rest, above the item's click area, so Disconnect never
             opens the details. */}
-        <ItemActions className="ml-auto">
-          <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
-            {busy ? 'Removing…' : 'Disconnect'}
-          </Button>
-        </ItemActions>
+        {!managed && (
+          <ItemActions className="ml-auto">
+            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+              {busy ? 'Removing…' : 'Disconnect'}
+            </Button>
+          </ItemActions>
+        )}
       </>
     ),
   };

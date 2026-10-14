@@ -1,12 +1,17 @@
-// A Reconnect whose delete fails never opens a new connect flow. Follows
-// CustomizeView.identity.test.jsx's mocking convention, on the web host.
+// Operator-managed connections are read-only on the Connections page, and a
+// Reconnect whose delete fails never opens a new connect flow. Follows
+// CustomizeView.identity.test.jsx's mocking convention, on the web host the
+// self-hosted stack serves.
 
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const REFUSAL = 'Connection is unavailable';
+const OPERATOR_NOTE = "This connection is provided by your operator and can't be changed here.";
 
+// google_drive plus an MCP method so one panel would show every control the
+// managed state hides: the Drive picker, the access-mode select, Reconnect
+// and Remove.
 const CONNECTION = {
   engine: 'google_drive', name: 'google_drive-team', label: 'Google Drive',
   user_label: null, display_name: 'team@example.com',
@@ -61,18 +66,57 @@ async function openPanel(connections, saved, props = {}) {
   return dialog;
 }
 
+describe('CustomizeView operator-managed connections', () => {
+  it.each([
+    ['the list row', { ...CONNECTION, managed: true }, SAVED],
+    ['the detail response', CONNECTION, { ...SAVED, managed: true }],
+  ])('shows the panel read-only when %s marks the connection managed', async (_, connection, saved) => {
+    const dialog = await openPanel([connection], saved);
+
+    expect(within(dialog).getByRole('note')).toHaveTextContent(OPERATOR_NOTE);
+    expect(within(dialog).queryByRole('button', { name: 'Reconnect' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Tool access')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Select files from Google Drive' })).not.toBeInTheDocument();
+    // What the connection is stays visible.
+    expect(within(dialog).getByText('Engine')).toBeInTheDocument();
+  });
+
+  it('shows the Managed badge and no Disconnect on the managed card', () => {
+    const managed = { ...CONNECTION, managed: true };
+    state.connections = [managed];
+    render(<CustomizeView connectors={[managed]} />);
+    const card = screen.getByRole('article');
+    expect(within(card).getByText('Managed')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+  });
+
+  it('keeps every control for a connection without the managed field', async () => {
+    const dialog = await openPanel([CONNECTION], SAVED);
+
+    expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
+    expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
+    expect(within(screen.getByRole('article')).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+  });
+});
+
 describe('CustomizeView Reconnect', () => {
   it('never opens a new connect flow when the delete fails', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error(REFUSAL));
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error(OPERATOR_NOTE));
     const onReconnect = vi.fn();
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${REFUSAL}`));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${OPERATOR_NOTE}`));
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
     expect(onReconnect).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();

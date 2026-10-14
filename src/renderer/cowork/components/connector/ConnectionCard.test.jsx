@@ -93,6 +93,28 @@ describe('ConnectionCard', () => {
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
   });
 
+  it.each([['card', ConnectionCard], ['row', ConnectionRow]])('shows an operator-managed connection as a %s with a Managed badge and no Disconnect', async (_, Item) => {
+    const onModify = vi.fn();
+    const managed = { ...connection, managed: true };
+    render(<Item connection={managed} onModify={onModify} onDelete={vi.fn()} />);
+    expect(screen.getByText('Managed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    // The details still open, read-only, from the item itself.
+    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
+  });
+
+  it.each([
+    ['without the field', connection],
+    ['with managed false', { ...connection, managed: false }],
+    ['with a non-boolean managed value', { ...connection, managed: 'true' }],
+  ])('keeps Disconnect and no Managed badge for a connection %s', (_, conn) => {
+    render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+  });
+
   it('renders the same content and actions as a list row', async () => {
     const onModify = vi.fn();
     render(<ConnectionRow connection={connection} onModify={onModify} />);

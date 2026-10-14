@@ -60,6 +60,10 @@ function ConnectionsCounts({ search, total, filtered }) {
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
+// The same sentence cowork-server answers when a change to an
+// operator-managed connection is refused.
+const MANAGED_CONNECTION_NOTE = "This connection is provided by your operator and can't be changed here.";
+
 function fmtDate(iso) {
   if (!iso) return '';
   try {
@@ -131,6 +135,9 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
   if (!connection) return null;
 
+  /* Read-only when either the list row or the detail response says
+     `managed: true`; a connection without the field keeps every control. */
+  const managed = connection.managed === true || saved?.managed === true;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -303,7 +310,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Drive file access — drive.file only grants the app files
                   it creates itself; picking files here grants access to
                   existing ones without widening the OAuth scope. */}
-              {connection.engine === 'google_drive' && (
+              {connection.engine === 'google_drive' && !managed && (
                 <>
                   <div className="section-label mb-2">
                     Drive files
@@ -382,7 +389,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {saved?.method === 'mcp' && (
+              {saved?.method === 'mcp' && !managed && (
                 <>
                   <div className="section-label mb-2">
                     Tool access
@@ -418,32 +425,38 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
             </Alert>
           )}
-          {spec && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
-                onReconnect?.(connection, spec);
-              }}
-              className="w-full justify-center"
-            >
-              Reconnect
-            </Button>
+          {managed ? (
+            <p className="m-0 text-[12px] text-ink-3" role="note">{MANAGED_CONNECTION_NOTE}</p>
+          ) : (
+            <>
+              {spec && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    if (!window.confirm(
+                      `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
+                    )) return;
+                    onReconnect?.(connection, spec);
+                  }}
+                  className="w-full justify-center"
+                >
+                  Reconnect
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                block
+                onClick={() => {
+                  if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
+                  onDisconnect?.(connection, saved);
+                  onClose();
+                }}
+              >
+                {Ico.trash(14)}
+                Remove
+              </Button>
+            </>
           )}
-          <Button
-            variant="danger"
-            block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection, saved);
-              onClose();
-            }}
-          >
-            {Ico.trash(14)}
-            Remove
-          </Button>
         </div>
       </div>
     </>

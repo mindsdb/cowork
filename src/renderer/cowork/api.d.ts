@@ -56,11 +56,15 @@ export interface ConnectorConnection {
   status?: string | null;
   updated_at?: string | null;
   updatedAt?: string | null;
+  /** True for a connection the operator provides; the page shows it read-only. Absent means false. */
+  managed?: boolean;
 }
 
 export interface SavedConnectorConnection {
   method?: string | null;
   fields?: Record<string, unknown>;
+  /** Same meaning as ConnectorConnection.managed. */
+  managed?: boolean;
 }
 
 export interface ConnectorFieldSpec {
