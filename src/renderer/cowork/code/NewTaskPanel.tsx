@@ -120,7 +120,7 @@ export function NewTaskPanel({
   return (
     // Keep the in-memory draft intact during its Connectors detour, without
     // leaving its controls visible or keyboard-accessible behind that view.
-    <main className="code-new-task" style={suspended ? { display: 'none' } : undefined}>
+    <main className="code-new-task titlebar-fade" style={suspended ? { display: 'none' } : undefined}>
       <div className="code-new-task__content">
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">

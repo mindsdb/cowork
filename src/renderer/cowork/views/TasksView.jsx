@@ -160,7 +160,7 @@ export default function TasksView({
   }];
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Tasks"
         subtitle="Every conversation across every project. Sort, filter, and jump straight in."

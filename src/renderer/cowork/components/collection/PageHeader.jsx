@@ -13,7 +13,9 @@ import { AppHeader } from '../appHeader';
 //
 // The trail shape renders into the app titlebar (<AppHeader>), so drill-down
 // crumbs sit in the same fixed row on every surface. The title shape stays in
-// the body: a large display title under an empty titlebar row.
+// the body, close under the titlebar row at pane-title size (s-h2): with
+// the titlebar above it, a 28px title and deep top padding read as a
+// landing page rather than a work surface.
 //
 // Styling note: this is on the target stack (Tailwind utilities + `cn`, token
 // colours from tailwind.config), not inline styles. Neither shape draws a
@@ -60,7 +62,7 @@ export function PageHeader({
   }
 
   return (
-    <div className="flex flex-col gap-[18px] pr-8 pb-6 pl-8 pt-7">
+    <div className="flex flex-col gap-[18px] pr-8 pb-5 pl-8 pt-3">
       {/* Wraps the actions below the title once the title column would drop
           under 18rem, so narrow windows stack instead of crushing the title. */}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">
@@ -70,7 +72,7 @@ export function PageHeader({
               {eyebrow}
             </div>
           )}
-          <h1 className="s-h1 m-0 text-ink">{title}</h1>
+          <h1 className="s-h2 m-0 text-ink">{title}</h1>
           {subtitle && (
             <p
               className="m-0 max-w-[64ch] text-[13.5px] leading-[1.5] text-ink-3"

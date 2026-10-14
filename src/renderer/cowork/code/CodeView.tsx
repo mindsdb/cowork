@@ -124,7 +124,7 @@ export default function CodeView({
     dockObserver.current = null;
     const stage = dock?.parentElement;
     if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
+    const sync = () => stage.style.setProperty('--dock-height', `${dock.offsetHeight}px`);
     sync();
     dockObserver.current = new ResizeObserver(sync);
     dockObserver.current.observe(dock);

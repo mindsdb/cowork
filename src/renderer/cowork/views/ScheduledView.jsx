@@ -139,7 +139,7 @@ export default function ScheduledView({
   }
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
         subtitle={PLATFORM_UI

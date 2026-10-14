@@ -508,10 +508,24 @@ input, textarea { font-family: inherit; }
 /* The titlebar has no hairline, so a view's scroller fades its content out
    under the row instead of clipping it at a hard edge. The fade sits in the
    scroller's top padding, so it only shows once content scrolls into it. A
-   second opaque layer over the right 16px keeps the scrollbar unfaded. */
+   second opaque layer over the right 16px keeps the scrollbar unfaded.
+   .transcript-fade (Cowork chat, Code timeline) also fades out just above
+   a floating composer dock whose height the view writes to --dock-height. */
 .titlebar-fade {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px), linear-gradient(#000, #000);
-          mask-image: linear-gradient(to bottom, transparent, #000 24px), linear-gradient(#000, #000);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24px)), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24px)), linear-gradient(#000, #000);
+}
+/* Pages whose title scrolls with them sit it 12px under the titlebar
+   (PageHeader), so their fade stays inside that padding and never dims the
+   title at rest. */
+.titlebar-fade--page { --fade-top: 12px; }
+.transcript-fade {
+  --fade-end: calc(100% - var(--dock-height, 0px) + 8px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--fade-end) - 48px), transparent var(--fade-end)), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(var(--fade-end) - 48px), transparent var(--fade-end)), linear-gradient(#000, #000);
+}
+.titlebar-fade,
+.transcript-fade {
   -webkit-mask-size: 100% 100%, 16px 100%;
           mask-size: 100% 100%, 16px 100%;
   -webkit-mask-position: 0 0, 100% 0;
@@ -2123,7 +2137,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   /* More space above than below, so each heading groups with the rows it
      introduces. The 20px inline padding (10px nav-list gutter + 10px row
      inset) starts the text where the row icons and titles start. */
-  padding: 16px 20px 4px;
+  padding: 20px 20px 6px;
   margin: 0;
 }
 

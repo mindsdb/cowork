@@ -481,7 +481,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-surface self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 pb-6 flex flex-col gap-7 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail bg-surface self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-4 px-5 pb-5 flex flex-col gap-6 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <WorkingFolderBox project={project} />
           <ContextBox
             projects={projects}
@@ -784,7 +784,7 @@ export default function ProjectsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through. Earlier this was
     // `background: 'var(--bg)'`, which masked the field on this view.
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Projects"
         subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}

@@ -84,7 +84,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
     : { flex: 1, overflowY: 'auto' };
 
   return (
-    <div className="scroll-clean" style={wrapperStyle}>
+    <div className={`scroll-clean${isMemoryKind ? '' : ' titlebar-fade titlebar-fade--page'}`} style={wrapperStyle}>
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
