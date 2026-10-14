@@ -4,8 +4,10 @@
 
 import { useState } from 'react';
 import { Button } from '../ui';
+import { ConfirmModal } from '../ConfirmModal';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 
 function ConnectionLogo({ engine, label }) {
   const [failed, setFailed] = useState(null);
@@ -23,6 +25,8 @@ function ConnectionLogo({ engine, label }) {
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState('');
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
@@ -35,10 +39,15 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
     : connected ? 'Connected' : humanLabel(connection.status);
 
   const handleRemove = async () => {
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
     setBusy(true);
+    setError('');
     try {
       await onDelete?.(connection);
+      setConfirming(false);
+    } catch (e) {
+      // Shown in the dialog rather than swallowed: a disconnect that failed
+      // silently leaves the card on screen and reads as a no-op.
+      setError(e?.message || 'That connection could not be disconnected.');
     } finally {
       setBusy(false);
     }
@@ -58,19 +67,47 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         {/* Shown at rest, above the item's click area, so Disconnect never
             opens the details. */}
         <ItemActions className="ml-auto">
-          <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+          <Button variant="subtle" size="sm" onClick={() => { setError(''); setConfirming(true); }} disabled={busy}>
             {busy ? 'Removing…' : 'Disconnect'}
           </Button>
         </ItemActions>
       </>
     ),
+    confirm: (
+      <ConfirmModal
+        open={confirming}
+        title={`Disconnect ${title}?`}
+        message={isDatasourceRow(connection)
+          ? `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.`
+          : `${subtitle} will be disconnected. You can connect it again later.`}
+        confirmLabel="Disconnect"
+        busyLabel="Disconnecting…"
+        destructive
+        busy={busy}
+        error={error}
+        onConfirm={handleRemove}
+        onClose={() => { setConfirming(false); setError(''); }}
+      />
+    ),
   };
 }
 
 export default function ConnectionCard(props) {
-  return <ItemCard as="article" {...useConnectionSlots(props)} />;
+  const { confirm, ...slots } = useConnectionSlots(props);
+  return (
+    <>
+      <ItemCard as="article" {...slots} />
+      {confirm}
+    </>
+  );
 }
 
 export function ConnectionRow(props) {
-  return <ListItem as="article" {...useConnectionSlots(props)} />;
+  const { confirm, ...slots } = useConnectionSlots(props);
+  return (
+    <>
+      <ListItem as="article" {...slots} />
+      {confirm}
+    </>
+  );
 }
