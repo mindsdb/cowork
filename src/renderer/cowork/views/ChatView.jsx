@@ -3161,28 +3161,8 @@ export default function ChatView({
             data-vault form fullscreen. Docked, the titlebar toggle closes it. */}
         {isNarrow && (
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
-          <Tooltip content="Collapse panel">
-            <button
-              type="button"
-              className="chat-rail-close"
-              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
-              aria-label="Collapse panel"
-              // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-              // buttons — every property here stays co-located with the reset, and
-              // the hover color/background mutation needs a subsequent inline write
-              // to win over the reset.
-              style={{
-                all: 'unset', cursor: 'pointer',
-                width: 26, height: 26, borderRadius: 6,
-                display: 'inline-grid', placeItems: 'center',
-                color: T.ink3,
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-            >
-              {Ico.panelCollapseRight(16)}
-            </button>
-          </Tooltip>
+          {/* The same toggle as the titlebar's, so the glyph and ink match. */}
+          <RailToggle open onToggle={() => setRailNarrowOpen(false)} className="chat-rail-close" />
         </div>
         )}
         <ProgressBox
