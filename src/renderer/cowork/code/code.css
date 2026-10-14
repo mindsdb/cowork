@@ -91,9 +91,6 @@
 .code-sidebar-session__spinner { flex: none; width: 11px; height: 11px; border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 .code-status-dot.is-unread { background: var(--accent); }
 .code-sidebar-session-row.is-resting .code-sidebar-session__title { color: var(--ink-2); font-weight: 400; }
-.code-sidebar-archived { margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); }
-.code-sidebar-archived .code-sidebar-archived__panel { padding-top: 0; }
-.code-sidebar-archived .code-sidebar-session-row { opacity: .78; }
 
 /* Compact task context, shared by new and existing tasks. Lives in the app
    titlebar row (<AppHeader>), which supplies the height and padding. */

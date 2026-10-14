@@ -3,23 +3,21 @@ import WorkspaceBrand from './WorkspaceBrand';
 import { Kbd, Tooltip } from './ui';
 import { useAppHeaderSlots } from './appHeader';
 
-// The one fixed-height row across the top of the desktop window. Three zones:
+// The desktop window's top band, split the way the window is: the sidebar
+// column owns its own band (the brand lives in the sidebar's head row, so it
+// grows and shrinks with the sidebar as one box), and this row heads the
+// content column. Zones:
 //
-//   sidebar  window controls inset, the sidebar toggle (it never moves between
-//            open and collapsed), a new-task shortcut while the sidebar is
-//            hidden, and the brand / workspace menu. Docked, it sits over the
-//            sidebar at --sidebar-w on the sidebar's surface.
-//   view     the active view's header, portalled in through <AppHeader>.
-//   app      app-wide controls: search and the attention slot.
+//   lead  while the sidebar is hidden: a new-task shortcut and the compact
+//         brand, past the window controls and the sidebar toggle.
+//   view  the active view's header, portalled in through <AppHeader>.
+//   app   app-wide controls: search and the attention slot.
 //
-// This row is the window's only drag region; its controls opt out through the
-// global no-drag rule for buttons.
+// The row is a drag region; its controls opt out through the global no-drag
+// rule for buttons.
 export default function AppTitlebar({
   lightsInset,
   docked,
-  onToggleSidebar,
-  toggleLabel,
-  toggleShortcut,
   onNewTask,
   newTaskLabel,
   brand,
@@ -28,25 +26,25 @@ export default function AppTitlebar({
 }) {
   const { setHeader, setAttention } = useAppHeaderSlots();
   return (
-    <div className="app-titlebar" data-testid="app-titlebar">
-      <div
-        className={`app-titlebar__zone${docked ? ' is-docked' : ''}`}
-        style={{ paddingLeft: lightsInset }}
-      >
-        <Tooltip content={toggleShortcut ? `${toggleLabel}  (${toggleShortcut})` : toggleLabel}>
-          <button type="button" className="icon-btn" onClick={onToggleSidebar} aria-label={toggleLabel}>
-            {docked ? Ico.sidebarCollapseLeft(16) : Ico.sidebarExpandRight(16)}
-          </button>
-        </Tooltip>
-        {!docked && onNewTask && (
-          <Tooltip content={newTaskLabel}>
-            <button type="button" className="icon-btn" onClick={onNewTask} aria-label={newTaskLabel}>
-              {Ico.newTask(16)}
-            </button>
-          </Tooltip>
-        )}
-        <WorkspaceBrand {...brand} compact={!docked} />
-      </div>
+    <div
+      className={`app-titlebar${docked ? '' : ' is-collapsed'}`}
+      data-testid="app-titlebar"
+      // Hidden, the sidebar leaves the window controls and its toggle over
+      // this row's start, so the row clears them.
+      style={{ paddingLeft: docked ? 0 : lightsInset + SIDEBAR_TOGGLE_SLOT }}
+    >
+      {!docked && (
+        <div className="app-titlebar__lead">
+          {onNewTask && (
+            <Tooltip content={newTaskLabel}>
+              <button type="button" className="icon-btn" onClick={onNewTask} aria-label={newTaskLabel}>
+                {Ico.newTask(14)}
+              </button>
+            </Tooltip>
+          )}
+          <WorkspaceBrand {...brand} compact />
+        </div>
+      )}
       <div className="app-titlebar__main">
         <div ref={setHeader} className="app-titlebar__slot" />
         <div className="app-titlebar__app">
@@ -58,6 +56,24 @@ export default function AppTitlebar({
           <div ref={setAttention} className="app-titlebar__attention" />
         </div>
       </div>
+    </div>
+  );
+}
+
+// The toggle's footprint, button plus gap: the sidebar's head row and the
+// collapsed titlebar both leave this much room after the window controls.
+export const SIDEBAR_TOGGLE_SLOT = 30;
+
+// The sidebar toggle, pinned beside the window controls over both columns so
+// it stays put while the sidebar opens and closes beneath it.
+export function SidebarToggle({ lightsInset, label, shortcut, onToggle }) {
+  return (
+    <div className="app-sidebar-toggle" style={{ left: lightsInset }}>
+      <Tooltip content={shortcut ? `${label}  (${shortcut})` : label}>
+        <button type="button" className="icon-btn" onClick={onToggle} aria-label={label}>
+          {Ico.sidebar(14)}
+        </button>
+      </Tooltip>
     </div>
   );
 }

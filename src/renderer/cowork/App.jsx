@@ -15,7 +15,7 @@ import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
-import AppTitlebar from './components/AppTitlebar';
+import AppTitlebar, { SidebarToggle } from './components/AppTitlebar';
 import { overlayAppRegion } from './lib/appRegion';
 import { shortcutLabel } from './lib/shortcut';
 import { AppHeaderProvider, AppHeaderScope } from './components/appHeader';
@@ -5368,6 +5368,15 @@ function AppCore() {
   // Off macOS the toggle lines up with the sidebar's row icons below it.
   const titlebarLightsInset = !host.isWeb && host.isMac() ? 78 : 18;
   const sidebarDocked = !sidebarPopout && !sidebarCollapsedEffective;
+  // One brand, shown in the sidebar's head row or, while the sidebar is
+  // hidden, compact in the titlebar.
+  const titlebarBrand = {
+    wordmark: appearanceSettings.navTitle || 'MindsHub',
+    logo: appearanceSettings.navLogo || null,
+    mode: effectiveWorkspaceMode,
+    showSwitch: !host.isWeb && codeModeEnabled,
+    onChange: changeWorkspace,
+  };
 
   // Model Router isn't a real catalog model — Composer.jsx injects its own
   // pinned row directly, so it must not also get merged in here or it'd
@@ -5464,30 +5473,6 @@ function AppCore() {
       display: 'flex', flexDirection: 'column',
       position: 'relative',
     }}>
-      {/* The fixed titlebar row — the window's only drag region. Views fill
-          its header slot through <AppHeader>. MobileShell has its own bar. */}
-      {!isMobile && (
-        <AppTitlebar
-          lightsInset={titlebarLightsInset}
-          docked={sidebarDocked}
-          onToggleSidebar={sidebarPopout
-            ? () => setNavPopoutOpen((open) => !open)
-            : () => setSidebarCollapsed((c) => !c)}
-          toggleLabel={sidebarDocked ? 'Collapse sidebar' : 'Open sidebar'}
-          toggleShortcut={shortcutLabel('B')}
-          onNewTask={effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask}
-          newTaskLabel={effectiveWorkspaceMode === 'code' ? 'New code task' : 'New task'}
-          brand={{
-            wordmark: appearanceSettings.navTitle || 'MindsHub',
-            logo: appearanceSettings.navLogo || null,
-            mode: effectiveWorkspaceMode,
-            showSwitch: !host.isWeb && codeModeEnabled,
-            onChange: changeWorkspace,
-          }}
-          onOpenSearch={() => setSearchOpen(true)}
-          searchShortcut={shortcutLabel('K')}
-        />
-      )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
       {/*
         Sidebar — a docked flex item across the whole desktop + tablet range
@@ -5571,6 +5556,7 @@ function AppCore() {
           collapsed={sidebarCollapsedEffective}
           popout={sidebarPopout}
           lightsInset={titlebarLightsInset}
+          brand={titlebarBrand}
           displayToggle={displayToggle}
           onToggleCollapsed={sidebarPopout
             ? () => setNavPopoutOpen(false)
@@ -5642,6 +5628,20 @@ function AppCore() {
       </div>
       )}
 
+      {/* The content column: its titlebar row (the view's header and app
+          controls) over the routed view. */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {!isMobile && (
+        <AppTitlebar
+          lightsInset={titlebarLightsInset}
+          docked={sidebarDocked}
+          onNewTask={effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask}
+          newTaskLabel={effectiveWorkspaceMode === 'code' ? 'New code task' : 'New task'}
+          brand={titlebarBrand}
+          onOpenSearch={() => setSearchOpen(true)}
+          searchShortcut={shortcutLabel('K')}
+        />
+      )}
       <AppShell
         isMobile={isMobile}
         mainBg={mainBg}
@@ -6159,6 +6159,22 @@ function AppCore() {
             publish now. */}
       </AppShell>
       </div>
+      </div>
+      {/* The sidebar toggle floats over both columns beside the window
+          controls, so it never moves while the sidebar opens and closes. It
+          comes after both titlebar bands: Electron resolves drag regions in
+          document order, not stacking order, so placed before them its
+          no-drag button would sit inside their drag region. */}
+      {!isMobile && (
+        <SidebarToggle
+          lightsInset={titlebarLightsInset}
+          label={sidebarDocked ? 'Collapse sidebar' : 'Open sidebar'}
+          shortcut={shortcutLabel('B')}
+          onToggle={sidebarPopout
+            ? () => setNavPopoutOpen((open) => !open)
+            : () => setSidebarCollapsed((c) => !c)}
+        />
+      )}
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
