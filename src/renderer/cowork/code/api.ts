@@ -51,6 +51,15 @@ export interface PendingQuestion {
   }>;
 }
 
+/** ``in_place`` works in the chosen folder itself; ``worktree`` isolates the task. */
+export type WorkspaceMode = 'in_place' | 'worktree';
+
+/** The modes a new task could run in, resolved by the server for its project and computer. */
+export interface WorkspaceModeOptions {
+  supported: WorkspaceMode[];
+  default: WorkspaceMode;
+}
+
 export interface SessionCreateBody {
   repository_setup?: TaskRepositorySetup;
   task_mode?: TaskMode;
@@ -60,6 +69,8 @@ export interface SessionCreateBody {
   computer_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
+  /** Omit to let the server choose for the project and computer. */
+  workspace_mode?: WorkspaceMode;
   engine_id?: string;
   model?: string;
   permission_mode?: PermissionMode;
@@ -86,6 +97,8 @@ interface CreateCodeTaskBase {
   sourceContexts: SourceContext[];
   resourceIds?: string[];
   computerId?: string;
+  /** Set only when the composer offered a choice. */
+  workspaceMode?: WorkspaceMode;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -197,6 +210,8 @@ export interface CodingSession {
   source_path: string;
   workspace_path: string;
   workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
+  /** Absent on tasks created before modes were recorded; those are all isolated. */
+  workspace_mode?: WorkspaceMode | null;
   workspaces?: TaskWorkspace[];
   repository_root?: string | null;
   base_revision?: string | null;
@@ -808,6 +823,13 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceModes: (projectId: string | null, computerId?: string) => {
+    const query = new URLSearchParams();
+    if (projectId) query.set('project_id', projectId);
+    if (computerId) query.set('computer_id', computerId);
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
+  },
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
