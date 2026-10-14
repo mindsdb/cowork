@@ -7,6 +7,13 @@ export function distanceFromBottom(el: { scrollHeight: number; scrollTop: number
   return el.scrollHeight - el.scrollTop - el.clientHeight;
 }
 
+// The way back to the end appears once the reader is this far from it: a
+// screen, and never less than 400px (as opencode does), so a small scroll up
+// to reread a line doesn't flash a button.
+export function farFromEnd(el: { scrollHeight: number; scrollTop: number; clientHeight: number }): boolean {
+  return distanceFromBottom(el) > Math.max(400, el.clientHeight);
+}
+
 // A sent message comes to rest this far below the top of the transcript.
 export const ANCHOR_OFFSET_PX = 24;
 
@@ -46,7 +53,11 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
   const anchor = useRef<{ target: number; active: boolean; behavior: ScrollBehavior } | null>(null);
   const anchored = () => !!anchor.current?.active;
   const lastTop = useRef(0);
+  // A text selection inside the transcript is in progress.
+  const selecting = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // Far enough from the end to offer the way back (see farFromEnd).
+  const [isFar, setIsFar] = useState(false);
 
   const setStuck = useCallback((next: boolean) => {
     stuck.current = next;
@@ -67,12 +78,25 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    setIsFar(farFromEnd(el));
     const near = distanceFromBottom(el) < STICK_THRESHOLD_PX;
     if (anchored()) setIsAtBottom(near);
-    else if (near) setStuck(true);
+    else if (near && !selecting.current) setStuck(true);
     else if (el.scrollTop < lastTop.current) setStuck(false);
     lastTop.current = el.scrollTop;
   }, [scrollRef, setStuck]);
+
+  // The reader is doing something with what's on screen (selecting text,
+  // opening a collapsed block): stop following so it doesn't move under them.
+  const pause = useCallback(() => {
+    releaseAnchor();
+    stuck.current = false;
+  }, [releaseAnchor]);
+  // While a selection is held, scrolling near the end doesn't re-pin.
+  const setSelecting = useCallback((active: boolean) => {
+    selecting.current = active;
+    if (active) pause();
+  }, [pause]);
 
   // Scrolling up with a wheel or trackpad is intent even before the position
   // moves far enough to count: unpin straight away.
@@ -90,6 +114,7 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
     anchor.current = null;
     setReserve(0);
     setStuck(true);
+    setIsFar(false);
     el.scrollTo({ top: el.scrollHeight, behavior });
     lastTop.current = el.scrollTop;
   }, [scrollRef, setStuck]);
@@ -141,8 +166,8 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
   const isStuck = useCallback(() => stuck.current && !anchored(), []);
 
   return {
-    scrollRef, reserveRef, isAtBottom, isStuck,
-    onScroll, onWheel, releaseAnchor, scrollToBottom, follow, anchorLastTurn, updateReserve,
+    scrollRef, reserveRef, isAtBottom, isFar, isStuck,
+    onScroll, onWheel, releaseAnchor, pause, setSelecting, scrollToBottom, follow, anchorLastTurn, updateReserve,
   };
 }
 

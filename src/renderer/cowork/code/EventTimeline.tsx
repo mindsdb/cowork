@@ -751,7 +751,6 @@ export const EventTimeline = memo(function EventTimeline({
       stick={stick}
       className="code-timeline scroll-clean"
       contentClassName="code-timeline__inner chat-column"
-      scrollProps={{ 'aria-live': 'polite' }}
     >
       {hiddenCount > 0 && (
         <Button
