@@ -14,6 +14,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, SERVER_STOP_CEILING_MS } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
+import { registerKeepAwakeHandlers } from './keep-awake';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
@@ -1573,6 +1574,7 @@ function setupIPC() {
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
   registerUpdateJournalHandlers();
+  registerKeepAwakeHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds

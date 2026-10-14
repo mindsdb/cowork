@@ -70,6 +70,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -5306,6 +5307,16 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
+
+  // Hold off system sleep while a scheduled run is in flight or about to fire.
+  // Desktop only; the bridge is absent on web.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+  });
+  useEffect(() => {
+    window.antontron?.setScheduleKeepAwake?.(keepAwake);
+  }, [keepAwake]);
+  useEffect(() => () => { window.antontron?.setScheduleKeepAwake?.(false); }, []);
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
