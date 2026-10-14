@@ -674,6 +674,14 @@ export async function drainUpdateJournal(): Promise<UpdatePhaseEntry[]> {
   return [];
 }
 
+// Hold off system sleep while a scheduled run is in flight or about to fire
+// (src/main/keep-awake.ts). A no-op on web and on shells older than the channel.
+export function setScheduleKeepAwake(active: boolean): void {
+  if (isElectron && typeof bridge.setScheduleKeepAwake === 'function') {
+    void bridge.setScheduleKeepAwake(active);
+  }
+}
+
 export async function ackUpdateJournal(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   if (isElectron && typeof bridge.ackUpdateJournal === 'function') {
@@ -1719,6 +1727,7 @@ export const host = {
   applyUpdate,
   drainUpdateJournal,
   ackUpdateJournal,
+  setScheduleKeepAwake,
   checkForUpdates,
   getShellUpdate,
   getShellSupport,
