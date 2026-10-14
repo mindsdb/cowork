@@ -5687,14 +5687,14 @@ function AppCore() {
   });
 
   // Hold off system sleep while a scheduled run is in flight or about to fire.
-  // Desktop only; the bridge is absent on web.
+  // Desktop only; a no-op on web.
   const keepAwake = shouldKeepAwake(scheduled, {
     windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
   });
   useEffect(() => {
-    window.antontron?.setScheduleKeepAwake?.(keepAwake);
+    host.setScheduleKeepAwake(keepAwake);
   }, [keepAwake]);
-  useEffect(() => () => { window.antontron?.setScheduleKeepAwake?.(false); }, []);
+  useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
