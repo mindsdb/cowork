@@ -2463,7 +2463,7 @@ export default function ChatView({
         <ChatScroller
           stick={stick}
           scrollProps={{ 'data-scroll': 'true' }}
-          className="scroll-clean pt-8 bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean pt-6 bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
@@ -3237,12 +3237,10 @@ export default function ChatView({
         </ChatScroller>
         </div>
 
-        {/* Floating composer — no gradient fade behind it. Earlier we
-            had a 220px linear-gradient(transparent → var(--bg)) overlay
-            so messages would soften into the bg above the composer, but
-            with the gravity-field showing through it read as a dark
-            band at the bottom of the chat. The composer's own border +
-            shadow give enough visual separation on its own. */}
+        {/* Floating composer. Messages soften above it through the
+            transcript's mask, not a gradient overlay: an overlay read as a
+            dark band over the gravity field, while a mask fades the content
+            itself and holds over any backdrop. */}
         <div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
@@ -3330,7 +3328,7 @@ export default function ChatView({
         className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           railFloats
             ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-surface min-w-0 self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-5 px-6 gap-7 transition-opacity duration-layout ease-[ease]'
+            : 'bg-surface min-w-0 self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-4 px-5 gap-6 transition-opacity duration-layout ease-[ease]'
         }`}
         style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',

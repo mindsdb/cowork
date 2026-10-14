@@ -238,13 +238,13 @@ export default function ScheduleDetailView({
   const projectDisplay = projectLabel(projects.find((p) => p.id === task.projectId)) || '';
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
       <PageHeader
         crumbs={[{ label: 'Scheduled Tasks', onClick: onBack, title: 'All scheduled tasks' }]}
         current={task.title || 'Untitled schedule'}
       />
 
-      <div className="sched-body pt-[6px] px-[28px] pb-6 flex flex-col gap-4">
+      <div className="sched-body pt-3 px-[28px] pb-6 flex flex-col gap-4">
 
         {error && (
           <Alert variant="danger">{error}</Alert>

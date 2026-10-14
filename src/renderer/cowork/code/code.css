@@ -37,7 +37,7 @@
 /* Route-specific session history inside the canonical Cowork sidebar. */
 .code-sidebar-sessions { display: flex; flex-direction: column; }
 /* Vertical rhythm matches Cowork's sidebar: 30px rows 1px apart, and group
-   headings that are .section-label height (16px above, 4px below) with no
+   headings that are .section-label height (20px above, 6px below) with no
    extra gap before or after them. */
 .code-sidebar-sessions__label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* Negative block margins keep the Organize button from making this heading
