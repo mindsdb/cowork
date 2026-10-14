@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
+import { ComposerFrame } from './chat/ComposerFrame';
 import { Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
@@ -1008,7 +1009,7 @@ export default function Composer({
             <UsageBar warning={reservedBar} />
           </div>
         )}
-        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
@@ -1510,7 +1511,7 @@ export default function Composer({
               </Tooltip>
             )}
           </div>
-        </div>
+        </ComposerFrame>
       </div>
 
       {!hideMeta && (
