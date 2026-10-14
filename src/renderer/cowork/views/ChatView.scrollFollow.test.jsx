@@ -42,14 +42,14 @@ describe('following new content', () => {
   });
 
   it('keeps a reader at the bottom pinned as an answer arrives', () => {
-    const { container, rerender } = render(<ChatView task={taskWith(first)} />);
+    const messages = [...first, { role: 'user', id: 'u2', content: 'more' }];
+    const { container, rerender } = render(<ChatView task={taskWith(messages)} isStreaming />);
     box.height = 2600;
-    rerender(<ChatView task={taskWith([...first, { role: 'user', id: 'u2', content: 'more' }])} />);
+    rerender(<ChatView task={taskWith([...messages, { role: 'assistant', id: 'a2', content: 'reply' }])} />);
     expect(scroller(container).scrollTop).toBe(2000);
   });
 
-  // Fixed by the shared ChatScroller: today any new row pulls the reader down.
-  it.fails('leaves a reader who scrolled up where they are when an answer lands', () => {
+  it('leaves a reader who scrolled up where they are when an answer lands', () => {
     const messages = [...first, { role: 'user', id: 'u2', content: 'more' }];
     const { container, rerender } = render(<ChatView task={taskWith(messages)} isStreaming />);
     box.scrollReaderTo(scroller(container), 300);
