@@ -591,3 +591,12 @@ describe('Sidebar — says why other work is missing (ENG-2169)', () => {
     expect(screen.queryByText(/stay there/)).toBeNull();
   });
 });
+
+describe('Sidebar — Compare models', () => {
+  it('sits in the Agent group and opens the compare route', () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
+    screen.getByRole('button', { name: 'Compare Models' }).click();
+    expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});
