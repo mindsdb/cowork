@@ -1,4 +1,6 @@
-import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+
+import Ico from '../Icons';
 
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
@@ -14,8 +16,9 @@ type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'chil
  * useStickToBottom); each surface keeps its own content and spacing. The end
  * of the content is padded by `--chat-dock-height` (see useDockInset) so the
  * last message scrolls clear of a composer floating over the transcript.
- * `overlay` renders over the scroll box, above the dock: the place for
- * controls that float with the transcript rather than scroll with it.
+ * A reader scrolled away from the end gets a button back to it, marked when
+ * new content has arrived below them. `overlay` renders over the scroll box
+ * too: the place for other controls that float rather than scroll.
  */
 export function ChatScroller({
   stick,
@@ -33,13 +36,19 @@ export function ChatScroller({
   children: ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const { isStuck, scrollToBottom } = stick;
+  const { isStuck, scrollToBottom, isAtBottom } = stick;
+  // Whether content arrived below a reader who scrolled up.
+  const [unseen, setUnseen] = useState(false);
+  useEffect(() => { if (isAtBottom) setUnseen(false); }, [isAtBottom]);
   // Content that grows in place (a streamed answer, an opened tray) keeps a
   // pinned reader at the end without the transcript re-rendering.
   useEffect(() => {
     const content = contentRef.current;
     if (!content || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => { if (isStuck()) scrollToBottom('auto'); });
+    const observer = new ResizeObserver(() => {
+      if (isStuck()) scrollToBottom('auto');
+      else setUnseen(true);
+    });
     observer.observe(content, { box: 'border-box' });
     return () => observer.disconnect();
   }, [isStuck, scrollToBottom]);
@@ -49,12 +58,27 @@ export function ChatScroller({
         {...scrollProps}
         ref={stick.scrollRef}
         onScroll={stick.onScroll}
-        className={`chat-scroller__box flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${className}`}
+        className={`chat-scroller__box flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${className}`}
       >
         <div ref={contentRef} className={`chat-scroller__content ${contentClassName}`}>
           {children}
         </div>
       </div>
+      {!isAtBottom && (
+        <button
+          type="button"
+          className="chat-jump"
+          aria-label={unseen ? 'Scroll to latest, new messages below' : 'Scroll to latest'}
+          onClick={() => {
+            const reduce = typeof window.matchMedia === 'function'
+              && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            scrollToBottom(reduce ? 'auto' : 'smooth');
+          }}
+        >
+          {Ico.arrowDown(16)}
+          {unseen && <span className="chat-jump__dot" aria-hidden="true" />}
+        </button>
+      )}
       {overlay}
     </div>
   );

@@ -15,6 +15,7 @@
 // button design.
 import {
   AppWindow,
+  ArrowDown,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -194,6 +195,7 @@ const Ico = {
   // Errors the previewed page reported about itself (ENG-3002).
   warning:      ico(TriangleAlert),
   // "Open in the default browser".
+  arrowDown: ico(ArrowDown),
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).
   arrowUpLeft: ico(ArrowUpLeft, 14),
