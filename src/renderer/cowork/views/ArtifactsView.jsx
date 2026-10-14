@@ -230,17 +230,15 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
+  // No raw window.open fallback: host.openExternal is what restricts the
+  // agent-writable URL to http(s)/mailto.
   const onOpenPublished = async () => {
     if (!published) return;
-    try { await host.openExternal(artifact.publishedUrl); } catch {
-      window.open(artifact.publishedUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const onOpenPrivate = async () => {
     if (!privateUrl) return;
-    try { await host.openExternal(privateUrl); } catch {
-      window.open(privateUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(privateUrl); } catch {}
   };
 
   // Not `projectLabel`: that name belongs to the imported
