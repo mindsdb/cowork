@@ -1,6 +1,7 @@
-import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 
 import Ico from '../Icons';
+import { TurnMinimap } from './TurnMinimap';
 
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
@@ -16,7 +17,9 @@ type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'chil
  * useStickToBottom); each surface keeps its own content and spacing. The end
  * of the content is padded by `--chat-dock-height` (see useDockInset) so the
  * last message scrolls clear of a composer floating over the transcript.
- * A reader scrolled away from the end gets a button back to it. `overlay` renders over the scroll box
+ * A reader scrolled away from the end gets a button back to it. Longer
+ * conversations get a turn
+ * minimap on the right edge (TurnMinimap). `overlay` renders over the scroll box
  * too: the place for other controls that float rather than scroll.
  */
 export function ChatScroller({
@@ -36,6 +39,9 @@ export function ChatScroller({
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const { isStuck, scrollToBottom, isAtBottom } = stick;
+  // Bumped when the content's size changes, so the minimap re-reads turns.
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  const versionFrame = useRef(0);
   // Content that grows in place (a streamed answer, an opened tray) keeps a
   // pinned reader at the end without the transcript re-rendering.
   useEffect(() => {
@@ -43,9 +49,11 @@ export function ChatScroller({
     if (!content || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {
       if (isStuck()) scrollToBottom('auto');
+      cancelAnimationFrame(versionFrame.current);
+      versionFrame.current = requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
     });
     observer.observe(content, { box: 'border-box' });
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); cancelAnimationFrame(versionFrame.current); };
   }, [isStuck, scrollToBottom]);
   return (
     <div className="chat-scroller relative flex flex-1 flex-col min-h-0 min-w-0">
@@ -73,6 +81,7 @@ export function ChatScroller({
           {Ico.arrowDown(16)}
         </button>
       )}
+      <TurnMinimap scrollRef={stick.scrollRef} version={layoutVersion} />
       {overlay}
     </div>
   );
