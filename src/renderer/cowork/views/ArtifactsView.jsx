@@ -915,7 +915,7 @@ export default function ArtifactsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
     <div
-      className="scroll-clean flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
+      className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
     >
       <PageHeader
         title="Live Artifacts"

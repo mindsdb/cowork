@@ -745,7 +745,7 @@ export const EventTimeline = memo(function EventTimeline({
   return (
     <div
       ref={scrollRef}
-      className="code-timeline scroll-clean"
+      className="code-timeline transcript-fade scroll-clean"
       aria-live="polite"
       onScroll={(event) => {
         const element = event.currentTarget;

@@ -408,10 +408,12 @@ function createWindow() {
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     // Embed the macOS traffic lights in the renderer's titlebar row
-    // (--titlebar-h, 52px). Coordinates are window-relative; y:20 centres the
-    // 12px lights in the row, and the row's sidebar zone starts past them
+    // (--titlebar-h, 52px). Coordinates are window-relative and set the
+    // buttons' frame, which sits taller than the 12px lights: y:18 puts their
+    // centre on the row's centre line (26px, measured), level with the
+    // toggle, brand and search. The sidebar zone starts past them
     // (titlebarLightsInset in App.jsx).
-    trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 20 } : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 18 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
     webPreferences: {

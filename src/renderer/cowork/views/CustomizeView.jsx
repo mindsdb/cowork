@@ -602,7 +602,7 @@ export default function CustomizeView({
   return (
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
-    <div className="scroll-clean flex flex-1 flex-col overflow-y-auto">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex flex-1 flex-col overflow-y-auto">
       <PageHeader
         title="Connect Apps and Data"
         subtitle={`Connect ${agentLabel} to the tools you already use, and automate work there.`}

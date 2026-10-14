@@ -142,7 +142,7 @@ export function CodeTasksView({
   ];
 
   return (
-    <main className="code-tasks-view">
+    <main className="code-tasks-view titlebar-fade titlebar-fade--page">
       {/* Drill-down trail, rendered into the app titlebar like every other
           breadcrumb: Projects › project. */}
       {projectId && <PageHeader
