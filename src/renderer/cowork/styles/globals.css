@@ -3377,7 +3377,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 
 /* ─── Chat fenced code blocks (Claude-style) ─────────────────────────────
    Rendered by MarkdownCode for any fenced block whose language isn't
-   one of our special kinds (chartjs / chart / data-vault-form*).
+   a data-vault-form* kind.
    Header carries the language tag + a Copy button driven by a delegated
    click listener mounted on the MarkdownContent root. */
 /* Text selection inside chat-rendered markdown — scoped so it can't leak

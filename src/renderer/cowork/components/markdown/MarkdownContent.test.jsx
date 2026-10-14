@@ -389,7 +389,7 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     hostState.isWeb = true;
     try {
       const { container } = render(<MarkdownContent
-        text={'my dev server: [app](http://localhost:3000/)'} complete variant="user" enableForms={false} enableCharts={false} />);
+        text={'my dev server: [app](http://localhost:3000/)'} complete variant="user" enableForms={false} />);
       const a = container.querySelector('a');
       expect(a).not.toBeNull();
       expect(a.getAttribute('href')).toBe('http://localhost:3000/');
