@@ -18,6 +18,7 @@ vi.mock('./token-store', () => ({
   isAccessTokenExpired: vi.fn(() => false),
 }));
 vi.mock('./server-process', () => ({
+  getRunningSidecarOrgId: vi.fn(() => null),
   getServerPort: vi.fn(() => 8765),
   isServerRunning: vi.fn(() => true),
   isServerStarting: vi.fn(() => false),
@@ -42,7 +43,7 @@ vi.mock('./cowork-home', () => ({
 }));
 
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
-import { getServerPort, isServerRunning, isServerStarting } from './server-process';
+import { getRunningSidecarOrgId, getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import { resolveAccountRoot } from './account-data';
 import {
@@ -198,6 +199,26 @@ describe('pushMindsCredential', () => {
     expect(calls[0].url).toBe('http://127.0.0.1:8765/api/v1/runtime-credential/minds');
     expect(calls[0].auth).toBe('Bearer owner-token');
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'a-token' });
+  });
+
+  it('warns when a session token goes over with no organization to pin', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installFetch();
+    await pushMindsCredential('a-token');
+    await pushMindsCredential('mdb_users_own');
+    vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
+    await pushMindsCredential('a-token');
+
+    const noOrg = warn.mock.calls.filter(([msg]) => String(msg).includes('no organization'));
+    expect(noOrg).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it('sends the organization the sidecar was started on, so its turns stay billed there', async () => {
+    vi.mocked(getRunningSidecarOrgId).mockReturnValueOnce('org-a');
+    const calls = installFetch();
+    expect(await pushMindsCredential('a-token')).toBe(true);
+    expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'a-token', organization_id: 'org-a' });
   });
 
   it('does not release a resume gate merely because a generic stale-token push landed', async () => {

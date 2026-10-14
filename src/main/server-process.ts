@@ -24,6 +24,7 @@ import {
   orgStoreEnv,
   orgStoreRoot,
   readActiveOrg,
+  readOrgClaim,
   ACCOUNTS_DIR,
   listOrgSegments,
 } from './account-data';
@@ -205,6 +206,22 @@ let _runningAccountRoot: string | null | undefined;
 // absolute path. Captured at spawn rather than re-read later, so a record that
 // moves during a start cannot make us record a root the process is not on.
 let _runningOrgStoreRoot: string | undefined;
+
+// The organization id those stores belong to. Turns bill this organization, not
+// the one a later token names: a refresh after a switch on another device
+// rewrites the record before the sidecar moves.
+let _runningOrgId: string | null = null;
+
+/** The organization the running sidecar's stores belong to, or null if none is recorded. */
+export function getRunningSidecarOrgId(): string | null {
+  if (_runningOrgId) return _runningOrgId;
+  // Started before any org was known (a fresh install opens signed out), then the
+  // sign-in claimed the same stores so nothing restarted it. The claim names their
+  // owner and, unlike the active-org record, no token refresh rewrites it.
+  if (!_runningOrgStoreRoot || !(isServerRunning() || isServerStarting())) return null;
+  const claim = readOrgClaim(_runningOrgStoreRoot);
+  return claim.kind === 'claimed' ? claim.orgId : null;
+}
 
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
@@ -714,6 +731,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
       _runningOrgStoreRoot = currentOrgStoreRoot();
+      _runningOrgId = readActiveOrg(accountDataRoot());
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -815,7 +833,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // unconfigured.
     const orgStoreRootAtSpawn = currentOrgStoreRoot();
     const orgSegmentAtSpawn = currentOrgSegment();
-    const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
+    const orgIdAtSpawn = readActiveOrg(accountDataRoot());
+    const orgEnv = orgStoreEnv(accountDataRoot(), orgIdAtSpawn);
     console.log(
       `[server] build kind "${kind}" → data home ${dataHome}` +
         (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
@@ -933,6 +952,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       childExitCode = code;
       serverStarted = false;
       serverProcess = null;
+      _runningOrgId = null;
       lastExitCode = code;
       // Attribute the death: if `_stopRequested` is set, this exit
       // was caused by stopServer() (user clicked Stop, or the app is
@@ -950,6 +970,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     });
 
     serverProcess = child;
+    // Recorded at spawn, not after /health: a hand-over can land while it starts.
+    _runningOrgId = orgIdAtSpawn;
 
     // Wait on the child's liveness, not on a fixed timer: poll /health for as
     // long as the process is alive and still starting, up to the hard cap. A
@@ -1016,6 +1038,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
+    _runningOrgId = orgIdAtSpawn;
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only
@@ -1101,6 +1124,7 @@ async function stopServerUnlocked(): Promise<void> {
   if (!proc) {
     if (_adoptedExternal) await prepareCodingTasksForShutdown();
     serverStarted = false;
+    _runningOrgId = null;
     lastStopIntentional = true;
     // If we adopted an external server (no child handle), try to kill
     // whatever is listening on the port so the next launch gets a clean
@@ -1125,6 +1149,7 @@ async function stopServerUnlocked(): Promise<void> {
   serverStarted = false;
   _runningAccountRoot = undefined;
   _runningOrgStoreRoot = undefined;
+  _runningOrgId = null;
 
   const exited = new Promise<void>((resolve) => {
     proc.once('exit', () => resolve());
@@ -1174,6 +1199,7 @@ export async function forceReapServer(): Promise<void> {
     killTree(proc, 'SIGKILL');
   }
   serverStarted = false;
+  _runningOrgId = null;
   await killProcessOnPort(serverPort);
   if (serverProcess === proc) serverProcess = null;
 }
