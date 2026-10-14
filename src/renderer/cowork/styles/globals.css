@@ -782,23 +782,17 @@ a[href],
 /* ─── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap {
   width: 100%; max-width: var(--composer-max-width, 640px);
-  /* Border, radius, resting shadow and focus ring come from the shared
+  /* Border, radius, resting shadow and focus border come from the shared
      ComposerFrame (components/chat/chat.css). */
 }
 /* In-fence indicator — caret sits inside a fenced code block. Subtle
    accent-tinted inner stripe on the left edge plus a soft body wash, so
-   it layers under the focus ring rather than competing with it. Toggled
+   it layers under the focus border rather than competing with it. Toggled
    from React based on `fenceCtxAt(value, caretPos) !== null`. */
 .composer-wrap.in-fence {
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    var(--sh-1);
-}
-.composer-wrap.in-fence.is-focused {
-  box-shadow:
-    inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent),
     var(--sh-1);
 }
 /* Font, line-height, and padding MUST match the textarea exactly — both

@@ -16,8 +16,9 @@
   .chat-column { --chat-gutter: 14px; }
 }
 
-/* The composer card (ComposerFrame). One resting shadow token and one focus
-   treatment: the accent border plus a soft accent ring. */
+/* The composer card (ComposerFrame). One resting shadow token and one quiet
+   focus treatment: the border turns accent, with no ring, as in assistant-ui;
+   t3code and opencode show no focus state at all. */
 .composer-frame {
   position: relative;
   background: var(--surface-0);
@@ -29,7 +30,6 @@
 .composer-frame:has(:where(textarea:focus)),
 .composer-frame.is-focused {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), var(--sh-1);
 }
 .composer-frame.is-dragging {
   border-color: var(--accent);
