@@ -75,20 +75,21 @@
 .chat-jump:hover { color: var(--ink); border-color: var(--line-2); }
 .chat-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Turn minimap (TurnMinimap): a rail of ticks on the transcript's right edge,
-   one per user turn. Hidden where the transcript is too narrow to spare the
-   edge beside the reading column. */
+/* Turn minimap (TurnMinimap): a rail of ticks on the transcript's left edge,
+   one per user turn, as in t3code and opencode. Hidden where the transcript
+   is too narrow to spare the edge beside the reading column, and on touch
+   screens, where there is no hover to preview a tick. */
 .chat-scroller { container: chat-scroller / inline-size; }
 .chat-minimap {
   position: absolute;
   z-index: 3;
   top: 50%;
-  right: 2px;
+  left: 2px;
   transform: translateY(-50%);
   max-height: 60%;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   overflow: hidden;
   padding: 4px 0;
 }
@@ -97,7 +98,7 @@
   height: 12px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding: 0 2px;
   border: 0;
   background: transparent;
@@ -117,5 +118,8 @@
 .chat-minimap__tick.is-active::before { width: 16px; background: var(--accent); }
 .chat-minimap__tick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 @container chat-scroller (max-width: 560px) {
+  .chat-minimap { display: none; }
+}
+@media (pointer: coarse) {
   .chat-minimap { display: none; }
 }

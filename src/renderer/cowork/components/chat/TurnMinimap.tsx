@@ -36,7 +36,7 @@ function collectTurns(box: HTMLElement): MinimapTurn[] {
 }
 
 /**
- * A rail of ticks on the transcript's right edge, one per user turn. Hovering
+ * A rail of ticks on the transcript's left edge, one per user turn. Hovering
  * a tick shows the start of that prompt; clicking it scrolls the turn into
  * view. The tick for the turn being read is highlighted.
  *
@@ -90,7 +90,7 @@ export function TurnMinimap({
   return (
     <nav className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}`} aria-label="Conversation turns">
       {turns.map((turn, i) => (
-        <Tooltip key={turn.id || i} content={turn.snippet || 'Message'} side="left">
+        <Tooltip key={turn.id || i} content={turn.snippet || 'Message'} side="right">
           <button
             type="button"
             className={`chat-minimap__tick${i === active ? ' is-active' : ''}`}
