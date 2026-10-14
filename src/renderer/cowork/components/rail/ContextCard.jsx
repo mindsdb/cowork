@@ -331,6 +331,10 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
+// A section header's + button. The -5px (measured) pulls the glyph's ink out to where
+// the open section chevron's ink ends, so the right edges line up.
+const RAIL_HEADER_ACTION = 'h-5 w-5 -mr-[5px] justify-center rounded hover:bg-surface-2';
+
 export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
   projects = [],
 }) {
@@ -684,7 +688,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               title={uploadBusy ? 'Uploading…' : 'Add files to this project'}
               disabled={uploadBusy}
               width={220}
-              triggerClassName="h-5 w-5 justify-center rounded hover:bg-surface-2"
+              triggerClassName={RAIL_HEADER_ACTION}
               items={[
                 {
                   id: 'attach-computer',
@@ -821,7 +825,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 onClick={() => taskUploadInputRef.current?.click()}
                 className={clsx(
                   'inline-flex items-center justify-center',
-                  'h-5 w-5 rounded',
+                  RAIL_HEADER_ACTION,
                   'text-ink-4 hover:text-ink hover:bg-surface-2',
                   'transition-colors bg-transparent border-0 cursor-pointer',
                   'disabled:opacity-50 disabled:cursor-wait',

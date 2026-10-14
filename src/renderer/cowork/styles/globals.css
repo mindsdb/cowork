@@ -627,6 +627,13 @@ input, textarea { font-family: inherit; }
 .app-titlebar__search:hover { background: var(--surface-3); color: var(--ink); }
 .app-titlebar__search .kbd { margin-left: 8px; }
 
+/* A hairline between neighbouring right-rail sections; the rail's gap sits
+   above it and this padding below, so the rule is centred between them. */
+.rail-section + .rail-section {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
 /* Brand / workspace menu in the sidebar's head row. */
 .app-brand {
   display: inline-flex;
