@@ -71,6 +71,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -5344,6 +5345,16 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
+
+  // Hold off system sleep while a scheduled run is in flight or about to fire.
+  // Desktop only; the bridge is absent on web.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+  });
+  useEffect(() => {
+    window.antontron?.setScheduleKeepAwake?.(keepAwake);
+  }, [keepAwake]);
+  useEffect(() => () => { window.antontron?.setScheduleKeepAwake?.(false); }, []);
 
   // A desktop notification when the server pauses a schedule after repeated
   // failures, where the OS allows one; clicking it opens that schedule. Until
