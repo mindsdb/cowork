@@ -72,6 +72,41 @@ describe('SkillsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Uninstall/ })).toHaveAttribute('data-disabled');
   });
 
+  it('shows a built-in skill with every capability false as read-only built-in', () => {
+    /* The shape cowork-server sends for a built-in or operator-provided skill
+       on a stack where each person has their own space: no capability and no
+       attribution actor. */
+    const builtinSkill = {
+      ...lockedSkill,
+      label: 'operator-skill',
+      description: 'A skill the operator provides.',
+      isBuiltin: true,
+      capabilities: { canEdit: false, canDelete: false, canDisable: false },
+      attribution: { createdBy: null, lastModifiedBy: null, lastModifiedAt: null },
+    };
+    skillState.skills = [builtinSkill];
+    render(<SkillsView />);
+
+    const row = screen.getByRole('article', { name: 'operator-skill' });
+    expect(within(row).getByText('Built-in')).toBeInTheDocument();
+    expect(within(row).queryByText('Another member')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('operator-skill'));
+
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('note')).toHaveTextContent('Built-in skills are read only.');
+    expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const edit = screen.getByRole('menuitem', { name: /Edit/ });
+    const uninstall = screen.getByRole('menuitem', { name: /Uninstall/ });
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Built-in');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Built-in');
+  });
+
   it('renders rows with no view toggle, even with a stored grid preference', () => {
     localStorage.setItem('anton:skills-view', 'grid');
 
