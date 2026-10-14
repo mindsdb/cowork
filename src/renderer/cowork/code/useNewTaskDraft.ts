@@ -18,12 +18,21 @@ import {
   type PermissionMode,
   type ProjectFolderInspection,
   type SourceContext,
+  type WorkspaceMode,
+  type WorkspaceModeOptions,
 } from './api';
 import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 import type { TaskRepositorySetup } from './repositorySetupModels';
+import {
+  WORKTREE_ONLY,
+  effectiveWorkspaceMode,
+  offersWorkspaceChoice,
+  storeWorkspaceMode,
+  storedWorkspaceMode,
+} from './workspaceMode';
 
 // The folder of the last folder-only task, preselected for the next one.
 const LAST_FOLDER_KEY = 'mindshub-code:last-folder';
@@ -146,6 +155,29 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
+  // The server says which modes this task could run in; until it answers, or
+  // if it predates modes, the task is isolated as it always was.
+  const [workspaceModeOptions, setWorkspaceModeOptions] = useState<WorkspaceModeOptions>(WORKTREE_ONLY);
+  const [rememberedWorkspaceMode, setRememberedWorkspaceMode] = useState<WorkspaceMode | null>(storedWorkspaceMode);
+  const selectedProjectKey = selectedProject?.id ?? null;
+  const workspaceModeComputer = selectedProject ? computerId || undefined : undefined;
+  useEffect(() => {
+    let current = true;
+    setWorkspaceModeOptions(WORKTREE_ONLY);
+    void (async () => {
+      try {
+        const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer);
+        if (current) setWorkspaceModeOptions(options);
+      } catch { /* No answer: keep the isolated default. */ }
+    })();
+    return () => { current = false; };
+  }, [selectedProjectKey, workspaceModeComputer]);
+  const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
+  const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, rememberedWorkspaceMode);
+  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setRememberedWorkspaceMode(mode);
+    storeWorkspaceMode(mode);
+  }, []);
   const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
   const [repositoryChoice, setRepositoryChoice] = useState<{
     key: string;
@@ -408,6 +440,7 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
+      ...(workspaceModeChoice ? { workspaceMode } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -436,6 +469,9 @@ export function useNewTaskDraft({
     engineLoading,
     permissionMode,
     setPermissionMode,
+    workspaceMode,
+    setWorkspaceMode,
+    workspaceModeChoice,
     reasoningEffort,
     setReasoningEffort,
     effortLevels,

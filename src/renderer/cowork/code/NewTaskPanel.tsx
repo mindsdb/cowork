@@ -15,6 +15,7 @@ import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from '.
 import { CodeProjectPicker } from './CodeProjectPicker';
 import { ExecutionTargetSelect } from './ExecutionTargetSelect';
 import { PermissionSelect } from './PermissionSelect';
+import { WorkspaceModeSelect } from './WorkspaceModeSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { TaskSourceLinks } from './TaskSourceLinks';
@@ -219,6 +220,13 @@ export function NewTaskPanel({
                     draft.setRepositorySetup(setup);
                   }}
                 />
+                {draft.workspaceModeChoice && (
+                  <WorkspaceModeSelect
+                    value={draft.workspaceMode}
+                    onValueChange={draft.setWorkspaceMode}
+                    disabled={busy || executionLoading}
+                  />
+                )}
                 <ExecutionTargetSelect
                   computers={allComputers}
                   computerId={computerId}
@@ -232,6 +240,13 @@ export function NewTaskPanel({
             )}
             {!selectedProject && (
               <div className="code-task-execution-controls">
+                {draft.workspaceModeChoice && (
+                  <WorkspaceModeSelect
+                    value={draft.workspaceMode}
+                    onValueChange={draft.setWorkspaceMode}
+                    disabled={busy}
+                  />
+                )}
                 <ExecutionTargetSelect
                   computers={allComputers}
                   computerId={computerId}
