@@ -58,12 +58,26 @@ describe('following new content', () => {
     expect(scroller(container).scrollTop).toBe(300);
   });
 
-  it('brings a reader who scrolled up to the bottom when they send', () => {
+  it('brings the message the reader sends to the top, with room below for the answer', () => {
     const { container, rerender } = render(<ChatView task={taskWith(first)} />);
     box.scrollReaderTo(scroller(container), 300);
     box.height = 2600;
-    rerender(<ChatView task={taskWith([...first, { role: 'user', id: 'u2', content: 'more' }])} />);
-    expect(scroller(container).scrollTop).toBe(2000);
+    // No layout in happy-dom: the sent turn sits 2200px down the transcript.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const el = this;
+      const top = el.dataset?.turnId === 'm:u2' ? 2200 - scroller(container).scrollTop : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON() {} };
+    });
+    const scrollTo = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    try {
+      rerender(<ChatView task={taskWith([...first, { role: 'user', id: 'u2', content: 'more' }])} />);
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 2176 }));
+      // 2176 + 600 visible − 2600 of content leaves 176px to reserve.
+      expect(container.querySelector('.chat-scroller__reserve').style.height).toBe('176px');
+    } finally {
+      rect.mockRestore();
+      scrollTo.mockRestore();
+    }
   });
 
   it('opens another conversation at its end', () => {

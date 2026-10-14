@@ -64,8 +64,9 @@ describe('nextScrollAnchor', () => {
       expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: { ...previousAnchor, taskId: 't0' } })).toBe('end');
     });
 
-    it('goes to the end when the reader sends a message', () => {
-      expect(actionFor({ messages: rows('user', 'assistant', 'user'), previousAnchor })).toBe('end');
+    it('anchors the message the reader just sent', () => {
+      expect(actionFor({ messages: rows('user', 'assistant', 'user'), previousAnchor })).toBe('sent');
+      expect(actionFor({ messages: rows('user', 'assistant', 'user', 'activity'), previousAnchor })).toBe('sent');
     });
 
     it('only follows when a reply lands or nothing new was added', () => {

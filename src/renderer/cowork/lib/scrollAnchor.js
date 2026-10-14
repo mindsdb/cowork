@@ -3,8 +3,9 @@
 //   'hold'   — an older page was prepended; shift by scrollHeightDelta so the
 //              reader's position stays put. A snap to the bottom there would
 //              yank someone reading old history down to the live edge.
-//   'end'    — a different conversation, or the reader just sent a message:
-//              go to the end whatever they were reading.
+//   'end'    — a different conversation: go to the end.
+//   'sent'   — the reader just sent a message: bring it to the top of the
+//              view, whatever they were reading, with room for the answer.
 //   'follow' — anything else at the end (a reply landing, a stream starting):
 //              stay at the end only if the reader was already there.
 //
@@ -23,12 +24,15 @@ export function nextScrollAnchor({ taskId, messages, previousAnchor, scrollHeigh
     && firstKey != null
     && firstKey !== previousAnchor.firstKey
     && messages.length > (previousAnchor.messageCount ?? 0);
+  // The rows added since last time include a user message. Not only the last
+  // row: a thinking placeholder can land after it in the same update.
   const appendedUserMessage = sameTask
     && messages.length > (previousAnchor.messageCount ?? 0)
-    && messages[messages.length - 1]?.role === 'user';
+    && messages.slice(previousAnchor.messageCount ?? 0).some((m) => m?.role === 'user');
   let action = 'follow';
   if (isPrepend) action = 'hold';
-  else if (!sameTask || appendedUserMessage) action = 'end';
+  else if (!sameTask) action = 'end';
+  else if (appendedUserMessage) action = 'sent';
   return {
     action,
     isPrepend,

@@ -6,7 +6,7 @@ import { TurnMinimap } from './TurnMinimap';
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
 
-type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll'> & {
+type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onKeyDown'> & {
   [data: `data-${string}`]: string | undefined;
 };
 
@@ -38,7 +38,7 @@ export function ChatScroller({
   children: ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const { isStuck, scrollToBottom, isAtBottom } = stick;
+  const { isStuck, scrollToBottom, isAtBottom, updateReserve, releaseAnchor } = stick;
   // Bumped when the content changes size or its nodes change, so the minimap
   // re-reads turns. Switching between two equally tall conversations swaps
   // the turns without a resize.
@@ -54,6 +54,7 @@ export function ChatScroller({
       versionFrame.current = requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
     };
     const resize = new ResizeObserver(() => {
+      updateReserve();
       if (isStuck()) scrollToBottom('auto');
       bump();
     });
@@ -61,17 +62,25 @@ export function ChatScroller({
     const mutation = new MutationObserver(bump);
     mutation.observe(content, { childList: true, subtree: true });
     return () => { resize.disconnect(); mutation.disconnect(); cancelAnimationFrame(versionFrame.current); };
-  }, [isStuck, scrollToBottom]);
+  }, [isStuck, scrollToBottom, updateReserve]);
   return (
     <div className="chat-scroller relative flex flex-1 flex-col min-h-0 min-w-0">
       <div
         {...scrollProps}
         ref={stick.scrollRef}
         onScroll={stick.onScroll}
+        onWheel={stick.onWheel}
+        onTouchStart={releaseAnchor}
+        onKeyDown={(event) => {
+          if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) releaseAnchor();
+        }}
         className={`chat-scroller__box flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${className}`}
       >
         <div ref={contentRef} className={`chat-scroller__content ${contentClassName}`}>
           {children}
+          {/* Room below a just-sent message, so it can rest at the top while
+              the answer streams in (useStickToBottom.anchorLastTurn). */}
+          <div ref={stick.reserveRef} className="chat-scroller__reserve" aria-hidden="true" />
         </div>
       </div>
       {!isAtBottom && (
