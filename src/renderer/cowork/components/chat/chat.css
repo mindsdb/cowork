@@ -123,3 +123,14 @@
 @media (pointer: coarse) {
   .chat-minimap { display: none; }
 }
+/* Tick preview: the prompt, then the opening of its answer in the tooltip's
+   quieter ink. Each clamps to three lines. */
+.chat-minimap__preview { display: flex; flex-direction: column; gap: 4px; }
+.chat-minimap__prompt,
+.chat-minimap__answer {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.chat-minimap__answer { color: color-mix(in srgb, var(--surface) 68%, transparent); font-weight: 400; }

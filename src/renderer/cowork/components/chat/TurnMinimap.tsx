@@ -9,7 +9,25 @@ const SNIPPET_CHARS = 120;
 export interface MinimapTurn {
   id: string;
   snippet: string;
+  // The opening of the turn's answer, when it has one yet.
+  answer: string;
   top: number;
+}
+
+// Answers in either surface: Cowork's answer turn, Code Mode's agent message.
+const ANSWER_SELECTOR = '.answer-turn, .code-agent-message';
+
+/** The answer that closes a turn: the last answer between this user turn and
+ *  the next. Code Mode can post progress notes first; the last one is the
+ *  reply. Reads the markdown only, not the action row or agent label. */
+export function answerAfter(turn: Element): string {
+  let answer: Element | null = null;
+  for (let el = turn.nextElementSibling; el && !el.matches('[data-turn-id]'); el = el.nextElementSibling) {
+    if (el.matches(ANSWER_SELECTOR)) answer = el;
+    else answer = el.querySelector(ANSWER_SELECTOR) || answer;
+  }
+  if (!answer) return '';
+  return snippetOf(answer.querySelector('.markdown-content')?.textContent || '');
 }
 
 export function snippetOf(text: string): string {
@@ -31,14 +49,15 @@ function collectTurns(box: HTMLElement): MinimapTurn[] {
   return Array.from(box.querySelectorAll<HTMLElement>('[data-turn-id]')).map((el) => ({
     id: el.dataset.turnId || '',
     snippet: snippetOf(el.querySelector('.user-turn-bubble')?.textContent || el.textContent || ''),
+    answer: answerAfter(el),
     top: el.getBoundingClientRect().top - boxTop + box.scrollTop,
   }));
 }
 
 /**
  * A rail of ticks on the transcript's left edge, one per user turn. Hovering
- * a tick shows the start of that prompt; clicking it scrolls the turn into
- * view. The tick for the turn being read is highlighted.
+ * a tick shows the start of that prompt and of its answer, as t3code does;
+ * clicking it scrolls the turn into view. The tick for the turn being read is highlighted.
  *
  * Reads turns from the DOM (`[data-turn-id]`, set by UserTurn) so neither
  * surface has to pass its message model in. `version` changes whenever the
@@ -90,7 +109,16 @@ export function TurnMinimap({
   return (
     <nav className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}`} aria-label="Conversation turns">
       {turns.map((turn, i) => (
-        <Tooltip key={turn.id || i} content={turn.snippet || 'Message'} side="right">
+        <Tooltip
+          key={turn.id || i}
+          side="right"
+          content={(
+            <span className="chat-minimap__preview">
+              <span className="chat-minimap__prompt">{turn.snippet || 'Message'}</span>
+              {turn.answer && <span className="chat-minimap__answer">{turn.answer}</span>}
+            </span>
+          )}
+        >
           <button
             type="button"
             className={`chat-minimap__tick${i === active ? ' is-active' : ''}`}
