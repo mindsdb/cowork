@@ -6,7 +6,7 @@ import { cn } from '../../lib/cn';
 // content (capped to the column), inset from the window edge.
 export const RAIL_DOCKED_CLASS = cn(
   'bg-surface min-w-0 self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px]',
-  'mr-2.5 mb-2.5 pt-4 px-5 pb-5 flex flex-col gap-6 overflow-x-hidden overflow-y-auto',
+  'mr-2.5 mb-2.5 pt-3 px-4 pb-3 flex flex-col gap-3 overflow-x-hidden overflow-y-auto',
   '[-webkit-app-region:no-drag]',
 );
 
