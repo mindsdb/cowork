@@ -61,6 +61,7 @@ import {
   useCollectionView,
 } from '../components/collection';
 import { host } from '../../platform/host';
+import { IS_MAC } from '../lib/shortcut';
 import { surfaceCopy } from '../lib/surface';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
@@ -704,7 +705,7 @@ export default function ArtifactsView({
   // apply `transform` on hover, which would re-anchor a position:fixed
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
-  const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const isMacPlatform = IS_MAC;
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
   const toastManager = useToastManager();

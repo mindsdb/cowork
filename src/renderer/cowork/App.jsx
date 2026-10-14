@@ -17,6 +17,7 @@ import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import AppTitlebar from './components/AppTitlebar';
 import { overlayAppRegion } from './lib/appRegion';
+import { shortcutLabel } from './lib/shortcut';
 import { AppHeaderProvider, AppHeaderScope } from './components/appHeader';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
@@ -5473,7 +5474,7 @@ function AppCore() {
             ? () => setNavPopoutOpen((open) => !open)
             : () => setSidebarCollapsed((c) => !c)}
           toggleLabel={sidebarDocked ? 'Collapse sidebar' : 'Open sidebar'}
-          toggleShortcut={host.isMac() || /Mac/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B'}
+          toggleShortcut={shortcutLabel('B')}
           onNewTask={effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask}
           newTaskLabel={effectiveWorkspaceMode === 'code' ? 'New code task' : 'New task'}
           brand={{
@@ -5484,7 +5485,7 @@ function AppCore() {
             onChange: changeWorkspace,
           }}
           onOpenSearch={() => setSearchOpen(true)}
-          searchShortcut={host.isMac() || /Mac/.test(navigator.userAgent) ? '⌘K' : 'Ctrl K'}
+          searchShortcut={shortcutLabel('K')}
         />
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
