@@ -782,39 +782,23 @@ a[href],
 /* ─── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap {
   width: 100%; max-width: var(--composer-max-width, 640px);
-  background: var(--surface-0);
-  border: 1px solid var(--border-01);
-  /* Calmer composer (ENG-787 move 03): larger radius so it reads as a
-     friendly surface rather than an input box, and the shared token
-     shadow instead of a bespoke double-drop. */
-  border-radius: var(--r-xl);
-  box-shadow: var(--sh-1);
-  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
-}
-.composer-wrap.focused {
-  /* Quiet focus: the border simply shifts to the accent — no 3px teal
-     glow ring. Keeps the resting shadow so focusing doesn't jump. */
-  border-color: var(--accent);
-  box-shadow: var(--sh-1);
+  /* Border, radius, resting shadow and focus ring come from the shared
+     ComposerFrame (components/chat/chat.css). */
 }
 /* In-fence indicator — caret sits inside a fenced code block. Subtle
    accent-tinted inner stripe on the left edge plus a soft body wash, so
    it layers under the focus ring rather than competing with it. Toggled
    from React based on `fenceCtxAt(value, caretPos) !== null`. */
 .composer-wrap.in-fence {
-  /* The inset accent stripe is the meaningful "caret is inside a fence"
-     signal; pair it with the shared token shadow (move 03) rather than
-     the old bespoke double-drop. */
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
     var(--sh-1);
 }
-.composer-wrap.focused.in-fence {
-  /* Quiet focus + the fence stripe: accent border, no 3px glow ring. */
-  border-color: var(--accent);
+.composer-wrap.in-fence.is-focused {
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent),
     var(--sh-1);
 }
 /* Font, line-height, and padding MUST match the textarea exactly — both
@@ -2562,20 +2546,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    Toolbar + / Send insets and control sizes match the default composer
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
-  background: var(--surface);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-xl);
   /* 10px horizontal + textarea side padding = same 18px text inset as
      .composer-textarea on home; toolbar is flush on the bottom so the card
-     doesn't pick up a double band (toolbar pb + wrap pb). */
+     doesn't pick up a double band (toolbar pb + wrap pb). Border and
+     shadow are the shared ComposerFrame's. */
   padding: 16px 14px 12px;
-  /* Subtle all-around lift — replaces the heavier downward shadow we
-     used to pair with the bottom gradient mask. With the mask gone, a
-     soft even glow reads as "floating panel" without darkening the
-     gravity field below. */
-  box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
-    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -2623,24 +2598,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   /* Same dormant accent wash as the base .send-btn:disabled. */
   background: var(--accent-bg);
   color: color-mix(in srgb, var(--accent) 60%, transparent);
-}
-body[data-theme="dark"] .chat-floating-composer .composer-wrap {
-  /* Softer than the old 0.55-alpha 32-blur — that was producing a
-     heavy slab below the composer that drew the eye down. Match the
-     light-mode shadow's restraint, just dialed up enough to read
-     against the navy surface. */
-  box-shadow:
-    0 4px 18px rgba(0, 0, 0, 0.28),
-    0 0 0 1px rgba(255, 255, 255, 0.03);
-}
-.chat-floating-composer .composer-wrap.focused {
-  /* Quiet focus (ENG-787 move 03): the accent border is the only focus
-     signal. No 3px teal glow ring; hold the same soft lift as the resting
-     state so the card doesn't jump on focus. */
-  border-color: var(--accent);
-  box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
-    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
