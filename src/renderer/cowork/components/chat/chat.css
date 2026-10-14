@@ -85,3 +85,47 @@
   background: var(--accent);
 }
 
+/* Turn minimap (TurnMinimap): a rail of ticks on the transcript's right edge,
+   one per user turn. Hidden where the transcript is too narrow to spare the
+   edge beside the reading column. */
+.chat-scroller { container: chat-scroller / inline-size; }
+.chat-minimap {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.chat-minimap__tick {
+  width: 22px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.chat-minimap.is-dense .chat-minimap__tick { height: 7px; }
+.chat-minimap__tick::before {
+  content: '';
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line-2);
+  transition: width var(--dur-hover) ease, background var(--dur-hover) ease;
+}
+.chat-minimap__tick:hover::before,
+.chat-minimap__tick:focus-visible::before { width: 16px; background: var(--ink-3); }
+.chat-minimap__tick.is-active::before { width: 16px; background: var(--accent); }
+.chat-minimap__tick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+@container chat-scroller (max-width: 560px) {
+  .chat-minimap { display: none; }
+}
