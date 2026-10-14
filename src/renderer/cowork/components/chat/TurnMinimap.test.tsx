@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ChatScroller } from './ChatScroller';
-import { activeTurnIndex, snippetOf } from './TurnMinimap';
+import { activeTurnIndex, answerAfter, snippetOf } from './TurnMinimap';
 import { useStickToBottom } from './useStickToBottom';
 
 function Transcript({ prompts }: { prompts: string[] }) {
@@ -62,3 +62,30 @@ describe('snippetOf', () => {
     expect(long.endsWith('…')).toBe(true);
   });
 });
+
+describe('answerAfter', () => {
+  function transcript(html: string) {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    return root;
+  }
+
+  it('reads the answer that closes a Cowork turn, not its action row', () => {
+    const root = transcript(`
+      <div data-turn-id="t0">Plan the launch</div>
+      <div class="answer-turn"><div class="markdown-content">Lead with the outcome.</div><span class="turn-meta">Anton</span></div>
+      <div data-turn-id="t1">Price it</div>`);
+    expect(answerAfter(root.children[0])).toBe('Lead with the outcome.');
+    expect(answerAfter(root.children[2])).toBe('');
+  });
+
+  it('takes the last Code Mode message before the next turn, past progress notes', () => {
+    const root = transcript(`
+      <div data-turn-id="code-1">Fix the parser</div>
+      <article class="code-agent-message"><div class="markdown-content">Checking the parser first.</div></article>
+      <details><summary>Worked for 2m</summary></details>
+      <article class="code-agent-message"><div class="markdown-content">The parser drops trailing commas.</div></article>`);
+    expect(answerAfter(root.children[0])).toBe('The parser drops trailing commas.');
+  });
+});
+
