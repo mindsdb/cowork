@@ -60,9 +60,10 @@ function ConnectionsCounts({ search, total, filtered }) {
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
-// The same sentence cowork-server answers when a change to an
-// operator-managed connection is refused.
-const MANAGED_CONNECTION_NOTE = "This connection is provided by your operator and can't be changed here.";
+// The same sentence cowork-server answers when it refuses a change to a
+// connection the caller can't change: one someone else shares, or one the
+// operator provides.
+const MANAGED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -136,7 +137,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   if (!connection) return null;
 
   /* Read-only when either the list row or the detail response says
-     `managed: true`; a connection without the field keeps every control. */
+     `managed: true`; a connection without the field, or the caller's own
+     shared connection (`shared: true` alone), keeps every control. */
   const managed = connection.managed === true || saved?.managed === true;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};

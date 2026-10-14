@@ -34,8 +34,11 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
   /* Only an explicit `managed: true` from the server makes the card read-only;
-     a connection without the field keeps its Disconnect button. */
+     a connection without the field keeps its Disconnect button. `shared: true`
+     without `managed` is the caller's own connection that others use: it gets
+     a Shared badge and keeps Disconnect. */
   const managed = connection.managed === true;
+  const badge = managed ? 'Managed' : connection.shared === true ? 'Shared' : null;
 
   const handleRemove = async () => {
     if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
@@ -50,7 +53,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   return {
     leading: <ConnectionLogo engine={engine} label={title} />,
     title,
-    badges: managed ? <Badge variant="muted" size="sm">Managed</Badge> : undefined,
+    badges: badge ? <Badge variant="muted" size="sm">{badge}</Badge> : undefined,
     description: subtitle,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
     activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,

@@ -1,14 +1,16 @@
-// Operator-managed connections are read-only on the Connections page, and a
-// Reconnect whose delete fails never opens a new connect flow, while one whose
-// connection is already gone does. Follows CustomizeView.identity.test.jsx's
-// mocking convention, on the web host the self-hosted stack serves unless a
-// test switches the host to desktop.
+// Connections the server marks managed (the operator's own, or one someone
+// else shares) are read-only on the Connections page, the creator's own shared
+// connection keeps every control, and a Reconnect whose delete fails never
+// opens a new connect flow, while one whose connection is already gone does.
+// Follows CustomizeView.identity.test.jsx's mocking convention, on the web
+// host the self-hosted stack serves unless a test switches the host to desktop.
 
 import { beforeEach, afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const OPERATOR_NOTE = "This connection is provided by your operator and can't be changed here.";
+// The panel's note and cowork-server's 403 message share this sentence.
+const READ_ONLY_NOTE = "This connection is shared with you and can't be changed here.";
 
 // google_drive plus an MCP method so one panel would show every control the
 // managed state hides: the Drive picker, the access-mode select, Reconnect
@@ -73,14 +75,15 @@ async function openPanel(connections, saved, props = {}) {
   return dialog;
 }
 
-describe('CustomizeView operator-managed connections', () => {
+describe('CustomizeView managed and shared connections', () => {
   it.each([
     ['the list row', { ...CONNECTION, managed: true }, SAVED],
     ['the detail response', CONNECTION, { ...SAVED, managed: true }],
+    ['the list row of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }, { ...SAVED, managed: true, shared: true }],
   ])('shows the panel read-only when %s marks the connection managed', async (_, connection, saved) => {
     const dialog = await openPanel([connection], saved);
 
-    expect(within(dialog).getByRole('note')).toHaveTextContent(OPERATOR_NOTE);
+    expect(within(dialog).getByRole('note')).toHaveTextContent(READ_ONLY_NOTE);
     expect(within(dialog).queryByRole('button', { name: 'Reconnect' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Tool access')).not.toBeInTheDocument();
@@ -90,16 +93,35 @@ describe('CustomizeView operator-managed connections', () => {
     expect(within(dialog).getByText('Engine')).toBeInTheDocument();
   });
 
-  it('shows the Managed badge and no Disconnect on the managed card', () => {
-    const managed = { ...CONNECTION, managed: true };
+  it.each([
+    ['managed card', { ...CONNECTION, managed: true }],
+    ['card of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }],
+  ])('shows the Managed badge and no Disconnect on the %s', (_, managed) => {
     state.connections = [managed];
     render(<CustomizeView connectors={[managed]} />);
     const card = screen.getByRole('article');
     expect(within(card).getByText('Managed')).toBeInTheDocument();
+    expect(within(card).queryByText('Shared')).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
   });
 
-  it('keeps every control for a connection without the managed field', async () => {
+  it("shows the Shared badge and every control on the creator's own shared connection", async () => {
+    const shared = { ...CONNECTION, managed: false, shared: true };
+    const dialog = await openPanel([shared], { ...SAVED, managed: false, shared: true });
+
+    const card = screen.getByRole('article');
+    expect(within(card).getByText('Shared')).toBeInTheDocument();
+    expect(within(card).queryByText('Managed')).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
+    expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
+  });
+
+  it('keeps every control and no badge for a connection without either field', async () => {
     const dialog = await openPanel([CONNECTION], SAVED);
 
     expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
@@ -108,7 +130,10 @@ describe('CustomizeView operator-managed connections', () => {
     expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
     expect(within(dialog).getByRole('combobox')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
-    expect(within(screen.getByRole('article')).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    const card = screen.getByRole('article');
+    expect(within(card).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(within(card).queryByText('Managed')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Shared')).not.toBeInTheDocument();
   });
 });
 
@@ -117,13 +142,13 @@ describe('CustomizeView Reconnect', () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(deleteDatasource).mockRejectedValueOnce(refusal(403, OPERATOR_NOTE));
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(refusal(403, READ_ONLY_NOTE));
     const onReconnect = vi.fn();
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${OPERATOR_NOTE}`));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${READ_ONLY_NOTE}`));
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
     expect(onReconnect).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();

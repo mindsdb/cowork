@@ -93,11 +93,17 @@ describe('ConnectionCard', () => {
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
   });
 
-  it.each([['card', ConnectionCard], ['row', ConnectionRow]])('shows an operator-managed connection as a %s with a Managed badge and no Disconnect', async (_, Item) => {
+  it.each([
+    ['card', ConnectionCard, { ...connection, managed: true }],
+    ['row', ConnectionRow, { ...connection, managed: true }],
+    // How a connection someone else shares reaches the caller.
+    ['card shared with the caller', ConnectionCard, { ...connection, managed: true, shared: true }],
+    ['row shared with the caller', ConnectionRow, { ...connection, managed: true, shared: true }],
+  ])('shows a managed connection as a %s with a Managed badge and no Disconnect', async (_, Item, managed) => {
     const onModify = vi.fn();
-    const managed = { ...connection, managed: true };
     render(<Item connection={managed} onModify={onModify} onDelete={vi.fn()} />);
     expect(screen.getByText('Managed')).toBeInTheDocument();
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByText('Connected')).toBeInTheDocument();
     // The details still open, read-only, from the item itself.
@@ -106,13 +112,30 @@ describe('ConnectionCard', () => {
   });
 
   it.each([
-    ['without the field', connection],
+    ['card', ConnectionCard, { ...connection, shared: true }],
+    ['row', ConnectionRow, { ...connection, shared: true }],
+    ['card with managed false', ConnectionCard, { ...connection, shared: true, managed: false }],
+  ])("shows the creator's own shared connection as a %s with a Shared badge and Disconnect", async (_, Item, shared) => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const onDelete = vi.fn();
+    render(<Item connection={shared} onModify={vi.fn()} onDelete={onDelete} />);
+    expect(screen.getByText('Shared')).toBeInTheDocument();
+    expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(shared);
+  });
+
+  it.each([
+    ['without either field', connection],
     ['with managed false', { ...connection, managed: false }],
     ['with a non-boolean managed value', { ...connection, managed: 'true' }],
-  ])('keeps Disconnect and no Managed badge for a connection %s', (_, conn) => {
+    ['with shared false', { ...connection, shared: false }],
+    ['with a non-boolean shared value', { ...connection, shared: 'true' }],
+  ])('keeps Disconnect and no badge for a connection %s', (_, conn) => {
     render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
     expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
   });
 
   it('renders the same content and actions as a list row', async () => {

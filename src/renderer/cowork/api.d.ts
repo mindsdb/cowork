@@ -56,8 +56,18 @@ export interface ConnectorConnection {
   status?: string | null;
   updated_at?: string | null;
   updatedAt?: string | null;
-  /** True for a connection the operator provides; the page shows it read-only. Absent means false. */
+  /**
+   * True for a connection the caller can't change: one the operator provides,
+   * or one someone else shares with the caller. The page shows it read-only.
+   * Absent means false.
+   */
   managed?: boolean;
+  /**
+   * True for a connection the operator shares with everyone. With `managed`
+   * false it is the caller's own: the page shows a Shared badge and keeps
+   * every action. Absent means false.
+   */
+  shared?: boolean;
 }
 
 export interface SavedConnectorConnection {
@@ -65,6 +75,8 @@ export interface SavedConnectorConnection {
   fields?: Record<string, unknown>;
   /** Same meaning as ConnectorConnection.managed. */
   managed?: boolean;
+  /** Same meaning as ConnectorConnection.shared. */
+  shared?: boolean;
 }
 
 export interface ConnectorFieldSpec {
