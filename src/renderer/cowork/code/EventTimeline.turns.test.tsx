@@ -9,7 +9,7 @@ import type { CodingEvent, CodingSession } from './api';
 import { EventTimeline } from './EventTimeline';
 import { indexLatestEvents } from './useCodingSession';
 
-vi.mock('../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
+vi.mock('../lib/clipboard', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/clipboard')>()), copyText: vi.fn(async () => true) }));
 
 function session(status: CodingSession['status']): CodingSession {
   return {
