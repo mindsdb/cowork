@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { fakeScrollBox, type FakeScrollBox } from '../../../../../tests/helpers/scrollBox';
 import { ChatScroller } from './ChatScroller';
-import { useStickToBottom } from './useStickToBottom';
+import { anchorPlan, useStickToBottom } from './useStickToBottom';
 
 function Transcript() {
   const stick = useStickToBottom();
@@ -49,3 +49,29 @@ describe('the scroll-to-latest button', () => {
     expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
   });
 });
+
+describe('anchorPlan', () => {
+  it('rests a sent turn just below the top and reserves only the room it needs', () => {
+    expect(anchorPlan({ turnTop: 2200, baseHeight: 2600, clientHeight: 600 })).toEqual({ target: 2176, reserve: 176 });
+    // An answer longer than the view needs no reserved room.
+    expect(anchorPlan({ turnTop: 2200, baseHeight: 3400, clientHeight: 600 })).toEqual({ target: 2176, reserve: 0 });
+  });
+});
+
+describe('scrolling up with a wheel', () => {
+  let fake: FakeScrollBox;
+  beforeEach(() => {
+    fake = fakeScrollBox((el) => el.dataset?.scroll === 'true');
+    fake.height = 2000;
+    fake.client = 600;
+  });
+  afterEach(() => fake.restore());
+
+  it('unpins the transcript before the position moves far', () => {
+    render(<Transcript />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => { fireEvent.wheel(box(), { deltaY: -40 }); });
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+  });
+});
+

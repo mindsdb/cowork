@@ -1928,7 +1928,7 @@ export default function ChatView({
   );
 
   const stick = useStickToBottom(scrollRef);
-  const { scrollToBottom, follow: followEnd } = stick;
+  const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
   const dockRef = useDockInset();
   const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
@@ -1946,6 +1946,7 @@ export default function ChatView({
     // follows a reader who was already at the end.
     if (action === 'hold') el.scrollTop += scrollHeightDelta;
     else if (action === 'end') scrollToBottom();
+    else if (action === 'sent') anchorLastTurn();
     else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
