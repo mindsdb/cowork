@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
 
 import Ico from '../Icons';
 
@@ -16,8 +16,7 @@ type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'chil
  * useStickToBottom); each surface keeps its own content and spacing. The end
  * of the content is padded by `--chat-dock-height` (see useDockInset) so the
  * last message scrolls clear of a composer floating over the transcript.
- * A reader scrolled away from the end gets a button back to it, marked when
- * new content has arrived below them. `overlay` renders over the scroll box
+ * A reader scrolled away from the end gets a button back to it. `overlay` renders over the scroll box
  * too: the place for other controls that float rather than scroll.
  */
 export function ChatScroller({
@@ -37,9 +36,6 @@ export function ChatScroller({
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const { isStuck, scrollToBottom, isAtBottom } = stick;
-  // Whether content arrived below a reader who scrolled up.
-  const [unseen, setUnseen] = useState(false);
-  useEffect(() => { if (isAtBottom) setUnseen(false); }, [isAtBottom]);
   // Content that grows in place (a streamed answer, an opened tray) keeps a
   // pinned reader at the end without the transcript re-rendering.
   useEffect(() => {
@@ -47,7 +43,6 @@ export function ChatScroller({
     if (!content || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {
       if (isStuck()) scrollToBottom('auto');
-      else setUnseen(true);
     });
     observer.observe(content, { box: 'border-box' });
     return () => observer.disconnect();
@@ -68,7 +63,7 @@ export function ChatScroller({
         <button
           type="button"
           className="chat-jump"
-          aria-label={unseen ? 'Scroll to latest, new messages below' : 'Scroll to latest'}
+          aria-label="Scroll to latest"
           onClick={() => {
             const reduce = typeof window.matchMedia === 'function'
               && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -76,7 +71,6 @@ export function ChatScroller({
           }}
         >
           {Ico.arrowDown(16)}
-          {unseen && <span className="chat-jump__dot" aria-hidden="true" />}
         </button>
       )}
       {overlay}

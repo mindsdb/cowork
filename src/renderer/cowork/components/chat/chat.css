@@ -74,14 +74,4 @@
 }
 .chat-jump:hover { color: var(--ink); border-color: var(--line-2); }
 .chat-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chat-jump__dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--surface-0);
-  border-radius: 50%;
-  background: var(--accent);
-}
 
