@@ -199,7 +199,38 @@ export function ToggleGroup({
                 }}
               />
             )}
-            {opt.tooltip ? <Tooltip content={opt.tooltip}>{toggle}</Tooltip> : toggle}
+            <BaseToggle
+              value={opt.value}
+              ref={(el: HTMLElement | null) => {
+                if (el) items.current.set(opt.value, el);
+                else items.current.delete(opt.value);
+              }}
+              aria-label={opt['aria-label'] || opt.title}
+              title={opt.title}
+              // Ink lives in classes, not the style below, so an unselected
+              // option can darken a step on hover.
+              className={cn(
+                'relative inline-flex items-center gap-[6px] text-ink-3 data-[pressed]:text-ink',
+                disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:text-ink-2',
+              )}
+              style={(state: { pressed: boolean }) => ({
+                padding: is.padding,
+                borderRadius: is.borderRadius,
+                fontFamily: 'var(--font-body)',
+                fontSize: is.fontSize,
+                border: 0,
+                background: state.pressed && !pill
+                  ? 'var(--toggle-selected-bg, var(--surface-3))'
+                  : 'transparent',
+                boxShadow: state.pressed && !pill
+                  ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
+                  : 'none',
+                transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
+              })}
+            >
+              {opt.icon && <span className="inline-flex">{opt.icon}</span>}
+              {opt.label}
+            </BaseToggle>
           </Fragment>
         );
       })}

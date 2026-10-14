@@ -1,13 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import AppTitlebar from './AppTitlebar';
+import AppTitlebar, { SidebarToggle } from './AppTitlebar';
 import { AppHeader, AppHeaderProvider, AppHeaderScope, AppAttention } from './appHeader';
 
 const props = (over = {}) => ({
   lightsInset: 78,
   docked: true,
-  onToggleSidebar: vi.fn(),
-  toggleLabel: 'Collapse sidebar',
   onNewTask: vi.fn(),
   newTaskLabel: 'New task',
   brand: { wordmark: 'MindsHub', logo: null, mode: 'cowork', showSwitch: false, onChange: vi.fn() },
@@ -24,24 +22,32 @@ const shell = (titlebar, children) => render(
 );
 
 describe('AppTitlebar', () => {
-  it('keeps the sidebar toggle and search in the row, docked or not', () => {
-    const p = props();
+  it('takes the new-task shortcut and compact brand only while the sidebar is hidden', () => {
+    const p = props({ brand: { ...props().brand, showSwitch: true } });
     const { rerender } = shell(p);
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-    expect(p.onToggleSidebar).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(p.onOpenSearch).toHaveBeenCalledOnce();
-    // Docked, the sidebar's own New task CTA is visible, so no shortcut here.
+    // Docked, the brand and New task CTA live in the sidebar column.
     expect(screen.queryByRole('button', { name: 'New task' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Workspace' })).toBeNull();
 
     rerender(
       <AppHeaderProvider>
-        <AppTitlebar {...p} docked={false} toggleLabel="Open sidebar" />
+        <AppTitlebar {...p} docked={false} />
       </AppHeaderProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Workspace' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'New task' }));
     expect(p.onNewTask).toHaveBeenCalledOnce();
+  });
+
+  it('pins the sidebar toggle beside the window controls', () => {
+    const onToggle = vi.fn();
+    render(<SidebarToggle lightsInset={78} label="Collapse sidebar" onToggle={onToggle} />);
+    const button = screen.getByRole('button', { name: 'Collapse sidebar' });
+    expect(button.parentElement).toHaveStyle({ left: '78px' });
+    fireEvent.click(button);
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
   it('portals the active view header into the row', () => {
