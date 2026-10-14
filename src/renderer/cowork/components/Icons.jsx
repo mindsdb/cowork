@@ -15,6 +15,8 @@
 // button design.
 import {
   AppWindow,
+  Bell,
+  SquarePen,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -57,6 +59,7 @@ import {
   Moon,
   Palette,
   PanelLeft,
+  PanelRight,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -98,12 +101,15 @@ const ico = (Cmp, d = 16) => (s = d) => <Icon of={Cmp} size={s} />;
 
 const Ico = {
   search:   ico(Search),
+  bell:     ico(Bell),
+  newTask:  ico(SquarePen),
   chats:    ico(MessagesSquare),
   list:     ico(List),
   // 2x2 grid — used in the Projects page view-toggle.
   grid:     ico(LayoutGrid),
   image:    ico(Image),
   sidebar:  ico(PanelLeft),
+  panel:    ico(PanelRight),
   sidebarCollapseLeft: ico(PanelLeftClose),
   sidebarExpandRight:  ico(PanelLeftOpen),
   panelCollapseRight:  ico(PanelRightClose),

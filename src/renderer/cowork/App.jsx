@@ -15,6 +15,10 @@ import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
+import AppTitlebar, { SidebarToggle } from './components/AppTitlebar';
+import { overlayAppRegion } from './lib/appRegion';
+import { shortcutLabel } from './lib/shortcut';
+import { AppHeaderProvider, AppHeaderScope } from './components/appHeader';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
 import { Button, Tooltip } from './components/ui';
@@ -1706,14 +1710,13 @@ function AppCore() {
   const codeFixtureActive = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has('codeFixture');
   const codeModeEnabled = codeFixtureActive || codeModeAccess.enabled;
-  // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
-  // routes, and the derived popout flag) lives in useSidebarNav.
+  // Nav-shell layout state (collapsed rail, off-canvas popout, and the
+  // derived popout flag) lives in useSidebarNav.
   const {
     sidebarCollapsed, setSidebarCollapsed,
     navPopoutOpen, setNavPopoutOpen,
-    sidebarCollapsibleRoutes,
     sidebarPopout,
-  } = useSidebarNav({ isNarrow });
+  } = useSidebarNav({ isNarrow, alwaysDocked: !host.isWeb });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -1727,24 +1730,24 @@ function AppCore() {
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
 
-  // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
-  // a ref so the keydown listener (mounted once) sees the live route
-  // without needing to rebind on every navigation.
+  // The live route, read via a ref so callbacks bound once (deletion
+  // settlement below) see it without rebinding on every navigation.
   const routeRef = useRef('home');
-  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar in a Cowork
-  // task or anywhere in Code; Cmd/Ctrl+K opens search; Cmd/Ctrl+N starts a
-  // new task.
+  // Cmd+B opens the drawer in the narrow band, where the docked sidebar's
+  // collapsed state has no visible effect; a ref for the mount-once listener.
+  const sidebarPopoutRef = useRef(sidebarPopout);
+  sidebarPopoutRef.current = sidebarPopout;
+  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar; Cmd/Ctrl+K
+  // opens search; Cmd/Ctrl+N starts a new task.
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
-        // Cowork mirrors Main's task-only affordance; Code treats the whole
-        // workspace as one collapsible navigation scope.
-        if (!sidebarCollapsibleRoutes.has(routeRef.current)) return;
         e.preventDefault();
-        setSidebarCollapsed((c) => !c);
+        if (sidebarPopoutRef.current) setNavPopoutOpen((open) => !open);
+        else setSidebarCollapsed((c) => !c);
       } else if (key === 'k') {
         e.preventDefault();
         setSearchOpen(true);
@@ -1759,7 +1762,7 @@ function AppCore() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sidebarCollapsibleRoutes]);
+  }, []);
 
   // After a *mouse* click on a button, drop its keyboard focus so a later
   // stray Space/Enter doesn't re-trigger that button (e.g. clicking
@@ -1918,12 +1921,10 @@ function AppCore() {
     window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
   }, [effectiveWorkspaceMode, route]);
-  // Cowork preserves Main's focused task-only collapse behavior. Code's
-  // project, connector, skill, new-task, and task surfaces all share one
-  // stable desktop navigation pane, so collapse is available throughout the
-  // workspace. Narrow/tablet layouts continue to use the overlay drawer.
-  const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
-  const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
+  // The titlebar gives the sidebar toggle a fixed home, so the docked sidebar
+  // collapses on every route in both workspaces. Narrow/tablet layouts use
+  // the overlay drawer instead.
+  const sidebarCanCollapse = !sidebarPopout;
   const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
   // Long-running destructive requests must reconcile against wherever the
@@ -5350,18 +5351,32 @@ function AppCore() {
 
   const mainBg = 'transparent';
 
-  // One shell-owned top inset the content header uses to clear the macOS
-  // traffic lights and the floating open-sidebar button when neither is
-  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
-  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
-  // the space on TOP (not the left) keeps every header's title/crumb aligned
-  // with the body beneath it and uses the full width, instead of shoving the
-  // header right into a lopsided gutter. Both the lights and the hamburger
-  // sit within the top ~44px, so 52 clears them on either platform (web has
-  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
-  // on <main> and consumed by PageHeader / view headers.
-  const contentChromeExposed = sidebarPopout || sidebarCollapsedEffective;
-  const titlebarSafeTop = contentChromeExposed ? 52 : 0;
+  // Mobile display settings: a plain light/dark flip when the 8-bit skin
+  // picker is off, otherwise the Display modal. Desktop uses `displayToggle`
+  // below, docked in the sidebar footer.
+  const openDisplaySettings = () => {
+    if (appearanceSettings.show8bitToggle === false) {
+      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+    } else {
+      setThemeModalOpen(true);
+    }
+  };
+
+  // Titlebar geometry. macOS Electron draws the traffic lights inside the
+  // row (hiddenInset), so the sidebar zone starts past them; Windows/Linux
+  // keep the native frame above the window and web has no controls.
+  // Off macOS the toggle lines up with the sidebar's row icons below it.
+  const titlebarLightsInset = !host.isWeb && host.isMac() ? 78 : 18;
+  const sidebarDocked = !sidebarPopout && !sidebarCollapsedEffective;
+  // One brand, shown in the sidebar's head row or, while the sidebar is
+  // hidden, compact in the titlebar.
+  const titlebarBrand = {
+    wordmark: appearanceSettings.navTitle || 'MindsHub',
+    logo: appearanceSettings.navLogo || null,
+    mode: effectiveWorkspaceMode,
+    showSwitch: !host.isWeb && codeModeEnabled,
+    onChange: changeWorkspace,
+  };
 
   // Model Router isn't a real catalog model — Composer.jsx injects its own
   // pinned row directly, so it must not also get merged in here or it'd
@@ -5414,23 +5429,15 @@ function AppCore() {
     },
     navTitle: appearanceSettings.navTitle || null,
     navLogo: appearanceSettings.navLogo || null,
-    // Mobile has no room for the desktop floating-toggle-row (bottom-right,
-    // over the FAB) — the theme toggle moves into the top bar, opposite the
-    // hamburger, and the coding-mode toggle is dropped entirely rather than
-    // hunting for a second spot.
+    // Mobile has no titlebar or sidebar footer — the display-settings toggle
+    // sits in the mobile top bar, opposite the hamburger.
     theme,
     showThemeToggle: appearanceSettings.showThemeToggle !== false,
-    onToggleTheme: () => {
-      if (appearanceSettings.show8bitToggle === false) {
-        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-      } else {
-        setThemeModalOpen(true);
-      }
-    },
+    onToggleTheme: openDisplaySettings,
   };
 
-  // Desktop corner button. Each Appearance switch gates only its own control
-  // (ENG-3201): both on opens Display settings, one on flips just that one.
+  // Desktop sidebar-footer button. Each Appearance switch gates only its own
+  // control: both on opens Display settings, one on flips just that one.
   const displayToggle = (() => {
     switch (displayToggleMode(appearanceSettings)) {
       case 'menu':
@@ -5460,16 +5467,13 @@ function AppCore() {
   // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
   // via context.
   const shell = (
+    <AppHeaderProvider>
     <div style={{
       ...appStyle, ...accentCss,
-      display: 'flex', gap: 9, padding: 9,
+      display: 'flex', flexDirection: 'column',
       position: 'relative',
-      // Make the whole window draggable. Buttons/inputs/textareas stay
-      // clickable via the global `no-drag` rule in globals.css. Scrollable
-      // surfaces, <main>, the composer, etc. opt out below so they don't
-      // intercept drag on their own surface.
-      WebkitAppRegion: 'drag',
     }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
       {/*
         Sidebar — a docked flex item across the whole desktop + tablet range
         (≥640). `display: contents` makes the wrapper transparent to the flex
@@ -5487,37 +5491,12 @@ function AppCore() {
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
-            // Only opt out of the window drag region while the scrim is
-            // actually up — it's a full-viewport `inset: 0` box, so leaving
-            // it permanently `no-drag` (as when this only fired for the
-            // rare narrow band) killed dragging the whole window the
-            // moment Coding Mode made this common, even while invisible:
-            // Electron computes the drag region from app-region CSS, not
-            // from opacity/pointer-events. Closed, it just inherits the
-            // ancestor `drag` region again.
-            WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
+            WebkitAppRegion: overlayAppRegion(navPopoutOpen),
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
             transition: 'opacity var(--dur-layout) var(--ease-out)',
           }}
         />
-      )}
-
-      {/* Code has one deliberate entry point while it is opt-in: Settings.
-          Keeping this corner control exclusively about appearance prevents a
-          hidden product from leaking into ordinary Cowork. */}
-      {!isMobile && displayToggle && (
-        <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-          <Tooltip content={displayToggle.label}>
-            <button
-              onClick={displayToggle.onClick}
-              aria-label={displayToggle.label}
-              className="floating-toggle"
-            >
-              {displayToggle.icon}
-            </button>
-          </Tooltip>
-        </div>
       )}
 
       {!isMobile && (
@@ -5526,8 +5505,8 @@ function AppCore() {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
           // timing as the scrim above. Docked (display:contents)
           // otherwise — a wide desktop viewport with Coding Mode off.
-          position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
-          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
+          position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 101,
+          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform var(--dur-layout) var(--ease-out)',
           willChange: 'transform',
           WebkitAppRegion: 'no-drag',
@@ -5546,7 +5525,6 @@ function AppCore() {
             ? null
             : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
           activeWorkspace={effectiveWorkspaceMode}
-          showWorkspaceSwitch={codeModeEnabled}
           activeCodeRoute={effectiveWorkspaceMode === 'code'
             ? codeManagementRoute
             : null}
@@ -5563,7 +5541,6 @@ function AppCore() {
           agentLabel={agentLabel}
           isSsoConnected={ssoConnected}
           onNavigate={navigate}
-          onWorkspaceChange={changeWorkspace}
           onSelectTask={selectTask}
           onNewTask={newTask}
           onSelectCodingSession={selectCodingSession}
@@ -5576,8 +5553,11 @@ function AppCore() {
           onOpenCodingTasks={() => openCodingTasks()}
           onOpenCodingConnectors={openCodingConnectors}
           onOpenCodingSkills={openCodingSkills}
-          onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
+          popout={sidebarPopout}
+          lightsInset={titlebarLightsInset}
+          brand={titlebarBrand}
+          displayToggle={displayToggle}
           onToggleCollapsed={sidebarPopout
             ? () => setNavPopoutOpen(false)
             : (sidebarCanCollapse ? () => setSidebarCollapsed((c) => !c) : undefined)}
@@ -5597,8 +5577,6 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters !== false}
-          navTitle={appearanceSettings.navTitle || null}
-          navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -5650,17 +5628,29 @@ function AppCore() {
       </div>
       )}
 
+      {/* The content column: its titlebar row (the view's header and app
+          controls) over the routed view. */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {!isMobile && (
+        <AppTitlebar
+          lightsInset={titlebarLightsInset}
+          docked={sidebarDocked}
+          onNewTask={effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask}
+          newTaskLabel={effectiveWorkspaceMode === 'code' ? 'New code task' : 'New task'}
+          brand={titlebarBrand}
+          onOpenSearch={() => setSearchOpen(true)}
+          searchShortcut={shortcutLabel('K')}
+        />
+      )}
       <AppShell
         isMobile={isMobile}
         mainBg={mainBg}
-        titlebarSafeTop={titlebarSafeTop}
-        showFloatingHamburger={sidebarPopout ? !navPopoutOpen : sidebarCollapsedEffective}
-        onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
         {/* Sync the active Cowork route to the address bar even while its
             workspace panel is temporarily hidden behind Code Mode. */}
         <Outlet />
+        <AppHeaderScope active={effectiveWorkspaceMode === 'cowork'}>
         <div
           className="workspace-mode-panel"
           hidden={effectiveWorkspaceMode !== 'cowork'}
@@ -6025,8 +6015,10 @@ function AppCore() {
           />
         )}
         </div>
+        </AppHeaderScope>
 
         {codeModeEnabled && codeWorkspaceMounted && (
+          <AppHeaderScope active={effectiveWorkspaceMode === 'code'}>
           <div
             className="workspace-mode-panel"
             hidden={effectiveWorkspaceMode !== 'code'}
@@ -6061,6 +6053,7 @@ function AppCore() {
               taskActions={codeTaskActions}
             />
           </div>
+          </AppHeaderScope>
         )}
 
         {/* Settings modal — rendered over whatever route is active */}
@@ -6165,6 +6158,23 @@ function AppCore() {
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
       </AppShell>
+      </div>
+      </div>
+      {/* The sidebar toggle floats over both columns beside the window
+          controls, so it never moves while the sidebar opens and closes. It
+          comes after both titlebar bands: Electron resolves drag regions in
+          document order, not stacking order, so placed before them its
+          no-drag button would sit inside their drag region. */}
+      {!isMobile && (
+        <SidebarToggle
+          lightsInset={titlebarLightsInset}
+          label={sidebarDocked ? 'Collapse sidebar' : 'Open sidebar'}
+          shortcut={shortcutLabel('B')}
+          onToggle={sidebarPopout
+            ? () => setNavPopoutOpen((open) => !open)
+            : () => setSidebarCollapsed((c) => !c)}
+        />
+      )}
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
@@ -6355,6 +6365,7 @@ function AppCore() {
         </div>
       )}
     </div>
+    </AppHeaderProvider>
   );
 
   // Hand the shell + nav state + URL→state handlers to the router; CoworkLayout

@@ -425,7 +425,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   });
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto pb-10">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto pb-10">
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
         <>

@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Collapsible } from './Collapsible';
@@ -162,5 +163,23 @@ describe('Collapsible', () => {
       </Collapsible>,
     );
     expect(screen.getByRole('button', { name: 'Checks' }).querySelectorAll('span')).toHaveLength(1);
+  });
+
+  it('keeps the body mounted while closed when asked, so it reopens without remounting', () => {
+    let mounts = 0;
+    function Body() {
+      const [id] = React.useState(() => ++mounts);
+      return <p>body {id}</p>;
+    }
+    render(
+      <Collapsible title="Files" defaultOpen keepMounted>
+        <Body />
+      </Collapsible>,
+    );
+    const trigger = screen.getByRole('button', { name: /files/i });
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    expect(screen.getByText('body 1')).toBeTruthy();
+    expect(mounts).toBe(1);
   });
 });

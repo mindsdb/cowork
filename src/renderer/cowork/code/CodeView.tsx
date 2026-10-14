@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
+import { useDockHeight } from '../hooks/useDockHeight';
 import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
@@ -117,18 +118,7 @@ export default function CodeView({
     setFilesOpen(false);
     setPreviewOpen(false);
   }, []);
-  // The transcript reserves the floating dock's height so its end scrolls clear.
-  const dockObserver = useRef<ResizeObserver | null>(null);
-  const dockRef = useCallback((dock: HTMLDivElement | null) => {
-    dockObserver.current?.disconnect();
-    dockObserver.current = null;
-    const stage = dock?.parentElement;
-    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
-    sync();
-    dockObserver.current = new ResizeObserver(sync);
-    dockObserver.current.observe(dock);
-  }, []);
+  const dockRef = useDockHeight();
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -399,6 +389,7 @@ export default function CodeView({
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
             onOpenControls={() => setControlsOpen(true)}
+            onOpenProjectTasks={() => onOpenTasks(taskBarSession.project_id || null)}
             onFork={() => void forkTask()}
           />
         )}

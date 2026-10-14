@@ -14,8 +14,9 @@ import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
-import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 import { surfaceCopy } from '../lib/surface';
+import { shortcutLabel } from '../lib/shortcut';
+import WorkspaceBrand from './WorkspaceBrand';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -36,12 +37,6 @@ const UPDATE_TONE_CLASS = {
     action: 'text-[var(--warning,#c47f00)]',
   },
 };
-
-// Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
-// Windows/Linux use Ctrl+ literal.
-const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
-const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
-const shortcut = (key) => `${MOD_LABEL}${key}`;
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
   return (
@@ -141,7 +136,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         />
       ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
-        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
+        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1">
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -159,14 +154,14 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
+        {/* Right slot: as wide as the timestamp, and never narrower than the
+            kebab that cross-fades over it, so the title keeps the rest. The
             negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so the kebab (and the timestamp it cross-fades
-            with) sit snug against the edge of the hover fill, not a full
-            gutter-width inside it. */}
-        <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
+            10px right padding so both sit snug against the edge of the hover
+            fill, not a full gutter-width inside it. */}
+        <span className="relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
           <span
-            className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_var(--dur-hover)_ease]"
+            className="inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 whitespace-nowrap [transition:opacity_var(--dur-hover)_ease]"
             style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
           >
             {isActive ? (
@@ -227,7 +222,6 @@ export default function Sidebar({
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
-  showWorkspaceSwitch = false,
   activeCodeRoute = null,
   codingSessions = [],
   activeCodingSessionId = null,
@@ -235,7 +229,6 @@ export default function Sidebar({
   serverBusy = false,
   serverBusyKind = 'starting', // 'starting' | 'stopping'
   onNavigate,
-  onWorkspaceChange = () => {},
   onSelectTask,
   onNewTask,
   onSelectCodingSession,
@@ -248,9 +241,18 @@ export default function Sidebar({
   onOpenCodingTasks,
   onOpenCodingConnectors,
   onOpenCodingSkills,
-  onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
+  // Off-canvas drawer (tablet band). The drawer covers the titlebar's sidebar
+  // zone, so it carries its own top row with the close toggle at the same
+  // spot, past the window controls (`lightsInset`).
+  popout = false,
+  lightsInset = 12,
+  // The brand and workspace switch for the head row (desktop only).
+  brand = null,
+  // Display settings, docked in the footer (was a floating corner button):
+  // { label, icon, onClick }, or null when both Appearance switches are off.
+  displayToggle = null,
   onPinTask,
   onUnpinTask,
   onRenameTask,
@@ -281,10 +283,6 @@ export default function Sidebar({
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
   showCounters = true,
-  // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
-  // wordmark; null/empty falls back to the default (text-only, no logo).
-  navTitle = null,
-  navLogo = null,
   // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
@@ -444,160 +442,90 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
+  // Width animates only while collapsing or expanding. The open width is
+  // --sidebar-w (a vw clamp), so a standing width transition also eased every
+  // window resize and the sidebar lagged the titlebar zone above it. The flag
+  // flips in the same render as `collapsed`, so the toggle still animates.
+  const [prevCollapsed, setPrevCollapsed] = useState(collapsed);
+  const [widthAnimating, setWidthAnimating] = useState(false);
+  if (prevCollapsed !== collapsed) {
+    setPrevCollapsed(collapsed);
+    setWidthAnimating(true);
+  }
+
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]`}
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border-0 border-solid border-line flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] ${widthAnimating
+        ? '[transition:width_var(--dur-layout)_var(--ease-out),opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'
+        : '[transition:opacity_var(--dur-layout)_var(--ease-out),transform_var(--dur-layout)_var(--ease-out),filter_var(--dur-layout)_var(--ease-out)]'}`}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === 'width') setWidthAnimating(false);
+      }}
       aria-hidden={collapsed || undefined}
       inert={collapsed ? true : undefined}
       style={{
         // Dynamic-only: everything else about this transition lives in the
         // className above. These four properties are collapsed-state-driven
         // and can't be static Tailwind classes.
-        // Combine a gentle leftward translate with a slight scale so
-        // the sidebar reads as "settling into place" rather than just
-        // sliding. Origin pinned to the left edge so the scale grows
-        // from the dock side; the eye picks up the easing curve
-        // along with the width interpolation for a single coherent
-        // motion. Scale + filter values are subtle on purpose —
-        // they're the difference between "this animated" and
-        // "this animated nicely."
-        width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
+        // A short leftward translate with the fade and blur, so the
+        // sidebar settles into place. Horizontal only: a scale would also
+        // shrink it toward its vertical centre and drift the rows up and
+        // down as it opens and closes.
+        width: collapsed ? 0 : 'var(--sidebar-w)',
+        // Flush to the window: a single right edge marks where the sidebar
+        // ends (none while collapsed, where the width is 0).
+        borderRightWidth: collapsed ? 0 : 1,
         opacity: collapsed ? 0 : 1,
         transform: collapsed
-          ? 'translateX(-12px) scale(0.985)'
-          : 'translateX(0) scale(1)',
+          ? 'translateX(-12px)'
+          : 'translateX(0)',
         filter: collapsed ? 'blur(6px)' : 'blur(0)',
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
-      {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
-          padding-top reduced from 14 → 9 to bring the buttons + wordmark
-          5px upward, so they line up with the macOS traffic lights at
-          their new (x:18, y:22) position. */}
-      <div
-        className="anton-sidebar__chrome drag-region shrink-0"
-        // cascade-forced: overrides .anton-sidebar__chrome's default
-        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
-        // left inset that clears the macOS traffic lights in Electron).
-        style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
-      >
-        {/* Right-aligned cluster: collapse + search icons, then a
-            middle-dot separator, then the ANTON wordmark. The chrome's
-            existing `justify-content: space-between` pushes the whole
-            cluster against the right edge (the left half is empty space
-            past the traffic-light pad). */}
-        <div className="flex-1" />
-        <div
-          className="anton-sidebar__chrome-left ml-auto"
-          // cascade-forced: overrides .anton-sidebar__chrome-left's default
-          // `gap: 14px` with a tighter 4px for this cluster.
-          style={{ gap: 4 }}
-        >
-          <div className="anton-sidebar__chrome-buttons">
-            {/* Collapse button — always mounted so the search icon
-                next to it never shifts when the host route changes
-                whether the toggle is allowed or not.
-                  • allowed   (chat task)  → fully visible, clickable
-                  • disallowed (other routes) → fades + scales out +
-                    soft blur, but the layout slot stays put so the
-                    search icon doesn't displace.
-                The transition is gentle and a touch over-eased so
-                the hide reads as deliberate without being theatrical. */}
-            {(() => {
-              const canToggle = typeof onToggleCollapsed === 'function';
-              return (
-                <Tooltip content={canToggle ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})` : ''}>
-                  <button
-                    className="icon-btn [-webkit-app-region:no-drag] origin-center"
-                    onClick={canToggle ? onToggleCollapsed : undefined}
-                    disabled={!canToggle}
-                    aria-hidden={canToggle ? undefined : 'true'}
-                    tabIndex={canToggle ? undefined : -1}
-                    aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
-                    style={{
-                      // All dynamic (canToggle-gated), plus `transition` stays
-                      // inline: .icon-btn sets its own `transition: background
-                      // var(--dur-hover), color var(--dur-hover)` — a Tailwind class would lose that
-                      // cascade tie (same specificity, .icon-btn declared later
-                      // in the stylesheet), silently dropping this custom
-                      // opacity/transform/filter transition.
-                      opacity: canToggle ? 1 : 0,
-                      // Slight scale + tilt + blur on hide so the
-                      // motion is recognisable from the corner of the
-                      // eye but never noisy. Origin pinned to center
-                      // so the slot's geometry stays symmetric.
-                      transform: canToggle
-                        ? 'scale(1) rotate(0deg)'
-                        : 'scale(0.72) rotate(-8deg)',
-                      filter: canToggle ? 'blur(0)' : 'blur(2px)',
-                      pointerEvents: canToggle ? 'auto' : 'none',
-                      cursor: canToggle ? 'pointer' : 'default',
-                      transition:
-                        'opacity var(--dur-layout) var(--ease-out), ' +
-                        'transform var(--dur-layout) var(--ease-out), ' +
-                        'filter var(--dur-layout) var(--ease-out)',
-                    }}
-                  >
-                    {collapsed ? Ico.sidebarExpandRight(16) : Ico.sidebarCollapseLeft(16)}
-                  </button>
-                </Tooltip>
-              );
-            })()}
-            <Tooltip content={`Search  (${shortcut('K')})`}>
-              <button
-                className="icon-btn [-webkit-app-region:no-drag]"
-                onClick={onOpenSearch}
-                aria-label="Search"
-              >
-                {Ico.search(16)}
-              </button>
-            </Tooltip>
-          </div>
-          <span
-            aria-hidden="true"
-            className="text-ink-3 opacity-50 text-[13px] select-none"
-          >·</span>
-          {navLogo && (
-            <img
-              src={navLogo}
-              alt=""
-              aria-hidden="true"
-              className="anton-sidebar__logo"
-            />
-          )}
-          <div className="anton-sidebar__wordmark">{navTitle || 'MindsHub'}</div>
-        </div>
+      {/* Head row: the sidebar's share of the titlebar band, so the brand
+          opens and closes with the sidebar as one box. Docked, the window's
+          sidebar toggle floats over the slot at its start; the drawer covers
+          that toggle, so it puts its own close button in the same spot. */}
+      <div className="app-sidebar__head" style={{ paddingLeft: lightsInset }}>
+        {popout ? (
+          <Tooltip content="Close sidebar">
+            <button
+              type="button"
+              className="icon-btn text-ink-3"
+              onClick={onToggleCollapsed}
+              aria-label="Close sidebar"
+            >
+              {Ico.sidebar(14)}
+            </button>
+          </Tooltip>
+        ) : (
+          <span className="app-sidebar__toggle-slot" aria-hidden="true" />
+        )}
+        {brand && <WorkspaceBrand {...brand} />}
       </div>
 
-      {/* Body — fades + slides in slightly behind the container so
+      {/* Body — fades in slightly behind the container so
           the motion staggers. On appearance the body lags two stagger
           steps (--dur-stagger) so
           the surrounding chrome lands first; on dismissal it leads
           the container so the contents exit before the box does. */}
       <div
-        className="flex-1 min-h-0 flex flex-col"
-        // All dynamic: opacity/transform/pointerEvents/transition-delay are
+        // px-1.5: flush to the window, the rows need their own inset from the
+        // sidebar edges (the floating card used to supply it with its gutter).
+        className="flex-1 min-h-0 flex flex-col px-1.5 pt-1"
+        // All dynamic: opacity/pointerEvents/transition-delay are
         // collapsed-state-driven (the transition string embeds a delay that
         // flips between none and two stagger steps), so none of this can be
         // a static Tailwind class.
         style={{
           opacity: collapsed ? 0 : 1,
-          transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
           pointerEvents: collapsed ? 'none' : 'auto',
           transition:
             'opacity var(--dur-layout) var(--ease-out) ' +
-              `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}, ` +
-            'transform var(--dur-layout) var(--ease-out) ' +
               `${collapsed ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
         }}
       >
-        {!host.isWeb && showWorkspaceSwitch && (
-          <WorkspaceModeSwitch
-            value={activeWorkspace}
-            onChange={onWorkspaceChange}
-          />
-        )}
-
         {/* The primary action follows the active workspace. Code tasks stay
             distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
@@ -611,10 +539,14 @@ export default function Sidebar({
           >
             {Ico.plus(14)}
             <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
-            <Kbd>{shortcut('N')}</Kbd>
+            <Kbd>{shortcutLabel('N')}</Kbd>
           </Button>
         </div>
 
+        {/* One scroller from the nav down through the task lists, so a long
+            list never squeezes the rest into a sliver; the New task button
+            above and the footer below stay put. */}
+        <div className="scroll-clean flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
         {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
             a mixed rail where switching products and navigating within one
             product look like the same action. */}
@@ -649,6 +581,10 @@ export default function Sidebar({
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
             />
+            {/* What the agent remembers and what it can do sit with the rest
+                of the destinations rather than under their own heading. */}
+            <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+            <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
             {/* Channels used to have a standalone entry here, web-only, purely
                 because the web shell hid Settings entirely — Channels lives
                 under Settings on desktop. Settings is now reachable on web too,
@@ -659,7 +595,7 @@ export default function Sidebar({
 
         {codeRoute ? (
           <>
-            <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
+            <div className="nav-list px-2.5 flex flex-col gap-px">
               <NavItem
                 icon={Ico.folder(16)}
                 label="Projects"
@@ -697,18 +633,6 @@ export default function Sidebar({
           </>
         ) : (
         <>
-        {/* Agent — the agent's own brain: what it remembers (Memories)
-            and what it can do (Skills library). Pulled out of the old
-            bordered inset and presented as a labeled group, so it reads
-            as a category alongside Pinned / Recent instead of a drawn
-            box (fewer edges). Labels name what the user OWNS (plural
-            collections) rather than the engine's abstract concepts. */}
-        <div className="section-label">Agent</div>
-        <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
-        </div>
-
         {/* Pinned — only rendered when there are pinned tasks; an empty
             section just wastes rail space. */}
         {pinnedTasks.length > 0 && (
@@ -769,7 +693,7 @@ export default function Sidebar({
             </button>
           </Tooltip>
         </div>
-        <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+        <div className="px-2.5 pb-2.5 flex flex-col gap-px">
           {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
               excludes pinned items, so keying on it told a user whose tasks
               are all pinned that they have none — while their pinned tasks
@@ -857,6 +781,7 @@ export default function Sidebar({
         </div>
         </>
         )}
+        </div>
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
@@ -1000,8 +925,7 @@ export default function Sidebar({
                     buried behind opening the menu first. The status-pill
                     and signed-out states already show a Settings button
                     directly, so this only adds value here. Display
-                    settings (theme/8-bit/coding mode) moved to the
-                    floating corner button — see App.jsx. */}
+                    settings sit beside it, below. */}
                 <Tooltip content="Settings">
                   <button
                     ref={workspaceReturnFocusRef}
@@ -1024,6 +948,20 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
+          {/* Display settings (light/dark, skin) — in every footer state, so
+              it is always one click away without floating over content. */}
+          {displayToggle && (
+            <Tooltip content={displayToggle.label}>
+              <button
+                type="button"
+                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
+                onClick={displayToggle.onClick}
+                aria-label={displayToggle.label}
+              >
+                {displayToggle.icon}
+              </button>
+            </Tooltip>
+          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

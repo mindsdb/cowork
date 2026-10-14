@@ -427,15 +427,20 @@ export default function HomeView({
   return (
     <div
       ref={homeRef}
-      className="flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
+      className="flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent [container:home/inline-size]"
     >
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
           is dwarfed by the 42px orb, 44px wraps to two lines in the 640px
           column. So it sits at a bespoke 36px (text-3xl), balanced against the
           orb. Always flex-start — the orb stays at its REST flow position
-          (ml -58) and moves via translateX during boot. */}
-      <h1 className="home-greeting-row font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong mt-0 mx-0 mb-7 w-full max-w-[var(--composer-max-width,640px)] flex items-center gap-4 justify-start">
+          (ml -58) and moves via translateX during boot. Tight leading: at
+          narrow widths the greeting wraps to two lines.
+          data-orb-rest marks when the orb has left the centre, so a narrow
+          column can hide it (globals.css) without hiding the boot spinner. */}
+      <h1
+        data-orb-rest={isEarlyBoot ? undefined : ''}
+        className="home-greeting-row font-[family-name:var(--font-display)] text-3xl leading-[1.15] font-semibold tracking-[-0.004em] text-strong mt-0 mx-0 mb-7 w-full max-w-[var(--composer-max-width,640px)] flex items-center gap-4 justify-start">
         <span
           ref={orbRef}
           // inline-flex (not inline-block) keeps the container out of the inline
