@@ -34,7 +34,6 @@ export interface MarkdownContentProps {
   dense?: boolean;
   variant?: string;
   enableForms?: boolean;
-  enableCharts?: boolean;
   animateStreamingWords?: boolean;
   isAssistant?: boolean;
   softBreaks?: boolean;

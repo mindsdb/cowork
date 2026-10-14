@@ -339,8 +339,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
         <div className="user-turn-bubble">
           {/* User messages flow through the same markdown pipeline as
               assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
+              etc. typed in the composer render properly. Forms are
+              gated off so a user typing a special fence in
               the composer can't trigger the side-effect renderers
               reserved for assistant output. */}
           {repair ? (
@@ -359,7 +359,6 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               text={content}
               variant="user"
               enableForms={false}
-              enableCharts={false}
             />
           </div>
           )}
@@ -527,7 +526,7 @@ export function TextBlock({
     return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
   }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
   // Full markdown rendering — GFM tables, lists, code blocks (with
-  // chartjs/chart and data-vault-form support), links, etc. via
+  // data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
   return (
     <MarkdownContent
