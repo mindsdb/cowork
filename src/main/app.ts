@@ -12,7 +12,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
-import { markStoresForCredentialClear, storesToClearAtSignOut } from './pending-credential-clear';
+import { holdUnconfirmedClears, markStoresForCredentialClear, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
@@ -635,6 +635,8 @@ async function performMindsSignOut() {
  * the real implementations it drives.
  */
 function mindsSignOutDeps(): SignOutDeps {
+  // Read once with the stores, so the marks and the list agree on it.
+  let serverClears: boolean | null = null;
   return {
     getRevokeToken,
     getRefreshToken,
@@ -655,13 +657,17 @@ function mindsSignOutDeps(): SignOutDeps {
       const home = coworkHome();
       const active = readActiveAccount(home);
       const activeStore = activeStoreRoot();
+      serverClears = serverClearsPendingCredentials();
       return {
         accountRoot: accountDataHome(home, active),
-        stores: storesToClearAtSignOut(home, active, activeStore, serverClearsPendingCredentials()),
+        stores: storesToClearAtSignOut(home, active, activeStore, serverClears),
         activeStore,
       };
     },
-    markStoresForCredentialClear,
+    markStoresForCredentialClear: (stores, activeStore) => {
+      markStoresForCredentialClear(stores, activeStore);
+      if (serverClears === null) holdUnconfirmedClears(coworkHome(), stores);
+    },
     getAntonEnvPath: coworkEnvPathIn,
     clearStoredProviderState,
     startSidecarFlush: () => {

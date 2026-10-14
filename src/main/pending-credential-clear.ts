@@ -35,9 +35,15 @@ export const PENDING_CLEAR_CAPABILITY = 'pending-credential-clear';
 
 const STORE_DATABASE = 'cowork.db';
 
-// Present when the last server this install started reads markers. On disk so a
-// run whose server never comes up still knows, at sign-out, whether to mark.
+// Which of these is present says whether the last server this install started
+// reads markers. On disk so a run whose server never comes up still knows, at
+// sign-out, whether to mark. Neither means no server has ever answered.
 const SERVER_CLEARS_FILE = '.server-clears-pending-credentials';
+const SERVER_IGNORES_FILE = '.server-ignores-pending-credentials';
+
+// The markers a sign-out wrote before any server had said whether it reads
+// them, one store root per line, kept until the next server answers.
+const UNCONFIRMED_CLEARS_FILE = '.pending-credential-clear-unconfirmed';
 
 /** An account root and every organization store under it. */
 function accountStores(accountRoot: string): string[] {
@@ -65,9 +71,12 @@ function incumbentOwnsDefaultRoot(home: string): boolean {
  *
  * Args: `home` is the shared Cowork home, `active` the session read at
  * sign-out entry, `activeStore` the store a sidecar is running or starting
- * on, or null, and `serverClears` whether the installed server reads markers.
+ * on, or null, and `serverClears` whether the installed server reads markers,
+ * null when no server has said.
  * Returns the store roots to mark: none for a server that ignores markers,
  * since a later upgrade would consume them and clear keys entered in between.
+ * An unknown server is marked anyway; `holdUnconfirmedClears` keeps the list
+ * so the first answer can take the markers back.
  * A store with no database is left out, as it holds no keys, except the
  * active one, whose sidecar may not have created it yet.
  */
@@ -75,9 +84,9 @@ export function storesToClearAtSignOut(
   home: string,
   active: ActiveAccount,
   activeStore: string | null,
-  serverClears: boolean,
+  serverClears: boolean | null,
 ): string[] {
-  if (!serverClears) return [];
+  if (serverClears === false) return [];
   const accountRoot = accountDataHome(home, active);
   let candidates: string[];
   if (active.kind !== 'unknown') {
@@ -124,21 +133,67 @@ export function hasPendingCredentialClear(storeRoot: string): boolean {
  * Record whether the server this install just started reads markers.
  *
  * Args: `home` is the shared Cowork home; `clears` what its /health said.
- * Side effects: writes or removes a file in `home`. Best effort: a lost write
- * only means one sign-out falls back to the previous answer.
+ * Side effects: writes one of two files in `home` and removes the other. Best
+ * effort: a lost write only means one sign-out falls back to the previous answer.
  */
 export function recordServerClearsPendingCredentials(home: string, clears: boolean): void {
-  const file = path.join(home, SERVER_CLEARS_FILE);
+  const [keep, drop] = clears ? [SERVER_CLEARS_FILE, SERVER_IGNORES_FILE] : [SERVER_IGNORES_FILE, SERVER_CLEARS_FILE];
   try {
-    if (clears) fs.writeFileSync(file, '', { encoding: 'utf-8', mode: 0o600 });
-    else fs.rmSync(file, { force: true });
+    fs.writeFileSync(path.join(home, keep), '', { encoding: 'utf-8', mode: 0o600 });
+    fs.rmSync(path.join(home, drop), { force: true });
   } catch (err) {
     console.warn('[server] could not record whether the backend clears a pending store', err);
   }
 }
 
 /** Whether the server this install last started reads markers, as recorded on
- *  disk. False when nothing has been recorded. */
-export function installedServerClearsPendingCredentials(home: string): boolean {
-  return fs.existsSync(path.join(home, SERVER_CLEARS_FILE));
+ *  disk, or null when no server has ever answered. */
+export function installedServerClearsPendingCredentials(home: string): boolean | null {
+  if (fs.existsSync(path.join(home, SERVER_CLEARS_FILE))) return true;
+  if (fs.existsSync(path.join(home, SERVER_IGNORES_FILE))) return false;
+  return null;
+}
+
+/**
+ * Keep the stores a sign-out marked before any server had said whether it
+ * reads markers, so the first answer can settle them.
+ *
+ * Args: `home` is the shared Cowork home; `stores` the roots just marked.
+ * Side effects: appends to a file in `home`. Best effort: a lost write leaves
+ * those markers for whichever server starts next, as before this list existed.
+ */
+export function holdUnconfirmedClears(home: string, stores: string[]): void {
+  if (stores.length === 0) return;
+  try {
+    fs.appendFileSync(path.join(home, UNCONFIRMED_CLEARS_FILE), stores.map((s) => `${s}\n`).join(''), {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+  } catch (err) {
+    console.warn('[logout] could not record the stores marked before the backend answered', err);
+  }
+}
+
+/**
+ * Settle the markers held by `holdUnconfirmedClears` once a server answers.
+ * A server that reads them has already cleared the store it started on and
+ * will clear the rest on their next start. One that ignores them would leave
+ * them for a later upgrade to consume, after new keys were entered, so they
+ * are taken back here, before this server can be handed any.
+ *
+ * Args: `home` is the shared Cowork home; `clears` what the server's /health said.
+ * Side effects: removes the held markers when `clears` is false, then the list.
+ */
+export function settleUnconfirmedClears(home: string, clears: boolean): void {
+  const file = path.join(home, UNCONFIRMED_CLEARS_FILE);
+  if (!fs.existsSync(file)) return;
+  try {
+    if (!clears) {
+      const stores = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
+      for (const root of stores) fs.rmSync(path.join(root, PENDING_CLEAR_MARKER), { force: true });
+    }
+    fs.rmSync(file, { force: true });
+  } catch (err) {
+    console.warn('[server] could not settle the stores marked before the backend answered', err);
+  }
 }

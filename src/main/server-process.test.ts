@@ -1119,7 +1119,7 @@ describe('a store with a pending credential clear', () => {
 
     vi.resetModules();
     vi.mocked(fs.existsSync).mockImplementation(() => false);
-    expect((await import('./server-process')).serverClearsPendingCredentials()).toBe(false);
+    expect((await import('./server-process')).serverClearsPendingCredentials()).toBeNull();
   });
 
   it('records on disk what the started sidecar can do, for a run where none comes up', async () => {
@@ -1136,6 +1136,23 @@ describe('a store with a pending credential clear', () => {
     spawnHandingOff();
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
     expect(fs.rmSync).toHaveBeenCalledWith(recordPath, { force: true });
+  });
+
+  it('takes back the markers a sign-out held when the first sidecar ignores them', async () => {
+    const listPath = path.join('/tmp/cowork-test-home', '.pending-credential-clear-unconfirmed');
+    const heldStore = '/tmp/cowork-test-home/orgs/org-held';
+    const exists = vi.mocked(fs.existsSync).getMockImplementation();
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === listPath || (exists ? exists(p) : false));
+    const ownerToken = vi.mocked(fs.readFileSync).getMockImplementation();
+    vi.mocked(fs.readFileSync).mockImplementation(((p: unknown, ...rest: unknown[]) =>
+      String(p) === listPath ? `${heldStore}\n` : (ownerToken ? ownerToken(p as never, ...(rest as [never])) : 'owner-token\n')) as never);
+
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(fs.rmSync).toHaveBeenCalledWith(path.join(heldStore, '.pending-credential-clear'), { force: true });
+    expect(fs.rmSync).toHaveBeenCalledWith(listPath, { force: true });
   });
 
   it('names the store a running sidecar serves, and none once it stops', async () => {

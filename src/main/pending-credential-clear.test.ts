@@ -17,9 +17,11 @@ import {
 import {
   PENDING_CLEAR_MARKER,
   hasPendingCredentialClear,
+  holdUnconfirmedClears,
   installedServerClearsPendingCredentials,
   markStoresForCredentialClear,
   recordServerClearsPendingCredentials,
+  settleUnconfirmedClears,
   storesToClearAtSignOut,
 } from './pending-credential-clear';
 
@@ -149,8 +151,15 @@ describe('marking only for a server that reads the marker', () => {
     expect(storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null, false)).toEqual([]);
   });
 
+  it('marks the stores when no server has said whether it reads markers', () => {
+    defaultRootOwnedByAnother();
+    const root = store(ACCOUNTS_DIR, 'acct-b');
+
+    expect(storesToClearAtSignOut(home, { kind: 'signed-in', accountId: 'acct-b' }, null, null)).toEqual([root]);
+  });
+
   it('remembers across runs what the installed server can do', () => {
-    expect(installedServerClearsPendingCredentials(home)).toBe(false);
+    expect(installedServerClearsPendingCredentials(home)).toBeNull();
 
     recordServerClearsPendingCredentials(home, true);
     expect(installedServerClearsPendingCredentials(home)).toBe(true);
@@ -189,5 +198,40 @@ describe('markStoresForCredentialClear', () => {
     expect(() => markStoresForCredentialClear([missing, present], null)).not.toThrow();
 
     expect(hasPendingCredentialClear(present)).toBe(true);
+  });
+});
+
+describe('markers written before any server answered', () => {
+  it('takes them back when the first server to answer ignores them', () => {
+    const held = store('held');
+    const other = store('other');
+    markStoresForCredentialClear([held, other], null);
+    holdUnconfirmedClears(home, [held]);
+
+    settleUnconfirmedClears(home, false);
+
+    expect(hasPendingCredentialClear(held)).toBe(false);
+    expect(hasPendingCredentialClear(other)).toBe(true);
+  });
+
+  it('leaves them for a server that reads them', () => {
+    const held = store('held');
+    markStoresForCredentialClear([held], null);
+    holdUnconfirmedClears(home, [held]);
+
+    settleUnconfirmedClears(home, true);
+
+    expect(hasPendingCredentialClear(held)).toBe(true);
+  });
+
+  it('settles each list once, so a later answer cannot take back a newer sign-out', () => {
+    const first = store('first');
+    markStoresForCredentialClear([first], null);
+    holdUnconfirmedClears(home, [first]);
+    settleUnconfirmedClears(home, true);
+
+    settleUnconfirmedClears(home, false);
+
+    expect(hasPendingCredentialClear(first)).toBe(true);
   });
 });

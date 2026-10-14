@@ -37,6 +37,7 @@ import {
   hasPendingCredentialClear,
   installedServerClearsPendingCredentials,
   recordServerClearsPendingCredentials,
+  settleUnconfirmedClears,
   PENDING_CLEAR_CAPABILITY,
   PENDING_CLEAR_FAILURE_LOG,
 } from './pending-credential-clear';
@@ -223,10 +224,12 @@ let _startingOrgStoreRoot: string | undefined;
 let _serverClearsPendingCredentials: boolean | null = null;
 
 /** Remember what the sidecar that just came up can do, for this run and, via
- *  a file in the shared home, for a later run whose sidecar never answers. */
+ *  a file in the shared home, for a later run whose sidecar never answers, and
+ *  settle any markers a sign-out wrote before a sidecar had said. */
 function noteServerClearsPendingCredentials(clears: boolean): void {
   _serverClearsPendingCredentials = clears;
   recordServerClearsPendingCredentials(coworkHome(), clears);
+  settleUnconfirmedClears(coworkHome(), clears);
 }
 
 let serverProcess: ChildProcess | null = null;
@@ -1275,8 +1278,9 @@ export function activeStoreRoot(): string | null {
 }
 
 /** Whether the installed sidecar consumes a store's pending credential clear at
- *  startup: what this run saw, else what the last run recorded. */
-export function serverClearsPendingCredentials(): boolean {
+ *  startup: what this run saw, else what the last run recorded, else null when
+ *  no sidecar has ever answered. */
+export function serverClearsPendingCredentials(): boolean | null {
   return _serverClearsPendingCredentials ?? installedServerClearsPendingCredentials(coworkHome());
 }
 
