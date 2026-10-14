@@ -84,6 +84,7 @@ import {
   ensureSidecarOnCurrentAccountRoot,
   sidecarIsOnCurrentStores,
   serverClearsPendingCredentials,
+  forgetServerCapability,
   activeStoreRoot,
 } from './server-process';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
@@ -1138,14 +1139,23 @@ describe('a store with a pending credential clear', () => {
     expect(fs.rmSync).toHaveBeenCalledWith(recordPath, { force: true });
   });
 
-  it('takes back the markers a sign-out held when the first sidecar ignores them', async () => {
-    const listPath = path.join('/tmp/cowork-test-home', '.pending-credential-clear-unconfirmed');
-    const heldStore = '/tmp/cowork-test-home/orgs/org-held';
+  const LIST = path.join('/tmp/cowork-test-home', '.pending-credential-clear-unconfirmed');
+  const HELD_STORE = '/tmp/cowork-test-home/orgs/org-held';
+  const HELD_MARKER = path.join(HELD_STORE, '.pending-credential-clear');
+
+  /** A list a sign-out left before any sidecar had answered, holding one store. */
+  function holdOneStore(): void {
     const exists = vi.mocked(fs.existsSync).getMockImplementation();
-    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === listPath || (exists ? exists(p) : false));
-    const ownerToken = vi.mocked(fs.readFileSync).getMockImplementation();
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === LIST || (exists ? exists(p) : false));
+    const read = vi.mocked(fs.readFileSync).getMockImplementation();
     vi.mocked(fs.readFileSync).mockImplementation(((p: unknown, ...rest: unknown[]) =>
-      String(p) === listPath ? `${heldStore}\n` : (ownerToken ? ownerToken(p as never, ...(rest as [never])) : 'owner-token\n')) as never);
+      String(p) === LIST ? `${HELD_STORE}\n` : (read ? read(p as never, ...(rest as [never])) : 'owner-token\n')) as never);
+  }
+
+  it('takes back the markers a sign-out held when the first sidecar ignores them', async () => {
+    const listPath = LIST;
+    const heldStore = HELD_STORE;
+    holdOneStore();
 
     healthCapabilities = ['coding'];
     spawnHandingOff();
@@ -1153,6 +1163,52 @@ describe('a store with a pending credential clear', () => {
 
     expect(fs.rmSync).toHaveBeenCalledWith(path.join(heldStore, '.pending-credential-clear'), { force: true });
     expect(fs.rmSync).toHaveBeenCalledWith(listPath, { force: true });
+  });
+
+  it('keeps the held markers for a first sidecar that reads them, and settles before the started hook', async () => {
+    holdOneStore();
+    let settledBeforeHook = false;
+    setServerStartedHook(async () => {
+      settledBeforeHook = vi.mocked(fs.rmSync).mock.calls.some(([p]) => String(p) === LIST);
+    });
+
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(fs.rmSync).not.toHaveBeenCalledWith(HELD_MARKER, expect.anything());
+    expect(settledBeforeHook).toBe(true);
+    setServerStartedHook(null);
+  });
+
+  it('settles the held markers when it adopts a running sidecar', async () => {
+    await leaveOwnOrphanRunning();
+    holdOneStore();
+    healthCapabilities = ['coding'];
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(fs.rmSync).toHaveBeenCalledWith(HELD_MARKER, { force: true });
+  });
+
+  /*
+   * An answer recorded from the server being replaced must not decide a
+   * sign-out that lands before the new one answers.
+   */
+  it('forgets the replaced server\'s answer, in this run and on disk', async () => {
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(false);
+    await stopServer();
+
+    forgetServerCapability();
+
+    expect(serverClearsPendingCredentials()).toBeNull();
+    for (const name of ['.server-clears-pending-credentials', '.server-ignores-pending-credentials']) {
+      expect(fs.rmSync).toHaveBeenCalledWith(path.join('/tmp/cowork-test-home', name), { force: true });
+    }
   });
 
   it('names the store a running sidecar serves, and none once it stops', async () => {

@@ -16,6 +16,7 @@ vi.mock('./server-process', () => ({
   // Pass-through: the real one gates startServer during a reinstall; here we
   // just run the wrapped fn so runUv still invokes execFile.
   withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  forgetServerCapability: vi.fn(),
 }));
 // buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
 // without a packaged app (mirrors server-source.test.ts).
@@ -28,7 +29,7 @@ vi.mock('child_process');
 vi.mock('http');
 vi.mock('https');
 
-import { startServer } from './server-process';
+import { forgetServerCapability, startServer } from './server-process';
 import { buildKind } from './cowork-home';
 import {
   maybeUpdateServer,
@@ -517,6 +518,29 @@ describe('repairServerInstall (orchestration)', () => {
     expect(installs[0]).toContain('--reinstall');
     // Repair does NOT start the server — the boot flow retries start itself.
     expect(vi.mocked(startServer)).not.toHaveBeenCalled();
+  });
+
+  it('forgets the replaced server\'s marker answer before the reinstall runs', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+    let forgottenBeforeInstall = false;
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (args[0] === 'tool' && args[1] === 'install') {
+        forgottenBeforeInstall = vi.mocked(forgetServerCapability).mock.calls.length > 0;
+      }
+      cb(null, args[0] === 'tool' && args[1] === 'dir' ? '/fake/uv/tools\n' : '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(true);
+
+    expect(forgottenBeforeInstall).toBe(true);
   });
 
   it('reinstalls from git (exact configured ref) when the venv carries vcs_info', async () => {

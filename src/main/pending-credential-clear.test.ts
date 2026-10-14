@@ -17,9 +17,11 @@ import {
 import {
   PENDING_CLEAR_MARKER,
   hasPendingCredentialClear,
+  forgetServerClearsPendingCredentials,
   holdUnconfirmedClears,
   installedServerClearsPendingCredentials,
   markStoresForCredentialClear,
+  markStoresForSignOut,
   recordServerClearsPendingCredentials,
   settleUnconfirmedClears,
   storesToClearAtSignOut,
@@ -233,5 +235,50 @@ describe('markers written before any server answered', () => {
     settleUnconfirmedClears(home, false);
 
     expect(hasPendingCredentialClear(first)).toBe(true);
+  });
+});
+
+describe('markStoresForSignOut', () => {
+  const listFile = () => path.join(home, '.pending-credential-clear-unconfirmed');
+
+  it('holds the stores, then marks them, while no server has said', () => {
+    const a = store('a');
+
+    markStoresForSignOut(home, [a], null, null);
+
+    expect(hasPendingCredentialClear(a)).toBe(true);
+    expect(fs.readFileSync(listFile(), 'utf-8')).toBe(`${a}\n`);
+  });
+
+  it('marks nothing when the list cannot be written, so no marker is left that nobody can take back', () => {
+    const a = store('a');
+    fs.mkdirSync(listFile());
+
+    markStoresForSignOut(home, [a], null, null);
+
+    expect(hasPendingCredentialClear(a)).toBe(false);
+  });
+
+  it('marks without a list for a server known to read markers', () => {
+    const a = store('a');
+
+    markStoresForSignOut(home, [a], null, true);
+
+    expect(hasPendingCredentialClear(a)).toBe(true);
+    expect(fs.existsSync(listFile())).toBe(false);
+  });
+});
+
+describe('forgetServerClearsPendingCredentials', () => {
+  it('returns the capability to unknown and leaves held markers and their list', () => {
+    const a = store('a');
+    markStoresForSignOut(home, [a], null, null);
+    recordServerClearsPendingCredentials(home, false);
+
+    forgetServerClearsPendingCredentials(home);
+
+    expect(installedServerClearsPendingCredentials(home)).toBeNull();
+    expect(hasPendingCredentialClear(a)).toBe(true);
+    expect(fs.existsSync(path.join(home, '.pending-credential-clear-unconfirmed'))).toBe(true);
   });
 });

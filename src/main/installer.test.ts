@@ -32,6 +32,7 @@ vi.mock('./server-source', () => ({
 }));
 vi.mock('./server-process', () => ({
   withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  forgetServerCapability: vi.fn(),
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
 }));
 vi.mock('./server-updater', () => ({
@@ -39,6 +40,7 @@ vi.mock('./server-updater', () => ({
 }));
 
 import { IPC } from '../shared/ipc-channels';
+import { forgetServerCapability } from './server-process';
 import { resolvePypiInstallTarget } from './server-updater';
 import { runInstaller, inspectCoworkServerInstall } from './installer';
 
@@ -199,6 +201,18 @@ describe('runInstaller — uv discovery scenarios', () => {
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0][0]).toBe(PROBED_UV);
     expect(errors).toEqual([]);
+  });
+
+  it('forgets the replaced server\'s marker answer before installing over it', async () => {
+    setupMachine({ uvProbed: true, toolListVersion: '0.26.8.2.1' });
+    const forget = vi.mocked(forgetServerCapability);
+    forget.mockClear();
+
+    await expect(runInstaller(fakeWindow().win)).resolves.toBe(true);
+
+    const install = vi.mocked(cp.spawn).mock.invocationCallOrder.at(-1) ?? 0;
+    expect(forget).toHaveBeenCalledTimes(1);
+    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(install);
   });
 
   it('fresh machine without uv bootstraps it, then installs the server with it', async () => {

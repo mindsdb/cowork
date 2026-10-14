@@ -35,9 +35,8 @@ export const PENDING_CLEAR_CAPABILITY = 'pending-credential-clear';
 
 const STORE_DATABASE = 'cowork.db';
 
-// Which of these is present says whether the last server this install started
-// reads markers. On disk so a run whose server never comes up still knows, at
-// sign-out, whether to mark. Neither means no server has ever answered.
+// Whether the last server to answer reads markers, kept for a run whose server
+// never comes up. Neither file means unknown: none has answered since install.
 const SERVER_CLEARS_FILE = '.server-clears-pending-credentials';
 const SERVER_IGNORES_FILE = '.server-ignores-pending-credentials';
 
@@ -75,8 +74,8 @@ function incumbentOwnsDefaultRoot(home: string): boolean {
  * null when no server has said.
  * Returns the store roots to mark: none for a server that ignores markers,
  * since a later upgrade would consume them and clear keys entered in between.
- * An unknown server is marked anyway; `holdUnconfirmedClears` keeps the list
- * so the first answer can take the markers back.
+ * An unknown server is marked anyway, through `markStoresForSignOut`, which
+ * keeps the list so the first answer can take the markers back.
  * A store with no database is left out, as it holds no keys, except the
  * active one, whose sidecar may not have created it yet.
  */
@@ -155,22 +154,62 @@ export function installedServerClearsPendingCredentials(home: string): boolean |
 }
 
 /**
- * Keep the stores a sign-out marked before any server had said whether it
- * reads markers, so the first answer can settle them.
+ * Keep the stores a sign-out is about to mark before any server has said
+ * whether it reads markers, so the first answer can settle them.
  *
- * Args: `home` is the shared Cowork home; `stores` the roots just marked.
- * Side effects: appends to a file in `home`. Best effort: a lost write leaves
- * those markers for whichever server starts next, as before this list existed.
+ * Args: `home` is the shared Cowork home; `stores` the roots to be marked.
+ * Returns whether the list now holds them.
+ * Side effects: appends to a file in `home`.
  */
-export function holdUnconfirmedClears(home: string, stores: string[]): void {
-  if (stores.length === 0) return;
+export function holdUnconfirmedClears(home: string, stores: string[]): boolean {
+  if (stores.length === 0) return true;
   try {
     fs.appendFileSync(path.join(home, UNCONFIRMED_CLEARS_FILE), stores.map((s) => `${s}\n`).join(''), {
       encoding: 'utf-8',
       mode: 0o600,
     });
+    return true;
   } catch (err) {
     console.warn('[logout] could not record the stores marked before the backend answered', err);
+    return false;
+  }
+}
+
+/**
+ * Mark the stores a sign-out clears. While no server has said whether it reads
+ * markers, the list is written first and the markers only if it held: a marker
+ * nobody can take back would wait for a later upgrade and clear keys entered
+ * in between.
+ *
+ * Args: `home` is the shared Cowork home; `stores` from `storesToClearAtSignOut`;
+ * `activeStore` as for `markStoresForCredentialClear`; `serverClears` the
+ * capability read with the stores, null when unknown.
+ * Side effects: writes the list when unknown, then the markers.
+ */
+export function markStoresForSignOut(
+  home: string,
+  stores: string[],
+  activeStore: string | null,
+  serverClears: boolean | null,
+): void {
+  if (serverClears === null && !holdUnconfirmedClears(home, stores)) return;
+  markStoresForCredentialClear(stores, activeStore);
+}
+
+/**
+ * Forget what the last server said about markers, because the install it
+ * described is about to be replaced.
+ *
+ * Args: `home` is the shared Cowork home.
+ * Side effects: removes both record files. Held markers and their list stay.
+ */
+export function forgetServerClearsPendingCredentials(home: string): void {
+  for (const name of [SERVER_CLEARS_FILE, SERVER_IGNORES_FILE]) {
+    try {
+      fs.rmSync(path.join(home, name), { force: true });
+    } catch (err) {
+      console.warn('[server] could not forget what the replaced backend said about pending stores', err);
+    }
   }
 }
 

@@ -12,7 +12,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
-import { holdUnconfirmedClears, markStoresForCredentialClear, storesToClearAtSignOut } from './pending-credential-clear';
+import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
@@ -664,10 +664,8 @@ function mindsSignOutDeps(): SignOutDeps {
         activeStore,
       };
     },
-    markStoresForCredentialClear: (stores, activeStore) => {
-      markStoresForCredentialClear(stores, activeStore);
-      if (serverClears === null) holdUnconfirmedClears(coworkHome(), stores);
-    },
+    markStoresForCredentialClear: (stores, activeStore) =>
+      markStoresForSignOut(coworkHome(), stores, activeStore, serverClears),
     getAntonEnvPath: coworkEnvPathIn,
     clearStoredProviderState,
     startSidecarFlush: () => {

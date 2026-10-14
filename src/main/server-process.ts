@@ -36,6 +36,7 @@ import { decideStartWait, startFailureMessage } from './update-logic';
 import {
   hasPendingCredentialClear,
   installedServerClearsPendingCredentials,
+  forgetServerClearsPendingCredentials,
   recordServerClearsPendingCredentials,
   settleUnconfirmedClears,
   PENDING_CLEAR_CAPABILITY,
@@ -1275,6 +1276,17 @@ export function activeStoreRoot(): string | null {
   if (isServerRunning()) return _runningOrgStoreRoot ?? null;
   if (isServerStarting()) return _startingOrgStoreRoot ?? null;
   return null;
+}
+
+/**
+ * Drop what this run and the last one learned about pending-store clears,
+ * for a reinstall about to replace the server they came from. Call inside the
+ * maintenance window, before the install runs; the next answer records anew.
+ * Side effects: resets the in-memory answer and removes the record files.
+ */
+export function forgetServerCapability(): void {
+  _serverClearsPendingCredentials = null;
+  forgetServerClearsPendingCredentials(coworkHome());
 }
 
 /** Whether the installed sidecar consumes a store's pending credential clear at
