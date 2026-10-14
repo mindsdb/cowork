@@ -11,7 +11,7 @@ import { projectLabel, projectMatches } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { AppHeader } from '../components/appHeader';
 import Composer from '../components/Composer';
-import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
+import { WorkingFolderBox, ContextBox, ScheduledBox, RAIL_DOCKED_CLASS, RailToggle } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard, ProjectRow } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
@@ -391,17 +391,11 @@ function ProjectDetail({
             </div>
           </div>
           {!showMobileContext && (
-            <Tooltip content={railOpen ? 'Collapse panel' : 'Expand panel'}>
-              <button
-                type="button"
-                onClick={() => setRailOpen((open) => !open)}
-                aria-label={railOpen ? 'Collapse panel' : 'Expand panel'}
-                aria-pressed={railOpen}
-                className={`project-detail-rail-toggle w-7 h-7 rounded-md inline-grid place-items-center shrink-0 cursor-pointer hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'bg-surface-2 text-ink' : 'bg-transparent'}`}
-              >
-                {railOpen ? Ico.panelCollapseRight(16) : Ico.panelExpandLeft(16)}
-              </button>
-            </Tooltip>
+            <RailToggle
+              open={railOpen}
+              onToggle={() => setRailOpen((open) => !open)}
+              className="project-detail-rail-toggle"
+            />
           )}
         </AppHeader>
 
@@ -481,7 +475,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-surface self-start max-h-[calc(100%-10px)] border border-solid border-line rounded-[12px] mr-2.5 mb-2.5 pt-4 px-5 pb-5 flex flex-col gap-6 overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail ${RAIL_DOCKED_CLASS} [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <WorkingFolderBox project={project} />
           <ContextBox
             projects={projects}

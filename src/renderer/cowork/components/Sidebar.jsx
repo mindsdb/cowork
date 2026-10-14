@@ -15,6 +15,7 @@ import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import { surfaceCopy } from '../lib/surface';
+import { shortcutLabel } from '../lib/shortcut';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
@@ -36,12 +37,6 @@ const UPDATE_TONE_CLASS = {
     action: 'text-[var(--warning,#c47f00)]',
   },
 };
-
-// Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
-// Windows/Linux use Ctrl+ literal.
-const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
-const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
-const shortcut = (key) => `${MOD_LABEL}${key}`;
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
   return (
@@ -548,7 +543,7 @@ export default function Sidebar({
           >
             {Ico.plus(14)}
             <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
-            <Kbd>{shortcut('N')}</Kbd>
+            <Kbd>{shortcutLabel('N')}</Kbd>
           </Button>
         </div>
 
