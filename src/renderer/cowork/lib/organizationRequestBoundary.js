@@ -62,6 +62,15 @@ export function expectedOrganizationHeaders(accessToken) {
   return { [EXPECTED_ORGANIZATION_HEADER]: expectedOrganizationId };
 }
 
+/** The request path without query or host, so the log line carries no parameters. */
+function requestPathOf(response) {
+  try {
+    return new URL(response.url).pathname;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Apply the server's mandatory-reload response before any caller can consume a
  * body scoped to an organization other than the one this document pinned.
@@ -76,6 +85,10 @@ export function handleOrganizationBoundaryResponse(response) {
   if (typeof instruction !== 'string' || instruction.trim().toLowerCase() !== 'required') {
     return false;
   }
+  console.warn('[organization] the server required a reload', {
+    path: requestPathOf(response),
+    status: response.status,
+  });
   prepareForOrganizationReload();
   return true;
 }

@@ -25,7 +25,7 @@
 //   - First-paint theme bootstrap (avoids palette flash).
 //   - Tailwind + cowork tokens loaded in the same order.
 
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 // Order matters: globals/skin/styles first, Tailwind utilities LAST so
@@ -42,12 +42,17 @@ import {
   pinWebOrganizationCacheIdentity,
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
-import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
+import {
+  assertOrganizationTransitionClear,
+  prepareForOrganizationReload,
+} from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
-import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
+import { OrganizationReloadGate } from './OrganizationReloadGate';
+import { RootErrorBoundary } from './RootErrorBoundary';
+import { WelcomeLoading, WelcomeNotice, applyArcadePreset } from './WelcomeLoading';
 
 (() => {
   let theme: 'light' | 'dark' = 'dark';
@@ -84,27 +89,100 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
   }
 }
 
+const FOCUS_TOKEN_REFRESH_INTERVAL_MS = 60_000;
+
+/**
+ * Force a token refresh when the tab comes back into view, at most once a
+ * minute. A switch made outside Cowork writes no transition marker, so this
+ * tab only learns of it from a refreshed token, which onTokens then rejects.
+ */
+function useFocusTokenRefresh() {
+  useEffect(() => {
+    let lastRefreshAt: number | null = null;
+    const refresh = () => {
+      if (document.visibilityState === 'hidden' || !keycloak.authenticated) return;
+      const now = Date.now();
+      if (lastRefreshAt !== null && now - lastRefreshAt < FOCUS_TOKEN_REFRESH_INTERVAL_MS) return;
+      try {
+        assertOrganizationTransitionClear();
+      } catch (error) {
+        console.warn('[organization] focus token refresh skipped', error);
+        return;
+      }
+      lastRefreshAt = now;
+      keycloak.updateToken(-1).catch((error: unknown) => {
+        console.warn('[organization] focus token refresh failed', error);
+      });
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+}
+
+/**
+ * Holds the App mount until keycloak.init() resolves, and offers a reload when
+ * it rejects. Without LoadingComponent the provider renders App immediately,
+ * App's boot effect probes /api/v1/health before `authenticated` is set,
+ * getAccessToken() returns null so no Bearer is attached, the auth ingress 401s
+ * the probe, and resolveBootTarget lands a signed-in user on the auth screen.
+ *
+ * The provider sits outside StrictMode: it calls init() from componentDidMount
+ * with no unmount cleanup, so a dev double mount would call init() twice, and
+ * keycloak-js rejects a second init() on one instance.
+ */
+function KeycloakGate() {
+  const [initFailed, setInitFailed] = useState(false);
+  useFocusTokenRefresh();
+  const loading = initFailed ? (
+    <WelcomeNotice
+      title="Couldn't sign you in"
+      message="Signing in didn't finish. Reload to try again."
+      actionLabel="Reload"
+      onAction={() => window.location.reload()}
+    />
+  ) : (
+    <WelcomeLoading />
+  );
+  return (
+    <ReactKeycloakProvider
+      authClient={keycloak}
+      initOptions={initOptions}
+      LoadingComponent={loading}
+      onEvent={(event, error) => {
+        if (event !== 'onInitError') return;
+        console.error('[auth] Keycloak init failed', error);
+        setInitFailed(true);
+      }}
+      onTokens={bindOrganizationCacheTokens}
+    >
+      <StrictMode>
+        <OrganizationReloadGate>
+          <RootErrorBoundary>
+            <App />
+          </RootErrorBoundary>
+        </OrganizationReloadGate>
+      </StrictMode>
+    </ReactKeycloakProvider>
+  );
+}
+
 const root = document.getElementById('root')!;
 
 createRoot(root).render(
-  <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
-      <App />
-    ) : (
-      // LoadingComponent holds the mount until keycloak.init() resolves. Without
-      // it the provider renders App immediately, App's boot effect probes
-      // /api/v1/health before `authenticated` is set, getAccessToken() returns
-      // null so no Bearer is attached, the auth ingress 401s the probe, and
-      // resolveBootTarget lands a signed-in user on the auth screen.
-      <ReactKeycloakProvider
-        authClient={keycloak}
-        initOptions={initOptions}
-        LoadingComponent={<WelcomeLoading />}
-        onTokens={bindOrganizationCacheTokens}
-      >
-        <App />
-      </ReactKeycloakProvider>
-    )}
-  </StrictMode>
+  legacyTenant || codeFixture ? (
+    // Access is gated upstream; render directly without a Keycloak login.
+    <StrictMode>
+      <OrganizationReloadGate>
+        <RootErrorBoundary>
+          <App />
+        </RootErrorBoundary>
+      </OrganizationReloadGate>
+    </StrictMode>
+  ) : (
+    <KeycloakGate />
+  )
 );

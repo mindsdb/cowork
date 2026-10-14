@@ -10,9 +10,11 @@ import {
   __resetOrganizationTransitionForTests,
   assertOrganizationTransitionClear,
   beginOrganizationTransition,
+  isOrganizationReloadBlocked,
   prepareForOrganizationReload,
   releaseOrganizationTransition,
   reloadForOrganizationTransition,
+  subscribeOrganizationReloadBlocked,
 } from './organizationTransition';
 
 const STORAGE_KEY = 'anton.organizationTransition';
@@ -119,6 +121,35 @@ describe('organizationTransition', () => {
     expect(reloadSpy).toHaveBeenCalledTimes(3);
     expect(() => assertOrganizationTransitionClear())
       .toThrow('Organization change requires reload');
+  });
+
+  it('reports a blocked reload only once the budget is spent', () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      prepareForOrganizationReload({ clearTenantState: false });
+      expect(isOrganizationReloadBlocked()).toBe(false);
+      becomeANewDocument();
+    }
+    const listener = vi.fn();
+    subscribeOrganizationReloadBlocked(listener);
+
+    prepareForOrganizationReload({ clearTenantState: false });
+
+    expect(isOrganizationReloadBlocked()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops notifying a listener after it unsubscribes', () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      prepareForOrganizationReload({ clearTenantState: false });
+      becomeANewDocument();
+    }
+    const listener = vi.fn();
+    subscribeOrganizationReloadBlocked(listener)();
+
+    prepareForOrganizationReload({ clearTenantState: false });
+
+    expect(isOrganizationReloadBlocked()).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('starts a fresh budget once a document survives the window', () => {
