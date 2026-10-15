@@ -42,6 +42,19 @@ function lockedActionHint(skill) {
   return 'Admin or creator';
 }
 
+/* The caller's own skill that others use: `shared: true` with the edit
+   capability granted, since cowork-server grants a shared skill's capabilities
+   only to its creator (_skill_response in cowork/api/v1/endpoints/skills.py).
+   Others read the creator's copy live, `enabled` included (shared_turn_skills
+   in cowork/services/skills.py), so the creator's switch and Uninstall reach
+   them too. */
+function isOwnSharedSkill(skill) {
+  return skill.shared === true && canUseSharedResource(skill, 'canEdit');
+}
+
+const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
+const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
+
 // The detail view's note for a skill the caller can't edit.
 function readOnlyNote(skill) {
   if (skill.isBuiltin) return 'Built-in skills are read only.';
@@ -460,7 +473,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                   checked={selected.enabled ?? true}
                   aria-label="Skill enabled"
                   disabled={!canUseSharedResource(selected, 'canDisable')}
-                  title={!canUseSharedResource(selected, 'canDisable') ? 'You do not have permission to enable or disable this skill.' : undefined}
+                  title={!canUseSharedResource(selected, 'canDisable')
+                    ? 'You do not have permission to enable or disable this skill.'
+                    : isOwnSharedSkill(selected) ? OWN_SHARED_SWITCH_HINT : undefined}
                   onCheckedChange={async (next) => {
                     if (!canUseSharedResource(selected, 'canDisable')) return;
                     const targetLabel = selected.label;
@@ -597,6 +612,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       <ConfirmModal
         open={!!removing}
         title={removing ? `Remove skill "${removing.label}"?` : ''}
+        message={removing && isOwnSharedSkill(removing) ? OWN_SHARED_REMOVE_NOTE : undefined}
         confirmLabel="Remove"
         destructive
         onClose={() => setRemoving(null)}

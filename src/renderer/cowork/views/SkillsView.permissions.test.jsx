@@ -317,6 +317,10 @@ describe('SkillsView shared skills', () => {
   // The detail note and cowork-server's 403 message share this sentence.
   const SHARED_NOTE = "This skill is shared with you and can't be changed here.";
   const OWNER_CAPABILITIES = { canEdit: true, canDelete: true, canDisable: true };
+  /* What the creator of a shared skill is told: others read the creator's copy
+     live, so the switch and Uninstall reach them too. */
+  const SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
+  const REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
 
   /* Reads which badges the skill's row shows, then opens its detail view and
      actions menu and returns the Edit and Uninstall menu items. The row leaves
@@ -365,8 +369,10 @@ describe('SkillsView shared skills', () => {
 
     expect(rowBadges.shared).toBe(true);
     expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
-      .not.toHaveAttribute('aria-disabled', 'true');
+    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+    // Only the creator's switch reaches everyone, so a reader's gets no hint.
+    expect(toggle).not.toHaveAttribute('title');
     expect(edit).toHaveAttribute('data-disabled');
     expect(edit).toHaveTextContent('Shared with you');
     expect(uninstall).toHaveAttribute('data-disabled');
@@ -379,15 +385,18 @@ describe('SkillsView shared skills', () => {
 
     expect(rowBadges.shared).toBe(true);
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
-      .not.toHaveAttribute('aria-disabled', 'true');
+    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+    expect(toggle).toHaveAttribute('title', SWITCH_HINT);
     expect(edit).not.toHaveAttribute('data-disabled');
     expect(edit).not.toHaveTextContent('Shared with you');
     expect(uninstall).not.toHaveAttribute('data-disabled');
     expect(uninstall).not.toHaveTextContent('Shared with you');
 
     await userEvent.click(uninstall);
-    expect(await screen.findByRole('dialog')).toHaveTextContent(`Remove skill "${own.label}"?`);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(`Remove skill "${own.label}"?`);
+    expect(dialog).toHaveTextContent(REMOVE_NOTE);
   });
 
   it.each([
@@ -407,16 +416,22 @@ describe('SkillsView shared skills', () => {
     expect(uninstall).toHaveTextContent('Admin or creator');
   });
 
-  it('keeps every action and no badge for a plain skill the caller owns', async () => {
-    const { rowBadges, edit, uninstall } = await openActions({
-      ...lockedSkill,
-      capabilities: OWNER_CAPABILITIES,
-    });
+  it.each([
+    ['without the field', { ...lockedSkill, capabilities: OWNER_CAPABILITIES }],
+    ['with a non-boolean shared value', { ...lockedSkill, shared: 'true', capabilities: OWNER_CAPABILITIES }],
+  ])('keeps every action and no badge or sharing hint for a plain skill the caller owns %s', async (_, skill) => {
+    const { rowBadges, edit, uninstall } = await openActions(skill);
 
     expect(rowBadges.shared).toBe(false);
     expect(rowBadges.builtin).toBe(false);
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Skill enabled' })).not.toHaveAttribute('title');
     expect(edit).not.toHaveAttribute('data-disabled');
     expect(uninstall).not.toHaveAttribute('data-disabled');
+
+    await userEvent.click(uninstall);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(`Remove skill "${skill.label}"?`);
+    expect(dialog).not.toHaveTextContent(REMOVE_NOTE);
   });
 });
