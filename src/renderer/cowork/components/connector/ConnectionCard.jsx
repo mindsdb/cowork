@@ -21,6 +21,14 @@ function ConnectionLogo({ engine, label }) {
   );
 }
 
+/* The confirm text before a delete. `shared` is the caller's own connection
+   that others use: they read it live from its creator's vault (cowork-server's
+   LayeredDataVault), so deleting it removes it for them too. */
+export function disconnectPrompt({ engine, name, shared }) {
+  const question = `Disconnect ${engine}/${name}?`;
+  return shared ? `${question}\n\nIt's shared, so everyone it's shared with loses it too.` : question;
+}
+
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
@@ -41,7 +49,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const badge = managed ? 'Managed' : connection.shared === true ? 'Shared' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!window.confirm(disconnectPrompt({ engine, name, shared: connection.shared === true }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);

@@ -27,7 +27,7 @@ import {
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -453,7 +453,11 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 variant="danger"
                 block
                 onClick={() => {
-                  if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
+                  if (!window.confirm(disconnectPrompt({
+                    engine: connection.engine,
+                    name: connection.name,
+                    shared: connection.shared === true || saved?.shared === true,
+                  }))) return;
                   onDisconnect?.(connection, saved);
                   onClose();
                 }}

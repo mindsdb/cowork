@@ -1,7 +1,8 @@
 // Connections the server marks managed (the operator's own, or one someone
 // else shares) are read-only on the Connections page, the creator's own shared
-// connection keeps every control, and a Reconnect whose delete fails never
-// opens a new connect flow, while one whose connection is already gone does.
+// connection keeps every control and says before Remove that everyone loses
+// it, and a Reconnect whose delete fails never opens a new connect flow, while
+// one whose connection is already gone does.
 // Follows CustomizeView.identity.test.jsx's mocking convention, on the web
 // host the self-hosted stack serves unless a test switches the host to desktop.
 
@@ -247,6 +248,33 @@ describe('CustomizeView Disconnect', () => {
 
     await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
     expect(window.alert).not.toHaveBeenCalled();
+  });
+});
+
+describe('CustomizeView panel Remove', () => {
+  it.each([
+    ['the list row', { ...CONNECTION, managed: false, shared: true }, SAVED],
+    ['the detail response', CONNECTION, { ...SAVED, managed: false, shared: true }],
+  ])("says everyone loses the creator's own shared connection when %s marks it shared", async (_, connection, saved) => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const dialog = await openPanel([connection], saved);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
+
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
+      "Disconnect google_drive/google_drive-team?\n\nIt's shared, so everyone it's shared with loses it too.",
+    );
+    expect(deleteDatasource).not.toHaveBeenCalled();
+  });
+
+  it('asks only the plain question for a connection without either field', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const dialog = await openPanel([CONNECTION], SAVED);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
+
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect google_drive/google_drive-team?');
+    expect(deleteDatasource).not.toHaveBeenCalled();
   });
 });
 

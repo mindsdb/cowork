@@ -146,6 +146,30 @@ describe('ConnectionCard', () => {
   });
 
   it.each([
+    ['card', ConnectionCard],
+    ['row', ConnectionRow],
+  ])("says before a %s disconnects the creator's own shared connection that everyone loses it", async (_, Item) => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const onDelete = vi.fn();
+    render(<Item connection={{ ...connection, shared: true }} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
+      "Disconnect github/ianu82?\n\nIt's shared, so everyone it's shared with loses it too.",
+    );
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['with shared false', { ...connection, shared: false }],
+    ['with a non-boolean shared value', { ...connection, shared: 'true' }],
+  ])('asks only the plain question before disconnecting a connection %s', async (_, conn) => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect github/ianu82?');
+  });
+
+  it.each([
     ['without either field', connection],
     ['with managed false', { ...connection, managed: false }],
     ['with a non-boolean managed value', { ...connection, managed: 'true' }],
