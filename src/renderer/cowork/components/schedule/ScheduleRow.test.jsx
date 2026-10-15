@@ -99,3 +99,12 @@ describe('taskMenuItems', () => {
     expect(h.onPause).toHaveBeenCalledWith(task);
   });
 });
+
+describe('ScheduleRow — one run at a time', () => {
+  it('disables Run while a run is going, and enables it otherwise', () => {
+    const { rerender } = render(<ScheduleRow task={{ ...baseTask, running: true }} projects={PROJECTS} />);
+    expect(screen.getByRole('button', { name: /^Run$/ })).toBeDisabled();
+    rerender(<ScheduleRow task={baseTask} projects={PROJECTS} />);
+    expect(screen.getByRole('button', { name: /^Run$/ })).toBeEnabled();
+  });
+});
