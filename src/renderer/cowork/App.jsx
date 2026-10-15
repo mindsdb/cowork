@@ -8,7 +8,7 @@ import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
-import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
+import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -2298,13 +2298,12 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already tailing locally — second-mount of the same task should
-    // not double up. Deliberately still the shared refs and not the registry:
-    // a record also covers a live send, and re-attaching over one would abort
-    // it in favour of a tail that immediately 404s.
-    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
-      return true;
-    }
+    // A tail or send registered here, or a send holding the slot while it
+    // uploads. A second stream would abort it, whoever holds the shared slot.
+    const alreadyStreamingHere = () => (
+      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+    );
+    if (alreadyStreamingHere()) return true;
     let status;
     try {
       status = await fetchInFlightStatus(taskId);
@@ -2312,6 +2311,8 @@ function AppCore() {
       return false;
     }
     if (!status || !status.in_flight) return false;
+    // A send or queued drain may have started here while the probe was out.
+    if (alreadyStreamingHere()) return true;
 
     // Cache sync: the probe just confirmed the producer is alive.
     // Mark it now so any concurrent reconcile (e.g. switching to a
@@ -5454,7 +5455,7 @@ function AppCore() {
         };
       case 'style':
         return {
-          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          label: styleToggleLabel(skin),
           icon: Ico.gamepad(14),
           onClick: () => setSkin(nextToggledSkin(skin)),
         };

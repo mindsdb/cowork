@@ -1531,6 +1531,23 @@ describe('superseded data-vault stream', () => {
     return handle;
   }
 
+  it('replaces a live reply on the same conversation instead of running beside it', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'alpha turn');
+    const reply = await waitForStream();
+    expect(reply.kind).toBe('reply');
+    await emitOn(reply, { type: 'response.created', conversation_id: 'conv-a' });
+
+    // A second stream on one conversation must abort the first, or the first
+    // keeps replaying into a turn nobody reads.
+    const vault = await submitConnectForm(user);
+    expect(reply.abort).toHaveBeenCalled();
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(vault.abort).toHaveBeenCalled());
+  });
+
   it('does not hijack the composer with a question from a dead stream', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
@@ -1968,19 +1985,18 @@ describe('a tail displaced by opening another running conversation', () => {
     expect(tailB.kind).toBe('tail');
     expect(tailA.abort).not.toHaveBeenCalled();
 
-    // Back on Alpha, which re-attaches. The tail conv-a held before must be
-    // torn down rather than left attached with nothing able to abort it: a
-    // leaked tail keeps replaying into the turn and its own idle timer can
-    // cancel it later with no UI trace.
+    // Back on Alpha, which keeps its own tail although Beta now holds the
+    // shared slot: a second tail would abort it and replay the turn from 0.
     await openByTitle(user, 'Alpha task');
-    const tailA2 = await waitForStream(tailB);
-    expect(tailA2.kind).toBe('tail');
-    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(2);
+    expect(tailA.abort).not.toHaveBeenCalled();
 
-    // Stopping conv-a leaves the other conversation streaming.
-    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    // Stopping conv-a tears down that tail and leaves the other conversation streaming.
+    await emitOn(tailA, { type: 'response.output_text.delta', delta: 'working' });
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
     expect(tailB.abort).not.toHaveBeenCalled();
   });
 
@@ -2039,8 +2055,8 @@ describe('Stop with a scratchpad cell open', () => {
   });
 });
 
-describe('Stop after re-attaching to a conversation with a cell open', () => {
-  it('still cancels the cell the conversation opened before the re-attach', async () => {
+describe('Stop after coming back to a conversation with a cell open', () => {
+  it('still cancels the cell the conversation opened before the user left', async () => {
     const user = userEvent.setup();
     spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
     render(<App />);
@@ -2049,7 +2065,7 @@ describe('Stop after re-attaching to a conversation with a cell open', () => {
     const tailA = await waitForStream();
     cancelScratchpad.mockClear();
 
-    // Alpha opens a cell, then the user leaves and comes back, which re-attaches.
+    // Alpha opens a cell, then the user leaves and comes back.
     await emitOn(tailA, {
       type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
     });
@@ -2060,15 +2076,126 @@ describe('Stop after re-attaching to a conversation with a cell open', () => {
       content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
     });
     await openByTitle(user, 'Beta task');
-    const tailB = await waitForStream(tailA);
+    await waitForStream(tailA);
     await openByTitle(user, 'Alpha task');
-    const tailA2 = await waitForStream(tailB);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(2);
 
-    // The replay has not re-reported the cell yet, so the record is all that
-    // remembers it. Stop must still cancel it rather than leave it executing.
-    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    // Alpha's record is what remembers the cell. Stop must still cancel it
+    // rather than leave it executing.
+    await emitOn(tailA, { type: 'response.output_text.delta', delta: 'working' });
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+/* Opening a conversation re-attaches only when nothing streams for it here.
+   Which conversation holds the shared slot must not matter: a second stream
+   on the same conversation aborts the one already running. */
+describe('opening a conversation that already streams here', () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('leaves its tail alone while a task started from Home holds the slot', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    render(<App />);
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream();
+    expect(tailB.kind).toBe('tail');
+
+    await startFromHome(user, GAMMA, 'conv-home-g');
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(streams).toHaveLength(streamCount);
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves its send alone while a task started from Home holds the slot', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const composer = await openByTitle(user, 'Beta task');
+    await send(user, composer, 'beta turn');
+    const replyB = await waitForStream();
+    expect(replyB.kind).toBe('reply');
+    await emitOn(replyB, { type: 'response.created', conversation_id: 'conv-b' });
+
+    await startFromHome(user, GAMMA, 'conv-home-g');
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const streamCount = streams.length;
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(streams).toHaveLength(streamCount);
+    expect(replyB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves a send that is still uploading its files alone', async () => {
+    const user = userEvent.setup();
+    let finishUpload;
+    uploadAttachments.mockImplementationOnce(() => new Promise((resolve) => {
+      finishUpload = () => resolve([{ id: 'att-1', name: 'notes.txt' }]);
+    }));
+    render(<App />);
+    const composer = await openByTitle(user, 'Beta task');
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'beta turn');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalled());
+
+    // The send holds the slot but has no stream yet when Beta is reopened.
+    await openByTitle(user, 'Alpha task');
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    await openByTitle(user, 'Beta task');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(streams).toHaveLength(0);
+
+    await act(async () => { finishUpload(); await Promise.resolve(); });
+    const replyB = await waitForStream();
+    expect(replyB.kind).toBe('reply');
+    expect(streams).toHaveLength(1);
+    expect(replyB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves a send that started while its in-flight check was out alone', async () => {
+    const user = userEvent.setup();
+    let answerProbe = null;
+    spies.fetchInFlightStatus.mockImplementation((cid) => (cid === 'conv-b'
+      ? new Promise((resolve) => { answerProbe = resolve; })
+      : Promise.resolve({ in_flight: false })));
+    render(<App />);
+    const composer = await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(answerProbe).not.toBeNull());
+
+    await send(user, composer, 'beta turn');
+    const replyB = await waitForStream();
+    expect(replyB.kind).toBe('reply');
+    // The check answers for the turn the send just started.
+    await act(async () => { answerProbe({ in_flight: true }); await Promise.resolve(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    expect(streams).toHaveLength(1);
+    expect(replyB.abort).not.toHaveBeenCalled();
+  });
+
+  it('re-attaches once its own stream has ended, while another holds the slot', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream();
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream(tailB);
+
+    await act(async () => { tailB.opts.onDone(); await Promise.resolve(); });
+    await openByTitle(user, 'Beta task');
+    const tailB2 = await waitForStream(tailA);
+
+    expect(tailB2.kind).toBe('tail');
+    expect(tailA.abort).not.toHaveBeenCalled();
   });
 });
 
@@ -2132,8 +2259,8 @@ describe('a Stop on one conversation', () => {
 
 /**
  * Alpha streams its own reply, then Beta re-attaches a tail and claims the
- * shared slot. Back on Alpha nothing re-claims it, because Alpha's in-flight
- * probe answers not-in-flight, as a failed probe does. Resolves with Alpha's
+ * shared slot. Back on Alpha nothing re-claims it: Alpha's reply is still
+ * registered, so its in-flight check is never asked. Resolves with Alpha's
  * transcript on screen.
  */
 async function streamAlphaWhileBetaHoldsTheSlot(user) {
@@ -2149,9 +2276,11 @@ async function streamAlphaWhileBetaHoldsTheSlot(user) {
   const tailB = await waitForStream(alpha);
   await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
 
+  spies.fetchInFlightStatus.mockClear();
   await openByTitle(user, 'Alpha task');
   await screen.findByText('alpha turn');
-  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenLastCalledWith('conv-a'));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+  expect(spies.fetchInFlightStatus).not.toHaveBeenCalledWith('conv-a');
   return { alpha, tailB };
 }
 
@@ -2416,22 +2545,28 @@ async function startAlphaThenBetaFromHome(user) {
   return { alpha, beta };
 }
 
-/** Goes back to Alpha with `alphaProbe` answering Alpha's in-flight check, and
- *  resolves once Alpha shows `line` and that check has been asked. */
-async function returnToAlpha(user, alphaProbe, line = 'alpha turn') {
-  spies.fetchInFlightStatus.mockClear();
-  spies.fetchInFlightStatus.mockImplementation(async (cid) => (
-    cid === 'conv-a' ? alphaProbe() : { in_flight: false }
-  ));
-  await openByTitle(user, 'Alpha task');
-  await screen.findByText(line);
-  await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-a'));
-}
-
-const probePending = () => new Promise(() => {});
 // The real fetchInFlightStatus answers "not in flight" for any failure.
 const probeFailed = () => ({ in_flight: false });
 const probeRunning = () => ({ in_flight: true });
+
+/** Goes back to Alpha and resolves once Alpha shows `line`. With `alphaProbe`
+ *  (Alpha has no stream here) it answers Alpha's in-flight check, which must be
+ *  asked. Without it Alpha still streams here, so the check must not be asked,
+ *  even though it would answer running. */
+async function returnToAlpha(user, alphaProbe = null, line = 'alpha turn') {
+  spies.fetchInFlightStatus.mockClear();
+  spies.fetchInFlightStatus.mockImplementation(async (cid) => (
+    cid === 'conv-a' ? (alphaProbe ?? probeRunning)() : { in_flight: false }
+  ));
+  await openByTitle(user, 'Alpha task');
+  await screen.findByText(line);
+  if (alphaProbe) {
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-a'));
+    return;
+  }
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+  expect(spies.fetchInFlightStatus).not.toHaveBeenCalledWith('conv-a');
+}
 
 /** A run the server lists as running that this window never streamed, such
  *  as a scheduled task: Alpha's transcript holds only the prompt. */
@@ -2474,13 +2609,12 @@ describe('Stop in one task while a task started from Home runs', () => {
     fetchInFlightList.mockImplementation(async () => []);
   });
 
-  it.each([
-    ['before Alpha\'s in-flight check answers', probePending],
-    ['after Alpha\'s in-flight check fails', probeFailed],
-  ])('cancels only Alpha and Alpha\'s cell %s', async (_when, alphaProbe) => {
+  it('cancels only Alpha and Alpha\'s cell, with no second stream for Alpha', async () => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, alphaProbe);
+    await returnToAlpha(user);
+    expect(streams.some((x) => x.kind === 'tail')).toBe(false);
+    expect(alpha.abort).not.toHaveBeenCalled();
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
@@ -2492,33 +2626,13 @@ describe('Stop in one task while a task started from Home runs', () => {
     expect(await showsActive(BETA)).toBe(true);
   });
 
-  it('cancels only Alpha when Alpha\'s in-flight check re-attaches it', async () => {
-    const user = userEvent.setup();
-    const { beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeRunning);
-    const tailA = await waitFor(() => {
-      const h = streams.find((x) => x.kind === 'tail');
-      if (!h) throw new Error('Alpha not re-attached yet');
-      return h;
-    });
-    await emitOn(tailA, { type: 'response.output_text.delta', delta: ' more' });
-
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
-    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
-
-    expect(spies.cancelResponse.mock.calls).toEqual([['conv-a']]);
-    expect(cancelScratchpad.mock.calls).toEqual([['pad-a']]);
-    expect(beta.abort).not.toHaveBeenCalled();
-  });
-
   it('leaves Beta\'s running dot and question card in place', async () => {
     const user = userEvent.setup();
     const { beta } = await startAlphaThenBetaFromHome(user);
     await emitOn(beta, ASK_EVENT);
-    // Alpha re-attaches, so the target is Alpha even before the fix: only the
-    // clean-up after the cancel can touch Beta here.
-    await returnToAlpha(user, probeRunning);
-    await waitFor(() => expect(streams.some((x) => x.kind === 'tail')).toBe(true));
+    // Alpha's own reply is the target, so only the clean-up after the cancel
+    // can touch Beta here.
+    await returnToAlpha(user);
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
@@ -2537,7 +2651,7 @@ describe('Stop in one task while a task started from Home runs', () => {
     const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
     // Beta finishing leaves Gamma holding the shared slot.
     await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
@@ -2553,7 +2667,7 @@ describe('Stop in one task while a task started from Home runs', () => {
     const gamma = await startFromHome(user, GAMMA, 'conv-home-c');
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(gamma.abort).toHaveBeenCalled());
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
@@ -2670,7 +2784,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   it('cancels Alpha before deleting Alpha\'s running turn', async () => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
 
     await deleteTheRunningTurn(user);
 
@@ -2708,7 +2822,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   ])('tears Alpha down before deleting its turn when a Stop on Alpha is still waiting and then %s', async (_how, answer, cancels) => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     let answerCancel;
     spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
     await user.click(await screen.findByRole('button', { name: /stop/i }));
@@ -2734,7 +2848,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   it('deletes Alpha\'s turn only after a Stop on Alpha has finished its history reload', async () => {
     const user = userEvent.setup();
     const { alpha } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     let answerCancel;
     spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
     await user.click(await screen.findByRole('button', { name: /stop/i }));
@@ -2764,7 +2878,7 @@ describe('Stop in one task while a task started from Home runs', () => {
     const { beta } = await startAlphaThenBetaFromHome(user);
     // Beta finishing frees the shared slot, so only the delete can hold the message.
     await act(async () => { beta.opts.onDone('conv-home-b'); await Promise.resolve(); });
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     let answerCancel;
     spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
     let answerDelete;
@@ -2791,7 +2905,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   it('cancels Alpha\'s cell when Alpha\'s cancelled frame lands before its cancel answers', async () => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     // Alpha's own terminal drops its stream record, and the cell with it,
     // while Stop still waits on the cancel.
     spies.cancelResponse.mockImplementationOnce(async () => {
@@ -2812,7 +2926,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   it('sends one cancel when Stop is clicked twice before the cancel answers', async () => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     let answerCancel;
     spies.cancelResponse.mockImplementationOnce(() => new Promise((resolve) => { answerCancel = resolve; }));
 
@@ -2831,7 +2945,7 @@ describe('Stop in one task while a task started from Home runs', () => {
   it('keeps Alpha running and names no other task when Alpha\'s cancel fails', async () => {
     const user = userEvent.setup();
     const { alpha, beta } = await startAlphaThenBetaFromHome(user);
-    await returnToAlpha(user, probeFailed);
+    await returnToAlpha(user);
     spies.cancelResponse.mockResolvedValueOnce({ status: 'error', conversation_id: 'conv-a' });
 
     await user.click(await screen.findByRole('button', { name: /stop/i }));

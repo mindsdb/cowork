@@ -39,6 +39,10 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
+import {
+  OWNED_BY_OTHER_USER_MESSAGE,
+  isOwnedByOtherUserError,
+} from '../components/artifact/publish/publishErrors';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -58,6 +62,7 @@ import {
 } from '../components/collection';
 import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const EMPTY_ARTIFACTS = [];
@@ -230,17 +235,15 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
+  // No raw window.open fallback: host.openExternal is what restricts the
+  // agent-writable URL to http(s)/mailto.
   const onOpenPublished = async () => {
     if (!published) return;
-    try { await host.openExternal(artifact.publishedUrl); } catch {
-      window.open(artifact.publishedUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const onOpenPrivate = async () => {
     if (!privateUrl) return;
-    try { await host.openExternal(privateUrl); } catch {
-      window.open(privateUrl, '_blank', 'noreferrer');
-    }
+    try { await host.openExternal(privateUrl); } catch {}
   };
 
   // Not `projectLabel`: that name belongs to the imported
@@ -393,7 +396,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 // lifted above it. The ↗ and ⋯ controls show at rest, like the grid card's.
 
 async function openUrl(url) {
-  try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); }
+  try { await host.openExternal(url); } catch {}
 }
 
 // How a row opens.
@@ -794,10 +797,12 @@ export default function ArtifactsView({
       }
     } catch (e) {
       const msg = e?.message || String(e);
-      // Map the most common failure to a clearer next step.
-      const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to share artifacts.'
-        : `Sharing failed: ${msg}`;
+      // Map the failures a user can act on to a clearer message.
+      let friendly = `Sharing failed: ${msg}`;
+      if (isOwnedByOtherUserError(e)) friendly = OWNED_BY_OTHER_USER_MESSAGE;
+      else if (/minds_api_key/i.test(msg) || /minds api key/i.test(msg)) {
+        friendly = 'Set your Minds API key in Settings to share artifacts.';
+      }
       setPhase(artifact.path, 'failed');
       showToast({ kind: 'error', message: friendly });
     } finally {
@@ -813,7 +818,9 @@ export default function ArtifactsView({
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      showToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
+      // Without the platform UI the deployment decides where shares live,
+      // so the toast names no service.
+      showToast({ kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
@@ -833,7 +840,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -903,6 +911,7 @@ export default function ArtifactsView({
   }, [list, search, sort]);
 
   const total = (list || []).length;
+  const { artifactsNote } = surfaceCopy(host.isWeb);
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -963,7 +972,7 @@ export default function ArtifactsView({
           description: (
             <>
               {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
-              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+              {artifactsNote && <span className="block mt-2 text-ink-4">{artifactsNote}</span>}
             </>
           ),
           style: { flex: 1 },
@@ -1102,14 +1111,13 @@ export default function ArtifactsView({
               label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(14)),
               /*
-               * Awaited like the card's own onOpenPublished above: a
-               * synchronous try around an async bridge call cannot reach the
-               * fallback, and the rejection escapes unhandled.
+               * Awaited so a rejected bridge call is caught rather than left
+               * unhandled. No raw window.open fallback: host.openExternal is
+               * what restricts the agent-writable URL to http(s)/mailto.
                */
               onClick: async () => {
                 if (a.publishedUrl) {
-                  try { await host.openExternal(a.publishedUrl); }
-                  catch { window.open(a.publishedUrl, '_blank', 'noopener,noreferrer'); }
+                  try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
                   openArtifactFile(a);
                 }

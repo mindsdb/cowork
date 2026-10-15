@@ -310,11 +310,10 @@ describe.each([
 describe('grid view shared link when the bridge rejects', () => {
   /*
    * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
-   * is async, so the item has to await it for its catch to fire — unawaited,
-   * this fallback was dead code. The list row routes through `openUrl`, which
-   * already awaits.
+   * is what restricts the agent-writable URL to safe schemes, so a rejection
+   * must not hand the raw URL to window.open.
    */
-  it('falls back to window.open', async () => {
+  it('does not fall back to window.open', async () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     host.openExternal.mockClear();
@@ -326,9 +325,38 @@ describe('grid view shared link when the bridge rejects', () => {
 
       fireEvent.click(screen.getByText('Open shared link'));
 
-      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
-        'https://view.mindshub.ai/r/md1', '_blank', 'noopener,noreferrer',
-      ));
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/md1'));
+      expect(opened).not.toHaveBeenCalled();
+    } finally {
+      opened.mockRestore();
+    }
+  });
+});
+
+describe('grid card open when the bridge rejects', () => {
+  /*
+   * The card body and its ↗ button reach the published URL through the card's
+   * own openBest, not the HoverMenu item above, so they need their own check.
+   */
+  const unsafe = { ...published, publishedUrl: 'javascript:alert(1)' };
+
+  it.each([
+    ['the card body', () => fireEvent.click(screen.getByText('Weather Dashboard'))],
+    ['the ↗ Open button', () => fireEvent.click(screen.getByLabelText('Open'))],
+  ])('%s does not fall back to window.open', async (_label, click) => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    host.openExternal.mockClear();
+    host.openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ArtifactsView artifacts={[unsafe]} />);
+      click();
+
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('javascript:alert(1)'));
+      // Let the rejection reach the handler's catch before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }

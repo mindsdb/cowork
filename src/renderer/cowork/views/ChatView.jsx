@@ -22,7 +22,7 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText } from '../lib/clipboard';
+import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
@@ -330,6 +330,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
     <div
       className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
+      onCopy={trimCopiedSelection}
     >
       <div className="user-turn-inner">
         <div className="user-turn-bubble">
@@ -758,14 +759,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
    *
-   * `host.openExternal` is async, so the await is what makes the catch reach a
-   * rejected bridge call. Without it the try block returns before the promise
-   * settles: the fallback below never runs on the one failure it exists for,
-   * and the rejection escapes as an unhandled one.
+   * Awaited so a rejected bridge call is caught rather than left unhandled.
+   * No raw window.open fallback: host.openExternal is what restricts the
+   * agent-writable URL to http(s)/mailto.
    */
   const handleOpenPublished = async () => {
-    try { await host.openExternal(artifact.publishedUrl); }
-    catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const handleOpen = async () => {
     /*
