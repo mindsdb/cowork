@@ -69,7 +69,7 @@ export function useWorkspaceUsage(taskId: string | null): WorkspaceUsagePage | n
     let polls = 0;
     const load = async () => {
       try {
-        const next = await codingApi.workspaceUsage();
+        const next = await codingApi.workspaceUsage(taskId);
         if (!current) return;
         setPage(next);
         if (next.measuring && polls < MEASURING_POLL_LIMIT) {
