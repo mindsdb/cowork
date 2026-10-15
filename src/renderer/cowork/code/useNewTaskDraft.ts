@@ -175,7 +175,16 @@ export function useNewTaskDraft({
     return () => { current = false; };
   }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
   const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
-  const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, rememberedWorkspaceMode);
+  // A choice made in the composer holds for this project, computer and folder;
+  // changing any of them lets the project default or the remembered choice apply again.
+  const workspaceModeKey = JSON.stringify([selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  const [explicitWorkspaceMode, setExplicitWorkspaceMode] = useState<{ key: string; mode: WorkspaceMode } | null>(null);
+  useEffect(() => { setExplicitWorkspaceMode(null); }, [workspaceModeKey]);
+  const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, {
+    explicit: explicitWorkspaceMode?.key === workspaceModeKey ? explicitWorkspaceMode.mode : null,
+    projectDefault: selectedProject?.default_workspace_mode ?? null,
+    remembered: rememberedWorkspaceMode,
+  });
   const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
   const [repositoryChoice, setRepositoryChoice] = useState<{
     key: string;
@@ -188,13 +197,17 @@ export function useNewTaskDraft({
   // Branch choices set up an isolated worktree, and a Local task works on each
   // folder's current branch, so choosing one gives up the other.
   const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setExplicitWorkspaceMode({ key: workspaceModeKey, mode });
     rememberWorkspaceMode(mode);
     if (mode === 'in_place') setRepositoryChoice(null);
-  }, [rememberWorkspaceMode]);
+  }, [rememberWorkspaceMode, workspaceModeKey]);
   const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
   const setRepositorySetup = (setup: TaskRepositorySetup | undefined) => {
     setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
-    if (setup && workspaceModeChoice && workspaceMode === 'in_place') rememberWorkspaceMode('worktree');
+    // Switched for this task only; the user did not choose Worktree as a habit.
+    if (setup && workspaceModeChoice && workspaceMode === 'in_place') {
+      setExplicitWorkspaceMode({ key: workspaceModeKey, mode: 'worktree' });
+    }
   };
   const resourceScopeKey = JSON.stringify(resourceIds);
 
