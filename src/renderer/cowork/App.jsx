@@ -733,7 +733,6 @@ function AppCore() {
   // they cross into the task-list and routing domains.
   const {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
@@ -5992,7 +5991,6 @@ function AppCore() {
           onMoveTaskToProject={handleOpenMoveModal}
           projects={runnableProjects}
           schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
             if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
@@ -6273,7 +6271,6 @@ function AppCore() {
             loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
             model={selectedModel}
@@ -6364,6 +6361,11 @@ function AppCore() {
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
             onReviewedAutoPause={markAutoPauseReviewed}
+            onStopRun={async (conversationId) => {
+              const result = await cancelResponse(conversationId);
+              if (result.status === 'error') throw new Error('Couldn’t stop the run. Try again.');
+              await refreshSchedules();
+            }}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -6412,7 +6414,6 @@ function AppCore() {
             tasks={tasks}
             projects={runnableProjects}
             schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
