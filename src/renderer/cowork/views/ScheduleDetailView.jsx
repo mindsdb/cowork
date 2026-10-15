@@ -53,17 +53,17 @@ const RUN_STATUS = {
   cancelled: { tone: 'muted',   label: 'Stopped' },
 };
 
-// The schedule in words: "Every weekday at 9:00 AM, Los Angeles time".
+// The schedule in words: "Every weekday at 9:00 AM, Los Angeles time". The
+// time is shown in this computer's zone, so that is the zone it names.
 function scheduleSentence(task) {
   if (!task.nextRunAt || Number.isNaN(new Date(task.nextRunAt).getTime())) return '';
-  return `${describeWhen(whenFromDate(task.nextRunAt, task.cadence))}, ${timeZoneLabel(task.timezone)}`;
+  return `${describeWhen(whenFromDate(task.nextRunAt, task.cadence))}, ${timeZoneLabel()}`;
 }
 
 function nextRunText(task, state) {
   if (task.running) return 'Running now';
-  if (state === 'missed') return 'Missed';
-  if (state === 'done') return null;
-  if (state !== 'active') return 'Paused';
+  // The status already says paused, missed or done.
+  if (state !== 'active') return null;
   const when = relativeTime(task.nextRunAt);
   return when ? `Next run ${when}` : null;
 }
