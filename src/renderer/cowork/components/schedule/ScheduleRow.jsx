@@ -88,7 +88,7 @@ export default function ScheduleRow({
       onActivate={() => onOpen?.(task)}
       actions={(
           <>
-            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy || task.running}>
               {busy ? <Spinner /> : Ico.send(14)}
               Run
             </Button>
