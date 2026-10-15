@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -182,6 +182,26 @@ describe.each(providers)('standalone web provider tests: $type', (provider) => {
     expect(latest.current.providerStatus).toEqual(initial.providerStatus);
     expectNoProviderCheck();
   });
+});
+
+it('keeps a stored MindsHub rate limit neutral in the provider card and model notices', async () => {
+  const provider = providers[1];
+  const initial = settingsFor(provider, {
+    providerStatus: { [provider.type]: 'fail' },
+    providerStatusDetails: { [provider.type]: 'HTTP 429' },
+    providerStatusReasons: { [provider.type]: { code: 'rate_limited' } },
+  });
+  const { latest } = renderSettings(initial);
+  await act(async () => {});
+  const neutral = 'The configured provider is unavailable. Try again, or contact your administrator.';
+  const card = screen.getByRole('heading', { name: 'MindsHub' }).closest('.settings-provider-row');
+  expect(within(card).getByText(neutral)).toBeInTheDocument();
+  const router = screen.getByRole('heading', { name: 'Model Router' }).parentElement;
+  expect(within(router).getAllByText(neutral).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/test again|re-test|run a test/i)).not.toBeInTheDocument();
+  expect(latest.current.providerStatus).toEqual(initial.providerStatus);
+  expect(latest.current.providerStatusReasons).toEqual(initial.providerStatusReasons);
+  expectNoProviderCheck();
 });
 
 it.each([
