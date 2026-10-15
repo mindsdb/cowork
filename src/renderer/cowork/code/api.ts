@@ -989,7 +989,8 @@ const liveCodingApi = {
   ),
 };
 
-const fixtureCodingApi = getCodeFixtureApi();
+// The DEV guard is literal here so production builds drop the fixture module.
+const fixtureCodingApi = import.meta.env.DEV ? getCodeFixtureApi() : null;
 export const codingApi: typeof liveCodingApi = fixtureCodingApi
   ? { ...liveCodingApi, ...fixtureCodingApi }
   : liveCodingApi;

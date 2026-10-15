@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 
 // MarkdownContent pulls in the platform host bridge, the skills store, and
 // the code/table renderers. None are relevant to math rendering, so stub
@@ -35,7 +35,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
   };
 });
 
-import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
+import { MarkdownContent, _loadKatex, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
 
 describe('_normalizeMathDelimiters', () => {
   it('rewrites inline \\(…\\) to single-line $$…$$', () => {
@@ -481,23 +481,38 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
 });
 
 describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
-  it('renders inline \\(…\\) as KaTeX', () => {
-    const { container } = render(
+  // KaTeX loads on first use; settle that load so assertions see the result.
+  const renderMath = async (ui) => {
+    const result = render(ui);
+    await act(async () => { await _loadKatex(); });
+    return result;
+  };
+
+  it('loads KaTeX on demand and re-renders the math once it arrives', async () => {
+    vi.resetModules();
+    const fresh = await import('./MarkdownContent');
+    const { container } = render(<fresh.MarkdownContent text={'where \\(x\\) holds'} complete />);
+    expect(container.querySelector('.katex')).toBeNull();
+    await act(async () => { await fresh._loadKatex(); });
+    expect(container.querySelector('.katex')).not.toBeNull();
+  });
+  it('renders inline \\(…\\) as KaTeX', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'where \\(i=\\sqrt{-1}\\) holds'} complete />,
     );
     expect(container.querySelector('.katex')).not.toBeNull();
     expect(container.querySelector('.katex-display')).toBeNull(); // inline, not display
   });
 
-  it('renders display \\[…\\] as KaTeX display math', () => {
-    const { container } = render(
+  it('renders display \\[…\\] as KaTeX display math', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'\\[ \\operatorname{Re}(s)=\\frac12 \\]'} complete />,
     );
     expect(container.querySelector('.katex-display')).not.toBeNull();
   });
 
-  it('renders pandoc-valid single-$ inline math as KaTeX', () => {
-    const { container } = render(
+  it('renders pandoc-valid single-$ inline math as KaTeX', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'the complex plane $s = \\sigma + it$.'} complete />,
     );
     expect(container.querySelector('.katex')).not.toBeNull();
@@ -505,24 +520,24 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     expect(container.textContent).not.toContain('$'); // $ delimiters consumed
   });
 
-  it('does NOT treat plain-prose currency as math', () => {
-    const { container } = render(
+  it('does NOT treat plain-prose currency as math', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'It costs $5 and then $10 total.'} complete />,
     );
     expect(container.querySelector('.katex')).toBeNull();
     expect(container.textContent).toContain('$5 and then $10');
   });
 
-  it('keeps KaTeX HTML extensions disabled for untrusted chat text', () => {
-    const { container } = render(
+  it('keeps KaTeX HTML extensions disabled for untrusted chat text', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'\\(\\htmlClass{injected}{x}\\)'} complete />,
     );
     expect(container.querySelector('.katex')).not.toBeNull();
     expect(container.querySelector('.injected')).toBeNull();
   });
 
-  it('caps user-controlled KaTeX dimensions', () => {
-    const { container } = render(
+  it('caps user-controlled KaTeX dimensions', async () => {
+    const { container } = await renderMath(
       <MarkdownContent text={'\\(\\rule{500em}{500em}\\)'} complete />,
     );
     const styles = [...container.querySelectorAll('[style]')]
@@ -534,7 +549,7 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     expect(container.querySelector('mspace')?.getAttribute('height')).toBe('50em');
   });
 
-  it('recolors broken/unparseable TeX to the danger token, not KaTeX #cc0000', () => {
+  it('recolors broken/unparseable TeX to the danger token, not KaTeX #cc0000', async () => {
     // Unbalanced braces are a hard KaTeX parse error → rehype-katex emits a
     // `.katex-error` span. KaTeX writes the colour as an INLINE style (and the
     // span is not nested under `.katex`), so the only way to override its harsh
@@ -542,7 +557,7 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     // Guard that here since nothing else pins the colour. (happy-dom drops the
     // comma-fallback `var(x, y)` form, which is why errorColor is plain
     // `var(--danger)`.)
-    const { container } = render(
+    const { container } = await renderMath(
       <MarkdownContent text={'\\(\\frac{1}{\\)'} complete />,
     );
     const err = container.querySelector('.katex-error');
