@@ -16,7 +16,7 @@ import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../component
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
-import { SKINS, normalizeSkin } from '../../../lib/skins';
+import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -2135,21 +2135,27 @@ export default function SettingsView({
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
       <SettingsGroup title="Appearance">
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
+        {SKIN_LOCKED ? (
+          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+            <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
+          </Section>
+        ) : (
+          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+            <ToggleGroup
+              value={normalizeSkin(skin)}
+              onValueChange={(v) => onSkinChange?.(v)}
+              aria-label="Style"
+              options={SKINS.map((s) => ({
+                value: s.id,
+                label: s.icon && Ico[s.icon]
+                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
+                  : s.label,
+                'aria-label': `${s.label} style`,
+                title: s.title,
+              }))}
+            />
+          </Section>
+        )}
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -2400,16 +2406,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
-            <div className="flex items-center">
-              <Switch
-                checked={settings.show8bitToggle !== false}
-                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                aria-label="8-bit style toggle button"
-              />
-              <AutoSaveTag settingKey="show8bitToggle" />
-            </div>
-          </Section>
+          {!SKIN_LOCKED && (
+            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.show8bitToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                  aria-label="8-bit style toggle button"
+                />
+                <AutoSaveTag settingKey="show8bitToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
