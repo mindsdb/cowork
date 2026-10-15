@@ -449,6 +449,8 @@ export interface CodeProject {
   default_model: string;
   default_reasoning_effort?: ReasoningEffort | null;
   permission_mode: PermissionMode;
+  /** Null lets the server choose for each task's folder and computer. */
+  default_workspace_mode?: WorkspaceMode | null;
   created_at: string;
   updated_at: string;
 }
@@ -843,7 +845,7 @@ const liveCodingApi = {
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
-  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode' | 'default_workspace_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
