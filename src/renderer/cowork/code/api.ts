@@ -823,7 +823,9 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
-  workspaceUsage: () => requestJson<WorkspaceUsagePage>('/workspace-usage'),
+  workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
+    `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
+  ),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
