@@ -16,7 +16,7 @@ import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -289,6 +289,7 @@ export default function CodeView({
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
     queueNotice(session),
