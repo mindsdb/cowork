@@ -126,7 +126,7 @@ function SourceItem({ source, onViewFile, onOpenStep }) {
     <li className="py-3 border-b border-t-0 border-x-0 border-solid border-line last:border-b-0">
       <div className="flex items-baseline gap-2 min-w-0">
         <span className="section-label shrink-0">{kindLabel}</span>
-        {label && <span className="text-[13px] font-medium text-ink [overflow-wrap:anywhere]">{label}</span>}
+        {label && <span className="min-w-0 truncate text-[13px] font-medium text-ink" title={label}>{label}</span>}
         {source.page != null && <span className="text-[12px] text-ink-3 shrink-0">{`page ${source.page}`}</span>}
       </div>
       {source.url && <SourceLink url={source.url} />}
@@ -319,7 +319,9 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
               collisionPadding={12}
               style={{ zIndex: 90 }}
             >
-              {/* Base UI measures the room beside the figure as
+              {/* The popup is as wide as its content, from 240px up to 440px,
+                  and a label past that ends in an ellipsis with the whole name
+                  on hover. Base UI measures the room beside the figure as
                   --available-height, so on a phone or at 200% zoom the popup
                   shrinks to fit and its list scrolls (the app's page never
                   does). */}
@@ -327,9 +329,14 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
                 id={popupId}
                 finalFocus={buttonRef}
                 className="bg-surface rounded-[14px] shadow-sh-popup overflow-hidden outline-none font-body flex flex-col"
-                style={{ width: 'min(440px, 92vw)', maxHeight: 'min(520px, 70vh, var(--available-height, 520px))' }}
+                style={{
+                  width: 'max-content',
+                  minWidth: 'min(240px, 92vw)',
+                  maxWidth: 'min(440px, 92vw)',
+                  maxHeight: 'min(520px, 70vh, var(--available-height, 520px))',
+                }}
               >
-                <Popover.Title className="s-h3 m-0 py-3 px-4 shrink-0 border-b border-t-0 border-x-0 border-solid border-line">
+                <Popover.Title className="m-0 py-3 px-4 shrink-0 text-[13px] font-semibold leading-[1.4] text-ink border-b border-t-0 border-x-0 border-solid border-line">
                   {`Where ${figure.text} came from`}
                 </Popover.Title>
                 {figure.origin === 'none' ? (

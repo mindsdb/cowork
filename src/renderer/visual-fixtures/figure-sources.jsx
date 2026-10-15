@@ -45,6 +45,9 @@ const EVENT_STEPS = [
   }),
   step('toolu_06', 'memory', 'memory'),
   step('toolu_07', 'file', 'counts.csv', { attachment_id: 'file-123' }),
+  step('toolu_08', 'file', 'q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv', {
+    path: 'exports/q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv',
+  }),
 ];
 
 /* The chat every case renders in. View file reads an attached file through
@@ -68,6 +71,8 @@ const REMEMBERED = 'You asked to keep at least 40 units on hand.';
 const IN_CODE = 'The query `SELECT 250 FROM stock` returned 250.';
 
 const ATTACHED = 'The counts you attached show 118 units.';
+
+const LONG_NAME = 'The quarter-end snapshot shows 96 units at S3.';
 
 const TABLE = [
   '| Site | Units | Price |',
@@ -116,6 +121,12 @@ const CASES = [
     label: 'A figure from a file attached to the chat: View file opens it by its id, whatever project the chat is in.',
     text: ATTACHED,
     figureSources: sources([figure('118', ATTACHED, 'step', [from('toolu_07')])]),
+  },
+  {
+    id: 'long-file-name',
+    label: 'A figure from a file with a long name: the popover grows to its widest and the name ends in an ellipsis, whole on hover.',
+    text: LONG_NAME,
+    figureSources: sources([figure('96', LONG_NAME, 'step', [from('toolu_08')])]),
   },
   {
     id: 'moved-project',

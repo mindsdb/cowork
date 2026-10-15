@@ -218,6 +218,28 @@ describe('FigureMark popover', () => {
     expect(within(popup).getByRole('list')).toHaveClass('overscroll-contain', 'min-h-0');
   });
 
+  it('is as wide as its content, between 240px and 440px', async () => {
+    const popup = await openPopover(sourced('340', [STOCK]));
+    expect(popup.style.width).toBe('max-content');
+    expect(popup.style.minWidth).toContain('240px');
+    expect(popup.style.maxWidth).toContain('440px');
+  });
+
+  it('titles itself at the size of its source rows, in bold', async () => {
+    const popup = await openPopover(sourced('340', [STOCK]));
+    const title = within(popup).getByRole('heading', { name: 'Where 340 came from' });
+    expect(title).not.toHaveClass('s-h3');
+    expect(title).toHaveClass('text-[13px]', 'font-semibold');
+  });
+
+  it('ends a long label in an ellipsis, with the whole label on hover', async () => {
+    const name = 'q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv';
+    const popup = await openPopover(sourced('96', [source('toolu_08', 'file', name, { path: `exports/${name}` })]));
+    const label = within(popup).getByTitle(name);
+    expect(label).toHaveTextContent(name);
+    expect(label).toHaveClass('truncate', 'min-w-0');
+  });
+
   it('offers "View file" for a file attached to the chat and hands over the source', async () => {
     const onViewFile = vi.fn();
     const popup = await openPopover(sourced('250', [UPLOAD]), { onViewFile });

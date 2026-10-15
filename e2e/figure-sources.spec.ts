@@ -41,3 +41,27 @@ for (const size of SIZES) {
     expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(box.y + box.height);
   });
 }
+
+test('a one-source popover is as wide as its content, not the widest it may be', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/figure-sources-fixture.html');
+  await page.locator('#case-attached-file').getByRole('button', { name: '118, from a file' }).click();
+  const popup = page.getByRole('dialog', { name: 'Where 118 came from' });
+  await expect(popup).toBeVisible();
+  const { width } = (await popup.boundingBox())!;
+  expect(width).toBeGreaterThanOrEqual(240);
+  expect(width).toBeLessThan(400);
+});
+
+test('a long file name ends in an ellipsis inside the widest popover, whole on hover', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/figure-sources-fixture.html');
+  await page.locator('#case-long-file-name').getByRole('button', { name: '96, from a file' }).click();
+  const popup = page.getByRole('dialog', { name: 'Where 96 came from' });
+  await expect(popup).toBeVisible();
+  expect((await popup.boundingBox())!.width).toBeLessThanOrEqual(440);
+  const name = 'q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv';
+  const label = popup.getByTitle(name);
+  await expect(label).toHaveText(name);
+  expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+});
