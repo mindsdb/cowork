@@ -25,7 +25,7 @@ function renderSettings(settings, onSave) {
   return render(<SettingsView
     settings={settings} setSetting={vi.fn()} onSave={onSave} theme="dark" skin="default" customTheme={{}}
     onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
-    agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()}
+    agentLabel="Cowork" serverOnline section="desktop" onSectionChange={vi.fn()}
   />);
 }
 
@@ -43,4 +43,10 @@ it('is on unless turned off, and saves the opt-out at once', async () => {
 it('shows the saved opt-out', () => {
   renderSettings({ configReady: true, scheduleKeepAwake: false }, vi.fn(async () => ({})));
   expect(screen.getByRole('switch', { name: 'Stay awake for scheduled tasks' })).toHaveAttribute('aria-checked', 'false');
+});
+
+it('lives on the Desktop page, which the web build does not offer', async () => {
+  const { navItemsForHost } = await import('./settingsNavigation');
+  expect(navItemsForHost(false, false).find((i) => i.id === 'desktop')).toMatchObject({ group: 'App', label: 'Desktop' });
+  expect(navItemsForHost(true, false).map((i) => i.id)).not.toContain('desktop');
 });
