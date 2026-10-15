@@ -39,6 +39,8 @@ export default function ScheduledView({
   onPause,
   onResume,
   onRunNow,
+  // (scheduleId) — stops the schedule's run in flight, as the chat's Stop does.
+  onStopRun,
   onOpenSchedule,
   // Optional — receives the project object when a card or list row's
   // "project:" label is clicked. Wired by App.jsx to setSelected
@@ -236,6 +238,7 @@ export default function ScheduledView({
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
+              onStopRun={() => runAction(task.id, onStopRun)}
               onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={() => openEdit(task)}

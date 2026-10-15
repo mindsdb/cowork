@@ -180,7 +180,7 @@ export default function ScheduleDetailView({
   onRunNow,                 // (id)
   // (task) — this page counts as reviewing an auto-pause it shows.
   onReviewedAutoPause,
-  // (conversationId) — the Stop button's cancel, for a paused task's run.
+  // (scheduleId) — stops the run in flight, as the chat's Stop does.
   onStopRun,
   agentLabel,
 }) {
@@ -270,11 +270,9 @@ export default function ScheduleDetailView({
         <ScheduleRunAlert
           task={task}
           busy={busy}
-          runningConversationId={runs.find((r) => r.status === 'running')?.conversationId || null}
           onResume={(id) => withBusy(() => onResume?.(id))}
           onRunNow={(id) => withBusy(() => onRunNow?.(id))}
           onReviewRun={(conversationId) => onOpenRunSession?.(conversationId)}
-          onStopRun={(conversationId) => withBusy(() => onStopRun?.(conversationId))}
         />
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
@@ -302,16 +300,27 @@ export default function ScheduleDetailView({
                   })}
                 />
               )}
-              <Button
-                variant="primary"
-                onClick={() => withBusy(() => onRunNow?.(task.id))}
-                // One run at a time: the server refuses a second while one is going.
-                disabled={busy || task.running}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                {Ico.send ? Ico.send(14) : null}
-                {busy ? 'Running…' : 'Run now'}
-              </Button>
+              {/* One run at a time: while one is going, this stops it. */}
+              {task.running ? (
+                <Button
+                  onClick={() => withBusy(() => onStopRun?.(task.id))}
+                  disabled={busy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {Ico.close(14)}
+                  {busy ? 'Stopping…' : 'Stop run'}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  onClick={() => withBusy(() => onRunNow?.(task.id))}
+                  disabled={busy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {Ico.send ? Ico.send(14) : null}
+                  {busy ? 'Running…' : 'Run now'}
+                </Button>
+              )}
               {/* Edit + Delete live in the overflow — Delete opens a confirm,
                   and never sits inside the edit form (ENG-1245). */}
               <OverflowMenu

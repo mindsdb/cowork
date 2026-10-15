@@ -285,18 +285,13 @@ describe('ScheduleDetailView — controls by state', () => {
     expect(screen.getByText(/within the hour/)).toBeInTheDocument();
   });
 
-  it('lets the run of a paused task finish, and stops it on request', async () => {
-    vi.mocked(fetchScheduleRuns).mockResolvedValue({
-      runs: [{ id: 'run-4', status: 'running', startedAt: '2026-10-02T09:00:00Z', conversationId: 'conv-4' }, ...RUNS],
-    });
+  it('lets the run of a paused task finish, and says Stop run ends it', async () => {
     const task = { ...TASK, enabled: false, state: 'paused', running: true };
-    const { props, user } = setup({ task, onStopRun: vi.fn().mockResolvedValue(undefined) });
+    setup({ task });
     expect(screen.getByText('Paused · finishing run')).toBeInTheDocument();
     // An informational notice, not an error: a status, not an alert.
     const box = screen.getByText('Paused — the current run will finish').closest('[role="status"]');
-    expect(within(box).getByText(/anything it has already done stays done/)).toBeInTheDocument();
-    await user.click(await within(box).findByRole('button', { name: 'Stop current run' }));
-    expect(props.onStopRun).toHaveBeenCalledWith('conv-4');
+    expect(within(box).getByText(/Stop run ends it now; anything it has already done stays done/)).toBeInTheDocument();
   });
 
   it('shows a done one-off with no switch and no next run', async () => {
@@ -308,9 +303,11 @@ describe('ScheduleDetailView — controls by state', () => {
 });
 
 describe('ScheduleDetailView — one run at a time', () => {
-  it('disables Run now while a run is going', async () => {
-    setup({ task: { ...TASK, state: 'active', running: true } });
+  it('turns Run now into Stop run while a run is going', async () => {
+    const { props, user } = setup({ task: { ...TASK, state: 'active', running: true }, onStopRun: vi.fn().mockResolvedValue(undefined) });
     await screen.findAllByRole('button', { name: 'Open task' });
-    expect(screen.getByRole('button', { name: /Run now/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Run now/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Stop run/ }));
+    expect(props.onStopRun).toHaveBeenCalledWith('s1');
   });
 });
