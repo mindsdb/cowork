@@ -811,7 +811,7 @@ export default function Sidebar({
               {/* Where a returning user looks for missing work. The two apps
                   keep separate work by design, so the honest answer is to
                   point at the other one, not to imply the work is gone. */}
-              <div className="mt-1 text-ink-4">{surface.tasksNote}</div>
+              {surface.tasksNote && <div className="mt-1 text-ink-4">{surface.tasksNote}</div>}
             </div>
           )}
           {recents.map((t) => {
