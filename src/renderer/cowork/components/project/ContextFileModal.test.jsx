@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   downloadAuthenticatedResource: vi.fn(async () => true),
   fetchAuthenticatedBlob: vi.fn(async () => new Blob([''], { type: 'image/png' })),
   projectFileDownloadUrl: vi.fn((project, path) => `/api/v1/projects/${project}/files-raw/${path}`),
-  host: { isWeb: true },
+  host: { isWeb: true, openPath: vi.fn(), showItemInFolder: vi.fn() },
 }));
 
 vi.mock('../../lib/authenticatedResource', () => ({
@@ -36,6 +36,7 @@ vi.mock('../../api', () => ({
 }));
 
 import ContextFileModal from './ContextFileModal';
+import { readProjectFile, writeProjectFile } from '../../api';
 
 let container;
 let root;
@@ -90,5 +91,71 @@ describe('ContextFileModal download on web', () => {
       expect.any(String),
       'chart.png',
     );
+  });
+});
+
+/* A figure's source names a project file the agent chose, so the chat opens
+   it with `showOpenAction={false}`: the desktop header keeps Reveal, which
+   only selects the file, and drops Open, which hands it to the OS default app
+   through host.openPath. */
+describe('ContextFileModal file actions on desktop', () => {
+  beforeEach(() => { mocks.host.isWeb = false; });
+  afterEach(() => { mocks.host.isWeb = true; });
+
+  const headerButtons = async (props) => {
+    await act(async () => {
+      root.render(
+        <ContextFileModal open projectName="acme" projectPath="/tmp/acme" filePath="charts/stock.png" onClose={() => {}} {...props} />,
+      );
+    });
+    return [...document.querySelectorAll('button')].map((button) => button.textContent.trim());
+  };
+
+  it('offers Reveal and Open by default', async () => {
+    const labels = await headerButtons({});
+    expect(labels.some((label) => label.endsWith('Reveal'))).toBe(true);
+    expect(labels.some((label) => label.endsWith('Open'))).toBe(true);
+  });
+
+  it('drops Open, and keeps Reveal, without the open action', async () => {
+    const labels = await headerButtons({ showOpenAction: false });
+    expect(labels.some((label) => label.endsWith('Reveal'))).toBe(true);
+    expect(labels.some((label) => label.endsWith('Open'))).toBe(false);
+  });
+});
+
+/* A figure's source is that figure's evidence, so the chat opens it with
+   `showEditAction={false}`: the viewer shows the file and offers no way to
+   change it, without the read-only note a shared resource the user may not
+   edit carries. */
+describe('ContextFileModal without the edit action', () => {
+  beforeEach(() => {
+    vi.mocked(readProjectFile).mockClear();
+    vi.mocked(writeProjectFile).mockClear();
+  });
+
+  const renderModal = async (props) => {
+    await act(async () => {
+      root.render(<ContextFileModal open projectName="acme" onClose={() => {}} showEditAction={false} {...props} />);
+    });
+    return [...document.querySelectorAll('button')].map((button) => button.textContent.trim());
+  };
+
+  it('shows a text file with no Edit and never writes it', async () => {
+    vi.mocked(readProjectFile).mockResolvedValueOnce({ content: 'sku,qty\nmug,250\n' });
+    const labels = await renderModal({ filePath: 'data/stock.csv' });
+    expect(document.querySelector('pre').textContent).toContain('mug,250');
+    expect(labels).not.toContain('Edit');
+    expect(document.body.textContent).not.toMatch(/You do not have permission/);
+    expect(writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it('does not open an empty project instructions file for editing', async () => {
+    const labels = await renderModal({ filePath: '.anton/anton.md' });
+    expect(readProjectFile).toHaveBeenCalledWith('acme', '.anton/anton.md');
+    expect(document.querySelector('textarea')).toBeNull();
+    expect(labels).not.toContain('Edit');
+    expect(labels).not.toContain('Save');
+    expect(writeProjectFile).not.toHaveBeenCalled();
   });
 });

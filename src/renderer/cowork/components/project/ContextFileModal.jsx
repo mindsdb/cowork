@@ -65,7 +65,7 @@ function joinAbs(root, rel) {
 // both the HTML and binary branches — they live in the modal header
 // so the user always has an escape hatch regardless of what's
 // rendered inline.
-function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
+function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpenAction = true }) {
   const isWeb = !!host.isWeb;
   const abs = joinAbs(projectPath, filePath);
   const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
@@ -97,17 +97,19 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           >{Ico.folder ? Ico.folder(14) : '📁'} Reveal</Button>
         </Tooltip>
       )}
-      <Tooltip content="Open in default app">
-        <Button
-          onClick={() => {
-            // Prefer the raw URL (attachments + anything that passed one)
-            // via the OS shell; fall back to opening the local project
-            // file in the default app.
-            if (rawUrl) host.openExternal(rawUrl);
-            else if (abs) host.openPath(abs);
-          }}
-        >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
-      </Tooltip>
+      {showOpenAction && (
+        <Tooltip content="Open in default app">
+          <Button
+            onClick={() => {
+              // Prefer the raw URL (attachments + anything that passed one)
+              // via the OS shell; fall back to opening the local project
+              // file in the default app.
+              if (rawUrl) host.openExternal(rawUrl);
+              else if (abs) host.openPath(abs);
+            }}
+          >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -117,7 +119,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
 // Renders a centered icon + the filename + one-line explanation
 // + the same reveal/download affordances as the header chip, so the
 // modal stays useful even when nothing can be displayed inline.
-function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl }) {
+function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction }) {
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
       <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(32) : '📄'}</div>
@@ -133,6 +135,7 @@ function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath,
         projectName={projectName}
         filePath={filePath}
         rawUrl={rawUrl}
+        showOpenAction={showOpenAction}
       />
     </div>
   );
@@ -152,6 +155,12 @@ export default function ContextFileModal({
                    //   have no project file path — render images inline and
                    //   open in the OS shell without project-file IO.
   isAntonMd,       // optional override; otherwise derived from filePath
+  /* False drops the desktop "Open" action, which hands the file to the OS
+     default app (host.openPath): for a path the agent named, not the user. */
+  showOpenAction = true,
+  /* False drops Edit, for a viewer that only shows the file, such as a
+     figure's source, which is that figure's evidence. */
+  showEditAction = true,
   // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
   subtitle,        // optional label after the title (e.g. "Project · acme")
@@ -200,9 +209,10 @@ export default function ContextFileModal({
     callback rides a ref for the same reason: an inline arrow from a caller
     would turn the effect into an unbounded fetch loop.
   */
-  const editableRef = useRef(editable);
+  const canEdit = editable && showEditAction;
+  const editableRef = useRef(canEdit);
   const onResourceLoadedRef = useRef(onResourceLoaded);
-  useEffect(() => { editableRef.current = editable; }, [editable]);
+  useEffect(() => { editableRef.current = canEdit; }, [canEdit]);
   useEffect(() => { onResourceLoadedRef.current = onResourceLoaded; }, [onResourceLoaded]);
 
   const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
@@ -364,7 +374,7 @@ export default function ContextFileModal({
   }, [editing]);
 
   const save = async () => {
-    if (!editable) return;
+    if (!canEdit) return;
     setBusy(true);
     setError('');
     try {
@@ -440,7 +450,7 @@ export default function ContextFileModal({
             )}
           </div>
           <div className="flex items-center gap-[6px]">
-            {mode === 'text' && !editing && !loading && (
+            {showEditAction && mode === 'text' && !editing && !loading && (
               <Button
                 disabled={!editable}
                 title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
@@ -457,6 +467,7 @@ export default function ContextFileModal({
                 projectName={projectName}
                 filePath={filePath}
                 rawUrl={rawUrl}
+                showOpenAction={showOpenAction}
               />
             )}
             <Tooltip content="Close">
@@ -525,6 +536,7 @@ export default function ContextFileModal({
               projectName={projectName}
               filePath={filePath}
               rawUrl={rawUrl}
+              showOpenAction={showOpenAction}
             />
           )}
           {!loading && mode === 'text' && (editing ? (

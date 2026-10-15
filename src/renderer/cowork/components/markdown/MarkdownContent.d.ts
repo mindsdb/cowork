@@ -1,18 +1,25 @@
 import type { ComponentType, ReactNode } from 'react';
 
-// A figure in a finished answer and where it came from (lib/figureSources).
+// A figure in a finished answer and where it came from, each source joined to
+// its step (linkFigureSteps in lib/figureSources).
+export interface MarkdownFigureSource {
+  tool_use_id: string;
+  kind: 'query' | 'file' | 'web' | 'memory' | 'step';
+  label: string;
+  path: string | null;
+  url: string | null;
+  queries: string[];
+  requests: string[];
+  page: number | null;
+  stepId: string | null;
+}
+
 export interface MarkdownFigure {
   start: number;
   end: number;
   text: string;
   origin: 'step' | 'question' | 'none';
-  sources: Array<{
-    tool_use_id: string;
-    kind: 'query' | 'file' | 'web' | 'memory' | 'step';
-    label: string;
-    page: number | null;
-  }>;
-  stepId?: string | null;
+  sources: MarkdownFigureSource[];
 }
 
 export interface MarkdownContentProps {
@@ -30,6 +37,7 @@ export interface MarkdownContentProps {
   neutralizeLoopback?: boolean;
   figureSources?: MarkdownFigure[] | null;
   onOpenFigureStep?: ((stepId: string) => void) | null;
+  onViewFigureFile?: ((path: string) => void) | null;
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;

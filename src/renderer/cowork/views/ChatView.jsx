@@ -25,6 +25,7 @@ import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
+import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
@@ -464,12 +465,19 @@ export function TextBlock({
   complete = true,
   conversationId = null,
   /* A finished answer's figure sources (lib/figureSources), the turn's steps
-     they name, and the opener for one of those steps by its id. */
+     they name, the opener for one of those steps by its id, and the opener
+     for a source's project file by its project-relative path. */
   figureSources = null,
   steps = null,
   onOpenStep = null,
+  onViewFile = null,
+  // Settings > Appearance "Show where figures came from"; off renders no marks.
+  showFigureSources = true,
 }) {
-  const figures = useMemo(() => linkFigureSteps(figureSources, steps), [figureSources, steps]);
+  const figures = useMemo(
+    () => (showFigureSources ? linkFigureSteps(figureSources, steps) : null),
+    [showFigureSources, figureSources, steps],
+  );
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
@@ -482,6 +490,7 @@ export function TextBlock({
       isAssistant
       figureSources={figures}
       onOpenFigureStep={onOpenStep}
+      onViewFigureFile={onViewFile}
     />
   );
 }
@@ -1805,6 +1814,10 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  /* Settings > Appearance "Show where figures came from": mark each figure in
+     a finished answer with the step it came from. On unless the user turned
+     it off. */
+  showFigureSources = true,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1882,6 +1895,9 @@ export default function ChatView({
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
+  /* Project-relative path of the file a figure's source names, open in the
+     file viewer. null = closed. */
+  const [figureFilePath, setFigureFilePath] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -3026,6 +3042,10 @@ export default function ChatView({
                     figureSources={m.figureSources}
                     steps={m.steps}
                     onOpenStep={(stepId) => setOpenScratchpadStepId(prefixId(messageKey(m, i), stepId))}
+                    /* A source's path is relative to the chat's project, so
+                       without one there is nothing to read it from. */
+                    onViewFile={project?.name ? setFigureFilePath : null}
+                    showFigureSources={showFigureSources}
                   />
                   {m.artifact && (
                     <ArtifactCard
@@ -3282,6 +3302,23 @@ export default function ChatView({
         onClose={() => setOpenScratchpadStepId(null)}
         steps={scratchpadStepsPool}
         focusStepId={openScratchpadStepId}
+      />
+
+      {/* The project file a figure's source names, opened from the figure's
+          popover; one viewer for the whole chat. The agent named the path,
+          so the viewer offers no Open (host.openPath hands the file to the
+          OS default app). No Edit or Delete either: the file is the
+          figure's evidence, and the Context card's list would not hear of
+          a change. */}
+      <ContextFileModal
+        open={figureFilePath != null}
+        projectName={project?.name}
+        projectPath={artifactProjectPath}
+        filePath={figureFilePath || ''}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        onClose={() => setFigureFilePath(null)}
       />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts

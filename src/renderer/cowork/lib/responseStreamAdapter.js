@@ -78,9 +78,10 @@ export function initialStreamState() {
      *  only thing that gives that row a real id during its own turn. Null on
      *  a producer that persists no user row (the probe path). */
     userMessageId: null,
-    /** Where each figure in the final answer came from, off
-     *  `response.figure_sources` (lib/figureSources). Null when the turn sent
-     *  none: an answer with no figure, or a server that predates the event. */
+    /** Where each figure in the final answer came from and the steps it
+     *  names, off `response.figure_sources` (lib/figureSources). Null when the
+     *  turn sent none: an answer with no figure, or a server that predates
+     *  the event. */
     figureSources: null,
   };
 }
@@ -597,7 +598,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
      just before response.completed, and replayed from the saved events on
      reload; the chat marks each figure once the answer is finished. */
   if (type === 'response.figure_sources') {
-    const figureSources = parseFigureSources(event.figures);
+    const figureSources = parseFigureSources(event);
     return figureSources ? { ...state, figureSources } : state;
   }
 

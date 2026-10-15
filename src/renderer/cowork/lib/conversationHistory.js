@@ -7,6 +7,7 @@
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { initialStreamState, reduceStream } from './responseStreamAdapter';
+import { parseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
 const THINKING_PLACEHOLDER = 'Thinking...';
@@ -379,12 +380,13 @@ export function applySessionMessages(
 // could land under a DIFFERENT turn's key depending on how much history
 // happened to be in memory, silently overwriting it). An id-keyed write
 // can't collide with another turn's entry regardless of what's loaded.
-// `figureSources` (lib/figureSources) rides along when the turn sent any, so
-// a turn with figures but no steps is still saved.
+// `figureSources` (lib/figureSources: the figures and the steps they name)
+// rides along when the turn sent any, so a turn with figures but no steps is
+// still saved.
 export function persistTurnState(cid, messageId, steps, startedAt, figureSources = null) {
   if (!cid || !messageId) return;
   const hasSteps = Array.isArray(steps) && steps.length > 0;
-  const hasFigures = Array.isArray(figureSources) && figureSources.length > 0;
+  const hasFigures = Array.isArray(figureSources?.figures) && figureSources.figures.length > 0;
   if (!hasSteps && !hasFigures) return;
   const map = readConvTurns(cid) || {};
   // Strip any non-serialisable fields (refs, functions). The step
@@ -451,14 +453,16 @@ export function mergeConvTurns(cid, messages) {
     const hasSavedSteps = Array.isArray(saved.steps) && saved.steps.length > 0;
     const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
     const restoreSteps = hasSavedSteps && !hasLiveSteps;
-    const restoreFigures = Array.isArray(saved.figureSources) && !m.figureSources;
-    if (!restoreSteps && !restoreFigures) return m;
+    /* Parsed again: the saved copy is browser storage, and its paths and
+       URLs reach the file viewer and the link opener. */
+    const savedFigures = m.figureSources ? null : parseFigureSources(saved.figureSources);
+    if (!restoreSteps && !savedFigures) return m;
     return {
       ...m,
       ...(restoreSteps
         ? { steps: saved.steps, startedAt: m.startedAt || saved.startedAt || null }
         : {}),
-      ...(restoreFigures ? { figureSources: saved.figureSources } : {}),
+      ...(savedFigures ? { figureSources: savedFigures } : {}),
     };
   });
 }

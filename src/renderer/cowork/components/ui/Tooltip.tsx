@@ -50,9 +50,6 @@ export interface TooltipProps {
   sideOffset?: number;
   // Overrides the `--tooltip-delay` token for this one tooltip.
   delay?: number;
-  /* False keeps the hint open when its trigger is clicked, for a trigger
-     whose click does nothing but show it. Base UI closes on click by default. */
-  closeOnClick?: boolean;
   className?: string;
 }
 
@@ -62,7 +59,6 @@ export function Tooltip({
   side = 'bottom',
   sideOffset = 8,
   delay,
-  closeOnClick,
   className,
 }: TooltipProps) {
   // No content → render the trigger bare so callers can pass a
@@ -70,7 +66,7 @@ export function Tooltip({
   if (content == null || content === '') return children;
   return (
     <BaseTooltip.Root>
-      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} closeOnClick={closeOnClick} render={children} />
+      <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
           <BaseTooltip.Popup

@@ -3854,12 +3854,13 @@ body[data-theme="dark"] .phase-check-done {
   font-weight: 500;
 }
 /* A figure in a finished answer marked with where it came from (FigureMark).
-   It is a button for focus and Enter, but reads as the sentence's own text:
-   only a dotted underline says it has a source. Quiet grey for a sourced
-   figure; amber for one no step returned, which the reader should check. */
+   It is a button that opens the list of its sources, but reads as the
+   sentence's own text: only a dotted underline says it has a source. Quiet
+   grey for a sourced figure, darker while hovered or open; amber for one no
+   step returned, which the reader should check. */
 .anton-figure {
   all: unset;
-  cursor: help;
+  cursor: pointer;
   border-radius: 2px;
   text-decoration-line: underline;
   text-decoration-style: dotted;
@@ -3867,10 +3868,11 @@ body[data-theme="dark"] .phase-check-done {
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
-.anton-figure--opens-step { cursor: pointer; }
-.anton-figure--opens-step:hover { text-decoration-color: var(--ink-2); }
+.anton-figure:hover,
+.anton-figure[data-popup-open] { text-decoration-color: var(--ink-2); }
 .anton-figure--unsourced,
-.anton-figure--unsourced:hover { text-decoration-color: var(--warning); }
+.anton-figure--unsourced:hover,
+.anton-figure--unsourced[data-popup-open] { text-decoration-color: var(--warning); }
 .anton-figure:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

@@ -665,10 +665,13 @@ describe('fetchSession error hydration (ENG-1304)', () => {
 /* A turn's figure sources come back with its saved events, so a reloaded
    answer marks its figures the way the live one did. */
 describe('fetchSession figure sources hydration', () => {
-  const FIGURES = [
-    { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', page: null }] },
-    { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
-  ];
+  const FIGURES = {
+    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] }],
+    figures: [
+      { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+      { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+    ],
+  };
   const stubItems = (items) => {
     vi.stubGlobal('fetch', vi.fn(async (url) => jsonRes(
       String(url).includes('/items') ? items : { id: 'c1', title: 'T', project: null },
@@ -685,7 +688,7 @@ describe('fetchSession figure sources hydration', () => {
       { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [
         { type: 'response.created' },
         { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
-        { type: 'response.figure_sources', item_id: 'msg-1', figures: FIGURES },
+        { type: 'response.figure_sources', item_id: 'msg-1', ...FIGURES },
         { type: 'response.completed' },
       ] },
     ]);
