@@ -39,7 +39,7 @@ const ids = (items) => items.map((i) => i.id);
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives an opted-in desktop every applicable section', () => {
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
@@ -109,7 +109,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const b = navItemsForHost(false, true, true);
     b.pop();
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 });
@@ -117,7 +117,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 describe('navItemsForHost — Code Mode availability and opt-in', () => {
   it('offers only the opt-in page while Code is available but disabled', () => {
     expect(ids(navItemsForHost(false, true, false))).toEqual([
-      'agent', 'codingAgent', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
+      'agent', 'codingAgent', 'appearance', 'desktop', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 

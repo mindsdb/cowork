@@ -1919,21 +1919,6 @@ export default function SettingsView({
               aria-label="Act first, ask later"
             />
           </Section>
-          {isElectron && (
-            <Section
-              title="Stay awake for scheduled tasks"
-              subtitle="Keeps this computer from sleeping on its own while a scheduled task is running, about to run, or waiting to retry. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
-            >
-              <div className="flex items-center">
-                <Switch
-                  checked={settings.scheduleKeepAwake !== false}
-                  onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
-                  aria-label="Stay awake for scheduled tasks"
-                />
-                <AutoSaveTag settingKey="scheduleKeepAwake" />
-              </div>
-            </Section>
-          )}
         </SettingsGroup>
 
         {hasBudgetSettings && (
@@ -2467,6 +2452,28 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
+  const renderDesktopSection = () => (
+    // How the app behaves on this computer. Desktop only (settingsNavigation
+    // leaves it out on web). Every control here saves itself.
+    <SettingsSectionPanel autoSaved>
+      <SettingsGroup title="Desktop">
+        <Section
+          title="Stay awake for scheduled tasks"
+          subtitle="Keeps this computer from sleeping on its own while a scheduled task is running, about to run, or waiting to retry. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
+        >
+          <div className="flex items-center">
+            <Switch
+              checked={settings.scheduleKeepAwake !== false}
+              onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
+              aria-label="Stay awake for scheduled tasks"
+            />
+            <AutoSaveTag settingKey="scheduleKeepAwake" />
+          </div>
+        </Section>
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  );
+
   const renderChannelsSection = () => (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <ChannelsView />
@@ -2620,6 +2627,7 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'desktop' && renderDesktopSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}
