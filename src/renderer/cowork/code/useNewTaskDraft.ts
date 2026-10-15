@@ -158,17 +158,19 @@ export function useNewTaskDraft({
   const [rememberedWorkspaceMode, setRememberedWorkspaceMode] = useState<WorkspaceMode | null>(storedWorkspaceMode);
   const selectedProjectKey = selectedProject?.id ?? null;
   const workspaceModeComputer = selectedProject ? computerId || undefined : undefined;
+  // Only a folder in a Git repository can be worked in directly, so the server needs to see it.
+  const workspaceModeFolder = selectedProject ? undefined : standaloneFolderPath || undefined;
   useEffect(() => {
     let current = true;
     setWorkspaceModeOptions(WORKTREE_ONLY);
     void (async () => {
       try {
-        const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer);
+        const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer, workspaceModeFolder);
         if (current) setWorkspaceModeOptions(options);
       } catch { /* No answer: keep the isolated default. */ }
     })();
     return () => { current = false; };
-  }, [selectedProjectKey, workspaceModeComputer]);
+  }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
   const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
   const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, rememberedWorkspaceMode);
   const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {

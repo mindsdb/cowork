@@ -1431,12 +1431,14 @@ describe('NewTaskPanel', () => {
 
     const picker = await screen.findByRole('combobox', { name: 'Where the task works' });
     expect(picker).toHaveTextContent('Worktree');
-    expect(codingApi.workspaceModes).toHaveBeenCalledWith(null, undefined);
+    expect(codingApi.workspaceModes).toHaveBeenCalledWith(null, undefined, undefined);
     await user.click(picker);
     await user.click(screen.getByRole('option', { name: 'Local' }));
     expect(localStorage.getItem('mindshub-code:workspace-mode')).toBe('in_place');
 
     await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    // The chosen folder is checked too: one without Git can only run in place.
+    await waitFor(() => expect(codingApi.workspaceModes).toHaveBeenCalledWith(null, undefined, 'C:\\Users\\Ian & Team\\plain folder'));
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix the bug');
     const start = screen.getByRole('button', { name: /start task/i });
     await waitFor(() => expect(start).toBeEnabled());
