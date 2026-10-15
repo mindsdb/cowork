@@ -823,10 +823,11 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
-  workspaceModes: (projectId: string | null, computerId?: string) => {
+  workspaceModes: (projectId: string | null, computerId?: string, path?: string) => {
     const query = new URLSearchParams();
     if (projectId) query.set('project_id', projectId);
     if (computerId) query.set('computer_id', computerId);
+    if (path) query.set('path', path);
     const suffix = query.size ? `?${query.toString()}` : '';
     return requestJson<WorkspaceModeOptions>(`/workspace-modes${suffix}`);
   },
