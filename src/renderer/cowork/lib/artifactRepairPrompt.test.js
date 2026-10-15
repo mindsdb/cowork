@@ -2,7 +2,7 @@
 // the whole feature: a false positive turns a real message into a card, and a
 // false negative puts machine identifiers back in the transcript.
 //
-// The sample below is the literal output of `build_agent_repair` in
+// The sample below is the literal output of `create_agent_repair` in
 // cowork-server (services/artifact_revisions.py) — copied rather than
 // approximated, because the two are only coupled through this shape.
 
@@ -13,6 +13,7 @@ const PROMPT = `Address this artifact review thread. Work on the existing artifa
 
 Artifact id: b01a187163174d24944ac838a331c90f
 Source path: store.html
+Find the artifact with \`list_artifacts\` by passing this artifact id in \`match\`; \`Source path\` is relative to the artifact folder.
 Base revision: 4f5a2be1-a7af-4580-881c-a3565c53b93f
 Repair id: 1af96d6e-2214-4cd2-a475-0008f5b99b92
 Selected element: General artifact feedback

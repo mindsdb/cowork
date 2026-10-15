@@ -33,6 +33,8 @@ import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
 import { visibleProviderCards } from './providerVisibility';
+import { productName } from '../../../lib/deploymentBrand';
+import { STOCK_WORDMARK } from '../../../../shared/product-name';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -2276,14 +2278,14 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
-        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
-                placeholder="MindsHub"
-                title="Replaces the MindsHub wordmark in the nav panel."
+                placeholder={productName(STOCK_WORDMARK)}
+                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
                 ariaLabel="Sidebar title text"
               />
             </div>
