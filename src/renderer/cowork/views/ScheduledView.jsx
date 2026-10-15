@@ -23,6 +23,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
   { id: 'next', label: 'Next run' },
@@ -142,7 +143,7 @@ export default function ScheduledView({
       <PageHeader
         title="Scheduled Tasks"
         subtitle={PLATFORM_UI
-          ? `Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`
+          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`
           : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. Runs that slip while the server is down are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
           <Button variant="primary" onClick={openCreate}>

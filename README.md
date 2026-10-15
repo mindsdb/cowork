@@ -231,7 +231,7 @@ This boots both processes:
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+`/api` proxy. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
 ### Build a production bundle
@@ -242,7 +242,7 @@ npm run build:web
 
 Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
-and point its `/v1` requests at a running cowork-server process.
+and point its `/api` requests at a running cowork-server process.
 
 ### Browser tab icon
 
@@ -252,6 +252,44 @@ a square image of at least 32 × 32 pixels works best. Changes preview immediate
 and persist through the settings API. Removing the override restores the page's
 original icon, including a deployment's custom branding. Desktop does not show
 this control, and the browser's home-screen icon is unchanged.
+
+### Deployment brand
+
+A web build with the platform UI off (`BUILD_TARGET=web` and
+`VITE_PLATFORM_UI` not `true`) reads an optional brand from its own origin
+when the page loads. One build then serves any number of deployments, and a
+deployment changes its brand by serving different files, with no rebuild.
+Hosted web and desktop never load a brand: their HTML has no reference to it.
+
+| Path | What it is |
+|---|---|
+| `/brand/brand.js` | A classic script that only assigns `window.COWORK_DEPLOYMENT_BRAND = { ... };` |
+| `/brand/brand.css` | A stylesheet, loaded after the app's own CSS |
+| `/brand/<file>` | Any image the config names |
+
+The build adds the script right after `<title>`, as a blocking script before
+the app's bundle, so the first render already has the brand. It must never be
+`async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
+stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
+serves them, so a deployment that serves nothing of its own looks stock.
+
+Every field is optional. A field that breaks its rule is ignored, with one
+console warning, and the rest still apply. Unknown keys are ignored, so the
+format only ever gains optional fields.
+
+| Field | Rule | Used for |
+|---|---|---|
+| `productName` | 1 to 64 characters after trimming | The tab title and the places that name the product |
+| `skin` | `{ "id", "label" }`: an id of lowercase letters, digits and single hyphens, up to 32 characters; a label of 1 to 32 characters | A style listed first in Settings > Appearance > Style. `brand.css` styles `body[data-skin="<id>"]` |
+| `theme` | `light` or `dark` | The theme a browser starts in |
+| `logoUrl`, `iconUrl`, `appleTouchIconUrl` | `/brand/<file>`, with an optional `?v=<token>` | The sidebar logo, the tab icon and the home-screen icon |
+
+A person's own Settings win over the brand: a sidebar title, logo or tab icon
+set there is shown instead, and clearing the tab icon brings back the brand's.
+If `brand.js` doesn't load, or doesn't set an object, the page shows stock
+names, styles and icons and logs one console error naming the file. A server
+that serves the brand should send `Cache-Control: no-cache` with an ETag, so a
+changed brand shows after a reload.
 
 ### Platform abstraction
 

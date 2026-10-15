@@ -31,6 +31,14 @@ export default defineConfig({
         'src/main/server-source.ts': { statements: 100, branches: 90 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
+        // The deployment brand's reader and page tags. A field check that stops
+        // running fails nowhere visible: the page just shows stock text, or
+        // shows a brand value it should have dropped.
+        'src/shared/deployment-brand.ts': { statements: 100, branches: 100 },
+        'src/renderer/lib/deploymentBrand.ts': { statements: 100, branches: 100 },
+        // The brand's style defaults and the pause on a failed load, which
+        // keeps a broken deploy from overwriting a browser's saved style.
+        'src/renderer/lib/skins.ts': { statements: 91, branches: 97 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
         // The sign-out sequence and the sidecar restart it no longer waits for.
         // Pinned for the same reason as the entries above: the ordering has no
