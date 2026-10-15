@@ -774,6 +774,7 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
+  const providerTestsAvailable = !host.isWeb || PLATFORM_UI;
   // The `/hub/usage/` view App polls: the probe notice reads it for the
   // allowance copy and the funds link. Null outside the provider (tests).
   const hubUsageCtx = useHubUsageContext();
@@ -793,8 +794,9 @@ export default function SettingsView({
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
   // Start by distrusting a persisted provider failure. The mount-time check
-  // below decides whether it is still real before failure UI is shown.
-  const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
+  // below decides whether it is still real before failure UI is shown. Standalone
+  // web keeps the stored result because it does not run connectivity tests.
+  const [initialProviderTestDone, setInitialProviderTestDone] = useState(!providerTestsAvailable);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
@@ -917,7 +919,7 @@ export default function SettingsView({
       ? !!(p.baseUrl || '').trim()
       : !!(p.apiKey || '').trim()
   );
-  const anyProviderFailed = providers.some(
+  const canRetestProviders = providerTestsAvailable && providers.some(
     (p) => providerConfigured(p) && (settings.providerStatus || {})[p.type] === 'fail',
   );
 
@@ -1038,6 +1040,7 @@ export default function SettingsView({
   // server merges results into the persisted status map, so dots survive a
   // reload.
   const runProviderTests = async (targetProviders = null) => {
+    if (!providerTestsAvailable) return null;
     const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
     if (toTest.length === 0) return null;
 
@@ -1151,7 +1154,7 @@ export default function SettingsView({
   };
 
   const save = async () => {
-    const shouldTestLlm = llmDirty || anyProviderFailed;
+    const shouldTestLlm = llmDirty || canRetestProviders;
     const submitted = draft.capture();
     const normalized = withResolvedRoles(clampBudgets(settings));
     const patch = clampBudgets(submitted.patch);
@@ -1235,8 +1238,11 @@ export default function SettingsView({
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
   const renderSaveFooter = () => {
-    const saveDisabled = (!settingsDirty && !anyProviderFailed) || testing || missingCustomNames;
-    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    const saveDisabled = (!settingsDirty && !canRetestProviders) || testing || missingCustomNames;
+    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…'
+      : (!settingsDirty && !canRetestProviders) ? 'No unsaved changes'
+        : !providerTestsAvailable ? 'Save changes.'
+          : canRetestProviders ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
     return (
     <>
       <div
@@ -1247,8 +1253,10 @@ export default function SettingsView({
         {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
-          {saveError ? saveError : testing ? 'Testing configuration…'
-            : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+          {saveError ? saveError : testing ? (providerTestsAvailable ? 'Testing configuration…' : 'Saving settings…')
+            : tested ? (configReady
+              ? (providerTestsAvailable ? 'Test passed — provider, model, and credentials look good.' : 'Settings saved.')
+              : (configError || (providerTestsAvailable ? 'Test reported a problem.' : 'Configuration reported a problem.')))
               : saved ? 'Settings saved.'
                 : configError ? configError
                   : 'Changes apply on save.'}
@@ -1265,7 +1273,7 @@ export default function SettingsView({
           className="w-[140px] inline-flex items-center justify-center gap-1.5"
           style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
         >
-          {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+          {testing ? 'Saving…' : (settingsDirty || canRetestProviders) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
         </Button>
       </Tooltip>
     </>
@@ -1300,7 +1308,7 @@ export default function SettingsView({
                   providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
                   isSsoConnected: PLATFORM_UI && isSsoConnected,
-                  testInProgress: testing,
+                  testInProgress: providerTestsAvailable && testing,
                   initialTestDone: initialProviderTestDone,
                 });
                 const status = st.checking ? 'testing' : st.settled;
@@ -1315,7 +1323,8 @@ export default function SettingsView({
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
-                      : 'Not tested yet — save settings and run a test to verify.';
+                      : providerTestsAvailable ? 'Not tested yet — save settings and run a test to verify.'
+                        : 'Provider connectivity has not been tested.';
                 const statusPill = statusBadge ? (
                   <Badge
                     title={statusPillTitle}
@@ -1612,7 +1621,7 @@ export default function SettingsView({
                     providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
                     isSsoConnected: PLATFORM_UI && isSsoConnected,
-                    testInProgress: testing,
+                    testInProgress: providerTestsAvailable && testing,
                     initialTestDone: initialProviderTestDone,
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;

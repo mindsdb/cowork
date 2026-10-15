@@ -866,8 +866,7 @@ A task that stops on a billing limit gets a card in its timeline, and the card n
 
 To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
-Settings > Agent tests each configured provider through the sidecar's
-`/settings/test-providers`. For a failed MindsHub probe the sidecar adds
+On desktop and web builds with `VITE_PLATFORM_UI=true`, Settings > Agent tests each configured provider through the sidecar's `/settings/test-providers`. Standalone web builds with platform UI off skip these requests on open and after saves, even when their server supports provider testing. Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
 (`{ code, resetAt }`), and only for a response from the configured MindsHub host.
 `mindsProbeNotice` in `lib/providerStatus.js` turns it into the notice under each
