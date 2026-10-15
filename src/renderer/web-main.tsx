@@ -47,9 +47,12 @@ import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
+import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
+import { applyBrandIcons } from './lib/navBranding';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 
 (() => {
+  applyBrandIcons(DEPLOYMENT_BRAND);
   let theme: 'light' | 'dark' = 'dark';
   try {
     const saved = window.localStorage.getItem('anton.theme');
