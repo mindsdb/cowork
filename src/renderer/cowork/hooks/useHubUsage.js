@@ -1,6 +1,7 @@
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubUsage } from '../api';
+import { isAppVisible } from '../code/useAppVisible';
 
 /* The signed-in account's usage: the free MindsHub Air allowance, paid
    balance, auto top up.
@@ -52,7 +53,9 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
     const onFocus = () => { refresh(); };
     window.addEventListener('focus', onFocus);
     // Nothing to warn about while nobody is looking; focus refreshes anyway.
-    const tick = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refresh(); };
+    // isAppVisible, not document.visibilityState: on macOS Electron the
+    // document reads visible while the window is minimized.
+    const tick = () => { if (isAppVisible()) refresh(); };
     const timer = pollMs ? setInterval(tick, pollMs) : null;
     return () => {
       window.removeEventListener('focus', onFocus);
