@@ -6,9 +6,16 @@
 // only its own. The product already branches on `host.isWeb` everywhere; this
 // is the one place the answer is turned into words. One module, so the
 // empty-state notes cannot drift apart.
+//
+// A web build without the platform UI runs against its own server, with no
+// desktop app beside it, so there is no other app to point at and the notes
+// are empty. Callers render a note only when it has text.
+
+import { PLATFORM_UI } from '../../lib/deployment';
 
 /** Empty-state copy that points at the other app. */
-export function surfaceCopy(isWeb) {
+export function surfaceCopy(isWeb, platformUi = PLATFORM_UI) {
+  if (isWeb && !platformUi) return { tasksNote: '', artifactsNote: '' };
   const other = isWeb ? 'desktop app' : 'web app';
   return {
     tasksNote: `Tasks made in the ${other} stay there.`,
