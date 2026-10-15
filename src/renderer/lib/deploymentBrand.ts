@@ -114,3 +114,13 @@ reportBrandLoad(BRAND_LOAD);
 
 /** The loaded brand, or null when there is none to apply. */
 export const DEPLOYMENT_BRAND: DeploymentBrand | null = BRAND_LOAD.status === 'loaded' ? BRAND_LOAD.brand : null;
+
+/** The brand's product name, or the surface's own stock text when the brand sets none. */
+export function productName(stock: string): string {
+  return DEPLOYMENT_BRAND?.productName ?? stock;
+}
+
+/** The brand's sidebar logo, or null. A logo set in Settings still wins. */
+export function brandLogoUrl(): string | null {
+  return DEPLOYMENT_BRAND?.logoUrl ?? null;
+}

@@ -76,6 +76,7 @@ vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
 vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
 vi.mock('./lib/deploymentBrand', () => ({
   get DEPLOYMENT_BRAND() { return brandState.brand; },
+  productName: (stock: string) => stock,
 }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
