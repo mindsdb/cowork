@@ -46,6 +46,20 @@ describe('incomplete reason under the answer', () => {
     expect(screen.getByTestId('incomplete-reason')).toHaveTextContent('reached its token budget');
   });
 
+  it.each([
+    ['spend_ceiling', 'Stopped early: this task reached its token budget.'],
+    ['round_cap', 'Stopped early: this task reached its step limit.'],
+    ['handback_budget', 'Stopped early: automatic continuations ran out before the task was done.'],
+    ['handback_verifier_failure', "Stopped early: the agent couldn't confirm the task was done."],
+    ['handback_stuck', 'Stopped early: the agent judged the task stuck.'],
+    ['retry_exhausted', 'Stopped early: the task kept failing.'],
+  ])('names %s with its own line', (reason, line) => {
+    render(<ChatView task={taskWith(hydrateMessagesFromServerEvents(persistedTurn(
+      { status: 'incomplete', incomplete_details: { reason } },
+    )))} />);
+    expect(screen.getByTestId('incomplete-reason')).toHaveTextContent(line);
+  });
+
   it('falls back to a generic line for a reason it does not know', () => {
     const messages = hydrateMessagesFromServerEvents(persistedTurn(
       { status: 'incomplete', incomplete_details: { reason: 'something_new' } },

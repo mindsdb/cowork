@@ -955,10 +955,12 @@ describe('incompleteReason', () => {
 
   it('captures the reason when the response is incomplete', () => {
     const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'part' },
       { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } } },
     ]);
     expect(state.status).toBe('done');
     expect(state.incompleteReason).toBe('spend_ceiling');
+    expect(state.bodyText).toBe('part');
   });
 
   it('stays null for a finished answer, and for a server that sends no status', () => {
