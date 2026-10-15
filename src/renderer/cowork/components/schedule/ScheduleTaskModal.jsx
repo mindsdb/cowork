@@ -4,15 +4,18 @@
 // Layout: what to do (the prompt) first, then when, read back as a sentence
 // with the next few runs, then the name and project. Pausing lives on the
 // task's page and row, not here.
+//
+// "When" is one line of compact controls sized to their values (how often,
+// the day or date when that needs one, the time, the zone), the way calendar
+// and scheduler forms read: "Every week · Monday · at 9:00 AM".
 
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
-import { ToggleGroup } from '../ui/ToggleGroup';
 import { missedRunText } from '../../lib/scheduleCopy';
 import {
-  WEEKDAYS, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
+  WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
 
@@ -29,14 +32,14 @@ const NO_PROJECT = '__no_project__';
 
 const CADENCE_OPTIONS = [
   { value: 'once',     label: 'Once' },
-  { value: 'hourly',   label: 'Hourly' },
-  { value: 'daily',    label: 'Daily' },
-  { value: 'weekdays', label: 'Weekdays' },
-  { value: 'weekly',   label: 'Weekly' },
+  { value: 'hourly',   label: 'Every hour' },
+  { value: 'daily',    label: 'Every day' },
+  { value: 'weekdays', label: 'Every weekday' },
+  { value: 'weekly',   label: 'Every week' },
 ];
 
 // Mon first, as a week reads; values are JS getDay() numbers.
-const WEEKDAY_OPTIONS = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ value: String(d), label: WEEKDAYS[d] }));
+const WEEKDAY_OPTIONS = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ value: String(d), label: WEEKDAY_NAMES[d] }));
 
 const fieldInput = {
   width: '100%', boxSizing: 'border-box',
@@ -182,21 +185,25 @@ export default function ScheduleTaskModal({
                 </button>
               </Tooltip>
             </span>
-            <ToggleGroup
-              value={form.cadence}
-              onValueChange={(v) => v && update('cadence', v)}
-              aria-label="How often"
-              options={CADENCE_OPTIONS}
-            />
-            {form.cadence === 'weekly' && (
-              <ToggleGroup
-                value={String(form.weekday)}
-                onValueChange={(v) => v && update('weekday', Number(v))}
-                aria-label="Day of the week"
-                options={WEEKDAY_OPTIONS}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={form.cadence}
+                onValueChange={(v) => v && update('cadence', v)}
+                ariaLabel="How often"
+                width={160}
+                style={fieldSelectStyle}
+                options={CADENCE_OPTIONS}
               />
-            )}
-            <div className="flex flex-wrap items-center gap-2.5">
+              {form.cadence === 'weekly' && (
+                <Select
+                  value={String(form.weekday)}
+                  onValueChange={(v) => v && update('weekday', Number(v))}
+                  ariaLabel="Day of the week"
+                  width={140}
+                  style={fieldSelectStyle}
+                  options={WEEKDAY_OPTIONS}
+                />
+              )}
               {form.cadence === 'once' && (
                 <Input
                   type="date"
@@ -206,7 +213,7 @@ export default function ScheduleTaskModal({
                   style={{ ...fieldInput, width: 170 }}
                 />
               )}
-              <span className="text-sm text-ink-3">{form.cadence === 'hourly' ? 'at minute' : 'at'}</span>
+              <span className="px-0.5 text-sm text-ink-3">{form.cadence === 'hourly' ? 'at minute' : 'at'}</span>
               <Input
                 type="time"
                 aria-label="Time"

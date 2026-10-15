@@ -7,6 +7,7 @@
 // now. Neither is offered while a run is still going.
 
 import { Alert, Button } from '../ui';
+import Ico from '../Icons';
 import { relativeTime } from '../../lib/formatTime';
 import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
 
@@ -71,28 +72,33 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
   const conversationId = alert.kind === 'finishing' || alert.kind === 'missed'
     ? null
     : task.lastRun?.conversationId || null;
+  // The action that answers the alert comes first, as the primary button.
+  const actions = [
+    alert.kind === 'auto_paused' && (
+      <Button key="resume" size="sm" variant="primary" onClick={() => onResume?.(task.id)} disabled={busy}>Resume</Button>
+    ),
+    alert.kind === 'missed' && (
+      <Button key="run" size="sm" variant="primary" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
+    ),
+    conversationId && (
+      <Button key="review" size="sm" onClick={() => onReviewRun?.(conversationId)}>Review run</Button>
+    ),
+    alert.kind === 'partial' && (
+      <Button key="again" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
+    ),
+  ].filter(Boolean);
   return (
     // The notice of a run still finishing changes as the run ends, so it is
     // announced politely; the others are alerts.
-    <Alert variant={alert.variant} title={alert.title} role={alert.variant === 'info' ? 'status' : undefined}>
-      <div className="flex flex-col gap-2">
-        {alert.reason && <span>{alert.reason}</span>}
-        {alert.note && <span>{alert.note}</span>}
-        <div className="flex flex-wrap gap-2">
-          {alert.kind === 'auto_paused' && (
-            <Button size="sm" onClick={() => onResume?.(task.id)} disabled={busy}>Resume</Button>
-          )}
-          {conversationId && (
-            <Button size="sm" onClick={() => onReviewRun?.(conversationId)}>Review run</Button>
-          )}
-          {alert.kind === 'partial' && (
-            <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
-          )}
-          {alert.kind === 'missed' && (
-            <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
-          )}
-        </div>
-      </div>
+    <Alert
+      variant={alert.variant}
+      title={alert.title}
+      icon={alert.variant === 'info' ? Ico.info(16) : Ico.warning(16)}
+      role={alert.variant === 'info' ? 'status' : undefined}
+      actions={actions.length ? actions : null}
+    >
+      {alert.reason && <p className="m-0">{alert.reason}</p>}
+      {alert.note && <p className="m-0 mt-1 opacity-85">{alert.note}</p>}
     </Alert>
   );
 }

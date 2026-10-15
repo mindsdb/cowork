@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ScheduleTaskModal from './ScheduleTaskModal';
 
 const PROJECTS = [{ id: 'proj-metrics', name: 'Metrics', path: '/work/metrics' }];
@@ -21,7 +22,11 @@ function renderModal(props = {}) {
 }
 
 const prompt = (value) => fireEvent.change(screen.getByPlaceholderText(/Ask Anton/i), { target: { value } });
-const pick = (group, name) => fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name }));
+const pick = async (select, name) => {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('combobox', { name: select }));
+  await user.click(screen.getByRole('option', { name }));
+};
 
 describe('ScheduleTaskModal — what, then when', () => {
   it('asks for the prompt first, and requires it', async () => {
@@ -35,7 +40,7 @@ describe('ScheduleTaskModal — what, then when', () => {
   it('reads the schedule back with its time zone and next runs, and sends the first of them', async () => {
     const { onSubmit } = renderModal();
     prompt('summarize the day');
-    pick('How often', 'Weekdays');
+    await pick('How often', 'Every weekday');
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:00' } });
     expect(screen.getByText(/^Every weekday at 9:00.*UTC$/)).toBeInTheDocument();
     expect(screen.getByText(/^Next runs: /)).toBeInTheDocument();
@@ -54,18 +59,18 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(options).toEqual({ runOnce: false });
   });
 
-  it('offers a day of the week only for weekly', () => {
+  it('offers a day of the week only for weekly', async () => {
     renderModal();
-    expect(screen.queryByRole('group', { name: 'Day of the week' })).toBeNull();
-    pick('How often', 'Weekly');
-    pick('Day of the week', 'Mon');
+    expect(screen.queryByRole('combobox', { name: 'Day of the week' })).toBeNull();
+    await pick('How often', 'Every week');
+    await pick('Day of the week', 'Monday');
     expect(screen.getByText(/^Every Monday at/)).toBeInTheDocument();
   });
 
   it('refuses a one-off time that has passed', async () => {
     const { onSubmit } = renderModal();
     prompt('do the thing');
-    pick('How often', 'Once');
+    await pick('How often', 'Once');
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2020-01-01' } });
     expect(screen.getByText(/That time has passed/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
