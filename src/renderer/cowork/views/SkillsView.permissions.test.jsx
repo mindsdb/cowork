@@ -354,6 +354,25 @@ describe('SkillsView shared skills', () => {
     expect(uninstall).toHaveTextContent('Shared with you');
   });
 
+  it('leaves the switch to the server on a skill someone else shares', async () => {
+    /* Turning a shared skill off for oneself is the server's call through
+       canDisable; Shared alone never locks the switch. */
+    const { rowBadges, edit, uninstall } = await openActions({
+      ...lockedSkill,
+      shared: true,
+      capabilities: { canEdit: false, canDelete: false, canDisable: true },
+    });
+
+    expect(rowBadges.shared).toBe(true);
+    expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .not.toHaveAttribute('aria-disabled', 'true');
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Shared with you');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Shared with you');
+  });
+
   it("keeps every action on the creator's own shared skill and badges it Shared", async () => {
     const own = { ...lockedSkill, shared: true, capabilities: OWNER_CAPABILITIES };
     const { rowBadges, edit, uninstall } = await openActions(own);
