@@ -18,7 +18,7 @@ describe('nextRuns', () => {
   });
 
   it('weekly: the chosen day, a week apart', () => {
-    expect(iso(nextRuns({ cadence: 'weekly', time: '09:00', weekday: 1 }, NOW))).toEqual(['19 9:00', '26 9:00']);
+    expect(iso(nextRuns({ cadence: 'weekly', time: '09:00', weekday: 1 }, NOW))).toEqual(['19 9:00', '26 9:00', '2 9:00']);
   });
 
   it('hourly: the chosen minute of each coming hour', () => {

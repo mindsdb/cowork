@@ -59,8 +59,8 @@ export function nextRuns(when, now = new Date(), count = 3) {
     return runs;
   }
   cursor.setHours(t.h, t.m, 0, 0);
-  // Two weeks of days covers every cadence's next three runs.
-  for (let i = 0; i < 15 && runs.length < count; i += 1) {
+  // Three weeks of days covers every cadence's next three runs.
+  for (let i = 0; i < 22 && runs.length < count; i += 1) {
     const day = cursor.getDay();
     const fits = when.cadence === 'daily'
       || (when.cadence === 'weekdays' && day >= 1 && day <= 5)

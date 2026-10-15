@@ -297,8 +297,9 @@ describe('ScheduleDetailView — controls by state', () => {
     await user.click(within(box).getByRole('button', { name: 'Run now' }));
     expect(props.onRunNow).toHaveBeenCalledWith('s1');
     expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
-    // The status reads Missed, and so does where the next run would be.
-    expect(screen.getAllByText('Missed').length).toBeGreaterThanOrEqual(2);
+    // The status says Missed once; no next run is offered.
+    expect(screen.getByText('Missed')).toBeInTheDocument();
+    expect(screen.queryByText(/^Next run/)).not.toBeInTheDocument();
     expect(screen.getByText(/within the hour/)).toBeInTheDocument();
   });
 
