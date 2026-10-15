@@ -54,6 +54,14 @@ export interface PendingQuestion {
 /** ``in_place`` works in the chosen folder itself; ``worktree`` isolates the task. */
 export type WorkspaceMode = 'in_place' | 'worktree';
 
+/** Approximate disk used by each task's managed folders (over-counts macOS copies, which share blocks). */
+export interface WorkspaceUsagePage {
+  items: Array<{ session_id: string; bytes: number }>;
+  total_bytes: number;
+  measured_at: string | null;
+  measuring: boolean;
+}
+
 /** The modes a new task could run in, resolved by the server for its project and computer. */
 export interface WorkspaceModeOptions {
   supported: WorkspaceMode[];
@@ -825,6 +833,7 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceUsage: () => requestJson<WorkspaceUsagePage>('/workspace-usage'),
   workspaceModes: (projectId: string | null, computerId?: string, path?: string) => {
     const query = new URLSearchParams();
     if (projectId) query.set('project_id', projectId);
