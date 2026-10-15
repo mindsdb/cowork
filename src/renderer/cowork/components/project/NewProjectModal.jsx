@@ -42,7 +42,7 @@ function FileList({ files, onRemove }) {
         >
           <span className="inline-flex text-ink-3">{Ico.doc(14)}</span>
           <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
-          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
+          <span className="text-xs tabular-nums text-ink-4">
             {Math.ceil(f.size / 1024)} KB
           </span>
           <Tooltip content="Remove">
@@ -91,8 +91,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
-  // closeOnEsc / closeOnBackdrop). The name field auto-focuses on open.
+  // Esc, backdrop and X dismissal are <Modal>'s job (suppressed while busy
+  // via `dismissible`). The name field auto-focuses on open.
 
   const addFiles = (incoming) => {
     if (!incoming || !incoming.length) return;
@@ -216,15 +216,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       width="min(560px, 92vw)"
       maxHeight="min(680px, 88vh)"
       labelledBy="new-project-title"
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      dismissible={!busy}
     >
       <ModalHeader
         id="new-project-title"
         title="Start a new project"
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
-      <ModalBody padding="16px 18px">
+      <ModalBody>
         <div className="flex flex-col gap-[14px]">
           <Field label="Project name">
             <Input
@@ -365,12 +364,15 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         </div>
       </ModalBody>
 
-      <ModalFooter>
-        <Button
-          variant="subtle"
-          onClick={() => !busy && onClose?.()}
-          disabled={busy}
-        >Cancel</Button>
+      <ModalFooter
+        cancel={(
+          <Button
+            variant="subtle"
+            onClick={() => !busy && onClose?.()}
+            disabled={busy}
+          >Cancel</Button>
+        )}
+      >
         <Button
           variant="primary"
           onClick={create}

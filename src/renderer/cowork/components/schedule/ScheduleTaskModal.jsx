@@ -164,9 +164,8 @@ export default function ScheduleTaskModal({
       onClose={onClose}
       size="md"
       labelledBy="schedule-modal-title"
-      // Don't dismiss on backdrop click while saving.
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      // Don't dismiss while saving.
+      dismissible={!busy}
     >
       <ModalHeader
         id="schedule-modal-title"
@@ -284,20 +283,21 @@ export default function ScheduleTaskModal({
       {/* Footer is edit/create only — deleting a schedule lives on the task
           card/detail overflow menu (with its own confirm), not inside this
           form, so the footer never carries a destructive action. */}
-      <ModalFooter align="flex-end">
-        <div className="inline-flex gap-2">
+      <ModalFooter
+        cancel={(
           <Button variant="subtle" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            disabled={busy}
-          >
-            {!isEdit && !busy && Ico.plus(14)}
-            {busy ? 'Saving…' : (isEdit ? 'Save changes' : 'Create')}
-          </Button>
-        </div>
+        )}
+      >
+        <Button
+          variant="primary"
+          onClick={handleSubmit}
+          disabled={busy}
+        >
+          {!isEdit && !busy && Ico.plus(14)}
+          {busy ? 'Saving…' : (isEdit ? 'Save changes' : 'Create')}
+        </Button>
       </ModalFooter>
     </Modal>
   );

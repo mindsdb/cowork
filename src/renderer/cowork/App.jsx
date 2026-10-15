@@ -15,7 +15,7 @@ import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
 import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
-import { ConfirmModal } from './components/ConfirmModal';
+import { ConfirmModal, useConfirm } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
 import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -723,6 +723,7 @@ function AppCore() {
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  const [confirmDialog, confirmDialogModal] = useConfirm();
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
   /* Keys (id, else name) of the projects whose DELETE is on the wire. The
@@ -1800,7 +1801,7 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = appearanceSettings.showDots !== false;
+    const visible = appearanceSettings.showDots === true;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
   }, [appearanceSettings.showDots]);
@@ -2848,7 +2849,7 @@ function AppCore() {
   // to see the connection gone.
   const handleDisconnectFromModify = async (taskId, engine, name) => {
     if (!engine || !name) return;
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!(await confirmDialog({ title: `Disconnect ${engine}/${name}?`, confirmLabel: 'Disconnect', destructive: true }))) return;
     try {
       await deleteDatasource(engine, name);
     } catch (e) {
@@ -5436,7 +5437,9 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
+          // Not sun/moon: this opens both controls, so it must not read as
+          // the direct theme flip.
+          icon: Ico.palette(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
@@ -5596,7 +5599,7 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={appearanceSettings.showCounters !== false}
+          showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
           navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
@@ -6213,6 +6216,7 @@ function AppCore() {
       />
       )}
 
+      {confirmDialogModal}
       <ConfirmModal
         open={pendingDeleteTaskId != null}
         title="Delete this task?"

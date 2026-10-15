@@ -491,7 +491,8 @@ describe('ContextCard — shared resource permissions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled());
+    // Deleting a project file is its row's flow; the viewer never offers it.
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete .anton/anton.md' }))
       .not.toBeInTheDocument();
   });

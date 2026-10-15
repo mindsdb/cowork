@@ -130,6 +130,10 @@ export function CodeTasksView({
   const total = useMemo(() => sessions.filter(task => !!task.archived === archived
     && (!projectId || task.project_id === projectId)).length, [sessions, archived, projectId]);
 
+  // Nothing at all to search or filter (archived included): the toolbar would
+  // only offer controls that can't change the result.
+  const hasNoTasks = !loading && !error && !sessions.some(task => !projectId || task.project_id === projectId);
+
   const clearFilters = () => { setProjectFilter('all'); setStatusFilter('all'); setArchived(false); };
   const filters: Filter[] = [
     // A project's own page is already scoped, so it has no project facet.
@@ -155,7 +159,7 @@ export function CodeTasksView({
           <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(14)} New task</Button>
         </div>}
       /></div>
-      <FilterRow
+      {!hasNoTasks && <FilterRow
         search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
         filter={<FilterMenu filters={filters} />}
         chips={<FilterChips filters={filters} onClear={clearFilters} />}
@@ -163,7 +167,7 @@ export function CodeTasksView({
         counts={!loading && !error ? (filtered.length === total
           ? `${total} ${total === 1 ? 'task' : 'tasks'}`
           : `${filtered.length} of ${total} tasks`) : undefined}
-      />
+      />}
       <div className="mx-8 grid gap-4">
         {actionError && <Alert variant="danger">{actionError}</Alert>}
         {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
@@ -179,7 +183,12 @@ export function CodeTasksView({
           onClear={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}
           empty={archived
             ? { title: 'No archived tasks', description: 'Tasks you archive will appear here.' }
-            : { icon: Ico.code(20), title: 'No tasks yet', description: 'Start a task to begin working on your code.' }}
+            : {
+                icon: Ico.code(20),
+                title: 'No tasks yet',
+                description: 'A task keeps one coding conversation and the changes it makes to a folder or repository.',
+                action: canCreate ? { label: 'Start your first task', onClick: () => onNewTask(newTaskProjectId) } : undefined,
+              }}
         >
           <ListGroup aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
             {filtered.map(task => {

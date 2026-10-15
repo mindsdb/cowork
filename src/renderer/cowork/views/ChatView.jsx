@@ -11,13 +11,13 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
-import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -78,8 +78,6 @@ const T = {
   accent:   'var(--accent)',
   success:  '#1F8F5F',
 };
-
-const FONT_MONO    = "var(--font-mono)";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
@@ -986,12 +984,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           other, so a long message never crushes the path beside it. */}
       {status ? (
         <span
-          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('card__rail chat-artifact-card__status text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
       ) : (
-        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+        <span className="card__rail chat-artifact-card__loc text-xs text-ink-3" title={previewText}>
           {Ico.folder(12)}
           <span className="min-w-0 truncate">{previewText}</span>
         </span>
@@ -3266,21 +3264,20 @@ export default function ChatView({
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
-      {/* Data-vault connection form — rendered as a centered modal
-          overlay so it's front-and-center when a connector is picked. */}
-      {formActive && createPortal(
-        <div
-          onClick={() => (onDismissConnectForm
-            ? onDismissConnectForm(task?.id || '')
-            : clearDataVaultForm(task?.id || ''))}
-          // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
-          // so no separate WebkitBackdropFilter declaration is needed here.
-          className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-[min(90vw,460px)] max-h-[85vh] overflow-y-auto rounded-xl"
-          >
+      {/* Data-vault connection form — a centered modal so it's
+          front-and-center when a connector is picked. The panel draws its
+          own header (breadcrumb + X) and actions. */}
+      <Modal
+        open={formActive}
+        onClose={() => (onDismissConnectForm
+          ? onDismissConnectForm(task?.id || '')
+          : clearDataVaultForm(task?.id || ''))}
+        size="sm"
+        width="min(90vw, 460px)"
+        maxHeight="85vh"
+        ariaLabel="Connect"
+      >
+        <ModalBody padding="0">
             <FormErrorBoundary>
               <DataVaultFormPanel
                 conversationId={task?.id || ''}
@@ -3290,10 +3287,8 @@ export default function ChatView({
                 onClose={onDismissConnectForm}
               />
             </FormErrorBoundary>
-          </div>
-        </div>,
-        document.body,
-      )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }

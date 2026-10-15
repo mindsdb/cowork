@@ -165,7 +165,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
           {error && <div role="alert" className="text-sm text-[var(--danger)]">{error}</div>}
         </div>
       </ModalBody>
-      <ModalFooter><Button onClick={onClose}>Done</Button></ModalFooter>
+      <ModalFooter><Button variant="primary" onClick={onClose}>Done</Button></ModalFooter>
     </Modal>
   );
 }
