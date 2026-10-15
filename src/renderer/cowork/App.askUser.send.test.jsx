@@ -161,10 +161,12 @@ import {
   SHORT_REQUEST_TIMEOUT_MS,
   deleteConversationTurn,
   fetchInFlightList,
+  fetchSchedules,
 } from './api';
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
+  getForm as getDataVaultForm,
 } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
 import { MINDSHUB_AIR_MODEL_ID } from './lib/modelCatalog';
@@ -1569,6 +1571,21 @@ describe('superseded data-vault stream', () => {
     expect(spies.streamMessage.mock.calls[0][1]).toBe('a brand new message');
   });
 
+  it('stops the connection-test spinner when the submission fails', async () => {
+    const user = userEvent.setup();
+    await openTask(user);
+    const vault = await submitConnectForm(user);
+    await act(async () => {
+      setDataVaultForm('conv-a', { ...getDataVaultForm('conv-a'), _is_probing: true });
+    });
+
+    await act(async () => { vault.opts.onError('The form submission stalled and was ended. Please try again.'); });
+
+    const form = getDataVaultForm('conv-a');
+    expect(form._is_probing).toBe(false);
+    expect(form.form_error).toMatch(/stalled/);
+  });
+
   it('does not release a newer run when the dead stream finishes late', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
@@ -1702,6 +1719,64 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
     expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+  });
+});
+
+describe('a send whose upload fails while another task is queued', () => {
+  beforeEach(() => uploadAttachments.mockClear());
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('sends the other task\'s queued message instead of leaving it queued', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Beta's upload holds the slot, so Alpha's send queues behind it.
+    let failUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
+    );
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta-notes.txt');
+    await send(user, betaComposer, 'beta with file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'queued alpha');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // No turn ever started, so no terminal will drain Alpha. The failure must.
+    await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('queued alpha');
+  });
+});
+
+describe('the scheduled-task poll', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    fetchSchedules.mockReset();
+    fetchSchedules.mockResolvedValue([]);
+  });
+
+  it('keeps polling after a failed fetch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+    render(<App />);
+    await waitFor(() => expect(fetchSchedules).toHaveBeenCalled());
+    const afterBoot = fetchSchedules.mock.calls.length;
+
+    // With nothing due, the first tick waits for the 10-minute heartbeat.
+    fetchSchedules.mockRejectedValueOnce(new Error('network down'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000); });
+    expect(fetchSchedules.mock.calls.length).toBe(afterBoot + 1);
+
+    // The failed tick retries at the one-minute floor instead of stopping.
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 1000); });
+    expect(fetchSchedules.mock.calls.length).toBe(afterBoot + 2);
   });
 });
 
