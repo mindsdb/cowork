@@ -659,6 +659,31 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('the limits switch (limits_enabled)', () => {
+  it('reads the stored switch as a boolean', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [{ key: 'limits_enabled', value: 'False', is_sensitive: false, is_set: false }];
+    expect(transformSettingsRows(rows).limitsEnabled).toBe(false);
+  });
+
+  it('writes a changed switch to its snake_case key', () => {
+    expect(diffSettingsForWrite({ limitsEnabled: true }, { limitsEnabled: false }))
+      .toEqual({ limits_enabled: 'true' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // An older server 400s the unknown key and fails the whole save with it.
+    expect(diffSettingsForWrite({ limitsEnabled: true, maxToolRounds: '80' }, { maxToolRounds: '50' }))
+      .toEqual({ max_tool_rounds: '80' });
+  });
+
+  it("defaults the budget fields to the server's safety limits", () => {
+    expect(BUDGET_FIELDS.maxTurnTokens.fallback).toBe(25_000_000);
+    expect(BUDGET_FIELDS.maxToolRounds.fallback).toBe(250);
+    expect(BUDGET_FIELDS.maxContinuations.fallback).toBe(10);
+  });
+});
+
 describe('harness picker enable flags', () => {
   it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
@@ -998,12 +1023,13 @@ describe('the "no limit" switch (ENG-1286)', () => {
 
   it('falls back to the last committed value, then the factory default', () => {
     expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
-    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
-    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(spec.fallback));
+    expect(resolveBudgetRestore('', '', spec)).toBe(String(spec.fallback));
   });
 
   it('never restores the max, which would leave the switch stuck on', () => {
-    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe(String(spec.fallback));
+    expect(spec.fallback).toBeLessThan(spec.max);
   });
 
   it('clamps a remembered value that predates a floor change', () => {
