@@ -58,6 +58,8 @@ describe('workspace disk usage', () => {
     expect(result.current).toEqual(measured);
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(workspaceUsage).toHaveBeenCalledTimes(2);
+    // The server measures again when the task it is asked about is missing.
+    expect(workspaceUsage).toHaveBeenCalledWith('task-1');
   });
 
   it('fetches nothing without a task, and shows nothing if the server cannot answer', async () => {
