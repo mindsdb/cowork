@@ -35,7 +35,6 @@ export default function TasksView({
   // every run of that schedule into a single grouped row showing
   // "Schedule: <title> · N runs". Click → open the latest run.
   schedules = [],
-  scheduleRunsIndex = {},
   onOpenTask,
   onOpenProject,
   onOpenSchedule,
@@ -65,8 +64,8 @@ export default function TasksView({
   }, [schedules]);
 
   const grouped = useMemo(
-    () => groupScheduleRuns(tasks, scheduleRunsIndex),
-    [tasks, scheduleRunsIndex],
+    () => groupScheduleRuns(tasks),
+    [tasks],
   );
 
   // Compute a row-shape representative for filtering / sorting that

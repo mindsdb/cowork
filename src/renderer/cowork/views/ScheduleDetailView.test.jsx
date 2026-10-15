@@ -266,3 +266,43 @@ describe('ScheduleDetailView — how the last run went', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('ScheduleDetailView — controls by state', () => {
+  it('says what happens when the app is closed at a recurring task’s time', async () => {
+    setup();
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.getByText(/runs once when it reopens, for the latest time it missed/)).toBeInTheDocument();
+  });
+
+  it('gives a missed one-off Run now, and no switch to resume to a time that has passed', async () => {
+    const task = { ...TASK, cadence: 'once', enabled: false, state: 'missed', nextRunAt: '2026-10-01T09:00:00Z' };
+    const { props, user } = setup({ task });
+    const box = (await screen.findByText('This one-time task’s time passed while MindsHub was closed')).closest('[role="alert"]');
+    await user.click(within(box).getByRole('button', { name: 'Run now' }));
+    expect(props.onRunNow).toHaveBeenCalledWith('s1');
+    expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
+    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/Missed/);
+    expect(screen.getByText(/within the hour/)).toBeInTheDocument();
+  });
+
+  it('lets the run of a paused task finish, and stops it on request', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({
+      runs: [{ id: 'run-4', status: 'running', startedAt: '2026-10-02T09:00:00Z', conversationId: 'conv-4' }, ...RUNS],
+    });
+    const task = { ...TASK, enabled: false, state: 'paused', running: true };
+    const { props, user } = setup({ task, onStopRun: vi.fn().mockResolvedValue(undefined) });
+    expect(screen.getByText('Paused · finishing run')).toBeInTheDocument();
+    // An informational notice, not an error: a status, not an alert.
+    const box = screen.getByText('Paused — the current run will finish').closest('[role="status"]');
+    expect(within(box).getByText(/anything it has already done stays done/)).toBeInTheDocument();
+    await user.click(await within(box).findByRole('button', { name: 'Stop current run' }));
+    expect(props.onStopRun).toHaveBeenCalledWith('conv-4');
+  });
+
+  it('shows a done one-off with no switch and no next run', async () => {
+    setup({ task: { ...TASK, cadence: 'once', enabled: false, state: 'done', lastRun: { id: 'r', status: 'success' } } });
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
+    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/—/);
+  });
+});

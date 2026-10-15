@@ -263,7 +263,6 @@ export default function Sidebar({
   // ("Daily digest · 3 runs") so the recents list isn't drowned
   // out by repeat scheduled-run conversations.
   schedules = [],
-  scheduleRunsIndex = {},
   onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
@@ -352,7 +351,7 @@ export default function Sidebar({
     return Number.isFinite(t) ? t : 0;
   };
   const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
-  const _resolveSchedId = (t) => t?.scheduledId || scheduleRunsIndex?.[t?.id] || null;
+  const _resolveSchedId = (t) => t?.scheduledId || null;
 
   const recentsAll = (() => {
     const out = [];

@@ -27,17 +27,17 @@ describe('useSchedules', () => {
   it('starts empty', () => {
     const { result } = renderHook(() => useSchedules());
     expect(result.current.scheduled).toEqual([]);
-    expect(result.current.scheduleRunsIndex).toEqual({});
   });
 
-  it('refreshSchedules loads the list + runs index and returns the list', async () => {
+  it('refreshSchedules loads the list and returns it', async () => {
     api.fetchSchedules.mockResolvedValue({ schedules: [{ id: 's1' }], runs_index: { c1: 's1' } });
     const { result } = renderHook(() => useSchedules());
     let ret;
     await act(async () => { ret = await result.current.refreshSchedules(); });
     expect(ret).toEqual([{ id: 's1' }]);
     expect(result.current.scheduled).toEqual([{ id: 's1' }]);
-    expect(result.current.scheduleRunsIndex).toEqual({ c1: 's1' });
+    // The list carries no per-run map; conversations name their schedule.
+    expect(result.current).not.toHaveProperty('scheduleRunsIndex');
   });
 
   it('refreshSchedules tolerates a response missing the arrays', async () => {
@@ -45,7 +45,6 @@ describe('useSchedules', () => {
     const { result } = renderHook(() => useSchedules());
     await act(async () => { await result.current.refreshSchedules(); });
     expect(result.current.scheduled).toEqual([]);
-    expect(result.current.scheduleRunsIndex).toEqual({});
   });
 
   it('handleCreateSchedule creates then refreshes the list', async () => {
