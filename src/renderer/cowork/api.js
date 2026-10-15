@@ -1886,8 +1886,13 @@ export async function revealSettingKey(name) {
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────
+// Every project card asks for its memory at once, and each lookup needs the
+// project list. Only these read-only lookups share one request: a caller
+// reading back after a mutation must not join a request sent before it.
+const fetchProjectsShared = () => dedupe('projects', fetchProjects);
+
 export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
-  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const projectId = await resolveProjectId(projectRef, fetchProjectsShared);
   const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
@@ -1895,7 +1900,7 @@ export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
   return dedupe(`memory${suffix}`, async () => {
     const [items, projects] = await Promise.all([
       req(`/memory/${suffix}`),
-      fetchProjects(),
+      fetchProjectsShared(),
     ]);
     const list = Array.isArray(items) ? items : [];
     return groupMemoryItems(list, projects);

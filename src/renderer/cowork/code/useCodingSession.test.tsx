@@ -22,7 +22,7 @@ vi.mock('./api', async (importOriginal) => {
   };
 });
 
-import { useCodingSession } from './useCodingSession';
+import { reconcileDelayMs, useCodingSession } from './useCodingSession';
 
 
 function session(id: string, title = id): CodingSession {
@@ -115,7 +115,7 @@ describe('useCodingSession', () => {
     const { result } = renderHook(() => useCodingSession('a'));
 
     await waitFor(() => expect(result.current.session?.id).toBe('a'));
-    expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function));
+    expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function), expect.any(Function));
     expect(result.current.loading).toBe(false);
   });
 
@@ -173,7 +173,7 @@ describe('useCodingSession', () => {
       api.events.mockResolvedValueOnce({ items: [event(1, 'agent_message', 'Hello'), event(2, 'agent_message', 'World')], next_seq: 2 });
       const { unmount } = renderHook(() => useCodingSession('a'));
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-      expect(api.openStream).toHaveBeenCalledWith('a', 2, expect.any(Function), expect.any(Function));
+      expect(api.openStream).toHaveBeenCalledWith('a', 2, expect.any(Function), expect.any(Function), expect.any(Function));
 
       act(() => setDocumentVisibility('hidden'));
       expect(close).toHaveBeenCalledOnce();
@@ -181,7 +181,7 @@ describe('useCodingSession', () => {
 
       act(() => setDocumentVisibility('visible'));
       expect(api.openStream).toHaveBeenCalledTimes(2);
-      expect(api.openStream).toHaveBeenLastCalledWith('a', 2, expect.any(Function), expect.any(Function));
+      expect(api.openStream).toHaveBeenLastCalledWith('a', 2, expect.any(Function), expect.any(Function), expect.any(Function));
       expect(closeReopened).not.toHaveBeenCalled();
 
       unmount();
@@ -204,7 +204,7 @@ describe('useCodingSession', () => {
 
     await waitFor(() => expect(result.current.session?.id).toBe('a'));
     expect(result.current.loading).toBe(false);
-    expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function));
+    expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function), expect.any(Function));
   });
 
   it('batches live event deltas into one display-frame update', async () => {
@@ -460,5 +460,40 @@ describe('useCodingSession', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('polls only as a slow safety net while the live stream is connected', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockResolvedValue(session('a'));
+      renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const [, , , markError, markOpen] = api.openStream.mock.calls[0] as unknown as
+        [string, number, unknown, () => void, () => void];
+      act(() => markOpen());
+      const callsWhileHealthy = api.events.mock.calls.length;
+
+      await act(async () => { vi.advanceTimersByTime(27_500); });
+      expect(api.events).toHaveBeenCalledTimes(callsWhileHealthy);
+      await act(async () => { vi.advanceTimersByTime(2_500); });
+      expect(api.events).toHaveBeenCalledTimes(callsWhileHealthy + 1);
+
+      act(() => markError());
+      await act(async () => { vi.advanceTimersByTime(2_500); });
+      expect(api.events).toHaveBeenCalledTimes(callsWhileHealthy + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('reconcileDelayMs', () => {
+  it('backs off while the backend keeps failing and caps at the safety interval', () => {
+    expect(reconcileDelayMs(false, 0)).toBe(2_500);
+    expect(reconcileDelayMs(false, 1)).toBe(2_500);
+    expect(reconcileDelayMs(false, 2)).toBe(5_000);
+    expect(reconcileDelayMs(false, 4)).toBe(20_000);
+    expect(reconcileDelayMs(false, 9)).toBe(30_000);
+    expect(reconcileDelayMs(true, 0)).toBe(30_000);
   });
 });

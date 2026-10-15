@@ -146,9 +146,12 @@ export function WorkingFolderLive({
 
   // The request is scoped server-side, so the response is already this
   // project's list; `railArtifactRows` picks what the rail shows.
+  // The streaming poll returns a fresh array every 3s; keep the current one
+  // when nothing in it changed, so the rail and its viewer sync do not re-run.
   const applyArtifacts = (list, ticket) => {
     if (ticket !== loadVersion.current) return;
-    setArtifacts(Array.isArray(list) ? list : []);
+    const next = Array.isArray(list) ? list : [];
+    setArtifacts((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   };
 
   // Must stay above the project-switch effect: on a move to another project's
