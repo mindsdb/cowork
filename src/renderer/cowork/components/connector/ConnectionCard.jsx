@@ -56,7 +56,9 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
     badges: badge ? <Badge variant="muted" size="sm">{badge}</Badge> : undefined,
     description: subtitle,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
-    activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
+    /* The details of a managed connection have no Reconnect, so its name never
+       offers one. */
+    activateLabel: `${needsReconnect && !managed ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
     busy,
     className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
     meta: (

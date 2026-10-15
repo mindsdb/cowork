@@ -24,6 +24,26 @@ describe('ConnectionCard', () => {
     expect(screen.getByRole('button', { name: 'Reconnect GitHub: ianu82' })).toBeInTheDocument();
   });
 
+  it.each([
+    ['card', ConnectionCard],
+    ['row', ConnectionRow],
+  ])('never names a managed %s that needs reconnecting Reconnect', async (_, Item) => {
+    // How a connection someone else shares reaches the caller once its access expires.
+    const managed = { ...connection, managed: true, shared: true, status: 'needs_reconnect' };
+    const onModify = vi.fn();
+    render(<Item connection={managed} onModify={onModify} />);
+    expect(screen.getByText('Reconnect needed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Reconnect/ })).not.toBeInTheDocument();
+    // Its details open read-only, with no Reconnect of their own.
+    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
+  });
+
+  it("names the creator's own shared connection that needs reconnecting Reconnect", () => {
+    render(<ConnectionCard connection={{ ...connection, shared: true, status: 'needs_reconnect' }} onModify={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Reconnect GitHub: ianu82' })).toBeInTheDocument();
+  });
+
   it('does not present unfamiliar explicit statuses as healthy', () => {
     const { container } = render(<ConnectionCard connection={{ ...connection, status: 'unavailable' }} />);
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
