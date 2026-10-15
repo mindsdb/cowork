@@ -13,6 +13,7 @@ import userEvent from '@testing-library/user-event';
 
 // The panel's note and cowork-server's 403 message share this sentence.
 const READ_ONLY_NOTE = "This connection is shared with you and can't be changed here.";
+const OPERATOR_NOTE = "Your operator provides this connection, and it can't be changed here.";
 const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 /* google_drive plus an MCP method so one panel would show every control the
@@ -81,13 +82,13 @@ async function openPanel(connections, saved, props = {}) {
 
 describe('CustomizeView managed and shared connections', () => {
   it.each([
-    ['the list row', { ...CONNECTION, managed: true }, SAVED],
-    ['the detail response', CONNECTION, { ...SAVED, managed: true }],
-    ['the list row of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }, { ...SAVED, managed: true, shared: true }],
-  ])('shows the panel read-only when %s marks the connection managed', async (_, connection, saved) => {
+    ['the list row', { ...CONNECTION, managed: true }, SAVED, OPERATOR_NOTE],
+    ['the detail response', CONNECTION, { ...SAVED, managed: true }, OPERATOR_NOTE],
+    ['the list row of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }, { ...SAVED, managed: true, shared: true }, READ_ONLY_NOTE],
+  ])('shows the panel read-only when %s marks the connection managed', async (_, connection, saved, note) => {
     const dialog = await openPanel([connection], saved);
 
-    expect(within(dialog).getByRole('note')).toHaveTextContent(READ_ONLY_NOTE);
+    expect(within(dialog).getByRole('note')).toHaveTextContent(note);
     expect(within(dialog).queryByRole('button', { name: 'Reconnect' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Tool access')).not.toBeInTheDocument();
@@ -129,8 +130,10 @@ describe('CustomizeView managed and shared connections', () => {
   });
 
   it.each([
-    ['a managed connection', { ...CONNECTION, managed: true, shared: true }, { managed: true, shared: true },
+    ['a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }, { managed: true, shared: true },
       'Whoever shared it with you can reconnect it.', 'Reconnect to restore access'],
+    ['a connection the operator provides', { ...CONNECTION, managed: true }, { managed: true },
+      'Your operator can reconnect it.', 'Whoever shared it with you'],
     ["the creator's own shared connection", { ...CONNECTION, managed: false, shared: true }, { managed: false, shared: true },
       'Reconnect to restore access, or remove the connection.', 'Whoever shared it with you'],
     ['a connection without either field', CONNECTION, {},

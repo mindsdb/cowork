@@ -65,6 +65,10 @@ function ConnectionsCounts({ search, total, filtered }) {
    operator provides. */
 const MANAGED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
 
+/* The same read-only note for a connection the operator provides, which no
+   person created or shared. */
+const OPERATOR_CONNECTION_NOTE = "Your operator provides this connection, and it can't be changed here.";
+
 /* Told to the creator of a shared connection beside a setting others pick up:
    each turn reads the connection live from its creator's vault. */
 const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
@@ -432,16 +436,21 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         {/* Footer */}
         <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
           {/* A managed connection has no Reconnect or Remove here, so its
-              alert names who can reconnect it instead. */}
+              alert names who can reconnect it instead: whoever shared it, or
+              the operator for one no person shared. */}
           {saved?.fields?.status === 'needs_reconnect' && (
             <Alert variant="warning" title="Reconnection required">
-              {managed
-                ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
-                : 'Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.'}
+              {!managed
+                ? 'Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.'
+                : shared
+                  ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
+                  : 'Access for this connection has expired or was revoked. Your operator can reconnect it.'}
             </Alert>
           )}
           {managed ? (
-            <p className="m-0 text-[12px] text-ink-3" role="note">{MANAGED_CONNECTION_NOTE}</p>
+            <p className="m-0 text-[12px] text-ink-3" role="note">
+              {shared ? MANAGED_CONNECTION_NOTE : OPERATOR_CONNECTION_NOTE}
+            </p>
           ) : (
             <>
               {spec && (
