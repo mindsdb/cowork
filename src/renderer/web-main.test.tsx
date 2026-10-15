@@ -30,7 +30,7 @@ const rendered = {
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
 const keycloakState = { initialized: true };
-const skinState = { skin: 'normal' };
+const skinState = { skin: 'normal', seed: () => {} };
 const brandState = { brand: null as { iconUrl: string } | null };
 
 vi.mock('@react-keycloak/web', () => ({
@@ -73,9 +73,13 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
 vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
-vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
+vi.mock('./lib/skins', () => ({
+  loadSkin: () => skinState.skin,
+  seedBrandDefaults: () => skinState.seed(),
+}));
 vi.mock('./lib/deploymentBrand', () => ({
   get DEPLOYMENT_BRAND() { return brandState.brand; },
+  productName: (stock: string) => stock,
 }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
@@ -279,5 +283,22 @@ describe('web-main deployment brand', () => {
   it('leaves the stock icon without a brand', async () => {
     const r = await renderOnHost('cowork.mindshub.ai');
     expect(r.iconAtApp).toBe('/minds-icon.svg');
+  });
+
+  it("applies the brand's defaults before reading the theme and style", async () => {
+    window.localStorage.setItem('anton.theme', 'dark');
+    skinState.seed = () => {
+      window.localStorage.setItem('anton.theme', 'light');
+      skinState.skin = 'acme';
+    };
+    try {
+      await renderOnHost('cowork.mindshub.ai');
+      expect(document.body.dataset.theme).toBe('light');
+      expect(document.body.dataset.skin).toBe('acme');
+    } finally {
+      skinState.seed = () => {};
+      skinState.skin = 'normal';
+      window.localStorage.removeItem('anton.theme');
+    }
   });
 });
