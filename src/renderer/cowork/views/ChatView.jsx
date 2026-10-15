@@ -3017,9 +3017,10 @@ export default function ChatView({
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   {m.incompleteReason && (
-                    <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }} data-testid="incomplete-reason">
+                    // role="note": a saved answer's notice must not be announced again on every reload.
+                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
                       {INCOMPLETE_REASON_TEXT[m.incompleteReason] || 'Stopped before it finished.'}
-                    </div>
+                    </Alert>
                   )}
                 </AnswerTurn>
               );

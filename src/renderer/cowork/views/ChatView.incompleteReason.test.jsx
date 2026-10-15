@@ -34,7 +34,7 @@ describe('incomplete reason under the answer', () => {
       { role: 'user', content: 'find the figure' },
       { role: 'assistant', content: 'Here is how far I got.', incompleteReason: 'round_cap' },
     ])} />);
-    expect(screen.getByTestId('incomplete-reason')).toHaveTextContent('reached its step limit');
+    expect(screen.getByRole('note')).toHaveTextContent('reached its step limit');
     expect(screen.getByText('Here is how far I got.')).toBeInTheDocument();
   });
 
