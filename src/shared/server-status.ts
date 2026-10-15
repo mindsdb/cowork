@@ -20,8 +20,13 @@
  *  - `incompatible` — a healthy backend answered, but it does not expose the
  *                     Code capability required by this desktop build.
  *  - `not-installed`— the backend (or uv) isn't on disk at all.
+ *  - `credential-clear` — a sign-out left API keys for the backend to remove at
+ *                     startup, and it could not, so it stopped rather than
+ *                     serve them. Also used when the previous backend for that
+ *                     store could not be stopped to make way for one that would.
  */
-export type ServerStartErrorKind = 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed';
+export type ServerStartErrorKind =
+  | 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | 'credential-clear';
 
 /** Hard cap on a start, in ms. One number for every build and every platform.
  *
@@ -120,6 +125,13 @@ export function backendFailureCopy(input: {
       headline = "The backend isn't installed yet.";
       hints.push('Re-run the installer to set it up.');
       break;
+    case 'credential-clear':
+      headline = "The backend couldn't remove the API keys from your last sign-out, so it stopped instead of using them.";
+      hints.push(
+        'Quit MindsHub Cowork completely and reopen it. The backend tries again on every start.',
+        'If it keeps failing, another program may be holding files in the Cowork data folder open; close it, or restart the machine.',
+      );
+      break;
     case 'incompatible':
       headline = 'The backend needs to be updated for this version of MindsHub Cowork.';
       hints.push(
@@ -161,6 +173,8 @@ function noLogHint(kind: ServerStartErrorKind | null): string {
       return 'Nothing has run yet, so there is no log to send.';
     case 'incompatible':
       return 'The backend responded normally, but it is an older incompatible version; there may be no error log.';
+    case 'credential-clear':
+      return 'The backend stopped before it printed its reason, so there is no log to send.';
     default:
       return 'No log has been captured yet, so there is nothing to send.';
   }

@@ -48,7 +48,7 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
-    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | 'credential-clear' | null;
     portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;

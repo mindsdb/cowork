@@ -202,11 +202,23 @@ export function ensureAccountDataRoot(): string {
  * with the account, so a second account on one machine accepts terms again.
  */
 export function coworkEnvPath(): string {
-  return path.join(accountDataRoot(), '.env');
+  return coworkEnvPathIn(accountDataRoot());
 }
 
 export function coworkStatePath(): string {
-  return path.join(accountDataRoot(), 'state.json');
+  return coworkStatePathIn(accountDataRoot());
+}
+
+/** The account's dotenv under a given account root, for a caller that captured
+ *  the root before the account record could change (sign-out). */
+export function coworkEnvPathIn(accountRoot: string): string {
+  return path.join(accountRoot, '.env');
+}
+
+/** The account's provider state under a given account root, for the same
+ *  reason as `coworkEnvPathIn`. */
+export function coworkStatePathIn(accountRoot: string): string {
+  return path.join(accountRoot, 'state.json');
 }
 
 export function readEnvFile(): Record<string, string> {
