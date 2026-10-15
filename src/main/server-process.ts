@@ -33,6 +33,15 @@ import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
+import {
+  hasPendingCredentialClear,
+  installedServerClearsPendingCredentials,
+  forgetServerClearsPendingCredentials,
+  recordServerClearsPendingCredentials,
+  settleUnconfirmedClears,
+  PENDING_CLEAR_CAPABILITY,
+  PENDING_CLEAR_FAILURE_LOG,
+} from './pending-credential-clear';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
@@ -205,6 +214,24 @@ let _runningAccountRoot: string | null | undefined;
 // absolute path. Captured at spawn rather than re-read later, so a record that
 // moves during a start cannot make us record a root the process is not on.
 let _runningOrgStoreRoot: string | undefined;
+
+// The store a spawn in flight is bringing a sidecar up on, so a sign-out during
+// the start marks the store that sidecar is about to create and seed.
+let _startingOrgStoreRoot: string | undefined;
+
+// Whether the last sidecar this process started or adopted clears a store's
+// pending credential clear at startup, or null before one has answered. Kept
+// across a stop, and on disk for a run whose sidecar never comes up.
+let _serverClearsPendingCredentials: boolean | null = null;
+
+/** Remember what the sidecar that just came up can do, for this run and, via
+ *  a file in the shared home, for a later run whose sidecar never answers, and
+ *  settle any markers a sign-out wrote before a sidecar had said. */
+function noteServerClearsPendingCredentials(clears: boolean): void {
+  _serverClearsPendingCredentials = clears;
+  recordServerClearsPendingCredentials(coworkHome(), clears);
+  settleUnconfirmedClears(coworkHome(), clears);
+}
 
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
@@ -516,30 +543,37 @@ function sleep(ms: number): Promise<void> {
 // sidecar can answer this endpoint while returning 404 for every Code Mode
 // route. Requiring the capability here prevents both adopting that process and
 // declaring an incompatible freshly-spawned binary ready.
-type HealthProbe = { state: 'unreachable' | 'compatible' | 'incompatible'; owner: string | null };
+type HealthProbe = {
+  state: 'unreachable' | 'compatible' | 'incompatible';
+  owner: string | null;
+  clearsPendingCredentials: boolean;
+};
 
 function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
   return new Promise((resolve) => {
     const req = http.get(
       { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs },
       (res) => {
-        if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null }); return; }
+        if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null, clearsPendingCredentials: false }); return; }
         let body = '';
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
           let owner: string | null = null;
           let supportsCoding = false;
+          let clearsPendingCredentials = false;
           try {
             const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
+            clearsPendingCredentials = Array.isArray(payload?.capabilities)
+              && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials });
         });
       },
     );
-    req.on('error', () => resolve({ state: 'unreachable', owner: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ state: 'unreachable', owner: null }); });
+    req.on('error', () => resolve({ state: 'unreachable', owner: null, clearsPendingCredentials: false }));
+    req.on('timeout', () => { req.destroy(); resolve({ state: 'unreachable', owner: null, clearsPendingCredentials: false }); });
   });
 }
 
@@ -705,15 +739,25 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // common cause is an orphan python from a prior session that didn't get
   // reaped on quit; re-verify via /health that the owner token is ours before
   // adopting (a foreign server was already routed around in resolveServerPort).
+  let refusedAdoption = false;
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
+    const ours = probe.state === 'compatible'
+      && probe.owner !== null
+      && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment());
+    // A process that is already running never re-runs its startup, so it would
+    // keep serving keys a sign-out marked for clearing. Replace it instead.
+    if (ours && hasPendingCredentialClear(currentOrgStoreRoot())) {
+      refusedAdoption = true;
+      console.log('[server] not adopting the running instance: its store has a pending credential clear');
+    } else if (ours) {
       serverStarted = true;
       _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
       _runningOrgStoreRoot = currentOrgStoreRoot();
+      noteServerClearsPendingCredentials(probe.clearsPendingCredentials);
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -731,6 +775,18 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   if (reaped.length > 0) {
     console.log(`[server] reaped an orphan holding port ${serverPort} before spawn (pid ${reaped.join(', ')})`);
     await sleep(500);
+  }
+  // The reap ignores its own failures, and a spawn that then loses the bind
+  // would read the refused sidecar's /health as its own.
+  if (refusedAdoption) {
+    const holders = await findPortHolders(serverPort);
+    if (holders.length > 0) {
+      lastStartError = `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`;
+      lastStartErrorKind = 'credential-clear';
+      lastPortHolderPid = holders[0];
+      console.error(`[server] ${lastStartError} (pid ${holders.join(', ')})`);
+      return { ok: false, reason: lastStartError, port: serverPort };
+    }
   }
 
   // Hard cap on the wait — not an expected duration. The wait itself tracks
@@ -814,6 +870,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // switch rewrites, so moving it would leave a switched-to organization
     // unconfigured.
     const orgStoreRootAtSpawn = currentOrgStoreRoot();
+    _startingOrgStoreRoot = orgStoreRootAtSpawn;
     const orgSegmentAtSpawn = currentOrgSegment();
     const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
     console.log(
@@ -957,9 +1014,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // moment it dies rather than after the full budget.
     const waitStartedAt = Date.now();
     let step = decideStartWait({ healthy: false, spawnError, exited: childExited, elapsedMs: 0, capMs: startCapMs });
+    let clearsPendingCredentials = false;
     while (step.action === 'poll') {
       await sleep(HEALTH_POLL_INTERVAL_MS);
       const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
+      clearsPendingCredentials = probe.clearsPendingCredentials;
       step = decideStartWait({
         healthy: probe.state === 'compatible',
         incompatible: probe.state === 'incompatible',
@@ -972,9 +1031,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
     if (step.action === 'fail') {
       const elapsedMs = Date.now() - waitStartedAt;
-      lastStartErrorKind = step.kind;
+      // The one boot death with its own remedy: a sign-out's credential clear
+      // that the backend refused to start past.
+      const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
+        ? 'credential-clear'
+        : step.kind;
+      lastStartErrorKind = kind;
       lastStartError = startFailureMessage({
-        kind: step.kind,
+        kind,
         exitCode: childExitCode,
         spawnError,
         elapsedMs,
@@ -1016,6 +1080,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
+    noteServerClearsPendingCredentials(clearsPendingCredentials);
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only
@@ -1052,6 +1117,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     return await pendingStart;
   } finally {
     pendingStart = null;
+    _startingOrgStoreRoot = undefined;
   }
 }
 
@@ -1199,6 +1265,35 @@ export function isServerRunning(): boolean {
 // uses this to show "starting…" without firing a duplicate start.
 export function isServerStarting(): boolean {
   return pendingStart !== null;
+}
+
+/**
+ * The store a sidecar is running or starting on, or null when there is none.
+ * Read only through the live flags, because the recorded root outlives a stop
+ * of an adopted or handed-off sidecar.
+ */
+export function activeStoreRoot(): string | null {
+  if (isServerRunning()) return _runningOrgStoreRoot ?? null;
+  if (isServerStarting()) return _startingOrgStoreRoot ?? null;
+  return null;
+}
+
+/**
+ * Drop what this run and the last one learned about pending-store clears,
+ * for a reinstall about to replace the server they came from. Call inside the
+ * maintenance window, before the install runs; the next answer records anew.
+ * Side effects: resets the in-memory answer and removes the record files.
+ */
+export function forgetServerCapability(): void {
+  _serverClearsPendingCredentials = null;
+  forgetServerClearsPendingCredentials(coworkHome());
+}
+
+/** Whether the installed sidecar consumes a store's pending credential clear at
+ *  startup: what this run saw, else what the last run recorded, else null when
+ *  no sidecar has ever answered. */
+export function serverClearsPendingCredentials(): boolean | null {
+  return _serverClearsPendingCredentials ?? installedServerClearsPendingCredentials(coworkHome());
 }
 
 export interface ServerDiagnostics {
