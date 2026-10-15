@@ -19,6 +19,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
+import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
 import { relativeTime } from '../lib/formatTime';
 
 // ── time helpers ──
@@ -176,6 +177,8 @@ export default function ScheduleDetailView({
   onPause,                  // (id)
   onResume,                 // (id)
   onRunNow,                 // (id)
+  // (task) — this page counts as reviewing an auto-pause it shows.
+  onReviewedAutoPause,
   agentLabel,
 }) {
   const [runs, setRuns] = useState([]);
@@ -186,6 +189,13 @@ export default function ScheduleDetailView({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const taskId = task?.id;
+  const autoPausedAt = task?.autoPausedAt;
+
+  useEffect(() => {
+    if (task && autoPausedAt) onReviewedAutoPause?.(task);
+    // Once per pause shown, not on every poll's new task object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, autoPausedAt]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -250,25 +260,15 @@ export default function ScheduleDetailView({
           <Alert variant="danger">{error}</Alert>
         )}
 
-        {/* Paused by the server after repeated failures: say why, and offer
-            the way back. Resume also clears the failure streak. */}
-        {!task.enabled && task.autoPausedAt && (
-          <Alert
-            variant="danger"
-            title={task.consecutiveFailures
-              ? `Paused after ${task.consecutiveFailures} failed runs in a row`
-              : 'Paused after repeated failed runs'}
-          >
-            <div className="flex flex-col gap-2">
-              {task.lastError && <span>{task.lastError}</span>}
-              <div>
-                <Button size="sm" onClick={() => withBusy(() => onResume?.(task.id))} disabled={busy}>
-                  Resume
-                </Button>
-              </div>
-            </div>
-          </Alert>
-        )}
+        {/* How the last run went, when there is something to act on: an
+            auto-pause, or a failed run, with its output to review first. */}
+        <ScheduleRunAlert
+          task={task}
+          busy={busy}
+          onResume={(id) => withBusy(() => onResume?.(id))}
+          onRunNow={(id) => withBusy(() => onRunNow?.(id))}
+          onReviewRun={(conversationId) => onOpenRunSession?.(conversationId)}
+        />
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
         <div className="sched-hero py-[18px] px-[22px] bg-surface border border-solid border-line rounded-card flex flex-col gap-[14px]">

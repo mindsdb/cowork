@@ -1,28 +1,39 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { scheduleState } from '../components/schedule/ScheduleStatusBadge';
 
-// A desktop notification the first time this device sees a schedule that the
-// server paused after repeated failures. Without it an auto-pause is silent:
-// the task just stops running.
+// What this device knows about each auto-pause, keyed by schedule id + the
+// time it was paused, so a later pause of the same task counts as new:
 //
-// Each pause is keyed by schedule id + the time it was paused, kept in
-// localStorage, so a restart doesn't repeat it and a later pause of the same
-// task notifies again. Notifications are best-effort: no API, or permission
-// refused, and the in-app status still shows the pause.
-const SEEN_KEY = 'scheduledAutoPausesNotified';
-const SEEN_LIMIT = 200;
+// - notified: a desktop notification was tried for it, whatever came of the
+//   try (no API, permission refused, or shown). It is never tried twice, so
+//   a refused permission is not asked again on every poll or restart.
+// - reviewed: the user opened that schedule since it was paused. Until then
+//   the pause is unseen and the app keeps saying so, whether or not the
+//   notification reached anyone.
+//
+// Kept in localStorage: per device, which is where the notification and the
+// in-app notice are shown.
+const STORE_KEY = 'scheduledAutoPauses.v2';
+const LIMIT = 200;
 
-function readSeen() {
+function readStore() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    return {
+      notified: Array.isArray(parsed.notified) ? parsed.notified : [],
+      reviewed: Array.isArray(parsed.reviewed) ? parsed.reviewed : [],
+    };
   } catch {
-    return [];
+    return { notified: [], reviewed: [] };
   }
 }
 
-function writeSeen(keys) {
+function writeStore(store) {
   try {
-    localStorage.setItem(SEEN_KEY, JSON.stringify(keys.slice(-SEEN_LIMIT)));
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      notified: store.notified.slice(-LIMIT),
+      reviewed: store.reviewed.slice(-LIMIT),
+    }));
   } catch { /* private mode */ }
 }
 
@@ -41,25 +52,35 @@ export function pauseKey(schedule) {
   return `${schedule.id}:${schedule.autoPausedAt}`;
 }
 
-export function newAutoPauses(schedules, seen) {
-  const known = new Set(seen);
-  return (schedules || []).filter((s) => !s.enabled && s.autoPausedAt && !known.has(pauseKey(s)));
+export function autoPaused(schedules) {
+  return (schedules || []).filter((s) => s.autoPausedAt && scheduleState(s) === 'auto_paused');
 }
 
+export function unseenAutoPauses(schedules, reviewed) {
+  const known = new Set(reviewed);
+  return autoPaused(schedules).filter((s) => !known.has(pauseKey(s)));
+}
+
+// Notifies once per auto-pause where the OS allows it, and reports the pauses
+// the user has not reviewed yet. `markReviewed(schedule)` records a review.
 export function useAutoPauseNotifications(schedules, onOpen) {
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
+  const [reviewed, setReviewed] = useState(() => readStore().reviewed);
 
   useEffect(() => {
-    const seen = readSeen();
-    const fresh = newAutoPauses(schedules, seen);
+    const store = readStore();
+    const notified = new Set(store.notified);
+    const fresh = autoPaused(schedules).filter((s) => !notified.has(pauseKey(s)));
     if (fresh.length === 0) return;
-    // Record first, so a slow permission prompt can't notify twice.
-    writeSeen([...seen, ...fresh.map(pauseKey)]);
+    // Recorded before the try, so a slow permission prompt can't notify twice.
+    writeStore({ ...store, notified: [...store.notified, ...fresh.map(pauseKey)] });
     void canNotify().then((allowed) => {
       if (!allowed) return;
       for (const schedule of fresh) {
         const title = schedule.title || 'Scheduled task';
+        // The task's own name only: the reason can carry details from the
+        // run, and notifications show on the lock screen.
         const notice = new Notification('Scheduled task paused', {
           body: `“${title}” failed several runs in a row and was paused. Click to review.`,
           tag: `schedule-auto-pause-${schedule.id}`,
@@ -72,6 +93,18 @@ export function useAutoPauseNotifications(schedules, onOpen) {
       }
     });
   }, [schedules]);
+
+  const markReviewed = useCallback((schedule) => {
+    if (!schedule?.autoPausedAt) return;
+    const key = pauseKey(schedule);
+    const store = readStore();
+    if (store.reviewed.includes(key)) return;
+    const next = [...store.reviewed, key];
+    writeStore({ ...store, reviewed: next });
+    setReviewed(next);
+  }, []);
+
+  return { unseen: unseenAutoPauses(schedules, reviewed), markReviewed };
 }
 
 export default useAutoPauseNotifications;
