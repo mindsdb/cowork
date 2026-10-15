@@ -1,4 +1,5 @@
 import i18n from '../../lib/i18n';
+import { productName } from '../../lib/deploymentBrand';
 import type { WorkspaceMode, WorkspaceModeOptions } from './api';
 
 // The last mode the user picked, preselected for the next task that can use it.
@@ -32,6 +33,21 @@ export const WORKSPACE_MODE_OPTIONS: WorkspaceModeOption[] = WORKSPACE_MODE_KEYS
 /** A fresh copy with the labels in the current language (a new array, so pickers re-render on a switch). */
 export function workspaceModeOptions(): WorkspaceModeOption[] {
   return WORKSPACE_MODE_OPTIONS.map((option) => ({ value: option.value, label: option.label, title: option.title }));
+}
+
+// A project setting may leave the choice to the server, which picks by folder and computer.
+export const DEFAULT_WORKSPACE_MODE_VALUE = 'default';
+
+/** Default first, then the modes, with labels in the current language. */
+export function projectWorkspaceModeOptions(): Array<{ value: string; label: string; title: string }> {
+  return [
+    {
+      value: DEFAULT_WORKSPACE_MODE_VALUE,
+      label: i18n.t('workspaceMode.default.label', { ns: 'code' }),
+      title: i18n.t('workspaceMode.default.title', { ns: 'code', product: productName('Cowork') }),
+    },
+    ...workspaceModeOptions(),
+  ];
 }
 
 export function isWorkspaceMode(value: string | null | undefined): value is WorkspaceMode {
