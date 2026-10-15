@@ -694,6 +694,36 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
 }
 
 /**
+ * A failed `--force --reinstall` can leave the tool environment half-built, so
+ * restarting the server on it may fail too. When it does, reinstall the version
+ * that was running and start that; if even that fails, tell the user, since the
+ * app has no backend. The outcome is only set when recovery failed: a recovered
+ * install failure is still journaled as an install failure.
+ */
+async function recoverFromFailedInstall(
+  wasRunning: boolean,
+  reinstallPrevious: () => Promise<{ ok: boolean; stderr: string }>,
+  previous: string,
+): Promise<ServerUpdateResult['outcome']> {
+  if (!wasRunning) return undefined;
+  const restarted = await startServer();
+  if (restarted.ok) return undefined;
+  diagnostic("main.server-updater", "ERROR", "server_updater_restart_after_failed_install_failed", `[server-updater] server did not restart after the failed install (${restarted.reason}), reinstalling ${previous}...`);
+  const rollback = await reinstallPrevious();
+  if (!rollback.ok) {
+    _notify?.({ phase: 'error', critical: true, error: `Server update failed and reinstalling ${previous} also failed (${rollback.stderr}). Restart the app to recover.` });
+    return 'rollback-failed';
+  }
+  const restored = await startServer();
+  if (restored.ok) {
+    diagnostic("main.server-updater", "INFO", "server_updater_restored_after_failed_install", `[server-updater] restored ${previous} after the failed install`);
+    return undefined;
+  }
+  _notify?.({ phase: 'error', critical: true, error: `Server update failed; reinstalled ${previous} but it did not start (${restored.reason}). Restart the app to recover.` });
+  return 'restore-failed';
+}
+
+/**
  * /health is exempt from auth by design, so startServer()'s health check
  * alone can't tell an auth-mismatched sidecar (COWORK_REQUIRE_AUTH on, this
  * shell's authHeader() holding no token that matches) from a genuinely
@@ -750,8 +780,8 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     const upgrade = await installGit(uv, coworkRef, antonRef);
     if (!upgrade.ok) {
       diagnostic("main.server-updater", "ERROR", "server_updater_git_reinstall_failed", '[server-updater] git reinstall failed:', upgrade.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: upgrade.stderr };
+      const outcome = await recoverFromFailedInstall(wasRunning, () => installGit(uv, prevCowork, prevAnton), `cowork@${prevCowork.slice(0, 7)}`);
+      return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: upgrade.stderr, ...(outcome ? { outcome } : {}) };
     }
 
     _notify?.({ phase: 'restarting' });
@@ -839,8 +869,12 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     );
     if (!upgrade.ok) {
       diagnostic("main.server-updater", "ERROR", "server_updater_upgrade_failed", '[server-updater] upgrade failed:', upgrade.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: from, newVersion: to, error: upgrade.stderr, ...repairFlag };
+      const outcome = await recoverFromFailedInstall(
+        wasRunning,
+        () => runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]),
+        from,
+      );
+      return { updated: false, previousVersion: from, newVersion: to, error: upgrade.stderr, ...(outcome ? { outcome } : {}), ...repairFlag };
     }
 
     _notify?.({ phase: 'restarting' });
@@ -891,8 +925,15 @@ async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from
     ]);
     if (!install.ok) {
       diagnostic("main.server-updater", "ERROR", "server_updater_anton_upgrade_failed", '[server-updater] anton upgrade failed:', install.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: install.stderr, component: 'anton-agent' };
+      const outcome = await recoverFromFailedInstall(
+        wasRunning,
+        () => runUv(uv, [
+          'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
+          coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.from}`,
+        ]),
+        `anton-agent ${anton.from}`,
+      );
+      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: install.stderr, ...(outcome ? { outcome } : {}), component: 'anton-agent' };
     }
 
     const result = await startServer();
