@@ -794,6 +794,46 @@ describe('NewTaskPanel', () => {
     })));
   });
 
+  it('lets a project task have either Local or branch choices, not both', async () => {
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'worktree' });
+    const onCreate = vi.fn(async () => {});
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        {...projectProps}
+        onCreate={onCreate}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('Repositories and folders')).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Where the task works' })).toBeEnabled());
+    await user.click(screen.getByRole('combobox', { name: 'Where the task works' }));
+    await user.click(await screen.findByRole('option', { name: 'Local' }));
+    expect(screen.getByRole('combobox', { name: 'Where the task works' })).toHaveTextContent('Local');
+    // A branch needs an isolated worktree, so choosing one switches to Worktree.
+    await waitFor(() => expect(screen.getByLabelText('Repositories and folders')).toBeEnabled());
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    await user.type(screen.getByRole('textbox', {name:/New branch/}), 'feat/branch');
+    await waitFor(() => expect(screen.getByRole('button', {name:'Apply to task'})).toBeEnabled());
+    await user.click(screen.getByRole('button', {name:'Apply to task'}));
+    expect(screen.getByRole('combobox', { name: 'Where the task works' })).toHaveTextContent('Worktree');
+
+    // Choosing Local again drops the branch choice.
+    await user.click(screen.getByRole('combobox', { name: 'Where the task works' }));
+    await user.click(screen.getByRole('option', { name: 'Local' }));
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Change it');
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ workspaceMode: 'in_place' })));
+    expect(onCreate).toHaveBeenCalledWith(expect.not.objectContaining({ repositorySetup: expect.anything() }));
+  });
+
   it('offers a direct route to create another Code Project', async () => {
     const user = userEvent.setup();
     const onProjectChange = vi.fn();
