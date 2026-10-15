@@ -286,6 +286,39 @@ describe('SettingsView — limits switch', () => {
   });
 });
 
+describe('SettingsView — resetting a budget uses the server default', () => {
+  // An older sidecar defaults to 50 steps; saving this renderer's own 250 as a
+  // "reset" would raise the budget and, on a newer server, opt the user in.
+  it('clearing a field saves the served default, not the factory one', async () => {
+    const props = baseProps(withBudgets({ maxToolRounds: '40', budgetDefaults: { maxToolRounds: '50' } }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    const steps = screen.getByLabelText('Max steps per task');
+    fireEvent.change(steps, { target: { value: '' } });
+    fireEvent.blur(steps);
+
+    expect((await savePatch(props)).maxToolRounds).toBe('50');
+  });
+
+  it('shows the served default in the hint', () => {
+    render(<SettingsView {...baseProps(withBudgets({ budgetDefaults: { maxToolRounds: '50' } }))} />);
+    expandAdvanced();
+    expect(screen.getByText('default 50')).toBeInTheDocument();
+  });
+
+  it('unticking "No limit" with nothing remembered restores the served default', async () => {
+    const props = baseProps(withBudgets({
+      maxTurnTokens: '50000000', budgetDefaults: { maxTurnTokens: '1250000' },
+    }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(noLimitBox());
+    expect((await savePatch(props)).maxTurnTokens).toBe('1250000');
+  });
+});
+
 describe('SettingsView — Advanced Settings collapse', () => {
   it('starts collapsed, hiding the budget fields', () => {
     render(<SettingsView {...baseProps(withBudgets())} />);

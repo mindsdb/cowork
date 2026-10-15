@@ -559,10 +559,14 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
-    // The safety limit in force for a budget while the limits switch is off.
-    // Kept apart from the budget itself, which holds the user's saved value.
-    if (clientKey in BUDGET_FIELDS && row.default != null) {
-      result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(row.default) };
+    // The server's default for a budget: the safety limit in force while the
+    // limits switch is off, and what a cleared field resets to. Kept apart
+    // from the budget itself, which holds the user's saved value. A server
+    // that predates `default` still reveals it on an unset row, whose value
+    // is the default.
+    if (clientKey in BUDGET_FIELDS) {
+      const served = row.default ?? (row.is_set === false ? row.value : null);
+      if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
     }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
@@ -854,7 +858,26 @@ export function resolveBudgetRestore(remembered, saved, spec) {
     if (isBudgetUnlimited(candidate, spec)) continue;
     return clampBudgetValue(candidate, spec);
   }
+  // A served default can itself be the max (a deployment set to 50M), which
+  // would leave the switch stuck on; `restoreFallback` is the way out.
+  if (isBudgetUnlimited(spec.fallback, spec) && spec.restoreFallback != null) {
+    return String(spec.restoreFallback);
+  }
   return String(spec.fallback);
+}
+
+/**
+ * The spec a budget field edits with: `fallback` (the "default" hint, and what
+ * a cleared field resets to) is the server's served default when it sends one,
+ * since that is what the server applies with nothing stored. A newer renderer
+ * on an older server whose default is lower must not save its own, higher
+ * number as a "reset".
+ */
+export function budgetSpec(key, budgetDefaults) {
+  const spec = BUDGET_FIELDS[key];
+  const served = Number(budgetDefaults?.[key]);
+  if (budgetDefaults?.[key] == null || !Number.isFinite(served)) return spec;
+  return { ...spec, fallback: served, restoreFallback: spec.fallback };
 }
 
 /**
