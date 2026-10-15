@@ -1,18 +1,21 @@
 // `<ScheduleDetailView>` — one scheduled task.
 //
-// Header: the page header's trail (Scheduled Tasks › title) with the task's
-// controls: the on/off switch, Run now (Stop run while one is going) and the
-// overflow menu.
-// Summary: status, the schedule in words with the next run, then project,
-// model and how many runs succeeded.
+// Header: the page header's trail (Scheduled Tasks) above the task's name,
+// with status, the schedule in words and the next run under it, and the
+// task's controls beside it: the on/off switch, Run now (Stop run while one
+// is going) and the overflow menu.
+// Summary: project, model and how many runs succeeded.
 // Runs: the collection kit's list, newest first; each row opens the run's
-// conversation, and slots skipped while the app was closed show inline.
+// conversation, and slots skipped while the app was closed show inline. A
+// failed run's reason is on its status, so the same reason repeated over a
+// streak of failures doesn't fill the list; the alert above says the latest
+// one in full.
 
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { ListGroup, ListItem, ListNotice, PageHeader, StatusDot } from '../components/collection';
-import { Alert, Badge, Button } from '../components/ui';
+import { Alert, Badge, Button, Tooltip } from '../components/ui';
 import { Switch } from '../components/ui/Switch';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -159,7 +162,14 @@ export default function ScheduleDetailView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
       <PageHeader
         crumbs={[{ label: 'Scheduled Tasks', onClick: onBack, title: 'All scheduled tasks' }]}
-        current={task.title || 'Untitled schedule'}
+        title={task.title || 'Untitled schedule'}
+        subtitle={(
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-ink-2">
+            <StatusDot tone={status.variant}>{status.label}</StatusDot>
+            {sentence && <><span aria-hidden className="text-ink-4">·</span><span>{sentence}</span></>}
+            {next && <><span aria-hidden className="text-ink-4">·</span><span title={absoluteTime(task.nextRunAt)}>{next}</span></>}
+          </div>
+        )}
         actions={(
           <>
             {/* A one-off that has run, or was missed, has no time left to
@@ -206,11 +216,6 @@ export default function ScheduleDetailView({
 
       <div className="px-8 pb-14 flex flex-col gap-6">
         <section className="flex flex-col gap-2" aria-label="Schedule">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-ink-2">
-            <StatusDot tone={status.variant}>{status.label}</StatusDot>
-            {sentence && <><span aria-hidden className="text-ink-4">·</span><span>{sentence}</span></>}
-            {next && <><span aria-hidden className="text-ink-4">·</span><span title={absoluteTime(task.nextRunAt)}>{next}</span></>}
-          </div>
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-ink-3">
             <span>{projectDisplay || 'No project'}</span>
             <span aria-hidden className="text-ink-4">·</span>
@@ -254,22 +259,30 @@ export default function ScheduleDetailView({
           )}
           {shown.map((run) => {
             const look = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
-            // The status sits in the meta; a description adds only a failure's reason.
-            const description = run.status === 'failed' ? (run.error || null) : null;
+            const reason = run.status === 'failed' ? (run.error || null) : null;
+            const when = absoluteTime(run.startedAt);
             return (
               <ListItem
                 key={run.id || run.startedAt}
                 title={absoluteTime(run.startedAt) || '—'}
                 badges={run.isManual ? <Badge size="sm" variant="muted">Manual</Badge> : null}
-                description={description}
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
-                    <StatusDot tone={look.tone}>{look.label}</StatusDot>
+                    {reason ? (
+                      // Above the row's stretched link, so the pointer reaches it.
+                      <Tooltip content={reason}>
+                        <span tabIndex={0} aria-label={`${look.label}: ${reason}`} className="relative z-10 inline-flex cursor-help rounded-sm">
+                          <StatusDot tone={look.tone}>{look.label}</StatusDot>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <StatusDot tone={look.tone}>{look.label}</StatusDot>
+                    )}
                   </span>
                 )}
                 onActivate={run.conversationId ? () => onOpenRunSession?.(run.conversationId) : undefined}
-                activateLabel={`Open the run from ${absoluteTime(run.startedAt)}`}
+                activateLabel={reason ? `Open the failed run from ${when}: ${reason}` : `Open the run from ${when}`}
               />
             );
           })}
