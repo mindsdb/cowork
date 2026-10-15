@@ -22,7 +22,7 @@ export function runAlert(task) {
       variant: 'info',
       title: 'Paused — the current run will finish',
       reason: null,
-      note: 'Nothing runs after it. Stop ends it now; anything it has already done stays done.',
+      note: 'Nothing runs after it. Stop run ends it now; anything it has already done stays done.',
     };
   }
   if (state === 'missed') {
@@ -63,9 +63,7 @@ export function runAlert(task) {
   };
 }
 
-export default function ScheduleRunAlert({
-  task, busy, runningConversationId, onResume, onRunNow, onReviewRun, onStopRun,
-}) {
+export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onReviewRun }) {
   const alert = runAlert(task);
   if (!alert) return null;
   const conversationId = alert.kind === 'finishing' || alert.kind === 'missed'
@@ -90,9 +88,6 @@ export default function ScheduleRunAlert({
           )}
           {alert.kind === 'missed' && (
             <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
-          )}
-          {alert.kind === 'finishing' && runningConversationId && (
-            <Button size="sm" onClick={() => onStopRun?.(runningConversationId)} disabled={busy}>Stop current run</Button>
           )}
         </div>
       </div>
