@@ -8,9 +8,8 @@ import {
   resumeSchedule,
 } from '../api';
 
-// Scheduled-task data and its CRUD lifecycle: the schedule list, the flat
-// session→schedule runs index, a refresh that writes both, and the
-// create/update/delete/pause/resume handlers (each refreshes so the list
+// Scheduled-task data and its CRUD lifecycle: the schedule list, a refresh
+// that writes it, and the create/update/delete/pause/resume handlers (each refreshes so the list
 // reflects the server immediately).
 //
 // Deliberately scoped to schedule *data*. Three schedule-adjacent things
@@ -21,18 +20,15 @@ import {
 //     the router in several places)
 //   - `handleRunScheduleNow` (navigates to the new run and refreshes the app)
 export function useSchedules() {
+  // Which conversations are a schedule's runs comes with each conversation
+  // (`scheduledId`), not with this list, so the list stays the same size
+  // however long a schedule's history.
   const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
 
   const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
     const list = data.schedules || [];
     setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
     return list;
   }, []);
 
@@ -63,7 +59,6 @@ export function useSchedules() {
 
   return {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
