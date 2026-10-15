@@ -1828,6 +1828,11 @@ app.whenReady().then(async () => {
   // checkConfigured() can await the real readiness without polling.
   let resolveBootServer: () => void = () => {};
   bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
+  // The boot token refresh is plain HTTP to Keycloak and needs neither the
+  // login-shell PATH nor the install check, so it starts now instead of
+  // queuing behind both (a shell probe alone can take seconds). Its outcome is
+  // still handled below, before the server starts, exactly as before.
+  const bootRefresh = getRefreshToken() ? refreshTokensOnly() : null;
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
@@ -1853,9 +1858,8 @@ app.whenReady().then(async () => {
     // permanently signed the user out. A transient failure now keeps
     // everything; minds-auth retries on its own timer and the next
     // successful refresh broadcasts the signed-in state to the UI.
-    const existingRefresh = getRefreshToken();
-    if (existingRefresh) {
-      const outcome = await refreshTokensOnly();
+    if (bootRefresh) {
+      const outcome = await bootRefresh;
       if (outcome.status === 'invalid_grant') {
         // Session is dead for real (tokens already cleared by
         // refreshTokensOnly) — strip stale credentials so
