@@ -558,6 +558,11 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
+    // The safety limit in force for a budget while the limits switch is off.
+    // Kept apart from the budget itself, which holds the user's saved value.
+    if (clientKey in BUDGET_FIELDS && row.default != null) {
+      result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(row.default) };
+    }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {

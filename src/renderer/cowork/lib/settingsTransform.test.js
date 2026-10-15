@@ -655,6 +655,20 @@ describe('the limits switch (limits_enabled)', () => {
     expect(transformSettingsRows(rows).limitsEnabled).toBe(false);
   });
 
+  it('keeps the served safety limits apart from the saved budgets', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '40', default: '250', is_sensitive: false, is_set: true },
+      { key: 'max_turn_tokens', value: '25000000', default: '25000000', is_sensitive: false, is_set: false },
+      { key: 'greeting', value: 'hi', default: 'ignored', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.maxToolRounds).toBe('40');
+    expect(s.budgetDefaults).toEqual({ maxToolRounds: '250', maxTurnTokens: '25000000' });
+    // Not a server key, so it can never be written back.
+    expect(diffSettingsForWrite({ budgetDefaults: { maxToolRounds: '1' } }, {})).toEqual({});
+  });
+
   it('writes a changed switch to its snake_case key', () => {
     expect(diffSettingsForWrite({ limitsEnabled: true }, { limitsEnabled: false }))
       .toEqual({ limits_enabled: 'true' });

@@ -183,7 +183,10 @@ export function UnavailableModelHint({ label, restricted }) {
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, disabled = false }) {
+// `lockedValue`: while the limits switch is off the field is read-only and
+// shows the safety limit in force instead of the user's saved value, which is
+// left untouched for when the switch goes back on.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, lockedValue = null }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
   // "No limit" writes the TOP of the range, which already was the off switch —
@@ -196,8 +199,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // (the server's default 250 rounds x 11 passes) 50M is reached at ~18k per
   // call, which almost any conversation carries. Never observed — largest turn
   // in 30 days was 34.4M — but not impossible.
+  const locked = lockedValue != null;
   const showUnlimited = unlimitedLabel != null && spec.max != null;
-  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  const isUnlimited = showUnlimited && isBudgetUnlimited(locked ? lockedValue : value, spec);
   // The number to put back when the switch goes off. A ref, not state: it must
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
@@ -224,12 +228,14 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             inputMode="decimal"
             min={toDisplay(min)}
             max={toDisplay(max)}
-            disabled={disabled || isUnlimited}
+            disabled={locked || isUnlimited}
             // Show the number they'd return to, not the max: a disabled field
             // reading 50000000 invites someone to "fix" it back down by hand.
-            value={isUnlimited
-              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
-              : toDisplay(value ?? String(fallback))}
+            value={locked
+              ? toDisplay(lockedValue)
+              : isUnlimited
+                ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+                : toDisplay(value ?? String(fallback))}
             onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
             onBlur={(e) => {
               if (value == null) return; // untouched — don't materialize the key
@@ -245,7 +251,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
         </div>
         <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
-          {isUnlimited ? (
+          {locked ? (
+            <span className="whitespace-nowrap">safety limit</span>
+          ) : isUnlimited ? (
             <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
           ) : (
             <>
@@ -261,7 +269,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <Checkbox
               checked={isUnlimited}
-              disabled={disabled}
+              disabled={locked}
               onCheckedChange={(on) => setSetting(
                 settingKey,
                 on
@@ -852,6 +860,11 @@ export default function SettingsView({
   // budgets on every turn, so they stay editable there.
   const hasLimitsSwitch = settings != null && 'limitsEnabled' in settings;
   const limitsOn = !hasLimitsSwitch || settings.limitsEnabled === true;
+  // What a budget field shows while the switch is off: the safety limit the
+  // server serves, or the factory default from a server that doesn't.
+  const safetyLimit = (key) => (limitsOn
+    ? null
+    : settings.budgetDefaults?.[key] ?? String(BUDGET_FIELDS[key].fallback));
   // Async provider tests merge their status into the latest displayed values.
   // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
@@ -1933,7 +1946,7 @@ export default function SettingsView({
             >
               <BudgetNumberField
                 settingKey="maxToolRounds"
-                disabled={!limitsOn}
+                lockedValue={safetyLimit('maxToolRounds')}
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
                 spec={BUDGET_FIELDS.maxToolRounds}
@@ -1947,7 +1960,7 @@ export default function SettingsView({
             >
               <BudgetNumberField
                 settingKey="maxContinuations"
-                disabled={!limitsOn}
+                lockedValue={safetyLimit('maxContinuations')}
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
                 spec={BUDGET_FIELDS.maxContinuations}
@@ -1967,7 +1980,7 @@ export default function SettingsView({
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
-                  disabled={!limitsOn}
+                  lockedValue={safetyLimit('maxTurnTokens')}
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
                   spec={BUDGET_FIELDS.maxTurnTokens}
