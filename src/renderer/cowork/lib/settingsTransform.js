@@ -53,6 +53,7 @@ export const SETTINGS_KEY_MAP = {
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
+  schedule_keep_awake: 'scheduleKeepAwake',
   nav_title: 'navTitle',
   nav_title_color: 'navTitleColor',
   nav_logo: 'navLogo',
