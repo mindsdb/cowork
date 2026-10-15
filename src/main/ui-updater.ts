@@ -4,6 +4,8 @@ import { httpsGet } from './http-get';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiUpdateIsNewer, uiServerCompatSkipReason, type UIManifest } from './update-logic';
 import { parseCalVer } from '../shared/version';
 import { buildKindStrict, coworkHome, buildKind } from './cowork-home';
@@ -223,18 +225,26 @@ export function getCachedVersion(): string | null {
   return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
 }
 
-/** Quick connectivity check — can we reach the manifest host? */
-export async function hasInternet(): Promise<boolean> {
+/** Reachability probe that keeps what it fetched: the manifest body when the
+ *  host answers 200, else null. The boot poll hands the body to
+ *  checkForUIUpdate so one launch fetches the manifest once, not twice. */
+export async function probeManifest(): Promise<string | null> {
   try {
     const res = await httpsGet(getManifestUrl(), 5000);
-    return res.statusCode === 200;
+    return res.statusCode === 200 ? res.body.toString('utf-8') : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function fetchManifest(): Promise<UIManifest | null> {
+/** Quick connectivity check — can we reach the manifest host? */
+export async function hasInternet(): Promise<boolean> {
+  return (await probeManifest()) !== null;
+}
+
+export async function fetchManifest(prefetchedBody?: string): Promise<UIManifest | null> {
   try {
+    if (prefetchedBody !== undefined) return parseUiManifest(prefetchedBody);
     const res = await httpsGet(getManifestUrl());
     if (res.statusCode !== 200) return null;
     return parseUiManifest(res.body.toString('utf-8'));
@@ -247,10 +257,10 @@ function sha256(buf: Buffer): string {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-function rmDir(dir: string) {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+// Async so deleting a ~600-file bundle never blocks the main thread, which
+// every renderer request and IPC reply waits on. `force` makes a missing dir a no-op.
+function rmDir(dir: string): Promise<void> {
+  return fs.promises.rm(dir, { recursive: true, force: true });
 }
 
 // Download caps: per-socket inactivity vs. absolute wall-clock (bounds a
@@ -262,17 +272,19 @@ const TAR_EXTRACT_TIMEOUT_MS = 60_000;
 /** Extracts a .tar.gz buffer into a target directory. Bounded so a wedged tar
  *  can't hang the caller; throws on failure/timeout. Exported for tests. */
 export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
-  fs.mkdirSync(targetDir, { recursive: true });
+  await fs.promises.mkdir(targetDir, { recursive: true });
   const tmpFile = path.join(getCacheDir(), 'download.tar.gz');
-  fs.writeFileSync(tmpFile, buf);
-  const { execFileSync } = require('child_process');
+  await fs.promises.writeFile(tmpFile, buf);
+  // Async: a synchronous extract froze the main thread for the whole unpack
+  // (seconds on Windows while Defender scans each new file).
+  const execFileAsync = promisify(execFile);
   try {
-    execFileSync('tar', ['xzf', tmpFile, '-C', targetDir], {
+    await execFileAsync('tar', ['xzf', tmpFile, '-C', targetDir], {
       timeout: TAR_EXTRACT_TIMEOUT_MS,
       killSignal: 'SIGKILL',
     });
   } finally {
-    try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
+    await fs.promises.unlink(tmpFile).catch(() => { /* best-effort cleanup */ });
   }
 }
 
@@ -292,19 +304,19 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   }
 
   const staging = getStagingDir();
-  rmDir(staging);
+  await rmDir(staging);
   try {
     await extractTarGz(res.body, staging);
   } catch (err) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_extraction_failed", '[ui-updater] extraction failed:', err);
-    rmDir(staging);
+    await rmDir(staging);
     return false;
   }
 
   // Verify index.html exists in the extracted bundle
   if (!fs.existsSync(path.join(staging, 'index.html'))) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_extracted_bundle_missing_index_html", '[ui-updater] extracted bundle missing index.html');
-    rmDir(staging);
+    await rmDir(staging);
     return false;
   }
 
@@ -365,13 +377,13 @@ async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
  * Check for UI updates. If a new version is available, downloads and
  * stages it but does NOT activate (caller decides when to activate).
  */
-export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
+export async function checkForUIUpdate(prefetchedManifestBody?: string): Promise<UpdateCheckResult> {
   if (!otaEnabled()) {
     diagnostic("main.ui-updater", "INFO", "ui_updater_ota_ui_disabled_for_this_build_channel", '[ui-updater] OTA UI disabled for this build channel');
     return { updateAvailable: false, applied: false };
   }
   warnIfBundledVersionNotCalVer();
-  const manifest = await fetchManifest();
+  const manifest = await fetchManifest(prefetchedManifestBody);
   // fetchManifest() swallows its own network/parse errors to null — that's a
   // genuine "couldn't check" (error: true), not the same as a manifest that
   // was fetched and simply isn't newer.
