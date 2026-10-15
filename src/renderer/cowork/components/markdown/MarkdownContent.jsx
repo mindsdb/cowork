@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
+import { Children, cloneElement, isValidElement, memo, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -580,7 +580,10 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. All props are primitives, so the shallow compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
@@ -887,4 +890,4 @@ export function MarkdownContent({
       </Markdown>
     </div>
   );
-}
+});
