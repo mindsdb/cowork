@@ -254,9 +254,8 @@ export default function ScheduleDetailView({
           )}
           {shown.map((run) => {
             const look = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
-            const description = run.status === 'failed'
-              ? (run.error || 'Failed')
-              : run.status === 'running' ? 'Running now' : look.label;
+            // The status sits in the meta; a description adds only a failure's reason.
+            const description = run.status === 'failed' ? (run.error || null) : null;
             return (
               <ListItem
                 key={run.id || run.startedAt}
