@@ -306,3 +306,11 @@ describe('ScheduleDetailView — controls by state', () => {
     expect(screen.getByText('Next run').parentElement).toHaveTextContent(/—/);
   });
 });
+
+describe('ScheduleDetailView — one run at a time', () => {
+  it('disables Run now while a run is going', async () => {
+    setup({ task: { ...TASK, state: 'active', running: true } });
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.getByRole('button', { name: /Run now/ })).toBeDisabled();
+  });
+});
