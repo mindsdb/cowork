@@ -208,6 +208,49 @@ describe('SettingsView — Max tokens per task', () => {
   });
 });
 
+describe('SettingsView — limits switch', () => {
+  const budgetInputs = () => ['Max steps per task', 'Max auto-continues', 'Max tokens per task']
+    .map((label) => screen.getByLabelText(label));
+  const limitsSwitch = () => screen.getByRole('switch', { name: 'Limit how much a task can do' });
+
+  it('is off by default and the budgets cannot be edited', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).not.toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeDisabled();
+    // Base UI's checkbox is a span: disabled shows as data-disabled.
+    expect(noLimitBox()).toHaveAttribute('data-disabled');
+  });
+
+  it('turning it on saves the switch and makes the budgets editable', async () => {
+    const props = baseProps(withBudgets({ limitsEnabled: false }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(limitsSwitch());
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Max steps per task'), { target: { value: '40' } });
+
+    const patch = await savePatch(props);
+    expect(patch.limitsEnabled).toBe(true);
+    expect(patch.maxToolRounds).toBe('40');
+  });
+
+  it('with it on, the budgets are editable', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: true }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+
+  it('is absent on a server without it, where the budgets apply and stay editable', () => {
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    expandAdvanced();
+    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+});
+
 describe('SettingsView — Advanced Settings collapse', () => {
   it('starts collapsed, hiding the budget fields', () => {
     render(<SettingsView {...baseProps(withBudgets())} />);
