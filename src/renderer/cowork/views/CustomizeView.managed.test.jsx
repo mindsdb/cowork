@@ -121,6 +121,23 @@ describe('CustomizeView managed and shared connections', () => {
     expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
   });
 
+  it.each([
+    ['a managed connection', { ...CONNECTION, managed: true, shared: true }, { managed: true, shared: true },
+      'Whoever shared it with you can reconnect it.', 'Reconnect to restore access'],
+    ["the creator's own shared connection", { ...CONNECTION, managed: false, shared: true }, { managed: false, shared: true },
+      'Reconnect to restore access, or remove the connection.', 'Whoever shared it with you'],
+    ['a connection without either field', CONNECTION, {},
+      'Reconnect to restore access, or remove the connection.', 'Whoever shared it with you'],
+  ])('tells the reader of %s that needs reconnecting who can reconnect it', async (_, connection, flags, says, omits) => {
+    const saved = { ...SAVED, ...flags, fields: { ...SAVED.fields, status: 'needs_reconnect' } };
+    const dialog = await openPanel([connection], saved);
+
+    expect(within(dialog).getByText('Reconnection required')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Access for this connection has expired or was revoked\./))
+      .toHaveTextContent(says);
+    expect(within(dialog).queryByText(new RegExp(omits))).not.toBeInTheDocument();
+  });
+
   it('keeps every control and no badge for a connection without either field', async () => {
     const dialog = await openPanel([CONNECTION], SAVED);
 

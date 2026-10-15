@@ -422,9 +422,13 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
         {/* Footer */}
         <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
+          {/* A managed connection has no Reconnect or Remove here, so its
+              alert names who can reconnect it instead. */}
           {saved?.fields?.status === 'needs_reconnect' && (
             <Alert variant="warning" title="Reconnection required">
-              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
+              {managed
+                ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
+                : 'Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.'}
             </Alert>
           )}
           {managed ? (
