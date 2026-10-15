@@ -115,9 +115,13 @@ export default function ScheduledView({
     setModalOpen(true);
   }
 
-  async function handleSubmit(payload, id) {
-    if (id) await onUpdate(id, payload);
-    else await onCreate(payload);
+  async function handleSubmit(payload, id, { runOnce = false } = {}) {
+    if (id) {
+      await onUpdate(id, payload);
+      return;
+    }
+    const created = await onCreate(payload);
+    if (runOnce && created?.id) await onRunNow(created.id);
   }
 
   async function confirmDelete() {
