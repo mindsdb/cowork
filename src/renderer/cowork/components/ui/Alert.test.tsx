@@ -51,6 +51,19 @@ describe('Alert', () => {
     expect(screen.getByText('Body')).toBeInTheDocument();
   });
 
+  it('renders actions under the body, inside the text column', () => {
+    render(
+      <Alert variant="danger" title="Paused" icon={<svg data-testid="icon" />} actions={<button>Resume</button>}>
+        <p>Body</p>
+      </Alert>,
+    );
+    const button = screen.getByRole('button', { name: 'Resume' });
+    const body = screen.getByText('Body');
+    // Same column as the body, after it.
+    expect(button.closest('div')?.parentElement).toBe(body.parentElement);
+    expect(body.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('merges a caller className without dropping variant classes', () => {
     const { container } = render(<Alert variant="danger" className="mt-4">x</Alert>);
     const cls = (container.firstChild as HTMLElement).className;
