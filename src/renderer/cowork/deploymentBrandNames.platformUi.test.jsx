@@ -6,7 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.hoisted(() => {
-  window.COWORK_DEPLOYMENT_BRAND = { productName: "Ada's & Co Cowork", logoUrl: '/brand/logo.svg?v=1' };
+  window.COWORK_DEPLOYMENT_BRAND = { productName: "Acme & Co's Cowork", logoUrl: '/brand/logo.svg?v=1' };
 });
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../platform/host', async (importOriginal) => {
@@ -25,20 +25,20 @@ const shellProps = { route: 'unknown', tasks: [], projects: [], scheduled: [], a
 describe("a deployment brand's name", () => {
   it('welcomes the user', () => {
     render(<WelcomeLoading />);
-    expect(screen.getByText("Welcome to Ada's & Co Cowork")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to Acme & Co's Cowork")).toBeInTheDocument();
   });
 
   it('labels search and its empty result', async () => {
     const user = userEvent.setup();
     render(<SearchModal open onClose={vi.fn()} onSelect={vi.fn()} onSearch={vi.fn().mockResolvedValue({ results: [] })} />);
-    const input = screen.getByLabelText("Search Ada's & Co Cowork");
+    const input = screen.getByLabelText("Search Acme & Co's Cowork");
     await user.type(input, 'nothing');
-    await waitFor(() => expect(screen.getByText("No Ada's & Co Cowork results found.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No Acme & Co's Cowork results found.")).toBeInTheDocument());
   });
 
   it('titles the phone header and drawer, with the brand logo', () => {
     render(<MobileShell {...shellProps}>content</MobileShell>);
-    expect(screen.getAllByText("Ada's & Co Cowork")).toHaveLength(2);
+    expect(screen.getAllByText("Acme & Co's Cowork")).toHaveLength(2);
     expect(document.querySelector('.mshell__drawer-logo')?.getAttribute('src')).toBe('/brand/logo.svg?v=1');
   });
 
@@ -49,7 +49,7 @@ describe("a deployment brand's name", () => {
   });
 
   it('names the product when signing out', () => {
-    expect(LOGOUT_CONFIRM_COPY.title).toBe("Sign out of Ada's & Co Cowork?");
-    expect(LOGOUT_CONFIRM_COPY.message).toBe("This signs you out of Ada's & Co Cowork. You'll need to sign in again to keep using it.");
+    expect(LOGOUT_CONFIRM_COPY.title).toBe("Sign out of Acme & Co's Cowork?");
+    expect(LOGOUT_CONFIRM_COPY.message).toBe("This signs you out of Acme & Co's Cowork. You'll need to sign in again to keep using it.");
   });
 });

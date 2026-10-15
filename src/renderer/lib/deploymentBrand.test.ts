@@ -9,7 +9,7 @@ const EMPTY = {
 describe('parseDeploymentBrand', () => {
   it('keeps every valid field', () => {
     const raw = {
-      productName: "  Ada's & Co Cowork ",
+      productName: "  Acme & Co's Cowork ",
       skin: { id: 'ada-co', label: ' Ada ' },
       theme: 'light',
       logoUrl: '/brand/sidebar-logo.svg?v=3f9a1c2b7d10',
@@ -18,7 +18,7 @@ describe('parseDeploymentBrand', () => {
     };
     expect(parseDeploymentBrand(raw)).toEqual({
       brand: {
-        productName: "Ada's & Co Cowork",
+        productName: "Acme & Co's Cowork",
         skin: { id: 'ada-co', label: 'Ada' },
         theme: 'light',
         logoUrl: '/brand/sidebar-logo.svg?v=3f9a1c2b7d10',
@@ -137,7 +137,7 @@ describe('the page-load brand', () => {
 // and by nothing else. It must accept exactly the names the parser accepts.
 describe('the inline tab-title line agrees with the parser', () => {
   it.each([
-    "Ada's & Co Cowork",
+    "Acme & Co's Cowork",
     '  Acme Cowork  ',
     '',
     '   ',
