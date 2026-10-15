@@ -43,6 +43,7 @@ vi.mock('./api', () => ({
     playbook,
     skillLibrary,
     computers: vi.fn(async () => ({ items: [] })),
+    workspaceModes: vi.fn(async () => ({ supported: ['worktree'], default: 'worktree' })),
     projectResources: vi.fn(async () => ({ items: [] })),
     resolveLocalResource: vi.fn(async (folder) => ({
       kind: 'local_folder', id: folder.id, name: folder.name, path: folder.path,
@@ -51,6 +52,7 @@ vi.mock('./api', () => ({
   },
 }));
 
+import { codingApi } from './api';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
 import { resetSkillLibraryCache } from './useSkillLibrary';
 
@@ -73,6 +75,7 @@ describe('ProjectSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     credentialListeners.clear();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree'], default: 'worktree' });
     resetSkillLibraryCache();
   });
 
@@ -428,6 +431,56 @@ describe('ProjectSettingsModal', () => {
       default_model: 'fable',
       permission_mode: 'workspace',
     })));
+  });
+
+  it('saves where the project’s tasks work when this computer offers a choice', async () => {
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'worktree' });
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        models={[{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]}
+        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    const picker = await screen.findByRole('combobox', { name: 'Default task workspace' });
+    expect(picker).toHaveTextContent('Default');
+    expect(codingApi.workspaceModes).toHaveBeenCalledWith('project-1');
+    await user.click(picker);
+    await user.click(screen.getByRole('option', { name: 'Local' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_workspace_mode: 'in_place' })));
+  });
+
+  it('hides the workspace default where tasks can only be isolated', async () => {
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(
+      <ProjectSettingsModal
+        open
+        project={{ ...project, default_workspace_mode: 'worktree' }}
+        connections={[]}
+        busy={false}
+        models={[{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]}
+        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await screen.findByRole('combobox', { name: 'Default coding permissions' });
+    await waitFor(() => expect(codingApi.workspaceModes).toHaveBeenCalled());
+    expect(screen.queryByRole('combobox', { name: 'Default task workspace' })).not.toBeInTheDocument();
+    // A saved default is kept as it was.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_workspace_mode: 'worktree' })));
   });
 
   it('preserves unsaved settings while the user connects a developer account', async () => {

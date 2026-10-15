@@ -65,6 +65,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
           default_model: values.default_model || DEFAULT_CODING_AGENT_MODEL,
           default_reasoning_effort: values.default_reasoning_effort ?? null,
           permission_mode: values.permission_mode || 'supervised',
+          ...(values.default_workspace_mode !== undefined ? { default_workspace_mode: values.default_workspace_mode } : {}),
         });
     await load();
     setSelectedId(saved.id);
