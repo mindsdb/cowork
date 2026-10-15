@@ -60,10 +60,14 @@ function ConnectionsCounts({ search, total, filtered }) {
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
-// The same sentence cowork-server answers when it refuses a change to a
-// connection the caller can't change: one someone else shares, or one the
-// operator provides.
+/* The same sentence cowork-server answers when it refuses a change to a
+   connection the caller can't change: one someone else shares, or one the
+   operator provides. */
 const MANAGED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
+
+/* Told to the creator of a shared connection beside a setting others pick up:
+   each turn reads the connection live from its creator's vault. */
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -140,6 +144,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
      `managed: true`; a connection without the field, or the caller's own
      shared connection (`shared: true` alone), keeps every control. */
   const managed = connection.managed === true || saved?.managed === true;
+  /* With `managed` false, the caller's own connection that others use. */
+  const shared = connection.shared === true || saved?.shared === true;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -400,6 +406,9 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                     <div className="text-[12px] leading-normal text-ink-3">
                       What Anton can do with this connection's tools. Changing this doesn't require reconnecting.
                     </div>
+                    {shared && (
+                      <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+                    )}
                     <Select
                       value={vaultFields._access_mode || 'read'}
                       onValueChange={handleChangeAccessMode}
@@ -439,10 +448,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 <Button
                   variant="primary"
                   onClick={() => {
-                    if (!window.confirm(
-                      `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
+                    const label = spec.label || connection.engine;
+                    if (!window.confirm(shared
+                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
+                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
                     )) return;
-                    onReconnect?.(connection, spec);
+                    onReconnect?.(connection, spec, { shared });
                   }}
                   className="w-full justify-center"
                 >
@@ -456,7 +467,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   if (!window.confirm(disconnectPrompt({
                     engine: connection.engine,
                     name: connection.name,
-                    shared: connection.shared === true || saved?.shared === true,
+                    shared,
                   }))) return;
                   onDisconnect?.(connection, saved);
                   onClose();
@@ -708,11 +719,15 @@ export default function CustomizeView({
             await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
-          onReconnect={async (conn, spec) => {
-            /* A failed delete leaves the old connection in place, so don't
-               start a new connect flow for it; the panel stays open. A
-               connection that is already gone counts as deleted. */
-            if (!await handleDelete(conn)) return;
+          onReconnect={async (conn, spec, { shared = false } = {}) => {
+            /* The creator's own shared connection is never deleted first:
+               everyone it's shared with would lose it, and cowork-server
+               refuses a new connection under the name the operator still
+               shares. Connecting the same account again updates it in place.
+               Otherwise a failed delete leaves the old connection in place,
+               so don't start a new connect flow for it; the panel stays open.
+               A connection that is already gone counts as deleted. */
+            if (!shared && !await handleDelete(conn)) return;
             setSelectedConn(null);
             onReconnect?.(spec);
           }}

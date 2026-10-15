@@ -23,10 +23,14 @@ function ConnectionLogo({ engine, label }) {
 
 /* The confirm text before a delete. `shared` is the caller's own connection
    that others use: they read it live from its creator's vault (cowork-server's
-   LayeredDataVault), so deleting it removes it for them too. */
+   LayeredDataVault), so deleting it removes it for them too. The operator's
+   share stays listed under its name, and cowork-server refuses a new
+   connection under that name until the operator stops sharing it. */
 export function disconnectPrompt({ engine, name, shared }) {
   const question = `Disconnect ${engine}/${name}?`;
-  return shared ? `${question}\n\nIt's shared, so everyone it's shared with loses it too.` : question;
+  return shared
+    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
+    : question;
 }
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
@@ -42,14 +46,17 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
   /* Only an explicit `managed: true` from the server makes the card read-only;
-     a connection without the field keeps its Disconnect button. `shared: true`
-     without `managed` is the caller's own connection that others use: it gets
-     a Shared badge and keeps Disconnect. */
+     a connection without the field keeps its Disconnect button. An explicit
+     `shared: true` badges it Shared, whether someone else shares it with the
+     caller (`managed` too, so read-only) or it's the caller's own that others
+     use (keeps Disconnect). Managed is left for a connection the operator
+     provides, which no person created. */
   const managed = connection.managed === true;
-  const badge = managed ? 'Managed' : connection.shared === true ? 'Shared' : null;
+  const shared = connection.shared === true;
+  const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(disconnectPrompt({ engine, name, shared: connection.shared === true }))) return;
+    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -64,9 +71,9 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
     badges: badge ? <Badge variant="muted" size="sm">{badge}</Badge> : undefined,
     description: subtitle,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
-    /* The details of a managed connection have no Reconnect, so its name never
-       offers one. */
-    activateLabel: `${needsReconnect && !managed ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
+    /* The details of a managed connection open read-only, with no Reconnect,
+       so its name says View. */
+    activateLabel: `${managed ? 'View' : needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
     busy,
     className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
     meta: (

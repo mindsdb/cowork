@@ -1,10 +1,11 @@
-// Connections the server marks managed (the operator's own, or one someone
-// else shares) are read-only on the Connections page, the creator's own shared
-// connection keeps every control and says before Remove that everyone loses
-// it, and a Reconnect whose delete fails never opens a new connect flow, while
-// one whose connection is already gone does.
-// Follows CustomizeView.identity.test.jsx's mocking convention, on the web
-// host the self-hosted stack serves unless a test switches the host to desktop.
+/* Connections the server marks managed (the operator's own, or one someone
+   else shares) are read-only on the Connections page. The creator's own shared
+   connection keeps every control, says before Remove that everyone loses it,
+   and reconnects without deleting it first. A Reconnect whose delete fails
+   never opens a new connect flow, while one whose connection is already gone
+   does.
+   Follows CustomizeView.identity.test.jsx's mocking convention, on the web
+   host the self-hosted stack serves unless a test switches the host to desktop. */
 
 import { beforeEach, afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -12,10 +13,11 @@ import userEvent from '@testing-library/user-event';
 
 // The panel's note and cowork-server's 403 message share this sentence.
 const READ_ONLY_NOTE = "This connection is shared with you and can't be changed here.";
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
-// google_drive plus an MCP method so one panel would show every control the
-// managed state hides: the Drive picker, the access-mode select, Reconnect
-// and Remove.
+/* google_drive plus an MCP method so one panel would show every control the
+   managed state hides: the Drive picker, the access-mode select, Reconnect
+   and Remove. */
 const CONNECTION = {
   engine: 'google_drive', name: 'google_drive-team', label: 'Google Drive',
   user_label: null, display_name: 'team@example.com',
@@ -55,8 +57,8 @@ beforeEach(() => {
   host.keychainRevoke.mockReset();
   vi.mocked(deleteDatasource).mockReset();
   vi.mocked(fetchConnector).mockReset().mockImplementation(() => Promise.resolve(SPEC));
-  // The view refetches on mount and replaces its list, so this must return the
-  // same fixtures the test renders with.
+  /* The view refetches on mount and replaces its list, so this must return the
+     same fixtures the test renders with. */
   vi.mocked(fetchDatasources).mockReset().mockImplementation(() => Promise.resolve({ connections: state.connections }));
   vi.mocked(fetchSavedConnection).mockReset().mockImplementation(() => Promise.resolve(state.saved));
 });
@@ -70,7 +72,8 @@ async function openPanel(connections, saved, props = {}) {
   state.connections = connections;
   state.saved = saved;
   render(<CustomizeView connectors={connections} {...props} />);
-  await userEvent.click(screen.getByRole('button', { name: /Manage Google Drive/ }));
+  // A read-only card is named View, every other one Manage.
+  await userEvent.click(screen.getByRole('button', { name: /^(Manage|View) Google Drive/ }));
   const dialog = screen.getByRole('dialog');
   await waitFor(() => expect(within(dialog).queryByText('Loading…')).not.toBeInTheDocument());
   return dialog;
@@ -95,14 +98,15 @@ describe('CustomizeView managed and shared connections', () => {
   });
 
   it.each([
-    ['managed card', { ...CONNECTION, managed: true }],
-    ['card of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }],
-  ])('shows the Managed badge and no Disconnect on the %s', (_, managed) => {
+    ['managed card', { ...CONNECTION, managed: true }, 'Managed', 'Shared'],
+    ['card of a connection shared with the caller', { ...CONNECTION, managed: true, shared: true }, 'Shared', 'Managed'],
+  ])('shows its badge, a View name and no Disconnect on the %s', (_, managed, badge, otherBadge) => {
     state.connections = [managed];
     render(<CustomizeView connectors={[managed]} />);
     const card = screen.getByRole('article');
-    expect(within(card).getByText('Managed')).toBeInTheDocument();
-    expect(within(card).queryByText('Shared')).not.toBeInTheDocument();
+    expect(within(card).getByText(badge)).toBeInTheDocument();
+    expect(within(card).queryByText(otherBadge)).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /^View Google Drive/ })).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
   });
 
@@ -114,7 +118,9 @@ describe('CustomizeView managed and shared connections', () => {
     expect(within(card).getByText('Shared')).toBeInTheDocument();
     expect(within(card).queryByText('Managed')).not.toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
-    expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
+    // Tool access says a change reaches everyone; nothing says read-only.
+    expect(within(dialog).getByRole('note')).toHaveTextContent(OWN_SHARED_CHANGE_NOTE);
+    expect(within(dialog).queryByText(READ_ONLY_NOTE)).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
     expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
@@ -172,25 +178,72 @@ describe('CustomizeView Reconnect', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('opens the connect flow with the spec once the delete succeeds', async () => {
+  it.each([
+    ['without either field', CONNECTION, SAVED],
+    ['that is not shared', { ...CONNECTION, managed: false, shared: false }, { ...SAVED, managed: false, shared: false }],
+  ])('deletes a connection %s, then opens the connect flow with the spec', async (_, connection, saved) => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.mocked(deleteDatasource).mockResolvedValueOnce({ ok: true });
     const onReconnect = vi.fn();
-    const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
+    const dialog = await openPanel([connection], saved, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
+      "The existing Google Drive connection will be removed and you'll connect it again from scratch. Continue?",
+    );
+    expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
+    expect(vi.mocked(deleteDatasource).mock.invocationCallOrder[0])
+      .toBeLessThan(onReconnect.mock.invocationCallOrder[0]);
     expect(window.alert).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['the list row', { ...CONNECTION, managed: false, shared: true }, SAVED],
+    ['the detail response', CONNECTION, { ...SAVED, managed: false, shared: true }],
+  ])("opens the connect flow without deleting the creator's own shared connection when %s marks it shared", async (_, connection, saved) => {
+    /* Deleting it first would remove it for everyone it's shared with, and
+       cowork-server refuses the new connection under the name the operator
+       still shares. */
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    const onReconnect = vi.fn();
+    const dialog = await openPanel([connection], saved, { onReconnect });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
+      "You'll connect Google Drive again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?",
+    );
+    expect(deleteDatasource).not.toHaveBeenCalled();
+    expect(host.keychainRevoke).not.toHaveBeenCalled();
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Nobody lost it, so its card stays.
+    expect(screen.getByRole('article')).toBeInTheDocument();
+  });
+
+  it("keeps the creator's own shared connection when the person cancels Reconnect", async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const onReconnect = vi.fn();
+    const dialog = await openPanel([{ ...CONNECTION, managed: false, shared: true }], SAVED, { onReconnect });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(deleteDatasource).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('opens the connect flow when the connection was already removed', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
-    // Someone else removed it first, so the vault no longer lists it and the
-    // DELETE answers 404.
+    /* Someone else removed it first, so the vault no longer lists it and the
+       DELETE answers 404. */
     vi.mocked(deleteDatasource).mockImplementationOnce(() => {
       state.connections = [];
       return Promise.reject(refusal(404, 'Connection not found.'));
@@ -255,14 +308,14 @@ describe('CustomizeView panel Remove', () => {
   it.each([
     ['the list row', { ...CONNECTION, managed: false, shared: true }, SAVED],
     ['the detail response', CONNECTION, { ...SAVED, managed: false, shared: true }],
-  ])("says everyone loses the creator's own shared connection when %s marks it shared", async (_, connection, saved) => {
+  ])("says everyone loses the creator's own shared connection and its name stays taken when %s marks it shared", async (_, connection, saved) => {
     vi.stubGlobal('confirm', vi.fn(() => false));
     const dialog = await openPanel([connection], saved);
 
     await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
 
     expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "Disconnect google_drive/google_drive-team?\n\nIt's shared, so everyone it's shared with loses it too.",
+      "Disconnect google_drive/google_drive-team?\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
     );
     expect(deleteDatasource).not.toHaveBeenCalled();
   });

@@ -54,6 +54,9 @@ function isOwnSharedSkill(skill) {
 
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
 const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
+/* Shown in the detail view and the Edit modal, since an edit or the switch
+   reaches every reader at their next answer. */
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 // The detail view's note for a skill the caller can't edit.
 function readOnlyNote(skill) {
@@ -172,6 +175,9 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-3">
+          {isEdit && isOwnSharedSkill(initial) && (
+            <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+          )}
           <Field label="Label">
             <Input
               aria-label="Label"
@@ -531,11 +537,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           <SharedResourceAttribution
             resource={selected}
-            className={canUseSharedResource(selected, 'canEdit') ? 'mb-4' : 'mb-2'}
+            className={canUseSharedResource(selected, 'canEdit') && !isOwnSharedSkill(selected) ? 'mb-4' : 'mb-2'}
           />
           {!canUseSharedResource(selected, 'canEdit') && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
               {readOnlyNote(selected)}
+            </p>
+          )}
+          {isOwnSharedSkill(selected) && (
+            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
+              {OWN_SHARED_CHANGE_NOTE}
             </p>
           )}
 

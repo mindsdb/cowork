@@ -321,6 +321,7 @@ describe('SkillsView shared skills', () => {
      live, so the switch and Uninstall reach them too. */
   const SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
   const REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
+  const CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
   /* Reads which badges the skill's row shows, then opens its detail view and
      actions menu and returns the Edit and Uninstall menu items. The row leaves
@@ -384,7 +385,8 @@ describe('SkillsView shared skills', () => {
     const { rowBadges, edit, uninstall } = await openActions(own);
 
     expect(rowBadges.shared).toBe(true);
-    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    // A visible line, not only the switch's hover hint, says changes reach everyone.
+    expect(screen.getByRole('note')).toHaveTextContent(CHANGE_NOTE);
     const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
     expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
     expect(toggle).toHaveAttribute('title', SWITCH_HINT);
@@ -433,5 +435,26 @@ describe('SkillsView shared skills', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(`Remove skill "${skill.label}"?`);
     expect(dialog).not.toHaveTextContent(REMOVE_NOTE);
+  });
+
+  /* Opens the Edit modal from the detail view's actions menu and returns it. */
+  async function openEdit(skill) {
+    const { edit } = await openActions(skill);
+    await userEvent.click(edit);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Edit Skill');
+    return dialog;
+  }
+
+  it("says in the Edit modal of the creator's own shared skill that changes reach everyone", async () => {
+    const dialog = await openEdit({ ...lockedSkill, shared: true, capabilities: OWNER_CAPABILITIES });
+
+    expect(within(dialog).getByRole('note')).toHaveTextContent(CHANGE_NOTE);
+  });
+
+  it('says nothing about sharing in the Edit modal of a plain skill the caller owns', async () => {
+    const dialog = await openEdit({ ...lockedSkill, capabilities: OWNER_CAPABILITIES });
+
+    expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
   });
 });

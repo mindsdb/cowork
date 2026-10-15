@@ -35,7 +35,7 @@ describe('ConnectionCard', () => {
     expect(screen.getByText('Reconnect needed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Reconnect/ })).not.toBeInTheDocument();
     // Its details open read-only, with no Reconnect of their own.
-    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    await userEvent.click(screen.getByRole('button', { name: 'View GitHub: ianu82' }));
     expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
   });
 
@@ -114,20 +114,22 @@ describe('ConnectionCard', () => {
   });
 
   it.each([
-    ['card', ConnectionCard, { ...connection, managed: true }],
-    ['row', ConnectionRow, { ...connection, managed: true }],
+    // The operator's own connection, which no person created.
+    ['card', ConnectionCard, { ...connection, managed: true }, 'Managed', 'Shared'],
+    ['row', ConnectionRow, { ...connection, managed: true }, 'Managed', 'Shared'],
     // How a connection someone else shares reaches the caller.
-    ['card shared with the caller', ConnectionCard, { ...connection, managed: true, shared: true }],
-    ['row shared with the caller', ConnectionRow, { ...connection, managed: true, shared: true }],
-  ])('shows a managed connection as a %s with a Managed badge and no Disconnect', async (_, Item, managed) => {
+    ['card shared with the caller', ConnectionCard, { ...connection, managed: true, shared: true }, 'Shared', 'Managed'],
+    ['row shared with the caller', ConnectionRow, { ...connection, managed: true, shared: true }, 'Shared', 'Managed'],
+  ])('shows a managed connection as a read-only %s with its badge and no Disconnect', async (_, Item, managed, badge, otherBadge) => {
     const onModify = vi.fn();
     render(<Item connection={managed} onModify={onModify} onDelete={vi.fn()} />);
-    expect(screen.getByText('Managed')).toBeInTheDocument();
-    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
+    expect(screen.getByText(badge)).toBeInTheDocument();
+    expect(screen.queryByText(otherBadge)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByText('Connected')).toBeInTheDocument();
-    // The details still open, read-only, from the item itself.
-    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    // The details still open, read-only, from the item itself, named View.
+    expect(screen.queryByRole('button', { name: /^Manage/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View GitHub: ianu82' }));
     expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
   });
 
@@ -141,6 +143,7 @@ describe('ConnectionCard', () => {
     render(<Item connection={shared} onModify={vi.fn()} onDelete={onDelete} />);
     expect(screen.getByText('Shared')).toBeInTheDocument();
     expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage GitHub: ianu82' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(shared);
   });
@@ -148,13 +151,13 @@ describe('ConnectionCard', () => {
   it.each([
     ['card', ConnectionCard],
     ['row', ConnectionRow],
-  ])("says before a %s disconnects the creator's own shared connection that everyone loses it", async (_, Item) => {
+  ])("says before a %s disconnects the creator's own shared connection that everyone loses it and its name stays taken", async (_, Item) => {
     vi.stubGlobal('confirm', vi.fn(() => false));
     const onDelete = vi.fn();
     render(<Item connection={{ ...connection, shared: true }} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "Disconnect github/ianu82?\n\nIt's shared, so everyone it's shared with loses it too.",
+      "Disconnect github/ianu82?\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
     );
     expect(onDelete).not.toHaveBeenCalled();
   });
