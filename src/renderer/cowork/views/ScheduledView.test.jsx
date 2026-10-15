@@ -254,3 +254,32 @@ describe('ScheduledView — save and run once', () => {
     expect(onCreate.mock.calls[0][0]).toMatchObject({ prompt: 'try it' });
   });
 });
+
+describe('ScheduledView — needs attention first', () => {
+  const failedRun = { status: 'failed', outcome: 'failed_during_execution', error: 'boom' };
+  const rows = [
+    { ...SCHEDULED[0], state: 'active' },
+    { ...SCHEDULED[1], state: 'active', lastRun: failedRun },
+    { ...SCHEDULED[2], state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' },
+  ];
+
+  it('puts tasks that need you in their own group above the rest', () => {
+    setup({ scheduled: rows });
+    const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('section');
+    expect(within(attention).getByText('Alpha sweep')).toBeInTheDocument();
+    expect(within(attention).getByText('Paused digest')).toBeInTheDocument();
+    const rest = screen.getByRole('heading', { name: 'Everything else' }).closest('section');
+    expect(within(rest).getByText('Weekly metrics')).toBeInTheDocument();
+  });
+
+  it('shows one plain list when nothing needs attention', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.queryByRole('heading', { name: 'Needs attention' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Everything else' })).toBeNull();
+  });
+
+  it('reads each schedule in words with its next run', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.getByText(/^Every Friday at 9:00 AM · next /)).toBeInTheDocument();
+  });
+});

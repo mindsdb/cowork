@@ -22,6 +22,7 @@ import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
+import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
 
 const SORT_OPTIONS = [
   { id: 'next', label: 'Next run' },
@@ -102,6 +103,8 @@ export default function ScheduledView({
     }[sort] || (() => 0);
     return [...filtered].sort(cmp);
   }, [scheduled, search, sort, projects]);
+
+  const attentionCount = useMemo(() => visible.filter(needsAttention).length, [visible]);
 
   function openCreate() {
     setEditing(null);
@@ -233,24 +236,31 @@ export default function ScheduledView({
           className: 'mx-8 my-10',
         }}
       >
-        <ListGroup className="mx-8 mb-8">
-          {visible.map((task) => (
-            <ScheduleRow
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onStopRun={() => runAction(task.id, onStopRun)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </ListGroup>
+        {/* What needs you sits on top: auto-paused, missed, a failed last
+            run, or a retry waiting. The rest follow in the chosen order. */}
+        {[
+          ['attention', 'Needs attention', visible.filter(needsAttention)],
+          ['rest', attentionCount ? 'Everything else' : null, visible.filter((t) => !needsAttention(t))],
+        ].filter(([, , rows]) => rows.length > 0).map(([key, title, rows]) => (
+          <ListGroup key={key} className="mx-8 mb-8" title={title ? <h2>{title}</h2> : undefined} meta={title ? rows.length : undefined}>
+            {rows.map((task) => (
+              <ScheduleRow
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onStopRun={() => runAction(task.id, onStopRun)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </ListGroup>
+        ))}
       </CollectionState>
 
       <ScheduleTaskModal
@@ -281,3 +291,12 @@ export default function ScheduledView({
   );
 }
 
+
+// A task that needs the user: paused by failures, a missed one-off, a last
+// run that failed, or a retry waiting.
+export function needsAttention(task) {
+  if (task.running) return false;
+  const state = scheduleState(task);
+  return state === 'auto_paused' || state === 'missed' || !!task.retryAt
+    || (state === 'active' && lastRunFailed(task));
+}
