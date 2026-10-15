@@ -7,6 +7,7 @@ import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
 import { openCodeExternalUrl, openCodePath } from './shellLinks';
 import { supportsTaskCapability, type TaskCapabilityName } from './taskCapabilities';
+import { DISK_USAGE_EXPLANATION, diskUsageLabel, type TaskDiskUsage } from './workspaceUsage';
 
 
 export function TaskBar({
@@ -28,6 +29,7 @@ export function TaskBar({
   onRunProjectAction,
   onOpenControls,
   onFork,
+  diskUsage = null,
 }: {
   session: CodingSession;
   git: GitState | null;
@@ -47,6 +49,8 @@ export function TaskBar({
   onRunProjectAction: (action: ProjectActionSummary) => void;
   onOpenControls: () => void;
   onFork: () => void;
+  /** This task's share of workspace disk; the row is hidden when absent. */
+  diskUsage?: TaskDiskUsage | null;
 }) {
   const status = codingSessionStatus(session);
   const { additions, deletions } = diffStats(files);
@@ -145,6 +149,11 @@ export function TaskBar({
                     <div><span>Agent</span><strong>{engineLabel}</strong></div>
                     <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
                     <div><span>Folder</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
+                    {diskUsage && (
+                      <div title={DISK_USAGE_EXPLANATION}>
+                        <span>Storage</span><strong>{diskUsageLabel(diskUsage)}</strong>
+                      </div>
+                    )}
                   </div>
                 ),
               }]}
