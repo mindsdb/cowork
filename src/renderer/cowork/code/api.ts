@@ -999,10 +999,12 @@ export function openCodingEventStream(
   after: number,
   onEvent: (event: CodingEvent) => void,
   onError: () => void,
+  onOpen?: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
   const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
   const source = new EventSource(url);
+  if (onOpen) source.onopen = onOpen;
   source.addEventListener('coding-event', (raw) => {
     try {
       const parsed: unknown = JSON.parse((raw as MessageEvent).data);

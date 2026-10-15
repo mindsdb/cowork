@@ -17,7 +17,7 @@ vi.mock('../../platform/host', () => ({
   },
 }));
 
-import { useCodeTaskList } from './useCodeTaskList';
+import { useCodeTaskList, withKnownArchived } from './useCodeTaskList';
 
 
 function deferred<T>() {
@@ -235,5 +235,40 @@ describe('useCodeTaskList', () => {
 
     view.rerender({ currentSession: codingSession({ status: 'completed', event_count: 43 }) });
     expect(onSessionsChange).toHaveBeenCalledOnce();
+  });
+
+  it('polls active tasks only, with a full list every sixth poll', async () => {
+    vi.useFakeTimers();
+    try {
+      renderTaskList(true);
+      await act(async () => { await Promise.resolve(); });
+      expect(sessions).toHaveBeenLastCalledWith(true);
+
+      await act(async () => { vi.advanceTimersByTime(25_000); });
+      expect(sessions.mock.calls.slice(1)).toEqual(Array(5).fill([false]));
+      await act(async () => { vi.advanceTimersByTime(5_000); });
+      expect(sessions).toHaveBeenLastCalledWith(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('withKnownArchived', () => {
+  const live = (id: string, updated: string) => ({ id, archived: false, updated_at: updated }) as CodingSession;
+  const shelved = (id: string, updated: string) => ({ id, archived: true, updated_at: updated }) as CodingSession;
+
+  it('carries known archived rows over in newest-first order', () => {
+    const previous = [live('a', '3'), shelved('x', '2'), live('b', '1')];
+    const active = [live('b', '4'), live('a', '3')];
+    expect(withKnownArchived(active, previous)?.map((item) => item.id)).toEqual(['b', 'a', 'x']);
+  });
+
+  it('drops an archived row the active page now lists as restored', () => {
+    expect(withKnownArchived([live('x', '5')], [shelved('x', '2')])?.map((item) => item.id)).toEqual(['x']);
+  });
+
+  it('asks for the full list when an active task vanished', () => {
+    expect(withKnownArchived([live('a', '3')], [live('a', '3'), live('b', '1')])).toBeNull();
   });
 });
