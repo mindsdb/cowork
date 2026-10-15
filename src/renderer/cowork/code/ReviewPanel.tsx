@@ -17,6 +17,7 @@ import { GitIdentityCard, type GitIdentitySetup } from './GitIdentityCard';
 import { SourceUpdateSection } from './SourceUpdateSection';
 import type { ReviewFileAction } from './FileReviewControls';
 import { ReviewFileCard } from './ReviewFileCard';
+import { canApplyToSource, canDraftPullRequests, taskWorkspaces, workspaceHasGit, worksInPlace } from './taskWorkspace';
 
 
 type ReviewStyle = CSSProperties & { '--code-review-width': string };
@@ -128,19 +129,21 @@ export function ReviewPanel({
   const [width, setWidth] = useState(460);
   const { additions, deletions } = diffStats(files);
   const active = isActiveStatus(session.status);
-  const directFolderWithoutDiff = session.workspace_kind === 'direct_folder' && files.length === 0;
-  const workspaceEntries: TaskWorkspace[] = session.workspaces?.length ? session.workspaces : [{
-    folder_id: 'folder', folder_name: compactPath(session.source_path), source_path: session.source_path,
-    workspace_path: session.workspace_path, workspace_kind: session.workspace_kind, source_dirty: session.source_dirty,
-    repository_root: session.repository_root, base_revision: session.base_revision, base_branch: null, task_branch: null,
-  }];
+  const inPlace = worksInPlace(session);
+  const workspaceEntries: TaskWorkspace[] = taskWorkspaces(session);
+  // A legacy direct folder has no Git starting point to compare against.
+  const directFolderWithoutDiff = files.length === 0
+    && workspaceEntries.every((workspace) => workspace.workspace_kind === 'direct_folder' && !workspaceHasGit(workspace));
   const groupedFiles = workspaceEntries.map((workspace) => ({
     workspace,
     files: files.filter((file) => (file.folder_id || 'folder') === workspace.folder_id),
   })).filter((group) => group.files.length > 0);
-  const supportsHandoff = session.computer_is_local !== false
-    && (session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length);
-  const gitWorkspaces = workspaceEntries.filter((workspace) => workspace.workspace_kind === 'git_worktree');
+  const supportsApply = canApplyToSource(session);
+  const supportsDrafts = canDraftPullRequests(session);
+  const gitWorkspaces = workspaceEntries.filter(workspaceHasGit);
+  // A project task delivers through draft pull requests; a Local one cannot yet.
+  const offersGitOptions = session.computer_is_local !== false && gitWorkspaces.length > 0
+    && (!session.project_id || inPlace);
   const sourceChanged = workspaceEntries.some((workspace) => workspace.source_dirty);
   const changeKey = files.map((file) => `${file.folder_id || 'folder'}:${file.status}:${file.path}:${file.patch}`).join('\n');
   const applied = !!changeKey && appliedChangeKey === changeKey;
@@ -242,6 +245,7 @@ export function ReviewPanel({
                 {group.files.map((file, index) => <ReviewFileCard
                   key={`${group.workspace.folder_id}:${file.path}`}
                   file={file}
+                  editsOriginal={inPlace}
                   workspaceName={group.workspace.folder_name}
                   open={groupIndex === 0 && index === 0}
                   busy={busy || active}
@@ -267,17 +271,25 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(14)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(14)} {session.workspace_kind === 'direct_folder' ? (inPlace ? 'Open your folder' : 'Open original folder') : 'Open isolated copy'}</Button>}
               {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.source_path)}>Open original</Button>}
             </div>
-            {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
-            {handoffConflict && (
+            {inPlace && (
+              <Alert variant="info" title={workspaceEntries.length > 1 ? 'This task edits your folders directly' : 'This task edits your folder directly'}>
+                {workspaceEntries.length > 1 ? 'Its changes are already in your folders' : 'Its changes are already in your folder'}, so there is nothing to apply.
+                {' '}Draft pull requests are not available for Local tasks yet: commit here, then push and open a pull request with your usual tools.
+              </Alert>
+            )}
+            {sourceChanged && (inPlace
+              ? <Alert variant="warning" title="The folder already had uncommitted changes">They appear in this review alongside the agent’s, and committing here includes them.</Alert>
+              : <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>)}
+            {handoffConflict && !inPlace && (
               <section className="code-handoff-primary">
                 <div><div className="code-field-label">Reconcile the original changes</div><p>Have the agent preserve both versions in the isolated copy, then review again.</p></div>
                 <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void onResolveConflicts()}>Resolve with agent</Button>
               </section>
             )}
-            {supportsHandoff ? (
+            {supportsApply || inPlace ? (
               <>
                 {session.project_id && (
                   <section className="code-handoff-secondary">
@@ -297,7 +309,7 @@ export function ReviewPanel({
                     )}
                   </Alert>
                 )}
-                {session.project_id && gitWorkspaces.length > 0 && (
+                {supportsDrafts && (
                   <DraftPullRequestSection
                     sessionId={session.id}
                     taskTitle={session.title}
@@ -314,29 +326,31 @@ export function ReviewPanel({
                     connections={connections}
                   />
                 )}
-                <section className="code-handoff-primary code-handoff-local">
-                  <div>
-                    <div className="code-field-label">Apply locally</div>
-                  </div>
-                  <Tooltip content="Copy the reviewed changes back to the original folders">
-                    <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
-                      {applied ? 'Applied' : 'Apply locally'}
-                    </Button>
-                  </Tooltip>
-                </section>
+                {supportsApply && (
+                  <section className="code-handoff-primary code-handoff-local">
+                    <div>
+                      <div className="code-field-label">Apply locally</div>
+                    </div>
+                    <Tooltip content="Copy the reviewed changes back to the original folders">
+                      <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
+                        {applied ? 'Applied' : 'Apply locally'}
+                      </Button>
+                    </Tooltip>
+                  </section>
+                )}
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
-                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title="Git options">
+                {offersGitOptions && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title="Git options" defaultOpen={inPlace}>
                   <div className="code-git-action">
-                    <div className="code-field-label">Create a branch in the task worktree</div>
+                    <div className="code-field-label">{inPlace ? 'Create and switch to a branch in your folder' : 'Create a branch in the task worktree'}</div>
                     <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>
                   </div>
                   <div className="code-git-action">
-                    <div className="code-field-label">Commit all task changes</div>
+                    <div className="code-field-label">{inPlace ? 'Commit all changes in your folder' : 'Commit all task changes'}</div>
                     <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
                   </div>
                 </Collapsible>}
               </>
-            ) : <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
+            ) : session.computer_is_local !== false && <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
             <SourceUpdateSection
               contexts={session.source_contexts || []}
               deliveries={session.deliveries || []}

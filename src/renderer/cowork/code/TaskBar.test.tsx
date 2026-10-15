@@ -153,6 +153,21 @@ describe('TaskBar', () => {
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
   });
 
+  it('names a Local task as working in the user’s folder, with its branch', async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskBar
+        {...barProps}
+        session={{ ...session, workspace_kind: 'direct_folder', workspace_mode: 'in_place', base_revision: 'abc123' }}
+        git={{ branch: 'main', revision: 'abc123', dirty: true } as never}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Show task details for local · your folder' }));
+    expect(screen.getByText('Branch')).toBeInTheDocument();
+    expect(screen.getByText('main')).toBeInTheDocument();
+  });
+
   it('makes the isolated working copy legible without exposing implementation terms', async () => {
     const user = userEvent.setup();
     render(
