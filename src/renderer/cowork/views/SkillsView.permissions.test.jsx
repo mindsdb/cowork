@@ -89,6 +89,7 @@ describe('SkillsView shared-resource permissions', () => {
 
     const row = screen.getByRole('article', { name: 'operator-skill' });
     expect(within(row).getByText('Built-in')).toBeInTheDocument();
+    expect(within(row).queryByText('Shared')).not.toBeInTheDocument();
     expect(within(row).queryByText('Another member')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('operator-skill'));
@@ -310,4 +311,93 @@ describe('SkillsView shared-resource permissions', () => {
         .toHaveAttribute('aria-checked', 'true');
     },
   );
+});
+
+describe('SkillsView shared skills', () => {
+  // The detail note and cowork-server's 403 message share this sentence.
+  const SHARED_NOTE = "This skill is shared with you and can't be changed here.";
+  const OWNER_CAPABILITIES = { canEdit: true, canDelete: true, canDisable: true };
+
+  /* Reads which badges the skill's row shows, then opens its detail view and
+     actions menu and returns the Edit and Uninstall menu items. The row leaves
+     the page with the list, so its badges come back as booleans. */
+  async function openActions(skill) {
+    const user = userEvent.setup();
+    skillState.skills = [skill];
+    render(<SkillsView />);
+    const row = screen.getByRole('article', { name: skill.label });
+    const rowBadges = {
+      shared: within(row).queryByText('Shared') !== null,
+      builtin: within(row).queryByText('Built-in') !== null,
+    };
+    await user.click(screen.getByText(skill.label));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    return {
+      rowBadges,
+      edit: await screen.findByRole('menuitem', { name: /Edit/ }),
+      uninstall: await screen.findByRole('menuitem', { name: /Uninstall/ }),
+    };
+  }
+
+  it('shows a skill someone else shares read-only with a Shared badge', async () => {
+    // How cowork-server sends a skill another person shares with the caller.
+    const { rowBadges, edit, uninstall } = await openActions({ ...lockedSkill, shared: true });
+
+    expect(rowBadges.shared).toBe(true);
+    expect(rowBadges.builtin).toBe(false);
+    expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .toHaveAttribute('aria-disabled', 'true');
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Shared with you');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Shared with you');
+  });
+
+  it("keeps every action on the creator's own shared skill and badges it Shared", async () => {
+    const own = { ...lockedSkill, shared: true, capabilities: OWNER_CAPABILITIES };
+    const { rowBadges, edit, uninstall } = await openActions(own);
+
+    expect(rowBadges.shared).toBe(true);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .not.toHaveAttribute('aria-disabled', 'true');
+    expect(edit).not.toHaveAttribute('data-disabled');
+    expect(edit).not.toHaveTextContent('Shared with you');
+    expect(uninstall).not.toHaveAttribute('data-disabled');
+    expect(uninstall).not.toHaveTextContent('Shared with you');
+
+    await userEvent.click(uninstall);
+    expect(await screen.findByRole('dialog')).toHaveTextContent(`Remove skill "${own.label}"?`);
+  });
+
+  it.each([
+    ['without the field', lockedSkill],
+    ['with shared false', { ...lockedSkill, shared: false }],
+    ['with a non-boolean shared value', { ...lockedSkill, shared: 'true' }],
+  ])('keeps the plain read-only note and hint and no Shared badge for a skill %s', async (_, skill) => {
+    const { rowBadges, edit, uninstall } = await openActions(skill);
+
+    expect(rowBadges.shared).toBe(false);
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Read only — only the creator or an organization admin can change this skill.',
+    );
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Admin or creator');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Admin or creator');
+  });
+
+  it('keeps every action and no badge for a plain skill the caller owns', async () => {
+    const { rowBadges, edit, uninstall } = await openActions({
+      ...lockedSkill,
+      capabilities: OWNER_CAPABILITIES,
+    });
+
+    expect(rowBadges.shared).toBe(false);
+    expect(rowBadges.builtin).toBe(false);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(edit).not.toHaveAttribute('data-disabled');
+    expect(uninstall).not.toHaveAttribute('data-disabled');
+  });
 });

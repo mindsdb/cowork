@@ -31,6 +31,13 @@ export type CoworkSkill = {
   declarative?: string;
   enabled?: boolean;
   isBuiltin?: boolean;
+  /**
+   * True for a skill the operator shares with everyone. With a change
+   * capability false it is someone else's skill and the page says so beside
+   * the disabled action; with the capabilities granted it is the caller's own
+   * and keeps every action. Absent means false.
+   */
+  shared?: boolean;
   projects?: string[];
   /** Single-project form still present in older payloads. */
   project?: string;

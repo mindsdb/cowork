@@ -30,6 +30,24 @@ import {
 // collide with a real project name.
 const ALL_PROJECTS = '__all_projects__';
 
+/* The same sentence cowork-server answers when it refuses a change to a skill
+   someone else shares with the caller. */
+const SHARED_SKILL_NOTE = "This skill is shared with you and can't be changed here.";
+
+/* Why Edit or Uninstall is disabled, shown beside the menu item. Only an
+   explicit `shared: true` names sharing; a built-in keeps its own label. */
+function lockedActionHint(skill) {
+  if (skill.isBuiltin) return 'Built-in';
+  if (skill.shared === true) return 'Shared with you';
+  return 'Admin or creator';
+}
+
+// The detail view's note for a skill the caller can't edit.
+function readOnlyNote(skill) {
+  if (skill.isBuiltin) return 'Built-in skills are read only.';
+  if (skill.shared === true) return SHARED_SKILL_NOTE;
+  return 'Read only — only the creator or an organization admin can change this skill.';
+}
 
 // A kit row: name, description, and inline meta (project, stable creator,
 // last update).
@@ -38,16 +56,20 @@ function SkillRow({ skill, onClick, projects = [] }) {
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
   const author = sharedResourceAttribution(skill)?.createdBy;
+  /* `shared: true` marks the creator's own shared skill and one someone else
+     shares alike; the detail view's actions tell the two apart. */
+  const shared = skill.shared === true;
   return (
     <ListItem
       as="article"
       aria-label={skill.label}
       leading={<span className="font-mono text-sm font-medium">/</span>}
       title={skill.label}
-      badges={(skill.enabled === false || skill.isBuiltin) && (
+      badges={(skill.enabled === false || skill.isBuiltin || shared) && (
         <>
           {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
           {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
+          {shared && <Badge variant="muted" size="sm">Shared</Badge>}
         </>
       )}
       description={skill.description || skill.declarative?.slice(0, 120) || '—'}
@@ -470,7 +492,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                       id: 'edit', label: 'Edit', icon: Ico.edit(14),
                       disabled: !canUseSharedResource(selected, 'canEdit'),
                       hint: !canUseSharedResource(selected, 'canEdit')
-                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        ? lockedActionHint(selected)
                         : undefined,
                       title: !canUseSharedResource(selected, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
                       onClick: () => startEdit(selected),
@@ -480,7 +502,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                       id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
                       disabled: !canUseSharedResource(selected, 'canDelete'),
                       hint: !canUseSharedResource(selected, 'canDelete')
-                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        ? lockedActionHint(selected)
                         : undefined,
                       title: !canUseSharedResource(selected, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
                       onClick: () => remove(selected),
@@ -498,9 +520,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           />
           {!canUseSharedResource(selected, 'canEdit') && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
-              {selected.isBuiltin
-                ? 'Built-in skills are read only.'
-                : 'Read only — only the creator or an organization admin can change this skill.'}
+              {readOnlyNote(selected)}
             </p>
           )}
 
