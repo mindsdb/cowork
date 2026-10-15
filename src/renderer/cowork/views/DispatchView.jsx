@@ -1,5 +1,6 @@
 import Ico from '../components/Icons';
 import { Badge, Button } from '../components/ui';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 function buildQrCells() {
   const size = 25;
@@ -92,7 +93,7 @@ export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' })
         <section className="dispatch-pair" aria-labelledby="dispatch-title">
           <PairingIllustration />
 
-          <h1 id="dispatch-title">Pair with the MindsHub Cowork Mobile app</h1>
+          <h1 id="dispatch-title">Pair with the {STOCK_PRODUCT_NAME} Mobile app</h1>
           <p>
             Use the mobile app to talk to {agentLabel} while it works from your desktop.
             Scan the code to download it on your phone.
