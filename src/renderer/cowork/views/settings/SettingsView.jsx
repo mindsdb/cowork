@@ -3,7 +3,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1949,7 +1949,7 @@ export default function SettingsView({
                 lockedValue={safetyLimit('maxToolRounds')}
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
-                spec={BUDGET_FIELDS.maxToolRounds}
+                spec={budgetSpec('maxToolRounds', settings.budgetDefaults)}
                 label="Max steps per task"
                 setSetting={setSetting}
               />
@@ -1963,7 +1963,7 @@ export default function SettingsView({
                 lockedValue={safetyLimit('maxContinuations')}
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
-                spec={BUDGET_FIELDS.maxContinuations}
+                spec={budgetSpec('maxContinuations', settings.budgetDefaults)}
                 label="Max auto-continues"
                 setSetting={setSetting}
               />
@@ -1983,7 +1983,7 @@ export default function SettingsView({
                   lockedValue={safetyLimit('maxTurnTokens')}
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
-                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  spec={budgetSpec('maxTurnTokens', settings.budgetDefaults)}
                   label="Max tokens per task"
                   setSetting={setSetting}
                   unlimitedLabel="No limit"

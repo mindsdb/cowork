@@ -12,6 +12,7 @@ import {
   clampBudgetValue,
   clampBudgets,
   BUDGET_FIELDS,
+  budgetSpec,
   isBudgetUnlimited,
   resolveBudgetRestore,
   toDisplayUnits,
@@ -667,6 +668,28 @@ describe('the limits switch (limits_enabled)', () => {
     expect(s.budgetDefaults).toEqual({ maxToolRounds: '250', maxTurnTokens: '25000000' });
     // Not a server key, so it can never be written back.
     expect(diffSettingsForWrite({ budgetDefaults: { maxToolRounds: '1' } }, {})).toEqual({});
+  });
+
+  it("reads an older server's default off an unset budget row", async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_turn_tokens', value: '2000000', is_sensitive: false, is_set: true },
+    ];
+    // A stored value says nothing about the default.
+    expect(transformSettingsRows(rows).budgetDefaults).toEqual({ maxToolRounds: '50' });
+  });
+
+  it('edits each budget against the served default', () => {
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: '50' }).fallback).toBe(50);
+    expect(budgetSpec('maxToolRounds', undefined)).toBe(BUDGET_FIELDS.maxToolRounds);
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: 'x' })).toBe(BUDGET_FIELDS.maxToolRounds);
+  });
+
+  it('never restores a served default that is itself "No limit"', () => {
+    const spec = budgetSpec('maxTurnTokens', { maxTurnTokens: '50000000' });
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(BUDGET_FIELDS.maxTurnTokens.fallback));
+    expect(resolveBudgetRestore(null, null, budgetSpec('maxTurnTokens', { maxTurnTokens: '1250000' }))).toBe('1250000');
   });
 
   it('writes a changed switch to its snake_case key', () => {
