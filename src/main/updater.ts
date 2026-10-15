@@ -6,7 +6,7 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion, lastUiApplyAttempt } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, probeManifest, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion, lastUiApplyAttempt } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer, type ServerUpdateCheckResult } from './server-updater';
 import { isServerRunning } from './server-process';
@@ -386,17 +386,23 @@ export function initUpdater(
 
   async function poll(autoApply: boolean) {
     const trigger: UpdateJournalTrigger = autoApply ? 'boot' : 'periodic';
-    // hasInternet() probes the OTA manifest host (GitHub Pages). The server
+    // probeManifest() probes the OTA manifest host (GitHub Pages). The server
     // update lives on different hosts (git remote / PyPI) with its own
     // fail-safe checks, so a down manifest host must only skip the UI check —
-    // never suppress a server update (which may be the fix a user needs).
-    const manifestReachable = await hasInternet();
+    // never suppress a server update (which may be the fix a user needs). The
+    // server check starts first so it never waits behind a slow probe; the
+    // no-op catch keeps an early rejection from going unhandled until
+    // Promise.all below picks it up.
+    const serverCheck = checkServer();
+    serverCheck.catch(() => {});
+    const manifestBody = await probeManifest();
+    const manifestReachable = manifestBody !== null;
     if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
 
     const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false };
     const [ui, server] = await Promise.all([
-      manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
-      checkServer(),
+      manifestReachable ? checkForUIUpdate(manifestBody) : Promise.resolve(uiSkipped),
+      serverCheck,
     ]);
     rememberUiOffer(ui);
 

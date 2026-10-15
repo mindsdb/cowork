@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
+  gets: [] as string[], // every URL the fake network served
   // Set to make fs.renameSync throw EPERM whenever the predicate returns true
   // for a rename's SOURCE path (fake a Windows lock on a chosen swap step).
   // Null = real rename, so every other test is unaffected.
@@ -58,6 +59,7 @@ vi.mock('./server-process', () => ({ fetchServerVersions: async () => ({ server:
 // Fake network: manifest URL → the JSON; anything else → the tarball body.
 vi.mock('https', () => ({
   get: (url: string, _opts: unknown, cb: (res: unknown) => void) => {
+    h.gets.push(url);
     const body = url.includes('latest.json') ? Buffer.from(JSON.stringify(h.manifest)) : h.tarball;
     const res = {
       statusCode: 200,
@@ -100,6 +102,7 @@ beforeEach(() => {
   h.server = null;
   h.manifest = null;
   h.tarball = Buffer.from('');
+  h.gets = [];
   h.shouldFailRename = null;
   delete process.env.OTA_UI;
 });
@@ -301,6 +304,25 @@ describe('applyUIUpdate (apply-time gate)', () => {
     expect(prevTries).toBe(3); // recovery rename went through retryOnTransientLock
     expect(ui.getCachedVersion()).toBe('2.26.7.10.1'); // prior slot restored
   }, 15000);
+});
+
+describe('manifest probe reuse', () => {
+  it('checks for an update from the probed body without fetching the manifest again', async () => {
+    h.manifest = { version: '2.26.7.13.1', url: 'https://example.com/ui.tar.gz', sha256: 'a'.repeat(64) };
+    const ui = await loadUpdater();
+
+    const body = await ui.probeManifest();
+    expect(body).not.toBeNull();
+    const result = await ui.checkForUIUpdate(body!);
+
+    expect(result).toMatchObject({ updateAvailable: true, newVersion: '2.26.7.13.1' });
+    expect(h.gets.filter((u) => u.includes('latest.json'))).toHaveLength(1);
+  });
+
+  it('reports a probed body that does not parse as a failed check', async () => {
+    const ui = await loadUpdater();
+    await expect(ui.checkForUIUpdate('not json')).resolves.toMatchObject({ error: true });
+  });
 });
 
 describe('bundled-version misconfiguration guard', () => {
