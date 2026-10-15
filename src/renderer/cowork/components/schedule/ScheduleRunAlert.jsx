@@ -7,7 +7,6 @@
 // now. Neither is offered while a run is still going.
 
 import { Alert, Button } from '../ui';
-import Ico from '../Icons';
 import { relativeTime } from '../../lib/formatTime';
 import { missedOnceTitle } from '../../lib/scheduleCopy';
 import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
@@ -73,19 +72,20 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
   const conversationId = alert.kind === 'finishing' || alert.kind === 'missed'
     ? null
     : task.lastRun?.conversationId || null;
-  // The action that answers the alert comes first, as the primary button.
+  // The action that answers the alert comes first as a default button; the
+  // rest are subtle.
   const actions = [
     alert.kind === 'auto_paused' && (
-      <Button key="resume" size="sm" variant="primary" onClick={() => onResume?.(task.id)} disabled={busy}>Resume</Button>
+      <Button key="resume" size="sm" onClick={() => onResume?.(task.id)} disabled={busy}>Resume</Button>
     ),
     alert.kind === 'missed' && (
-      <Button key="run" size="sm" variant="primary" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
+      <Button key="run" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
     ),
     conversationId && (
-      <Button key="review" size="sm" onClick={() => onReviewRun?.(conversationId)}>Review run</Button>
+      <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>Review run</Button>
     ),
     alert.kind === 'partial' && (
-      <Button key="again" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
+      <Button key="again" size="sm" variant="subtle" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
     ),
   ].filter(Boolean);
   return (
@@ -94,12 +94,11 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
     <Alert
       variant={alert.variant}
       title={alert.title}
-      icon={alert.variant === 'info' ? Ico.info(16) : Ico.warning(16)}
       role={alert.variant === 'info' ? 'status' : undefined}
       actions={actions.length ? actions : null}
     >
       {alert.reason && <p className="m-0">{alert.reason}</p>}
-      {alert.note && <p className="m-0 mt-1 opacity-85">{alert.note}</p>}
+      {alert.note && <p className="m-0 mt-1 text-ink-3">{alert.note}</p>}
     </Alert>
   );
 }
