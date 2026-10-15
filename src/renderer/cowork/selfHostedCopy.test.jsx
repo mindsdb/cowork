@@ -80,7 +80,7 @@ describe('platform build', () => {
 
   it('describes the cadence without a desktop requirement when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Acme Cowork runs this prompt on the cadence you set.')).toBeInTheDocument();
+    expect(screen.getByText('Acme Cowork runs this on its own, even with this tab closed.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
   });
 

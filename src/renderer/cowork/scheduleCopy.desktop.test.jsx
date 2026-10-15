@@ -25,8 +25,8 @@ describe('desktop app', () => {
     expect(screen.getByText(/^Scheduled tasks run while .+ is open\. If a run was due while it was closed, Anton runs the latest one from the last 7 days when it reopens\.$/)).toBeInTheDocument();
   });
 
-  it('names the desktop app when scheduling', () => {
+  it('says the app must be open when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByText('Anton runs this on its own while MindsHub is open.')).toBeInTheDocument();
   });
 });

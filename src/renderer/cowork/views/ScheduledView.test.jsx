@@ -242,3 +242,15 @@ describe('ScheduledView — unseen auto-pauses', () => {
     expect(screen.queryByText(/paused after failing/)).not.toBeInTheDocument();
   });
 });
+
+describe('ScheduledView — save and run once', () => {
+  it('creates the task, then runs the new task once', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const { props, user } = setup({ onCreate });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1'));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ prompt: 'try it' });
+  });
+});
