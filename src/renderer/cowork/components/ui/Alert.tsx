@@ -9,6 +9,11 @@ import { cn } from '../../lib/cn';
 //
 //   <Alert variant="danger">Couldn't save — try again.</Alert>
 //   <Alert variant="warning" title="Heads up" icon={<Ico.warn />}>…</Alert>
+//   <Alert variant="danger" title="Paused" actions={<Button size="sm">Resume</Button>}>…</Alert>
+//
+// Structure: icon | title, body, actions. Actions sit under the body, lined
+// up with the text rather than the icon, so a long body never squeezes the
+// buttons and the buttons never squeeze the body. Put the main action first.
 //
 // Uses the dedicated -bg/-border/-text tokens (theme-aware, pre-mixed) rather
 // than Tailwind's opacity modifier — see the long note in Badge.tsx for why
@@ -36,9 +41,11 @@ export interface AlertProps
   icon?: ReactNode;
   // Optional bold heading rendered above the body.
   title?: ReactNode;
+  // Buttons that act on what the alert says, laid out under the body.
+  actions?: ReactNode;
 }
 
-export function Alert({ className, variant, icon, title, role, children, ...props }: AlertProps) {
+export function Alert({ className, variant, icon, title, actions, role, children, ...props }: AlertProps) {
   // Errors/warnings announce themselves to assistive tech; info/success are
   // passive. Callers can still override via an explicit `role`.
   const resolvedRole = role ?? (variant === 'danger' || variant === 'warning' ? 'alert' : undefined);
@@ -48,6 +55,7 @@ export function Alert({ className, variant, icon, title, role, children, ...prop
       <div className="min-w-0 flex-1">
         {title && <div className="font-medium">{title}</div>}
         {children}
+        {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   );
