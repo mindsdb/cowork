@@ -92,7 +92,7 @@ export default function ScheduleRow({
                 place stops it instead. */}
             {task.running ? (
               <Button variant="subtle" size="sm" onClick={() => onStopRun?.(task)} disabled={busy}>
-                {busy ? <Spinner /> : Ico.close(14)}
+                {busy ? <Spinner /> : Ico.stop(12)}
                 Stop
               </Button>
             ) : (
