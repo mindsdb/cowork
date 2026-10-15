@@ -307,7 +307,7 @@ export default function ScheduleDetailView({
                   disabled={busy}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
-                  {Ico.close(14)}
+                  {Ico.stop(12)}
                   {busy ? 'Stopping…' : 'Stop run'}
                 </Button>
               ) : (
