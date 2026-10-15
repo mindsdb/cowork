@@ -86,22 +86,26 @@ function event(seq: number, type: CodingEvent['type'], values: Partial<CodingEve
 }
 
 
-const BASE_EVENTS: CodingEvent[] = [
-  event(1, 'session', { title: 'Task workspace ready', text: 'Created an isolated detached worktree.', data: { workspaceKind: 'git_worktree' } }),
-  event(2, 'user_message', { title: 'You', text: 'Make checkout validation easier to understand, preserve entered details after a failed request, and cover the recovery path with focused tests.' }),
-  event(3, 'plan', { title: 'Plan', phase: 'progress', data: { plan: [
-    { step: 'Inspect the checkout form and current validation tests', status: 'completed' },
-    { step: 'Centralize field errors and retain form state after failure', status: 'completed' },
-    { step: 'Add recovery coverage and run focused checks', status: 'completed' },
-  ] } }),
-  event(4, 'reasoning', { title: 'Reviewed the form flow', text: 'The request error path clears the draft before the response has succeeded.', item_id: 'reason-1' }),
-  event(5, 'command', { title: 'Searched checkout state', text: 'rg -n "submitCheckout|validation" src tests', data: { command: 'rg -n "submitCheckout|validation" src tests' }, item_id: 'cmd-1' }),
-  event(6, 'file_change', { title: 'Updated checkout form', text: 'src/checkout/CheckoutForm.tsx', data: { path: 'src/checkout/CheckoutForm.tsx' }, item_id: 'file-1' }),
-  event(7, 'file_change', { title: 'Added recovery tests', text: 'src/checkout/CheckoutForm.test.tsx', data: { path: 'src/checkout/CheckoutForm.test.tsx' }, item_id: 'file-2' }),
-  event(8, 'command', { title: 'Ran focused tests', text: 'npm test -- CheckoutForm', data: { command: 'npm test -- CheckoutForm' }, item_id: 'cmd-2' }),
-  event(9, 'agent_message', { title: 'Agent', text: 'Updated checkout validation so each field keeps its own actionable error, and the draft now remains intact when the request fails.\n\nAdded focused coverage for both the validation and recovery paths. `npm test -- CheckoutForm` passes.', phase: 'completed', item_id: 'message-1' }),
-  event(10, 'session', { title: 'Task completed', text: 'The coding turn completed.', data: { status: 'completed' } }),
-];
+// Built on demand: a top-level call would keep this module in production
+// bundles even though every caller is gated on import.meta.env.DEV.
+function baseEvents(): CodingEvent[] {
+  return [
+    event(1, 'session', { title: 'Task workspace ready', text: 'Created an isolated detached worktree.', data: { workspaceKind: 'git_worktree' } }),
+    event(2, 'user_message', { title: 'You', text: 'Make checkout validation easier to understand, preserve entered details after a failed request, and cover the recovery path with focused tests.' }),
+    event(3, 'plan', { title: 'Plan', phase: 'progress', data: { plan: [
+      { step: 'Inspect the checkout form and current validation tests', status: 'completed' },
+      { step: 'Centralize field errors and retain form state after failure', status: 'completed' },
+      { step: 'Add recovery coverage and run focused checks', status: 'completed' },
+    ] } }),
+    event(4, 'reasoning', { title: 'Reviewed the form flow', text: 'The request error path clears the draft before the response has succeeded.', item_id: 'reason-1' }),
+    event(5, 'command', { title: 'Searched checkout state', text: 'rg -n "submitCheckout|validation" src tests', data: { command: 'rg -n "submitCheckout|validation" src tests' }, item_id: 'cmd-1' }),
+    event(6, 'file_change', { title: 'Updated checkout form', text: 'src/checkout/CheckoutForm.tsx', data: { path: 'src/checkout/CheckoutForm.tsx' }, item_id: 'file-1' }),
+    event(7, 'file_change', { title: 'Added recovery tests', text: 'src/checkout/CheckoutForm.test.tsx', data: { path: 'src/checkout/CheckoutForm.test.tsx' }, item_id: 'file-2' }),
+    event(8, 'command', { title: 'Ran focused tests', text: 'npm test -- CheckoutForm', data: { command: 'npm test -- CheckoutForm' }, item_id: 'cmd-2' }),
+    event(9, 'agent_message', { title: 'Agent', text: 'Updated checkout validation so each field keeps its own actionable error, and the draft now remains intact when the request fails.\n\nAdded focused coverage for both the validation and recovery paths. `npm test -- CheckoutForm` passes.', phase: 'completed', item_id: 'message-1' }),
+    event(10, 'session', { title: 'Task completed', text: 'The coding turn completed.', data: { status: 'completed' } }),
+  ];
+}
 
 
 const FILES: DiffFile[] = [
@@ -248,6 +252,7 @@ function activityEvents(running: boolean): CodingEvent[] {
 
 
 function fixtureState(name: string) {
+  const BASE_EVENTS = baseEvents();
   let primary = session();
   let events = [...BASE_EVENTS];
   let files = [...FILES];
