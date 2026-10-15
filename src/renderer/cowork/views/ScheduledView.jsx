@@ -44,6 +44,10 @@ export default function ScheduledView({
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  // Auto-paused schedules the user has not opened since they were paused
+  // (useAutoPauseNotifications). Shown here until each is reviewed, so a
+  // pause is not missed when its desktop notification was not.
+  unseenAutoPauses = [],
   agentLabel,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -176,6 +180,24 @@ export default function ScheduledView({
             </>
           }
         />
+      )}
+
+      {unseenAutoPauses.length > 0 && (
+        <Alert
+          variant="danger"
+          className="mx-8 mb-3"
+          title={unseenAutoPauses.length === 1
+            ? `“${unseenAutoPauses[0].title || 'Untitled schedule'}” was paused after failing several runs in a row`
+            : `${unseenAutoPauses.length} scheduled tasks were paused after failing several runs in a row`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {unseenAutoPauses.map((task) => (
+              <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
+                {unseenAutoPauses.length === 1 ? 'Review' : `Review “${task.title || 'Untitled schedule'}”`}
+              </Button>
+            ))}
+          </div>
+        </Alert>
       )}
 
       {error && (
