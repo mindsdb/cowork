@@ -264,11 +264,15 @@ export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void
   fs.mkdirSync(targetDir, { recursive: true });
   const tmpFile = path.join(getCacheDir(), 'download.tar.gz');
   fs.writeFileSync(tmpFile, buf);
-  const { execFileSync } = require('child_process');
+  // Async: a synchronous tar blocks the main process, freezing IPC and
+  // repaints for as long as a slow disk or a virus scanner holds it.
+  const { execFile } = require('child_process');
   try {
-    execFileSync('tar', ['xzf', tmpFile, '-C', targetDir], {
-      timeout: TAR_EXTRACT_TIMEOUT_MS,
-      killSignal: 'SIGKILL',
+    await new Promise<void>((resolve, reject) => {
+      execFile('tar', ['xzf', tmpFile, '-C', targetDir], {
+        timeout: TAR_EXTRACT_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      }, (error: Error | null) => (error ? reject(error) : resolve()));
     });
   } finally {
     try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
