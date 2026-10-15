@@ -29,10 +29,12 @@ import {
   type ResourceAvailability,
   type ProjectSkillSource,
   ReasoningEffort,
+  type WorkspaceMode,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { DEFAULT_WORKSPACE_MODE_VALUE, PROJECT_WORKSPACE_MODE_OPTIONS, isWorkspaceMode, offersWorkspaceChoice } from './workspaceMode';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
 import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
@@ -104,10 +106,27 @@ export function ProjectSettingsModal({
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
+  const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<WorkspaceMode | null>(null);
+  // Offer the setting only where a task can choose, as the composer does.
+  const [workspaceModeChoice, setWorkspaceModeChoice] = useState(false);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
   const initializedProjectId = useRef<string | null | undefined>(undefined);
+  const projectIdForModes = project?.id ?? null;
+  useEffect(() => {
+    if (!open) return undefined;
+    let current = true;
+    void (async () => {
+      try {
+        const options = await codingApi.workspaceModes(projectIdForModes);
+        if (current) setWorkspaceModeChoice(offersWorkspaceChoice(options));
+      } catch {
+        if (current) setWorkspaceModeChoice(false);
+      }
+    })();
+    return () => { current = false; };
+  }, [open, projectIdForModes]);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
     const items = new Map(
@@ -174,6 +193,7 @@ export function ProjectSettingsModal({
     setProjectModel(project?.default_model || defaultModel);
     setProjectPermission(project?.permission_mode || 'supervised');
     setProjectReasoningEffort(project?.default_reasoning_effort || null);
+    setProjectWorkspaceMode(project?.default_workspace_mode || null);
     setError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
@@ -281,6 +301,7 @@ export function ProjectSettingsModal({
         default_model: projectModel,
         default_reasoning_effort: projectReasoningEffort,
         permission_mode: projectPermission,
+        default_workspace_mode: projectWorkspaceMode,
       });
       onClose();
     } catch (reason) {
@@ -437,6 +458,14 @@ export function ProjectSettingsModal({
                 <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
                   if (isPermissionMode(value)) setProjectPermission(value);
                 }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
+                {workspaceModeChoice && (
+                  <Field label="Workspace"><Select
+                    value={projectWorkspaceMode || DEFAULT_WORKSPACE_MODE_VALUE}
+                    onValueChange={(value) => setProjectWorkspaceMode(isWorkspaceMode(value) ? value : null)}
+                    options={PROJECT_WORKSPACE_MODE_OPTIONS}
+                    ariaLabel="Default task workspace"
+                  /></Field>
+                )}
               </div>
             </FieldSet>
 

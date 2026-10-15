@@ -19,6 +19,14 @@ export const WORKSPACE_MODE_OPTIONS: Array<{ value: WorkspaceMode; label: string
   },
 ];
 
+// A project setting may leave the choice to the server, which picks by folder and computer.
+export const DEFAULT_WORKSPACE_MODE_VALUE = 'default';
+
+export const PROJECT_WORKSPACE_MODE_OPTIONS: Array<{ value: string; label: string; title: string }> = [
+  { value: DEFAULT_WORKSPACE_MODE_VALUE, label: 'Default', title: 'Let Cowork choose for each task’s folder and computer.' },
+  ...WORKSPACE_MODE_OPTIONS,
+];
+
 export function isWorkspaceMode(value: string | null | undefined): value is WorkspaceMode {
   return value === 'in_place' || value === 'worktree';
 }
