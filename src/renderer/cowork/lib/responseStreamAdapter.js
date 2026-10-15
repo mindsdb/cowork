@@ -79,11 +79,22 @@ export function initialStreamState() {
      *  a producer that persists no user row (the probe path). */
     userMessageId: null,
     /** Where each figure in the final answer came from and the steps it
-     *  names, off `response.figure_sources` (lib/figureSources). Null when the
-     *  turn sent none: an answer with no figure, or a server that predates
-     *  the event. */
+     *  names, off `response.figure_sources` (lib/figureSources), as sent: its
+     *  offsets index `answerText`. Null when the turn sent none: an answer
+     *  with no figure, or a server that predates the event. */
     figureSources: null,
+    /** The answer the server saved, off `response.completed`: every round's
+     *  text, narration before a tool call included, where `bodyText` keeps
+     *  only what came after the last tool call. Null until the turn completes,
+     *  or when the event carries no text. */
+    answerText: null,
   };
+}
+
+/** The answer text a `response.completed` event carries, or null. */
+function completedAnswerText(event) {
+  const text = event.response?.output?.[0]?.content?.[0]?.text;
+  return typeof text === 'string' ? text : null;
 }
 
 /** Replace (immutably) the trailing scratchpad step regardless of its
@@ -328,6 +339,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       status: 'done',
       currentThought: null,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
+      answerText: completedAnswerText(event) ?? state.answerText,
     };
   }
 

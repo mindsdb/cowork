@@ -7,7 +7,6 @@
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { initialStreamState, reduceStream } from './responseStreamAdapter';
-import { parseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
 const THINKING_PLACEHOLDER = 'Thinking...';
@@ -380,18 +379,12 @@ export function applySessionMessages(
 // could land under a DIFFERENT turn's key depending on how much history
 // happened to be in memory, silently overwriting it). An id-keyed write
 // can't collide with another turn's entry regardless of what's loaded.
-// `figureSources` (lib/figureSources: the figures and the steps they name)
-// rides along when the turn sent any, so a turn with figures but no steps is
-// still saved.
-export function persistTurnState(cid, messageId, steps, startedAt, figureSources = null) {
-  if (!cid || !messageId) return;
-  const hasSteps = Array.isArray(steps) && steps.length > 0;
-  const hasFigures = Array.isArray(figureSources?.figures) && figureSources.figures.length > 0;
-  if (!hasSteps && !hasFigures) return;
+export function persistTurnState(cid, messageId, steps, startedAt) {
+  if (!cid || !messageId || !Array.isArray(steps) || steps.length === 0) return;
   const map = readConvTurns(cid) || {};
   // Strip any non-serialisable fields (refs, functions). The step
   // shape is plain data otherwise.
-  const sanitized = (hasSteps ? steps : []).map((s) => ({
+  const sanitized = steps.map((s) => ({
     id: s.id,
     label: s.label || null,
     badge: s.badge || null,
@@ -418,27 +411,20 @@ export function persistTurnState(cid, messageId, steps, startedAt, figureSources
     _isScratchpad: !!s._isScratchpad,
     _isToolCall: !!s._isToolCall,
     _scratchpadTabId: s._scratchpadTabId || null,
-    /* What a figure's source names (its tool_use_id), so a figure on a
-       reloaded turn can still open the step it came from. */
-    _toolUseId: s._toolUseId || null,
   }));
-  map[messageId] = {
-    steps: sanitized,
-    startedAt: startedAt ?? null,
-    ...(hasFigures ? { figureSources } : {}),
-  };
+  map[messageId] = { steps: sanitized, startedAt: startedAt ?? null };
   writeConvTurns(cid, map);
 }
 
-// Merge persisted step + timing data and figure sources onto assistant
-// messages by id (previously a counted position, see persistTurnState).
-// Idempotent — if a message already has steps or figure sources from a
-// fresh stream we don't overwrite them (the live data is more accurate).
-// A message with no id yet (a live/local-only row still in flight) has
-// nothing to look up and is left as-is; old position-keyed entries from
-// before this change simply stop matching, which only means those specific
-// turns render without their restored Thinking block until re-run — never
-// a wrong-turn attachment, which is the bug this replaces.
+// Merge persisted step + timing data onto assistant messages by id
+// (previously a counted position, see persistTurnState).
+// Idempotent — if a message already has steps from a fresh stream we
+// don't overwrite (the live data is more accurate). A message with no id
+// yet (a live/local-only row still in flight) has nothing to look up and
+// is left as-is; old position-keyed entries from before this change
+// simply stop matching, which only means those specific turns render
+// without their restored Thinking block until re-run — never a
+// wrong-turn attachment, which is the bug this replaces.
 export function mergeConvTurns(cid, messages) {
   if (!cid || !messages) return messages;
   dropLegacyIndexKeyedSidecar(cid);
@@ -449,20 +435,13 @@ export function mergeConvTurns(cid, messages) {
     if (m._turnComplete) return m;
     if (!m.id) return m;
     const saved = map[m.id];
-    if (!saved) return m;
-    const hasSavedSteps = Array.isArray(saved.steps) && saved.steps.length > 0;
+    if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
     const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
-    const restoreSteps = hasSavedSteps && !hasLiveSteps;
-    /* Parsed again: the saved copy is browser storage, and its paths and
-       URLs reach the file viewer and the link opener. */
-    const savedFigures = m.figureSources ? null : parseFigureSources(saved.figureSources);
-    if (!restoreSteps && !savedFigures) return m;
+    if (hasLiveSteps) return m;
     return {
       ...m,
-      ...(restoreSteps
-        ? { steps: saved.steps, startedAt: m.startedAt || saved.startedAt || null }
-        : {}),
-      ...(savedFigures ? { figureSources: savedFigures } : {}),
+      steps: saved.steps,
+      startedAt: m.startedAt || saved.startedAt || null,
     };
   });
 }

@@ -15,7 +15,11 @@ import { TextBlock } from '../cowork/views/ChatView';
    returned. The answers here go through the chat's own TextBlock with the
    event's payload, so the marks, tooltips, popovers and labels are the ones a
    user sees. Click a mark for its popover. Open with `npm run dev:renderer` at
-   /figure-sources-fixture.html, and add ?theme=dark for the dark pass. */
+   /figure-sources-fixture.html, and add ?theme=dark for the dark pass. The
+   answers ran in project `acme` (proj-1), which is the chat's project here,
+   except in the case where the chat moved to another project.
+   e2e/figure-sources.spec.ts checks the popover stays on screen at phone
+   sizes on this page. */
 
 /* Offsets come from the answer itself, the way the server computes them: UTF-16
    positions into the markdown source. */
@@ -27,7 +31,7 @@ const from = (toolUseId, page = null) => ({ tool_use_id: toolUseId, page });
 
 /* The event's steps: one per source a figure below names. */
 const step = (toolUseId, kind, label, extra = {}) => ({
-  tool_use_id: toolUseId, kind, label, path: null, url: null, queries: [], requests: [], ...extra,
+  tool_use_id: toolUseId, kind, label, path: null, attachment_id: null, url: null, queries: [], requests: [], ...extra,
 });
 const EVENT_STEPS = [
   step('toolu_01', 'file', 'stock.csv', { path: 'data/stock.csv' }),
@@ -36,9 +40,16 @@ const EVENT_STEPS = [
   }),
   step('toolu_03', 'file', 'rates.pdf', { path: 'docs/rates.pdf' }),
   step('toolu_04', 'web', 'example.com/rates', { url: 'https://example.com/rates' }),
-  step('toolu_05', 'query', 'Read inventory from the ERP API', { requests: ['GET {DS_ERP_URL}/inventory'] }),
+  step('toolu_05', 'query', 'Read inventory from the ERP API', {
+    requests: ['GET {DS_ERP_URL}/inventory?site=S1&sku=blue-mug&fields=sku,qty,reserved,on_order&as_of={today}'],
+  }),
   step('toolu_06', 'memory', 'memory'),
+  step('toolu_07', 'file', 'counts.csv', { attachment_id: 'file-123' }),
 ];
+
+/* The chat every case renders in. View file reads an attached file through
+   the chat's project and conversation, so both are set. */
+const CHAT = { conversationId: 'conv-1', projectId: 'proj-1', projectName: 'acme' };
 
 /* The steps a turn like this one leaves behind. Only `_toolUseId` matters to
    the marks: it is what links a figure's source to the step it opens. */
@@ -56,12 +67,21 @@ const REMEMBERED = 'You asked to keep at least 40 units on hand.';
 
 const IN_CODE = 'The query `SELECT 250 FROM stock` returned 250.';
 
-const sources = (figures) => ({ steps: EVENT_STEPS, figures });
+const ATTACHED = 'The counts you attached show 118 units.';
+
+const TABLE = [
+  '| Site | Units | Price |',
+  '| --- | --- | --- |',
+  '| S1 | 250 | $42 |',
+  '| S2 | 118 | $30 |',
+].join('\n');
+
+const sources = (figures, projectId = 'proj-1') => ({ project_id: projectId, steps: EVENT_STEPS, figures });
 
 const CASES = [
   {
     id: 'sourced-and-unsourced',
-    label: 'A figure from a file and a SQL query (250), one from a page of a PDF ($42), one from the question (7, unmarked) and one no step returned ($30).',
+    label: 'A figure from a file and a SQL query (250, dotted line), one from a page of a PDF ($42), one from the question (7, unmarked) and one no step returned ($30, solid amber line).',
     text: MAIN,
     figureSources: sources([
       figure('250', MAIN, 'step', [from('toolu_01'), from('toolu_02')]),
@@ -72,7 +92,7 @@ const CASES = [
   },
   {
     id: 'several-sources',
-    label: 'A figure from an API request and a web page, neither a step of this turn can open: the popover lists both, with the request and the link.',
+    label: 'A figure from an API request and a web page, neither a step of this turn can open: the popover lists both, with the request (wrapped) and the link.',
     text: SEVERAL,
     figureSources: sources([figure('1,284', SEVERAL, 'step', [from('toolu_05'), from('toolu_04')])]),
   },
@@ -89,6 +109,29 @@ const CASES = [
     figureSources: sources([
       figure('250', IN_CODE, 'step', [from('toolu_01')]),
       figure('250', IN_CODE, 'step', [from('toolu_01')], IN_CODE.indexOf('returned')),
+    ]),
+  },
+  {
+    id: 'attached-file',
+    label: 'A figure from a file attached to the chat: View file opens it by its id, whatever project the chat is in.',
+    text: ATTACHED,
+    figureSources: sources([figure('118', ATTACHED, 'step', [from('toolu_07')])]),
+  },
+  {
+    id: 'moved-project',
+    label: 'The first answer after the chat moved to another project: the project file offers no View file, since the same name there is another file.',
+    text: MAIN,
+    figureSources: sources([figure('250', MAIN, 'step', [from('toolu_01')])], 'proj-0'),
+  },
+  {
+    id: 'table',
+    label: 'Figures in a table share one tab stop: Tab reaches the first, the arrow keys move between them.',
+    text: TABLE,
+    figureSources: sources([
+      figure('250', TABLE, 'step', [from('toolu_01')]),
+      figure('$42', TABLE, 'step', [from('toolu_03', 1)]),
+      figure('118', TABLE, 'step', [from('toolu_07')]),
+      figure('$30', TABLE, 'none'),
     ]),
   },
   {
@@ -119,8 +162,11 @@ function Case({ id, label, text, figureSources, showFigureSources = true }) {
           figureSources={figureSources}
           steps={STEPS}
           onOpenStep={(stepId) => setOpened(`Opened ${stepId} in the scratchpad.`)}
-          onViewFile={(path) => setOpened(`Opened ${path} in the file viewer.`)}
+          onViewFile={(source) => setOpened(source.path
+            ? `Opened ${source.path} from the project in the file viewer.`
+            : `Opened attachment ${source.attachment_id} (${source.label}) in the file viewer.`)}
           showFigureSources={showFigureSources}
+          {...CHAT}
         />
       </div>
       {opened && (

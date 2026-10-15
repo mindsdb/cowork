@@ -83,6 +83,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { rebaseFigureSources } from './lib/figureSources';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -2367,7 +2368,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        const finalFigureSources = streamState.figureSources;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -2398,7 +2401,7 @@ function AppCore() {
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent && !configErrorInBody) {
-          persistTurnState(taskId, finalAssistantMessageId, finalSteps, finalStartedAt, finalFigureSources);
+          persistTurnState(taskId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // Open the side panel if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
@@ -3672,7 +3675,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        const finalFigureSources = streamState.figureSources;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -3713,7 +3718,7 @@ function AppCore() {
         // history file doesn't carry step metadata, so this is a
         // sidecar in localStorage.
         if (finalContent && !configErrorInBody) {
-          persistTurnState(finalId, finalAssistantMessageId, finalSteps, finalStartedAt, finalFigureSources);
+          persistTurnState(finalId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // If the agent streamed a connect form, open the side panel
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
@@ -4127,7 +4132,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        const finalFigureSources = streamState.figureSources;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -4159,7 +4166,7 @@ function AppCore() {
         }));
         if (finalContent && !configErrorInBody) {
           // Sidecar — see persistTurnState comment for the full schema.
-          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt, finalFigureSources);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         reloadArtifacts();
@@ -4458,7 +4465,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        const finalFigureSources = streamState.figureSources;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
         // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
@@ -4479,7 +4488,7 @@ function AppCore() {
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent) {
-          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt, finalFigureSources);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         // A successful save changes the connectors list — refetch

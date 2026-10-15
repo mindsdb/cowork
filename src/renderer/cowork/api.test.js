@@ -666,7 +666,8 @@ describe('fetchSession error hydration (ENG-1304)', () => {
    answer marks its figures the way the live one did. */
 describe('fetchSession figure sources hydration', () => {
   const FIGURES = {
-    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] }],
+    project_id: 'proj-1',
+    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] }],
     figures: [
       { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
       { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },

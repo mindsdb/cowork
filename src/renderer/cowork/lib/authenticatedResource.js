@@ -4,9 +4,11 @@ import { downloadBlob } from './browserDownload';
 
 const REVOKE_OPENED_BLOB_AFTER_MS = 60_000;
 
+/* Carries `status`, as the API helpers' errors do, so a caller can tell a
+   missing file (404) from other failures. */
 function fileRequestError(response) {
   const status = Number(response?.status) || 0;
-  return new Error(status ? `Could not load file (${status})` : 'Could not load file');
+  return Object.assign(new Error(status ? `Could not load file (${status})` : 'Could not load file'), { status });
 }
 
 function revokeLater(objectUrl, delay) {
@@ -34,12 +36,21 @@ function assertPrivateApiUrl(url) {
   }
 }
 
-/** Fetch a private file through the same bearer and organization boundary as JSON APIs. */
-export async function fetchAuthenticatedBlob(url) {
+/**
+ * Fetch a private file through the same bearer and organization boundary as
+ * JSON APIs, and hand back the response with its body unread, so a caller can
+ * read its headers (its Content-Length) before it downloads the body.
+ */
+export async function fetchAuthenticatedResponse(url) {
   assertPrivateApiUrl(url);
   const response = await authFetch(url);
   if (!response.ok) throw fileRequestError(response);
-  return response.blob();
+  return response;
+}
+
+/** Fetch a private file through the same bearer and organization boundary as JSON APIs. */
+export async function fetchAuthenticatedBlob(url) {
+  return (await fetchAuthenticatedResponse(url)).blob();
 }
 
 /**

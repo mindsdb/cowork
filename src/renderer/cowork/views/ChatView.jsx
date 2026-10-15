@@ -459,6 +459,27 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
   );
 }
 
+/** @typedef {import('../lib/figureSources').FigureSources} FigureSources */
+/** @typedef {import('../lib/figureSources').LinkedFigureSource} LinkedFigureSource */
+
+/**
+ * Whether View file can read a figure source's project path in this chat.
+ * The path is relative to the project the answer ran in, and the viewer reads
+ * it from the chat's current project: with no project there is nothing to
+ * read it from, and after Move to project the same path there names another
+ * file. An answer saved before figure sources named their project (no
+ * project_id) reads it from the current project.
+ *
+ * @param {FigureSources | null | undefined} figureSources
+ * @param {string | null} projectId the chat's current project
+ * @param {string | null} projectName
+ */
+function canReadFigurePaths(figureSources, projectId, projectName) {
+  if (!projectName) return false;
+  const ranIn = figureSources?.project_id ?? null;
+  return ranIn == null || ranIn === projectId;
+}
+
 export function TextBlock({
   text,
   id,
@@ -466,18 +487,34 @@ export function TextBlock({
   conversationId = null,
   /* A finished answer's figure sources (lib/figureSources), the turn's steps
      they name, the opener for one of those steps by its id, and the opener
-     for a source's project file by its project-relative path. */
+     for the file a source read, called with the source. */
   figureSources = null,
   steps = null,
   onOpenStep = null,
   onViewFile = null,
+  // The chat's current project, which View file reads a project path from.
+  projectId = null,
+  projectName = null,
   // Settings > Appearance "Show where figures came from"; off renders no marks.
   showFigureSources = true,
 }) {
-  const figures = useMemo(
-    () => (showFigureSources ? linkFigureSteps(figureSources, steps) : null),
-    [showFigureSources, figureSources, steps],
-  );
+  const figures = useMemo(() => {
+    if (!showFigureSources) return null;
+    const linked = linkFigureSteps(figureSources, steps);
+    if (!linked) return null;
+    /* A file this chat cannot read offers no View file: a project path
+       outside the project it reads from, or an attachment with no route to
+       read it by (attachmentRawUrl needs the project and the conversation). */
+    const readsPaths = canReadFigurePaths(figureSources, projectId, projectName);
+    const readable = (source) => ({
+      ...source,
+      path: readsPaths ? source.path : null,
+      attachment_id: source.attachment_id && attachmentRawUrl(projectName, conversationId, source.attachment_id)
+        ? source.attachment_id
+        : null,
+    });
+    return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
+  }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
@@ -493,6 +530,43 @@ export function TextBlock({
       onViewFigureFile={onViewFile}
     />
   );
+}
+
+/**
+ * The figure viewer's file. A project file is read by its path from the
+ * chat's project. A file attached to the chat is read by its files-store id
+ * through its attachment route, and shown as text when it is text; `filePath` is its
+ * name then, for the header and the image check, as the Context card's
+ * attachment viewer does.
+ *
+ * @param {LinkedFigureSource | null} source
+ * @param {string | undefined} projectName
+ * @param {string | undefined} projectPath
+ * @param {string | null | undefined} conversationId
+ */
+function figureFileViewerProps(source, projectName, projectPath, conversationId) {
+  if (!source?.path && source?.attachment_id) {
+    const name = source.label || 'Attached file';
+    return {
+      title: name,
+      filePath: name,
+      rawUrl: attachmentRawUrl(projectName, conversationId, source.attachment_id),
+      showRawText: true,
+    };
+  }
+  return { projectName, projectPath, filePath: source?.path || '' };
+}
+
+/**
+ * The figure viewer's note. It shows the file as it is now, which a later
+ * upload under the same name may have changed; the step shows what it read.
+ *
+ * @param {LinkedFigureSource | null} source
+ */
+function figureFileNote(source) {
+  return source?.stepId
+    ? 'Shows the file as it is now. Open step shows what the step read.'
+    : 'Shows the file as it is now, which may differ from what the step read.';
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -1895,9 +1969,9 @@ export default function ChatView({
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
-  /* Project-relative path of the file a figure's source names, open in the
-     file viewer. null = closed. */
-  const [figureFilePath, setFigureFilePath] = useState(null);
+  /* The figure source (a LinkedFigureSource) whose file is open in the
+     figure viewer. null = closed. */
+  const [figureFileSource, setFigureFileSource] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -3042,9 +3116,9 @@ export default function ChatView({
                     figureSources={m.figureSources}
                     steps={m.steps}
                     onOpenStep={(stepId) => setOpenScratchpadStepId(prefixId(messageKey(m, i), stepId))}
-                    /* A source's path is relative to the chat's project, so
-                       without one there is nothing to read it from. */
-                    onViewFile={project?.name ? setFigureFilePath : null}
+                    onViewFile={setFigureFileSource}
+                    projectId={project?.id ?? null}
+                    projectName={project?.name ?? null}
                     showFigureSources={showFigureSources}
                   />
                   {m.artifact && (
@@ -3304,21 +3378,19 @@ export default function ChatView({
         focusStepId={openScratchpadStepId}
       />
 
-      {/* The project file a figure's source names, opened from the figure's
-          popover; one viewer for the whole chat. The agent named the path,
-          so the viewer offers no Open (host.openPath hands the file to the
-          OS default app). No Edit or Delete either: the file is the
-          figure's evidence, and the Context card's list would not hear of
-          a change. */}
+      {/* The file a figure's source read, opened from the figure's popover;
+          one viewer for the whole chat. The agent named the file, so the
+          viewer offers no Open (it hands the file to the OS default app). No
+          Edit or Delete either: the file is the figure's evidence, and the
+          Context card's list would not hear of a change. */}
       <ContextFileModal
-        open={figureFilePath != null}
-        projectName={project?.name}
-        projectPath={artifactProjectPath}
-        filePath={figureFilePath || ''}
+        open={figureFileSource != null}
+        {...figureFileViewerProps(figureFileSource, project?.name, artifactProjectPath, task?.id)}
         showOpenAction={false}
         showEditAction={false}
         remover={null}
-        onClose={() => setFigureFilePath(null)}
+        note={figureFileNote(figureFileSource)}
+        onClose={() => setFigureFileSource(null)}
       />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts

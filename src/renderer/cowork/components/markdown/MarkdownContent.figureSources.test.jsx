@@ -30,7 +30,8 @@ vi.mock('../../../platform/host', async (importOriginal) => {
 vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
 import { MarkdownContent } from './MarkdownContent';
-import { NO_SOURCE_TEXT } from '../../lib/figureSources';
+import { NO_SOURCE_TEXT, linkFigureSteps, rebaseFigureSources } from '../../lib/figureSources';
+import { initialStreamState, reduceStream } from '../../lib/responseStreamAdapter';
 import { copyText } from '../../lib/clipboard';
 import { host } from '../../../platform/host';
 
@@ -101,6 +102,16 @@ const ANSWER_FIGURES = [
 
 const marks = (container) => [...container.querySelectorAll('button.anton-figure')];
 
+/* The rendered text with each mark written as [text], or [text?] for a
+   "No source" one. */
+const markedText = (element) => {
+  const copy = element.cloneNode(true);
+  for (const mark of copy.querySelectorAll('button.anton-figure')) {
+    mark.replaceWith(`[${mark.textContent}${mark.classList.contains('anton-figure--unsourced') ? '?' : ''}]`);
+  }
+  return copy.textContent;
+};
+
 describe('MarkdownContent without figure marks to make', () => {
   it.each([
     ['null', null],
@@ -114,33 +125,36 @@ describe('MarkdownContent without figure marks to make', () => {
 });
 
 describe('MarkdownContent figure marks', () => {
-  it('marks a sourced figure with a button named by its first source', () => {
+  it('marks a sourced figure with a button named by its first source\'s kind and described by its sources', () => {
     render(<MarkdownContent text={ANSWER} isAssistant figureSources={ANSWER_FIGURES} />);
-    const mark = screen.getByRole('button', { name: '250, From stock.csv and 2 more' });
+    const mark = screen.getByRole('button', { name: '250, from a file' });
+    expect(mark).toHaveAccessibleDescription('From stock.csv and 2 more');
     expect(mark).toHaveTextContent('250');
     expect(mark).toHaveClass('anton-figure');
     expect(mark).not.toHaveClass('anton-figure--unsourced');
     // Still inside the bold run it was written in.
     expect(mark.closest('strong')).not.toBeNull();
-    expect(screen.getByRole('button', { name: '$42, From rates.pdf, page 1' })).toHaveTextContent('$42');
+    expect(screen.getByRole('button', { name: '$42, from a file' })).toHaveAccessibleDescription('From rates.pdf, page 1');
   });
 
   it.each([
-    ['query', QUERY, 'From a query: Query stock for site S1'],
-    ['web', WEB, 'From the web: example.com/rates'],
-    ['memory', MEMORY, 'From memory'],
-    ['step', source('toolu_07', 'step', 'read_file'), 'From a step: read_file'],
-  ])('keeps the tooltip to one line for a %s source', async (_kind, s, text) => {
+    ['query', QUERY, 'from a query', 'From a query: Query stock for site S1'],
+    ['web', WEB, 'from the web', 'From the web: example.com/rates'],
+    ['memory', MEMORY, 'from memory', 'From memory'],
+    ['step', source('toolu_07', 'step', 'read_file'), 'from a step', 'From a step: read_file'],
+  ])('keeps the tooltip to one line for a %s source', async (_kind, s, state, text) => {
     const answer = 'There are 250 units.';
     render(<MarkdownContent text={answer} isAssistant figureSources={[figure('250', answer, 'step', [s])]} />);
-    const mark = screen.getByRole('button', { name: `250, ${text}` });
+    const mark = screen.getByRole('button', { name: `250, ${state}` });
+    expect(mark).toHaveAccessibleDescription(text);
     await userEvent.hover(mark);
     expect(await screen.findByText(text)).toBeVisible();
   });
 
   it('marks a figure no step returned as "No source", by name and in the tooltip', async () => {
     render(<MarkdownContent text={ANSWER} isAssistant figureSources={ANSWER_FIGURES} />);
-    const mark = screen.getByRole('button', { name: `$30, ${NO_SOURCE_TEXT}` });
+    const mark = screen.getByRole('button', { name: '$30, no source' });
+    expect(mark).toHaveAccessibleDescription(NO_SOURCE_TEXT);
     expect(mark).toHaveClass('anton-figure', 'anton-figure--unsourced');
     await userEvent.hover(mark);
     expect(await screen.findByText(NO_SOURCE_TEXT)).toBeVisible();
@@ -203,6 +217,75 @@ describe('MarkdownContent figure marks', () => {
     const stale = { ...figure('$30', ANSWER, 'none', []), start: 3, end: 6 };
     const { container } = render(<MarkdownContent text={ANSWER} isAssistant figureSources={[stale]} />);
     expect(marks(container).map((b) => b.textContent)).toEqual(['$30']);
+  });
+
+  it('does not mark the 1 of S1 when the math rewrite shifted the offsets onto it', () => {
+    const text = 'Let $n$ be the count. Site S1: 1 pallet.';
+    const { container } = render(
+      <MarkdownContent text={text} isAssistant figureSources={[figure('1', text, 'none', [], text.indexOf(': 1'))]} />,
+    );
+    expect(markedText(container)).toContain('Site S1: [1?] pallet.');
+  });
+
+  it('marks the figure a blockquote line holds, not the digit of a site code after it', () => {
+    const text = [
+      '> Stock is low at both sites.',
+      '> Site S1 has none left.',
+      '> Site S2 has few left.',
+      '> Order 2 at S2 today.',
+    ].join('\n');
+    const { container } = render(
+      <MarkdownContent text={text} isAssistant figureSources={[figure('2', text, 'none', [], text.indexOf('Order'))]} />,
+    );
+    expect(markedText(container)).toContain('Order [2?] at S2 today.');
+  });
+
+  /* The server reads underscores as emphasis and "250,90" as two numbers,
+     and skips the time, date or month and year beside each figure here; the
+     mark must land where the server sent it, not on the copy it skipped. */
+  it.each([
+    ['Allow _30_ minutes; we start at 2:30 pm.', '30', 'none', 'Allow [30?] minutes; we start at 2:30 pm.'],
+    ['Plan for _2026_ units by October 2026.', '2026', 'none', 'Plan for [2026?] units by October 2026.'],
+    ['Site S1 holds _250_ units; see the 4/12/250 log.', '250', 'step', 'Site S1 holds [250] units; see the 4/12/250 log.'],
+    ['Overtime costs _$30_ an hour.', '$30', 'none', 'Overtime costs [$30?] an hour.'],
+  ])('marks the figure the server sent in %j', (text, figureText, origin, marked) => {
+    const sources = origin === 'step' ? [STOCK] : [];
+    const { container } = render(
+      <MarkdownContent text={text} isAssistant figureSources={[figure(figureText, text, origin, sources)]} />,
+    );
+    expect(markedText(container)).toBe(marked);
+    expect(marks(container)[0].closest('em')).not.toBeNull();
+  });
+
+  it('marks both numbers the server read in "250,90", and not the date after them', () => {
+    const text = 'S1 and S2 hold 250,90 units; logged 4/12/250.';
+    const { container } = render(
+      <MarkdownContent text={text} isAssistant figureSources={[figure('250', text), figure('90', text)]} />,
+    );
+    expect(markedText(container)).toBe('S1 and S2 hold [250],[90] units; logged 4/12/250.');
+  });
+
+  it('marks a prose figure after inline math, and leaves the same number inside the math alone', () => {
+    const text = 'With $a$, $b$ and $c$: $n = 198$ vs 198 rows.';
+    const figureSources = [
+      figure('198', text, 'none', []),
+      figure('198', text, 'step', [STOCK], text.indexOf('vs')),
+    ];
+    const { container } = render(<MarkdownContent text={text} isAssistant figureSources={figureSources} />);
+    expect(marks(container)).toHaveLength(1);
+    expect(markedText(container)).toContain('vs [198] rows.');
+    expect(container.querySelector('.katex button')).toBeNull();
+  });
+
+  it('keeps the answer mounted when a refetch hands over equal figure data', () => {
+    const text = `${ANSWER}\n\n\`\`\`sql\nSELECT 1;\n\`\`\``;
+    const { container, rerender } = render(<MarkdownContent text={text} isAssistant figureSources={ANSWER_FIGURES} />);
+    const paragraph = container.querySelector('p');
+    const mark = marks(container)[0];
+    const refetched = ANSWER_FIGURES.map((f) => ({ ...f, sources: f.sources.map((s) => ({ ...s })) }));
+    rerender(<MarkdownContent text={text} isAssistant figureSources={refetched} />);
+    expect(container.querySelector('p')).toBe(paragraph);
+    expect(marks(container)[0]).toBe(mark);
   });
 
   it('skips a figure whose text is not in the answer', () => {
@@ -271,12 +354,12 @@ describe('MarkdownContent figure source popover', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('hands "View file" the project-relative path and closes', async () => {
+  it('hands "View file" the source and closes', async () => {
     const onViewFile = vi.fn();
     renderAnswer({ onViewFigureFile: onViewFile });
     const popup = await openPopover(/^250,/);
     await userEvent.click(within(popup).getByRole('button', { name: /View file/ }));
-    expect(onViewFile).toHaveBeenCalledExactlyOnceWith('data/stock.csv');
+    expect(onViewFile).toHaveBeenCalledExactlyOnceWith(STOCK);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -344,5 +427,60 @@ describe('MarkdownContent figure source popover', () => {
     render(<MarkdownContent text={answer} isAssistant figureSources={[figure('250', answer, 'step', [MEMORY])]} />);
     const popup = await openPopover(/^250,/);
     expect(within(popup).getByRole('listitem').textContent).toBe('Memory');
+  });
+});
+
+/* A turn that narrates, runs a tool, then answers. The live message moves the
+   narration into a thought at the tool call, while the saved answer a reload
+   shows keeps it, and the server's offsets index the saved answer. */
+describe('MarkdownContent marks on a live answer after narration and a tool call', () => {
+  const NARRATION = 'Let me read stock.csv for the 2 sites.';
+  const REPLY = '\n\nSite S1 holds 250 units and site S2 holds 250 too.';
+  const SAVED = NARRATION + REPLY;
+  const traced = (text, origin, sources, from = 0) => {
+    const start = SAVED.indexOf(text, from);
+    return { start, end: start + text.length, text, origin, sources };
+  };
+  const EVENTS = [
+    { type: 'response.created', response: { id: 'r1' } },
+    { type: 'response.output_text.delta', delta: NARRATION },
+    { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+    { type: 'response.output_text.delta', delta: REPLY },
+    {
+      type: 'response.figure_sources',
+      project_id: 'proj-1',
+      steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] }],
+      figures: [
+        traced('2', 'none', []),
+        traced('250', 'step', [{ tool_use_id: 'toolu_01', page: null }]),
+        traced('250', 'none', [], SAVED.indexOf('S2')),
+      ],
+    },
+    {
+      type: 'response.completed',
+      assistant_message_id: 'a1',
+      response: { id: 'r1', status: 'completed', output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text: SAVED }] }] },
+    },
+  ];
+  const lastParagraph = (container) => [...container.querySelectorAll('p')].at(-1);
+
+  it('puts the same marks on the same figures as the reloaded answer', () => {
+    const state = EVENTS.reduce((s, e) => reduceStream(s, e, () => 5000), initialStreamState());
+    expect(state.bodyText).toBe(REPLY);
+    const live = render(
+      <MarkdownContent
+        text={state.bodyText}
+        isAssistant
+        figureSources={linkFigureSteps(rebaseFigureSources(state.figureSources, state.answerText, state.bodyText), state.steps)}
+      />,
+    ).container;
+    const reload = render(
+      <MarkdownContent text={SAVED} isAssistant figureSources={linkFigureSteps(state.figureSources, state.steps)} />,
+    ).container;
+    expect(markedText(lastParagraph(reload))).toBe('Site S1 holds [250] units and site S2 holds [250?] too.');
+    expect(markedText(lastParagraph(live))).toBe(markedText(lastParagraph(reload)));
+    // The narration figure is in the reloaded answer only.
+    expect(markedText(reload.querySelector('p'))).toBe('Let me read stock.csv for the [2?] sites.');
+    expect(marks(live)).toHaveLength(2);
   });
 });

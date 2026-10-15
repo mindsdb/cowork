@@ -1,6 +1,6 @@
-// Which links in agent-written text may open, and how they open. An answer's
-// own links (MarkdownContent) and a figure's web source (FigureMark) follow
-// the same rules, so both read them from here.
+/* Which links in agent-written text may open, and how they open. An answer's
+   own links (MarkdownContent) and a figure's web source (FigureMark) follow
+   the same rules, so both read them from here. */
 
 import { host } from '../../../platform/host';
 

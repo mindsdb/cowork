@@ -1,18 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import {
   NO_SOURCE_TEXT,
+  carryFigure,
   figureSourceText,
   hasFigureMarks,
   linkFigureSteps,
   locateFigure,
   parseFigureSources,
   placeFigures,
+  rebaseFigureSources,
 } from './figureSources';
 
 /* A source the way linkFigureSteps hands it to the marks: the step it names
    and the figure's page in it. */
 const source = (kind, label, extra = {}) => ({
-  tool_use_id: 'toolu_01', kind, label, path: null, url: null, queries: [], requests: [], page: null, stepId: null, ...extra,
+  tool_use_id: 'toolu_01', kind, label, path: null, attachment_id: null, url: null, queries: [], requests: [],
+  page: null, stepId: null, project_id: null, ...extra,
 });
 const fig = (text, start, origin = 'step', sources = [source('file', 'stock.csv')]) => (
   { start, end: start + text.length, text, origin, sources }
@@ -20,15 +23,17 @@ const fig = (text, start, origin = 'step', sources = [source('file', 'stock.csv'
 
 /* The event as cowork-server sends it. */
 const STEPS = [
-  { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] },
-  { tool_use_id: 'toolu_02', kind: 'query', label: 'Query stock for site S1', path: null, url: null, queries: ["SELECT qty FROM stock WHERE site = 'S1'"], requests: [] },
-  { tool_use_id: 'toolu_03', kind: 'query', label: 'Read inventory from the ERP API', path: null, url: null, queries: [], requests: ['GET {DS_ERP_URL}/inventory'] },
-  { tool_use_id: 'toolu_04', kind: 'web', label: 'example.com/rates', path: null, url: 'https://example.com/rates', queries: [], requests: [] },
+  { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] },
+  { tool_use_id: 'toolu_02', kind: 'query', label: 'Query stock for site S1', path: null, attachment_id: null, url: null, queries: ["SELECT qty FROM stock WHERE site = 'S1'"], requests: [] },
+  { tool_use_id: 'toolu_03', kind: 'query', label: 'Read inventory from the ERP API', path: null, attachment_id: null, url: null, queries: [], requests: ['GET {DS_ERP_URL}/inventory'] },
+  { tool_use_id: 'toolu_04', kind: 'web', label: 'example.com/rates', path: null, attachment_id: null, url: 'https://example.com/rates', queries: [], requests: [] },
+  { tool_use_id: 'toolu_05', kind: 'file', label: 'invoice.pdf', path: null, attachment_id: 'file-7f3a', url: null, queries: [], requests: [] },
 ];
 const EVENT = {
   type: 'response.figure_sources',
   sequence_number: 57,
   item_id: 'msg-ab12cd34ef56',
+  project_id: 'proj-1',
   steps: STEPS,
   figures: [
     { start: 14, end: 17, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
@@ -48,12 +53,38 @@ describe('parseFigureSources', () => {
   });
 
   it('keeps a well-formed event as sent, without its envelope', () => {
-    expect(parseFigureSources(EVENT)).toEqual({ steps: STEPS, figures: EVENT.figures });
+    expect(parseFigureSources(EVENT)).toEqual({ project_id: 'proj-1', steps: STEPS, figures: EVENT.figures });
   });
 
-  it('reads its own output the same way, so a saved copy parses again', () => {
-    const once = parseFigureSources(EVENT);
-    expect(parseFigureSources(once)).toEqual(once);
+  it.each([
+    ['missing', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['a number', 7],
+    ['an object', { id: 'proj-1' }],
+  ])('reads a project_id that is %s as null and keeps the rest of the event', (_label, project_id) => {
+    const out = parseFigureSources({ ...EVENT, project_id });
+    expect(out.project_id).toBeNull();
+    expect(out.steps).toEqual(STEPS);
+    expect(out.figures).toEqual(EVENT.figures);
+  });
+
+  it("keeps a step's attachment_id", () => {
+    expect(parsedStep({ path: null, attachment_id: 'file-7f3a' }).attachment_id).toBe('file-7f3a');
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['a number', 7],
+    ['a path', 'files/7f3a'],
+    ['a backslash path', 'files\\7f3a'],
+    ['a parent segment', '..'],
+    ['a dot segment', '.'],
+  ])('reads an attachment_id that is %s as null and keeps the step', (_label, attachment_id) => {
+    const out = parsedStep({ attachment_id });
+    expect(out.attachment_id).toBeNull();
+    expect(out.tool_use_id).toBe('toolu_01');
   });
 
   it('drops a figure it cannot place or explain', () => {
@@ -191,6 +222,116 @@ describe('locateFigure', () => {
   it('is null when the text is nowhere', () => {
     expect(locateFigure('no numbers here', fig('250', 3))).toBeNull();
   });
+
+  /* The same rule the server picks figures with: a number glued to a letter,
+     digit or underscore, after a dot, or after a dash that follows a letter
+     or digit is part of an identifier, a version or a code. */
+  it.each([
+    ['a letter before it', 'Site S1: 1 pallet', '1', 9],
+    ['letters before it', 'P100 holds 100', '100', 11],
+    ['an underscore before it', 'row_7 has 7', '7', 10],
+    ['a dash after a letter', 'Q-03 was 03', '03', 9],
+    ['a dot before it', 'v1.2.3 and 2', '2', 11],
+    ['a letter after it', '32GB or 32', '32', 8],
+    ['an underscore after it', '5_a or 5', '5', 7],
+  ])('skips an occurrence with %s', (_label, text, figureText, start) => {
+    expect(locateFigure(text, fig(figureText, 0))).toEqual({ start, end: start + figureText.length });
+  });
+
+  it('keeps a number after a dash that follows a space, as in a range or a minus', () => {
+    expect(locateFigure('from 2 - 5 units', fig('5', 0))).toEqual({ start: 9, end: 10 });
+  });
+
+  /* The server keeps a range's second end when the number before the dash is
+     itself a figure, so "150-200" sends 200 and the answer must mark it. */
+  it.each([
+    ['a plain range', 'about 150-200 units', '200', 10],
+    ['a currency range', 'costs $10-$20 an hour', '$20', 10],
+    ['a scaled range', 'between 5k-10k units', '10k', 11],
+  ])('keeps the second end of %s', (_label, text, figureText, start) => {
+    expect(locateFigure(text, fig(figureText, start))).toEqual({ start, end: start + figureText.length });
+  });
+
+  it.each([
+    ['a code after a letter', 'PO-2024-0012 has 0012', '0012', 17],
+    ['a code after letters and digits', 'A2210-30 or 30', '30', 12],
+    // The server keeps a range's second end only right after the dash.
+    ['a range whose second end opens with an underscore', '150-_200_ or 200', '200', 13],
+  ])('still skips a number after a dash in %s', (_label, text, figureText, start) => {
+    expect(locateFigure(text, fig(figureText, 0))).toEqual({ start, end: start + figureText.length });
+  });
+
+  it('places both ends of a range', () => {
+    const text = 'My best estimate is 150-200 units.';
+    const figures = [fig('150', 20), fig('200', 24)];
+    expect(placeFigures(text, figures).map((p) => p && text.slice(p.start, p.end))).toEqual(['150', '200']);
+  });
+
+  /* The server reads underscores around a number as emphasis (_250_), and
+     reads "250,90" as two numbers. It also skips a time, a date and a month
+     with its year, which this client does not know to skip, so a figure that
+     left the server's offsets would land on the copy the server skipped. */
+  it.each([
+    ['inside emphasis, beside a time', 'Allow _30_ minutes; we start at 2:30 pm.', '30', 7],
+    ['inside emphasis, beside a month and year', 'Plan for _2026_ units by October 2026.', '2026', 10],
+    ['inside emphasis, beside a date', 'Site S1 holds _250_ units; see the 4/12/250 log.', '250', 15],
+    ['with a currency sign inside emphasis', 'Overtime costs _$30_ an hour.', '$30', 16],
+    ['before a comma and a digit', 'S1 and S2 hold 250,90 units; logged 4/12/250.', '250', 15],
+    ['after a digit and a comma', 'S1 and S2 hold 250,90 units; logged 4/12/250.', '90', 19],
+  ])('keeps the place the server sent for a figure %s', (_label, text, figureText, start) => {
+    expect(placeFigures(text, [fig(figureText, start)])).toEqual([{ index: 0, start, end: start + figureText.length }]);
+  });
+
+  it('finds a figure inside emphasis when its offsets drifted', () => {
+    expect(locateFigure('Allow _30_ minutes', fig('30', 0))).toEqual({ start: 7, end: 9 });
+  });
+
+  it('never moves a drifted figure into a list of numbers, where it may be part of a longer one', () => {
+    expect(locateFigure('hold 250,90 and 250', fig('250', 0))).toEqual({ start: 16, end: 19 });
+  });
+
+  it('does not trust offsets that land inside an identifier', () => {
+    // The offsets drifted onto the 1 of S1; the figure is the 1 after it.
+    expect(locateFigure('Site S1: 1 pallet', fig('1', 6))).toEqual({ start: 9, end: 10 });
+  });
+
+  it('never picks a place that is not free, even at its own offsets', () => {
+    const pastCode = (start) => start >= 5;
+    expect(locateFigure('`250` and 250', fig('250', 1), pastCode)).toEqual({ start: 10, end: 13 });
+    expect(locateFigure('`250` only', fig('250', 1), pastCode)).toBeNull();
+  });
+});
+
+describe('carryFigure', () => {
+  it('finds the figure at the same count in a rewrite that moved it', () => {
+    const from = 'Let $x$ be 250, not 250.';
+    const to = 'Let $$x$$ be 250, not 250.';
+    expect(carryFigure(from, to, fig('250', from.lastIndexOf('250')))).toEqual({ start: 22, end: 25 });
+    expect(carryFigure(from, to, fig('250', from.indexOf('250')))).toEqual({ start: 13, end: 16 });
+  });
+
+  it('counts only the places the text stands alone', () => {
+    const from = 'S250 has 250.';
+    const to = '> S250 has 250.';
+    expect(carryFigure(from, to, fig('250', 9))).toEqual({ start: 11, end: 14 });
+  });
+
+  it('counts the places the server could send the text at, inside emphasis or between commas', () => {
+    const from = 'Hold _250_ and 250,90.';
+    const to = '> Hold _250_ and 250,90.';
+    expect(carryFigure(from, to, fig('250', from.lastIndexOf('250')))).toEqual({ start: 17, end: 20 });
+  });
+
+  it('is null when the offsets do not hold the figure in the text they index', () => {
+    expect(carryFigure('You have 250.', 'You have 250.', fig('250', 3))).toBeNull();
+    expect(carryFigure('S250 here', 'S250 here', fig('250', 1))).toBeNull();
+  });
+
+  it('is null when the rewrite changed how many times the text stands alone', () => {
+    const from = 'Was 250 <!-- 250 --> and 250.';
+    const to = 'Was 250  and 250.';
+    expect(carryFigure(from, to, fig('250', from.lastIndexOf('250')))).toBeNull();
+  });
 });
 
 describe('placeFigures', () => {
@@ -206,6 +347,91 @@ describe('placeFigures', () => {
   it('drops a figure overlapping one placed before it', () => {
     const text = 'about 1,284 units';
     expect(placeFigures(text, [fig('1,284', 6), fig('284', 8)])).toEqual([{ index: 0, start: 6, end: 11 }]);
+  });
+
+  it('gives each occurrence to one figure when two drifted onto the same one', () => {
+    // Both offsets are four characters short of their cells.
+    const text = 'Site | 120 | 120 |';
+    expect(placeFigures(text, [fig('120', 3), fig('120', 9)])).toEqual([
+      { index: 0, start: 7, end: 10 },
+      { index: 1, start: 13, end: 16 },
+    ]);
+  });
+
+  it('lets a figure whose offsets hold keep its place before a drifted one picks', () => {
+    const text = '120 and 120';
+    expect(placeFigures(text, [fig('120', 6), fig('120', 8)])).toEqual([
+      { index: 0, start: 0, end: 3 },
+      { index: 1, start: 8, end: 11 },
+    ]);
+  });
+
+  it('places nothing inside a skipped range and finds the prose occurrence instead', () => {
+    // Inline math the rewrite lengthened: the offsets now point into it.
+    const text = 'With $$a$$, $$b$$ and $$c$$: $$n = 198$$ vs 198 rows.';
+    const math = text.indexOf('$$n = 198$$');
+    const skipped = [[5, 10], [12, 17], [22, 27], [math, math + 11]];
+    expect(placeFigures(text, [fig('198', text.indexOf('198 rows') - 8, 'none', [])], { skipped })).toEqual([
+      { index: 0, start: text.indexOf('198 rows'), end: text.indexOf('198 rows') + 3 },
+    ]);
+  });
+
+  it('carries each figure from the answer as written onto its rewrite', () => {
+    const original = 'With $a$ and $b$: 120 | 120';
+    const source = 'With $$a$$ and $$b$$: 120 | 120';
+    const figures = [fig('120', original.indexOf('120')), fig('120', original.lastIndexOf('120'), 'none', [])];
+    expect(placeFigures(source, figures, { original })).toEqual([
+      { index: 0, start: 22, end: 25 },
+      { index: 1, start: 28, end: 31 },
+    ]);
+  });
+
+  it('gives a figure carried into a skipped range no place, rather than another occurrence', () => {
+    // The 198 inside the math is a figure too; the prose one came from the question.
+    const original = 'With $a$: $n = 198$ vs 198 rows.';
+    const source = 'With $$a$$: $$n = 198$$ vs 198 rows.';
+    const figures = [
+      fig('198', original.indexOf('198'), 'none', []),
+      fig('198', original.lastIndexOf('198'), 'question', []),
+    ];
+    const math = source.indexOf('$$n = 198$$');
+    expect(placeFigures(source, figures, { original, skipped: [[5, 10], [math, math + 11]] })).toEqual([]);
+  });
+});
+
+describe('rebaseFigureSources', () => {
+  const NARRATION = 'Let me read stock.csv for the 2 sites.';
+  const ANSWER = '\n\nSite S1 holds 250 units.';
+  const sources = (figures) => ({ project_id: 'proj-1', steps: STEPS, figures });
+  const at = (text, whole, from = 0) => {
+    const start = whole.indexOf(text, from);
+    return { start, end: start + text.length, text, origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] };
+  };
+
+  it('moves every figure back by the narration the live message dropped, and leaves out the ones in it', () => {
+    const whole = NARRATION + ANSWER;
+    const out = rebaseFigureSources(sources([at('2', whole), at('250', whole)]), whole, ANSWER);
+    expect(out.figures).toEqual([at('250', ANSWER)]);
+    expect(out.steps).toBe(STEPS);
+    expect(out.project_id).toBe('proj-1');
+    expect(ANSWER.slice(out.figures[0].start, out.figures[0].end)).toBe('250');
+  });
+
+  it('keeps the figures as they are when the live message is the whole answer', () => {
+    const figureSources = sources([at('250', ANSWER)]);
+    expect(rebaseFigureSources(figureSources, ANSWER, ANSWER)).toBe(figureSources);
+  });
+
+  it('keeps no figures when the live message is not the end of the answer the server traced', () => {
+    expect(rebaseFigureSources(sources([at('250', ANSWER)]), ANSWER, 'Site S1 holds 250 units, restored.')).toBeNull();
+  });
+
+  it('keeps no figures without the answer the server traced', () => {
+    expect(rebaseFigureSources(sources([at('250', ANSWER)]), null, ANSWER)).toBeNull();
+  });
+
+  it('is null without figure sources', () => {
+    expect(rebaseFigureSources(null, ANSWER, ANSWER)).toBeNull();
   });
 });
 
@@ -231,8 +457,8 @@ describe('linkFigureSteps', () => {
   it('joins each source to its step, with its page and the turn step it opens', () => {
     const [sourced, unsourced] = linkFigureSteps(figureSources, turnSteps);
     expect(sourced.sources).toEqual([
-      { ...STEPS[2], page: null, stepId: null },
-      { ...STEPS[0], page: 4, stepId: 'step-1' },
+      { ...STEPS[2], page: null, stepId: null, project_id: null },
+      { ...STEPS[0], page: 4, stepId: 'step-1', project_id: null },
     ]);
     expect(unsourced.sources).toEqual([]);
     expect(sourced.text).toBe('250');
@@ -240,5 +466,15 @@ describe('linkFigureSteps', () => {
 
   it('links nothing when the turn has no steps', () => {
     expect(linkFigureSteps(figureSources, null)[0].sources.map((s) => s.stepId)).toEqual([null, null]);
+  });
+
+  it("gives each source the event's project and its step's attachment", () => {
+    const linked = linkFigureSteps(parseFigureSources({
+      project_id: 'proj-1',
+      steps: STEPS,
+      figures: [{ start: 0, end: 3, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_05', page: 2 }] }],
+    }), turnSteps);
+    expect(linked[0].sources).toEqual([{ ...STEPS[4], page: 2, stepId: null, project_id: 'proj-1' }]);
+    expect(linked[0].sources[0]).toMatchObject({ path: null, attachment_id: 'file-7f3a' });
   });
 });

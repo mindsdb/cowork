@@ -46,6 +46,7 @@ import { host } from '../../../platform/host';
 import {
   downloadAuthenticatedResource,
   fetchAuthenticatedBlob,
+  fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
 
@@ -59,6 +60,35 @@ function joinAbs(root, rel) {
   return `${r}/${p}`;
 }
 
+
+/* The project files API reads text inline up to 2 MiB; an attachment read
+   through its raw URL keeps the same cap. */
+const INLINE_TEXT_MAX_BYTES = 2 * 1024 * 1024;
+
+/* The file at `url` as text, or null when it is too large to show inline or
+   is not UTF-8 text. A Content-Length past the cap refuses the file before
+   its body downloads; without one, the size is checked once it has. */
+async function readInlineText(url) {
+  const response = await fetchAuthenticatedResponse(url);
+  if (Number(response.headers.get('Content-Length')) > INLINE_TEXT_MAX_BYTES) {
+    response.body?.cancel().catch(() => {});
+    return null;
+  }
+  const blob = await response.blob();
+  if (blob.size > INLINE_TEXT_MAX_BYTES) return null;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+/* Whether FileAccessButton has anything to offer: Download on web, Reveal
+   or Open on desktop. */
+function hasFileAccess({ projectName, filePath, rawUrl, showOpenAction }) {
+  const hasProjectFile = !!(projectName && filePath);
+  return host.isWeb ? hasProjectFile || !!rawUrl : hasProjectFile || showOpenAction;
+}
 
 // Header chip that handles "reveal in Finder" / "open in default app"
 // on desktop and falls back to a download link on the web. Used by
@@ -120,14 +150,15 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
 // + the same reveal/download affordances as the header chip, so the
 // modal stays useful even when nothing can be displayed inline.
 function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction }) {
+  const offersActions = hasFileAccess({ projectName, filePath, rawUrl, showOpenAction });
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
       <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(32) : '📄'}</div>
       <div className="flex flex-col gap-1">
         <span className="font-[family-name:var(--font-display)] text-[14.5px] font-semibold text-ink">{fileName}</span>
         <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 max-w-[380px] leading-[1.5]">
-          This file can't be displayed inline (binary, too large, or not text). Use the
-          actions below to view it.
+          This file can't be displayed inline (binary, too large, or not text).
+          {offersActions && ' Use the actions below to view it.'}
         </span>
       </div>
       <FileAccessButton
@@ -161,6 +192,13 @@ export default function ContextFileModal({
   /* False drops Edit, for a viewer that only shows the file, such as a
      figure's source, which is that figure's evidence. */
   showEditAction = true,
+  /* True reads a non-image `rawUrl` (an attachment, which has no project
+     path) and shows its bytes as text when they are UTF-8 text under the
+     inline cap; anything else lands in the binary panel, as it does without
+     this. */
+  showRawText = false,
+  /* An optional one-line note under the header, e.g. what the shown file is. */
+  note = null,
   // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
   subtitle,        // optional label after the title (e.g. "Project · acme")
@@ -187,7 +225,10 @@ export default function ContextFileModal({
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A failed save or delete; the file stays on screen.
   const [error, setError] = useState('');
+  // A failed read; the body shows nothing but this.
+  const [loadError, setLoadError] = useState('');
   // Which render branch the modal is in:
   //   'text'   — Markdown / plain text, the original editable view.
   //   'html'   — load as an iframe via projects preview-mount (parity
@@ -256,9 +297,21 @@ export default function ContextFileModal({
     if (!open) return;
     let cancelled = false;
     setError('');
+    setLoadError('');
+    /* A reused viewer must never show the previous file under this one's
+       name, nor keep editing into it: Save would write the empty draft over
+       a file this viewer has not read. */
+    setContent('');
+    setDraft('');
+    setEditing(false);
     setPreviewUrl('');
     setBinaryDetail('');
     setMode('text');
+    /* What a read that finds no file says: an attachment is read by its raw
+       URL, a project file by its path. */
+    const missing = rawUrl
+      ? `${headerTitle || 'This file'} is no longer attached to this chat.`
+      : `${filePath} is no longer in this project.`;
 
     // Image branch (before the project-IO guard): render inline as an
     // <img>. Works for project files (download URL from name+path) and
@@ -280,10 +333,14 @@ export default function ContextFileModal({
             setPreviewUrl(objectUrl);
             setLoading(false);
           })
-          .catch(() => {
+          .catch((e) => {
             if (cancelled) return;
-            setMode('binary');
-            setBinaryDetail('Could not load image.');
+            if (e?.status === 404) {
+              setLoadError(missing);
+            } else {
+              setMode('binary');
+              setBinaryDetail('Could not load image.');
+            }
             setLoading(false);
           });
         return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
@@ -295,6 +352,25 @@ export default function ContextFileModal({
     // OS shell via the binary panel's Open action, so land in 'binary'
     // mode rather than a stuck empty 'text' view.
     if (!genericMode && (!filePath || !projectName)) {
+      if (rawUrl && showRawText) {
+        setLoading(true);
+        readInlineText(rawUrl)
+          .then((text) => {
+            if (cancelled) return;
+            if (text == null) {
+              setMode('binary');
+            } else {
+              setContent(text);
+              setDraft(text);
+            }
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            setLoadError(e?.status === 404 ? missing : (e?.message || 'Could not read file'));
+          })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+      }
       if (rawUrl) {
         setMode('binary');
         setLoading(false);
@@ -356,13 +432,15 @@ export default function ContextFileModal({
         if (!genericMode && /HTTP 413|HTTP 415|too large|not valid UTF-8/i.test(msg)) {
           setMode('binary');
           setBinaryDetail(msg);
+        } else if (!genericMode && e?.status === 404) {
+          setLoadError(missing);
         } else {
-          setError(msg);
+          setLoadError(msg);
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
+  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl, showRawText, headerTitle]);
 
   // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
@@ -396,6 +474,10 @@ export default function ContextFileModal({
       setBusy(false);
     }
   };
+
+  /* The footer's Cancel and Save stand only under the editor, which only a
+     text file this viewer read shows. */
+  const editingText = editing && mode === 'text' && !loadError;
 
   // `null` explicitly disables delete. Project-file mode otherwise falls back
   // to deleteProjectFile, including the capability-gated instructions file.
@@ -450,7 +532,7 @@ export default function ContextFileModal({
             )}
           </div>
           <div className="flex items-center gap-[6px]">
-            {showEditAction && mode === 'text' && !editing && !loading && (
+            {showEditAction && mode === 'text' && !editing && !loading && !loadError && (
               <Button
                 disabled={!editable}
                 title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
@@ -461,7 +543,7 @@ export default function ContextFileModal({
                 "Open" / "Download" affordance in the header so the user
                 can always get at the file even when the modal renders
                 something else inline. */}
-            {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && (
+            {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && !loadError && (
               <FileAccessButton
                 projectPath={projectPath}
                 projectName={projectName}
@@ -490,8 +572,14 @@ export default function ContextFileModal({
           {loading && (
             <div className="text-ink-3 text-[13px]">Loading…</div>
           )}
+          {loadError && (
+            <Alert variant="danger" className="shrink-0">{loadError}</Alert>
+          )}
           {error && (
             <Alert variant="danger" className="shrink-0">{error}</Alert>
+          )}
+          {note && !loadError && (
+            <div className="shrink-0 text-[12px] text-ink-3" role="note">{note}</div>
           )}
           <SharedResourceAttribution
             resource={attributionResource}
@@ -539,7 +627,7 @@ export default function ContextFileModal({
               showOpenAction={showOpenAction}
             />
           )}
-          {!loading && mode === 'text' && (editing ? (
+          {!loading && !loadError && mode === 'text' && (editing ? (
             <textarea
               ref={textareaRef}
               value={draft}
@@ -571,7 +659,7 @@ export default function ContextFileModal({
 
         <div className="flex items-center justify-between gap-2 py-3 px-[18px] bg-surface">
           <div>
-            {deleteApplicable && !editing && !loading && (
+            {deleteApplicable && !editingText && !loading && (
               <Button
                 variant="danger"
                 onClick={handleDelete}
@@ -581,7 +669,7 @@ export default function ContextFileModal({
             )}
           </div>
           <div className="flex gap-2">
-            {editing && (
+            {editingText && (
               <Button
                 variant="subtle"
                 onClick={() => {
@@ -594,7 +682,7 @@ export default function ContextFileModal({
                 disabled={busy}
               >Cancel</Button>
             )}
-            {editing && (
+            {editingText && (
               <Button
                 variant="primary"
                 onClick={save}
@@ -603,7 +691,7 @@ export default function ContextFileModal({
                 {busy ? 'Saving…' : 'Save'}
               </Button>
             )}
-            {!editing && !loading && (
+            {!editingText && !loading && (
               <Button
                 variant="subtle"
                 onClick={() => onClose?.()}

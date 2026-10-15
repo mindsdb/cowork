@@ -408,16 +408,14 @@ describe('applySessionMessages', () => {
   });
 });
 
-/* The parsed event (lib/figureSources), which is also the event's own shape
-   without its envelope. */
-const FIGURES = {
-  steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] }],
-  figures: [
-    { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
-    { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
-  ],
-};
-const FIGURE_EVENT = { type: 'response.figure_sources', item_id: 'msg-1', ...FIGURES };
+/* The event as the server saves it, and the parsed copy a turn keeps. */
+const STEP = { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] };
+const FIGURE_LIST = [
+  { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+  { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+];
+const FIGURE_EVENT = { type: 'response.figure_sources', item_id: 'msg-1', project_id: 'proj-1', steps: [STEP], figures: FIGURE_LIST };
+const FIGURES = { project_id: 'proj-1', steps: [{ ...STEP, attachment_id: null }], figures: FIGURE_LIST };
 
 describe('figure sources on reload', () => {
   beforeEach(() => localStorage.clear());
@@ -441,56 +439,20 @@ describe('figure sources on reload', () => {
     expect(out[0]).not.toHaveProperty('figureSources');
   });
 
-  it("persistTurnState keeps each step's tool_use_id and the figure sources", () => {
+  /* The server replays a turn's figure sources with its saved events. A live
+     turn's copy indexes the live message, which can lack narration the saved
+     answer keeps, so browser storage never holds one. */
+  it('persistTurnState saves no figure sources', () => {
     persistTurnState('c1', 'a1', [{ id: 'step-1', status: 'completed', _isScratchpad: true, _toolUseId: 'toolu_01' }], 5, FIGURES);
     const saved = readConvTurns('c1').a1;
-    expect(saved.steps[0]._toolUseId).toBe('toolu_01');
-    expect(saved.figureSources).toEqual(FIGURES);
+    expect(saved).toEqual({ steps: [expect.objectContaining({ id: 'step-1' })], startedAt: 5 });
+    expect(saved.steps[0]).not.toHaveProperty('_toolUseId');
   });
 
-  it('persistTurnState saves a turn with figures and no steps', () => {
-    persistTurnState('c1', 'a1', [], 5, FIGURES);
-    expect(readConvTurns('c1').a1).toEqual({ steps: [], startedAt: 5, figureSources: FIGURES });
-  });
-
-  it('persistTurnState writes no figure field for a turn without figures', () => {
-    persistTurnState('c1', 'a1', [{ id: 'step-1' }], 5, null);
-    expect(readConvTurns('c1').a1).not.toHaveProperty('figureSources');
-  });
-
-  it('mergeConvTurns restores the figure sources and steps that can still be opened', () => {
-    persistTurnState('c1', 'a1', [{ id: 'step-1', status: 'completed', _isScratchpad: true, _toolUseId: 'toolu_01' }], 5, FIGURES);
+  it('mergeConvTurns puts no figure sources from browser storage on a turn', () => {
+    writeConvTurns('c1', { a1: { steps: [{ id: 'saved' }], startedAt: 5, figureSources: FIGURES } });
     const [out] = mergeConvTurns('c1', [assistant({ id: 'a1' })]);
-    expect(out.figureSources).toEqual(FIGURES);
-    expect(out.steps[0]._toolUseId).toBe('toolu_01');
-  });
-
-  it('mergeConvTurns restores figure sources beside live steps, and never replaces live ones', () => {
-    persistTurnState('c1', 'a1', [{ id: 'saved' }], 5, FIGURES);
-    const [beside] = mergeConvTurns('c1', [assistant({ id: 'a1', steps: [{ id: 'live' }] })]);
-    expect(beside.steps).toEqual([{ id: 'live' }]);
-    expect(beside.figureSources).toEqual(FIGURES);
-    const live = { steps: [], figures: [FIGURES.figures[1]] };
-    const [kept] = mergeConvTurns('c1', [assistant({ id: 'a1', figureSources: live })]);
-    expect(kept.figureSources).toBe(live);
-  });
-
-  it('mergeConvTurns checks a saved copy again, since browser storage can be edited', () => {
-    persistTurnState('c1', 'a1', [], 5, FIGURES);
-    const map = readConvTurns('c1');
-    map.a1.figureSources.steps[0].path = '../../.ssh/id_rsa';
-    map.a1.figureSources.steps[0].url = 'javascript:alert(1)';
-    writeConvTurns('c1', map);
-    const [out] = mergeConvTurns('c1', [assistant({ id: 'a1' })]);
-    expect(out.figureSources.steps[0]).toMatchObject({ path: null, url: null });
-  });
-
-  it('mergeConvTurns restores nothing from a saved copy that is not the event shape', () => {
-    persistTurnState('c1', 'a1', [{ id: 'step-1' }], 5, null);
-    const map = readConvTurns('c1');
-    map.a1.figureSources = FIGURES.figures;
-    writeConvTurns('c1', map);
-    const [out] = mergeConvTurns('c1', [assistant({ id: 'a1' })]);
+    expect(out.steps).toEqual([{ id: 'saved' }]);
     expect(out).not.toHaveProperty('figureSources');
   });
 });

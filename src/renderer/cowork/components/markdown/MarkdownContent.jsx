@@ -5,7 +5,9 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
+import {
+  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+} from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -25,7 +27,7 @@ import { FigureMark } from './FigureMark';
 import { host } from '../../../platform/host';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
-import { hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
+import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
 // is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
@@ -116,19 +118,19 @@ function _figureSkippedRanges(node, out) {
   return out;
 }
 
-/* remark plugin: mark each figure the server traced (lib/figureSources). A
-   figure is placed by its offsets into the markdown source this plugin is
-   parsing, with locateFigure finding it again when the normalizing passes in
-   MarkdownContent shifted the text, then split out of the text node that holds
-   it into an <anton-figure data-figure={index}> element. The `components` map
-   renders that element as a FigureMark. Raw HTML in an answer never becomes an
-   element, so only this plugin can produce one. Runs before the other
-   text-splitting plugins: the nodes they create carry no source position. */
-function remarkFigureSources(figures) {
+/* remark plugin: mark each figure the server traced (lib/figureSources). The
+   figures' offsets index `text`, the answer as written; placeFigures carries
+   them onto the markdown source this plugin parses, which the normalizing
+   passes in MarkdownContent rewrote, and places none in code, math or a link.
+   Each placed figure is then split out of the text node that holds it into an
+   <anton-figure data-figure={index}> element, which the `components` map
+   renders as a FigureMark. Raw HTML in an answer never becomes an element, so
+   only this plugin can produce one. Runs before the other text-splitting
+   plugins: the nodes they create carry no source position. */
+function remarkFigureSources({ figures, text }) {
   return (tree, file) => {
-    const skipped = _figureSkippedRanges(tree, []);
-    const marks = placeFigures(String(file.value), figures)
-      .filter((m) => !skipped.some(([start, end]) => m.start < end && m.end > start));
+    const source = String(file.value);
+    const marks = placeFigures(source, figures, { original: text, skipped: _figureSkippedRanges(tree, []) });
     if (marks.length === 0) return;
     expandTextNodes(tree, (value, node) => {
       const from = node.position?.start?.offset;
@@ -138,16 +140,18 @@ function remarkFigureSources(figures) {
       let last = 0;
       for (const m of marks) {
         if (m.start < from || m.end > to) continue;
-        const { text } = figures[m.index];
+        const figure = { start: m.start - from, end: m.end - from, text: figures[m.index].text };
         /* The node's value can be shorter than its source (an escape, a
-           blockquote marker), so the offset is a hint, not an index. */
-        const at = locateFigure(value, { start: m.start - from, end: m.end - from, text });
+           blockquote marker): carry the figure over, else look near its
+           offset, past the marks already made. */
+        const at = carryFigure(source.slice(from, to), value, figure)
+          ?? locateFigure(value, figure, (start) => start >= last);
         if (!at || at.start < last) continue;
         if (at.start > last) out.push({ type: 'text', value: value.slice(last, at.start) });
         out.push({
           type: 'figureSource',
           data: { hName: 'anton-figure', hProperties: { dataFigure: m.index } },
-          children: [{ type: 'text', value: text }],
+          children: [{ type: 'text', value: figure.text }],
         });
         last = at.end;
       }
@@ -156,6 +160,29 @@ function remarkFigureSources(figures) {
       return out;
     });
   };
+}
+
+/**
+ * The figures of the answer being rendered and their openers, for the
+ * `anton-figure` renderer. Read through context so new figure data (a refetch
+ * hands over equal data as new objects) re-renders the marks without
+ * rebuilding `components`, which would remount the whole answer.
+ *
+ * @typedef {{
+ *   figures: import('../../lib/figureSources').LinkedFigure[] | null,
+ *   onOpenStep: ((stepId: string) => void) | null,
+ *   onViewFile: ((source: import('../../lib/figureSources').LinkedFigureSource) => void) | null,
+ * }} FigureSourcesContextValue
+ */
+const FigureSourcesContext = createContext(
+  /** @type {FigureSourcesContextValue} */ ({ figures: null, onOpenStep: null, onViewFile: null }),
+);
+
+function FigureSourceMark({ index, children }) {
+  const { figures, onOpenStep, onViewFile } = useContext(FigureSourcesContext);
+  const figure = figures?.[index];
+  if (!figure) return children;
+  return <FigureMark figure={figure} onOpenStep={onOpenStep} onViewFile={onViewFile}>{children}</FigureMark>;
 }
 
 const _ARTIFACT_LOCAL_LINK_TITLE =
@@ -595,13 +622,14 @@ export function MarkdownContent({
   /* Opens a figure source's step in the scratchpad, by step id; without it a
      source's popover offers no "Open step". */
   onOpenFigureStep = null,
-  /* Opens a figure source's project file in the file viewer, by its
-     project-relative path; without it the popover offers no "View file". */
+  /* Opens the file a figure source read in the file viewer, called with the
+     source (a project file by `path`, a conversation attachment by
+     `attachment_id`); without it the popover offers no "View file". */
   onViewFigureFile = null,
 }) {
   const rootRef = useRef(null);
   /* Read at click time, so a parent passing fresh callbacks every render
-     does not rebuild `components`, which would remount every element. */
+     hands the marks the same openers. */
   const openFigureStepRef = useRef(onOpenFigureStep);
   const viewFigureFileRef = useRef(onViewFigureFile);
   useEffect(() => {
@@ -611,6 +639,11 @@ export function MarkdownContent({
   const canOpenFigureStep = !!onOpenFigureStep;
   const canViewFigureFile = !!onViewFigureFile;
   const markFigures = hasFigureMarks(figureSources);
+  const figureContext = useMemo(() => /** @type {FigureSourcesContextValue} */ ({
+    figures: markFigures ? figureSources : null,
+    onOpenStep: canOpenFigureStep ? (stepId) => openFigureStepRef.current?.(stepId) : null,
+    onViewFile: canViewFigureFile ? (source) => viewFigureFileRef.current?.(source) : null,
+  }), [markFigures, figureSources, canOpenFigureStep, canViewFigureFile]);
   // Only run the form-fence normalization pass when forms are enabled.
   // User messages bypass it so a typed ```data-vault-form block stays
   // a normal fenced code block instead of getting auto-tidied for the
@@ -644,7 +677,7 @@ export function MarkdownContent({
     () => [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
-      ...(markFigures ? [[remarkFigureSources, figureSources]] : []),
+      ...(markFigures ? [[remarkFigureSources, { figures: figureSources, text }]] : []),
       [remarkSkillMentions, skillNames],
       // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
@@ -657,7 +690,7 @@ export function MarkdownContent({
       // Last, so every transform above sees the unchanged tree.
       ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, neutralizeLoopback, softBreaks, markFigures, figureSources],
+    [skillNames, neutralizeLoopback, softBreaks, markFigures, figureSources, text],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
@@ -837,19 +870,9 @@ export function MarkdownContent({
         </a>
       );
     },
-    'anton-figure': ({ node, children, ...rest }) => {
-      const figure = figureSources?.[Number(rest['data-figure'])];
-      if (!figure) return children;
-      return (
-        <FigureMark
-          figure={figure}
-          onOpenStep={canOpenFigureStep ? (stepId) => openFigureStepRef.current?.(stepId) : null}
-          onViewFile={canViewFigureFile ? (path) => viewFigureFileRef.current?.(path) : null}
-        >
-          {children}
-        </FigureMark>
-      );
-    },
+    'anton-figure': ({ node, children, ...rest }) => (
+      <FigureSourceMark index={Number(rest['data-figure'])}>{children}</FigureSourceMark>
+    ),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -878,10 +901,11 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, figureSources, canOpenFigureStep, canViewFigureFile]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
+      <FigureSourcesContext.Provider value={figureContext}>
       <Markdown
         remarkPlugins={remarkPlugins}
         // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
@@ -897,6 +921,7 @@ export function MarkdownContent({
       >
         {normalized || ''}
       </Markdown>
+      </FigureSourcesContext.Provider>
     </div>
   );
 }

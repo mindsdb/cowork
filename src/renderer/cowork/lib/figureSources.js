@@ -2,23 +2,31 @@
 
    cowork-server sends one `response.figure_sources` event just before
    `response.completed` when the final answer holds a figure, and replays it
-   with the turn's other saved events on reload. It carries two lists:
+   with the turn's other saved events on reload. It carries the project the
+   turn ran in and two lists:
 
-     steps    each step a figure names, in step order: what kind of source it
-              was, a short label, and what the reader can check it against (a
-              project file's path, a web URL, the SQL it ran, the HTTP requests
-              it made)
-     figures  each figure's place in the answer's markdown source (UTF-16
-              offsets into the message `content`) and where it came from:
+     project_id  the project the turn ran in, or null; a step's `path` is
+                 relative to it
+     steps       each step a figure names, in step order: what kind of source
+                 it was, a short label, and what the reader can check it
+                 against (a project file's path, the id of a file attached to
+                 the conversation, a web URL, the SQL it ran, the HTTP requests
+                 it made)
+     figures     each figure's place in the answer the server saved (UTF-16
+                 offsets into the saved message `content`) and where it came
+                 from:
 
        origin 'step'      one or more steps' outputs hold it; `sources` names
                           them by tool_use_id, in step order
        origin 'question'  the user's own question holds it; nothing to mark
        origin 'none'      no step returned it
 
-   The stream reducer stores the parsed event on the turn, ChatView's TextBlock
-   joins each source to its step (linkFigureSteps), and MarkdownContent marks
-   each figure in the rendered answer (FigureMark). */
+   The stream reducer stores the parsed event on the turn. A live message
+   drops narration that came before a tool call, so the finished live turn
+   moves the offsets onto its own text (rebaseFigureSources); a reloaded turn
+   shows the saved content and keeps them. ChatView's TextBlock joins each
+   source to its step (linkFigureSteps), and MarkdownContent marks each figure
+   in the rendered answer (FigureMark). */
 
 /**
  * @typedef {'query' | 'file' | 'web' | 'memory' | 'step'} FigureStepKind
@@ -27,11 +35,14 @@
  *   kind: FigureStepKind,
  *   label: string,
  *   path: string | null,
+ *   attachment_id: string | null,
  *   url: string | null,
  *   queries: string[],
  *   requests: string[],
  * }} FigureStep
- *   `path` is relative to the conversation's project; `url` is http(s).
+ *   `path` is relative to the project the turn ran in. `attachment_id` is the
+ *   files-store id of a file attached to the conversation, when the step read
+ *   one; `path` is null then. `url` is http(s).
  * @typedef {{ tool_use_id: string, page: number | null }} FigureSourceRef
  * @typedef {'step' | 'question' | 'none'} FigureOrigin
  * @typedef {{
@@ -41,14 +52,17 @@
  *   origin: FigureOrigin,
  *   sources: FigureSourceRef[],
  * }} Figure
- * @typedef {{ steps: FigureStep[], figures: Figure[] }} FigureSources
+ * @typedef {{ project_id: string | null, steps: FigureStep[], figures: Figure[] }} FigureSources
  *   The parsed event, as the turn keeps it. Every figure source names a step.
- * @typedef {FigureStep & { page: number | null, stepId: string | null }} LinkedFigureSource
+ * @typedef {FigureStep & { page: number | null, stepId: string | null, project_id: string | null }} LinkedFigureSource
  *   A figure's source joined with its step. `stepId` is the turn step it
  *   opens, or null when no step of the turn carries its tool_use_id.
+ *   `project_id` is the project the turn ran in, which `path` is relative to.
  * @typedef {Omit<Figure, 'sources'> & { sources: LinkedFigureSource[] }} LinkedFigure
  * @typedef {{ index: number, start: number, end: number }} FigurePlacement
  *   Where figure `index` of a list sits in a given source string.
+ * @typedef {[number, number]} TextRange
+ *   A [start, end) range of a source string.
  */
 
 const ORIGINS = new Set(['step', 'question', 'none']);
@@ -80,6 +94,15 @@ function webUrl(raw) {
 
 const stringList = (raw) => (Array.isArray(raw) ? raw.filter((v) => typeof v === 'string' && v) : []);
 
+const nonEmptyString = (raw) => (typeof raw === 'string' && raw ? raw : null);
+
+/* A files-store id, or null. The attachment viewer puts it in a URL path as
+   one segment, so an id with a slash, or a dot segment, never gets that far. */
+function attachmentId(raw) {
+  if (typeof raw !== 'string' || !raw || /[\/\\\0]/.test(raw)) return null;
+  return raw === '.' || raw === '..' ? null : raw;
+}
+
 /** @returns {FigureStep | null} null for a step with no tool_use_id. */
 function parseStep(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -90,6 +113,7 @@ function parseStep(raw) {
     kind: KINDS.has(raw.kind) ? raw.kind : 'step',
     label: typeof raw.label === 'string' ? raw.label : '',
     path: projectRelativePath(raw.path),
+    attachment_id: attachmentId(raw.attachment_id),
     url: webUrl(raw.url),
     queries: stringList(raw.queries),
     requests: stringList(raw.requests),
@@ -97,13 +121,14 @@ function parseStep(raw) {
 }
 
 /**
- * The event's `steps` and `figures`, or null when `figures` isn't a list. It
- * also reads its own output, so a saved copy can be parsed again on restore.
+ * The event's project, `steps` and `figures`, or null when `figures` isn't a
+ * list.
  *
- * A step without a tool_use_id is dropped, and so is a figure source naming no
- * step that survived. A figure this client can't place or explain (no text,
- * non-integer offsets, an origin it doesn't know) is dropped, which leaves
- * that figure unmarked.
+ * A project_id that isn't a non-empty string reads as null. A step without a
+ * tool_use_id is dropped, and so is a figure source naming no step that
+ * survived. A figure this client can't place or explain (no text, non-integer
+ * offsets, an origin it doesn't know) is dropped, which leaves that figure
+ * unmarked.
  *
  * @returns {FigureSources | null}
  */
@@ -128,7 +153,33 @@ export function parseFigureSources(raw) {
       .map((s) => ({ tool_use_id: s.tool_use_id, page: Number.isInteger(s.page) ? s.page : null }));
     figures.push({ start: f.start, end: f.end, text: f.text, origin: f.origin, sources });
   }
-  return { steps, figures };
+  return { project_id: nonEmptyString(raw.project_id), steps, figures };
+}
+
+/**
+ * `figureSources` with its offsets moved from `answerText`, the answer the
+ * server traced and saved, onto `text`, the part of it a live message shows.
+ * The live message drops narration that came before a tool call, so `text` is
+ * the end of `answerText`: every figure moves back by the length of what was
+ * dropped, and a figure inside the dropped part is left out. When `text` is
+ * not the end of `answerText`, or the answer is unknown, no figure can be
+ * placed, so none is kept (null).
+ *
+ * @param {FigureSources | null | undefined} figureSources
+ * @param {string | null | undefined} answerText
+ * @param {string} text
+ * @returns {FigureSources | null}
+ */
+export function rebaseFigureSources(figureSources, answerText, text) {
+  if (!figureSources || typeof answerText !== 'string' || !answerText.endsWith(text)) return null;
+  const dropped = answerText.length - text.length;
+  if (dropped === 0) return figureSources;
+  return {
+    ...figureSources,
+    figures: figureSources.figures
+      .filter((figure) => figure.start >= dropped)
+      .map((figure) => ({ ...figure, start: figure.start - dropped, end: figure.end - dropped })),
+  };
 }
 
 /** One source as a tooltip phrase, e.g. "From rates.pdf, page 1".
@@ -165,63 +216,186 @@ export function hasFigureMarks(figures) {
   return Array.isArray(figures) && figures.some(isMarked);
 }
 
-/* True when `length` characters at `index` are a whole number rather than a
-   piece of a longer one: "25" inside "250", "2,250" or "1.25" does not count. */
-function standsAlone(source, index, length) {
-  const before = source.slice(Math.max(0, index - 2), index);
-  const after = source.slice(index + length, index + length + 2);
-  return !/\d[.,]?$/.test(before) && !/^[.,]?\d/.test(after);
+const ALNUM = /[\p{L}\p{N}]/u;
+const DIGIT = /\d/;
+
+/* A number as written just before a dash: an optional currency sign (with a
+   country prefix such as C$), digits with thousands commas or decimals, and
+   an optional scale. Anchored at the end of the text it is matched against. */
+const NUMBER_AT_END = /(?:[A-Z]{0,3}[$€£])?\d[\d,.]*(?:bn|MM|mn|mln|[kKMB])?$/u;
+
+/* True when the characters before the dash at `dash` are a number that
+   stands alone on its own, so the number after the dash is a range's second
+   end: 200 in "150-200", but not 0012 in "PO-2024-0012" or 30 in "A2210-30". */
+function endsRange(source, dash) {
+  const match = NUMBER_AT_END.exec(source.slice(Math.max(0, dash - 64), dash));
+  return match != null && standsAlone(source, dash - match[0].length, match[0].length, { inRange: false });
 }
 
-/**
- * Where `figure` sits in `source`: at its own offsets when they still hold its
- * text, else at the whole-number occurrence of its text nearest those offsets,
- * else nowhere (null).
- *
- * @param {string} source
- * @param {{ start: number, end: number, text: string }} figure
- * @returns {{ start: number, end: number } | null}
- */
-export function locateFigure(source, figure) {
-  const { start, end, text } = figure;
-  if (source.slice(start, end) === text) return { start, end };
-  let best = -1;
-  for (let i = source.indexOf(text); i !== -1; i = source.indexOf(text, i + 1)) {
-    if (!standsAlone(source, i, text.length)) continue;
-    if (best === -1 || Math.abs(i - start) < Math.abs(best - start)) best = i;
-  }
-  return best === -1 ? null : { start: best, end: best + text.length };
+/* True when `length` characters at `index` stand alone, by the rule the
+   server picks figures with (_standalone in cowork-server's
+   figure_sources.py): nothing glued to them that makes them part of an
+   identifier or a version. "1" in "S1", "100" in "P100", "03" in "Q-03",
+   "2" in "1.2.3", "32" in "32GB" and "25" in "250" do not count. Underscores
+   around them are emphasis (_250_), unless a letter or digit goes on past
+   them (row_7). After a dash that follows a letter or digit, a number counts
+   only as a range's second end, written right after the dash. */
+function standsAlone(source, index, length, { inRange = true } = {}) {
+  let left = index;
+  while (source[left - 1] === '_') left -= 1;
+  let right = index + length;
+  while (source[right] === '_') right += 1;
+  const before = source[left - 1] ?? '';
+  const after = source[right] ?? '';
+  if (ALNUM.test(before) || before === '.') return false;
+  if (before === '-' && ALNUM.test(source[left - 2] ?? '')
+    && !(inRange && left === index && endsRange(source, left - 1))) return false;
+  if (ALNUM.test(after)) return false;
+  return !(after === '.' && DIGIT.test(source[right + 1] ?? ''));
 }
 
-/**
- * The marked figures' places in `source`, in source order. A figure that
- * can't be found, or overlaps one placed before it, is left out.
- *
- * @param {string} source
- * @param {Figure[]} figures
- * @returns {FigurePlacement[]}
- */
-export function placeFigures(source, figures) {
-  const placed = [];
-  figures.forEach((figure, index) => {
-    if (!isMarked(figure)) return;
-    const at = locateFigure(source, figure);
-    if (at) placed.push({ index, ...at });
-  });
-  placed.sort((a, b) => a.start - b.start);
+/* standsAlone, and not one part of a number written with commas: "250"
+   inside "2,250" or "250,5". The server reads "2,250" as one number and
+   never sends a part of it, but it reads "250,90" as two, so this rule only
+   picks where a figure that left its offsets may land, and never refuses the
+   offsets the server sent. */
+function standsApart(source, index, length) {
+  const end = index + length;
+  if (source[index - 1] === ',' && DIGIT.test(source[index - 2] ?? '')) return false;
+  if (source[end] === ',' && DIGIT.test(source[end + 1] ?? '')) return false;
+  return standsAlone(source, index, length);
+}
+
+/** @typedef {(start: number, end: number) => boolean} IsFree
+ *  Whether a figure may take the characters from `start` to `end`. */
+
+/** @type {IsFree} */
+const anywhere = () => true;
+
+/* Each index where `text` stands alone in `source`, in order. */
+function standaloneIndexes(source, text) {
   const out = [];
-  for (const p of placed) {
-    if (out.length > 0 && p.start < out[out.length - 1].end) continue;
-    out.push(p);
+  for (let i = source.indexOf(text); i !== -1; i = source.indexOf(text, i + 1)) {
+    if (standsAlone(source, i, text.length)) out.push(i);
   }
   return out;
 }
 
+/* standaloneIndexes of `source`, worked out once per text: a table answer
+   repeats the same few values across many figures. */
+function standaloneIndexesOf(source) {
+  const known = new Map();
+  return (text) => {
+    if (!known.has(text)) known.set(text, standaloneIndexes(source, text));
+    return known.get(text);
+  };
+}
+
+/* carryFigure, with each string's standalone indexes looked up by text. */
+function carry(from, to, figure, indexesInFrom, indexesInTo) {
+  const { start, end, text } = figure;
+  if (end - start !== text.length || from.slice(start, end) !== text) return null;
+  if (from === to) return standsAlone(from, start, text.length) ? { start, end } : null;
+  const inFrom = indexesInFrom(text);
+  const count = inFrom.indexOf(start);
+  if (count === -1) return null;
+  const inTo = indexesInTo(text);
+  if (inTo.length !== inFrom.length) return null;
+  return { start: inTo[count], end: inTo[count] + text.length };
+}
+
+/**
+ * Where `figure`, at its offsets in `from`, sits in `to`: a rewrite of `from`
+ * that moves text around the figures without adding or dropping any (math
+ * delimiters, code fences, a blockquote's markers, an escape). It is the place
+ * its text stands alone as many times before it. Null when `from` does not
+ * hold the figure at its offsets, or the rewrite changed how many times its
+ * text stands alone.
+ *
+ * @param {string} from
+ * @param {string} to
+ * @param {{ start: number, end: number, text: string }} figure
+ * @returns {{ start: number, end: number } | null}
+ */
+export function carryFigure(from, to, figure) {
+  return carry(from, to, figure, (text) => standaloneIndexes(from, text), (text) => standaloneIndexes(to, text));
+}
+
+/**
+ * Where `figure` sits in `source`: at its own offsets when they still hold
+ * its text, else at the occurrence of its text nearest those offsets, else
+ * nowhere (null). Either way the place must stand alone and be free to take
+ * (`isFree`: not code, math, a link, or a place another figure took). An
+ * occurrence found by that search must also not be one part of a number
+ * written with commas (standsApart).
+ *
+ * @param {string} source
+ * @param {{ start: number, end: number, text: string }} figure
+ * @param {IsFree} [isFree]
+ * @returns {{ start: number, end: number } | null}
+ */
+export function locateFigure(source, figure, isFree = anywhere) {
+  const { start, end, text } = figure;
+  const { length } = text;
+  if (end - start === length && source.slice(start, end) === text
+    && standsAlone(source, start, length) && isFree(start, end)) return { start, end };
+  let best = -1;
+  for (let i = source.indexOf(text); i !== -1; i = source.indexOf(text, i + 1)) {
+    if (!standsApart(source, i, length) || !isFree(i, i + length)) continue;
+    if (best === -1 || Math.abs(i - start) < Math.abs(best - start)) best = i;
+  }
+  return best === -1 ? null : { start: best, end: best + length };
+}
+
+/**
+ * The marked figures' places in `source`, in source order, none inside a
+ * `skipped` range and no two on the same characters.
+ *
+ * The figures' offsets index `original`, the answer as written, and `source`
+ * may be a rewrite of it. A figure carryFigure can follow into `source` takes
+ * that place, or none when it is skipped or taken. The others take the free
+ * occurrence of their text nearest their offsets, in offset order. A figure
+ * with no place is left out.
+ *
+ * @param {string} source
+ * @param {Figure[]} figures
+ * @param {{ original?: string, skipped?: TextRange[] }} [options]
+ * @returns {FigurePlacement[]}
+ */
+export function placeFigures(source, figures, { original = source, skipped = [] } = {}) {
+  /* One flag per character of `source`: skipped, or taken by a figure. */
+  const taken = new Uint8Array(source.length);
+  for (const [from, to] of skipped) taken.fill(1, from, to);
+  /** @type {IsFree} */
+  const isFree = (start, end) => taken.subarray(start, end).every((flag) => flag === 0);
+  /** @type {FigurePlacement[]} */
+  const placed = [];
+  const claim = (index, { start, end }) => {
+    placed.push({ index, start, end });
+    taken.fill(1, start, end);
+  };
+  const inOriginal = standaloneIndexesOf(original);
+  const inSource = standaloneIndexesOf(source);
+  const drifted = [];
+  figures.forEach((figure, index) => {
+    if (!isMarked(figure)) return;
+    const at = carry(original, source, figure, inOriginal, inSource);
+    if (!at) drifted.push(index);
+    else if (isFree(at.start, at.end)) claim(index, at);
+  });
+  drifted.sort((a, b) => figures[a].start - figures[b].start);
+  for (const index of drifted) {
+    const at = locateFigure(source, figures[index], isFree);
+    if (at) claim(index, at);
+  }
+  return placed.sort((a, b) => a.start - b.start);
+}
+
 /**
  * Each figure with its sources joined to their steps, each source carrying
- * `stepId`: the turn step it opens. A source opens a step when one of the
- * turn's scratchpad cells or tool calls (the steps ScratchpadModal shows)
- * carries its `tool_use_id`.
+ * `stepId`, the turn step it opens, and `project_id`, the project the turn
+ * ran in. A source opens a step when one of the turn's scratchpad cells or
+ * tool calls (the steps ScratchpadModal shows) carries its `tool_use_id`.
  *
  * @param {FigureSources | null | undefined} figureSources
  * @param {Array<{ id: string, _toolUseId?: string | null, _isScratchpad?: boolean, _isToolCall?: boolean }> | null | undefined} steps
@@ -244,6 +418,7 @@ export function linkFigureSteps(figureSources, steps) {
         ...sourceSteps.get(ref.tool_use_id),
         page: ref.page,
         stepId: stepIds.get(ref.tool_use_id) ?? null,
+        project_id: figureSources.project_id ?? null,
       })),
   }));
 }
