@@ -6,7 +6,7 @@
 // active theme automatically.
 
 import {
-  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
 } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -584,7 +584,12 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. Props are primitives apart from the figure props, which
+// callers keep referentially stable for a settled message, so the shallow
+// compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
@@ -936,4 +941,4 @@ export function MarkdownContent({
       </FigureSourcesContext.Provider>
     </div>
   );
-}
+});
