@@ -9,7 +9,8 @@ export const MAX_INCLUDED_NOTION_CHARS = 40_000;
 // Fetch each picked Notion page's text before sending, so it rides in the
 // message like an uploaded file's contents. Left to fetch it themselves,
 // some models (MindsHub Air) stall in a loop instead of calling the tool.
-// A page that can't be fetched in time falls back to the fetch instruction.
+// A page that can't be fetched in time falls back to a one-line pointer to
+// notion-fetch; how to use it is in notion.json's usage_notes.
 export async function loadNotionPageTexts(reference, fetchPage = fetchNotionPage) {
   const pages = (reference || []).filter((a) => a.source === 'notion' && a.connectionName);
   const loaded = await Promise.all(pages.map(async (p) => {
@@ -36,17 +37,17 @@ export function describeNotionReferencePages(reference, texts = new Map()) {
     const url = p.url || p.notionPageId;
     const page = texts.get(p.id);
     if (!page) {
-      return `- ${label(p)}: ${url}\n  Its contents could not be loaded here. Read it with the notion__notion-fetch tool, passing the URL.`;
+      return `- ${label(p)}: ${url}\n  Its contents could not be loaded here; fetch it with notion__notion-fetch.`;
     }
     if (page.text.length > budget) {
-      return `- ${label(p)}: ${url}\n  Its contents are not included, to keep this message short. Read it with the notion__notion-fetch tool, passing the URL.`;
+      return `- ${label(p)}: ${url}\n  Its contents are not included, to keep this message short; fetch it with notion__notion-fetch.`;
     }
     budget -= page.text.length;
     return [
       `--- Notion page: ${label(p)}, ${url} ---`,
       page.text,
       page.truncated
-        ? '--- (cut short: this is the beginning of the page. For the rest, call the notion__notion-fetch tool with this URL.) ---'
+        ? '--- (cut short: this is the beginning of the page; fetch the rest with notion__notion-fetch) ---'
         : '--- end of page ---',
     ].join('\n');
   });

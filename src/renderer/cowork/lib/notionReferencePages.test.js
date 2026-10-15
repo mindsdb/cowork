@@ -49,7 +49,7 @@ describe('describeNotionReferencePages', () => {
   it('falls back to the fetch instruction for a page that was not loaded', () => {
     const note = describeNotionReferencePages([chip()]);
     expect(note).toContain('- Getting Started (workspace: Team): https://www.notion.so/p1');
-    expect(note).toContain('could not be loaded here. Read it with the notion__notion-fetch tool');
+    expect(note).toContain('could not be loaded here; fetch it with notion__notion-fetch');
   });
 
   it('includes pages in order until the total text limit, then points to notion-fetch', () => {
@@ -61,7 +61,7 @@ describe('describeNotionReferencePages', () => {
 
     expect(note.split(half).length - 1).toBe(2);
     expect(note).toContain('--- Notion page: Second (workspace: Team)');
-    expect(note).toContain('- Third (workspace: Team): https://www.notion.so/p3\n  Its contents are not included, to keep this message short. Read it with the notion__notion-fetch tool');
+    expect(note).toContain('- Third (workspace: Team): https://www.notion.so/p3\n  Its contents are not included, to keep this message short; fetch it with notion__notion-fetch');
   });
 
   it('still includes a short page that fits after one that did not', () => {
