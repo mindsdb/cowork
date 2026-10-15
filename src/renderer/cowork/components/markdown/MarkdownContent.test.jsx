@@ -7,7 +7,9 @@ import { render } from '@testing-library/react';
 // The host bridge is stubbed once, below, together with the `isWeb` gate.
 // Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
 // and the loser taking `isWeb` with it fails every web case in this file.
-vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
+// A spy, so the memo test below can count MarkdownContent renders.
+const useSkillNames = vi.hoisted(() => vi.fn(() => new Set()));
+vi.mock('../../lib/skillsStore', () => ({ useSkillNames }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
 }));
@@ -626,5 +628,18 @@ describe('MarkdownContent neutralizeLoopback', () => {
     } finally {
       hostState.isWeb = false;
     }
+  });
+});
+
+describe('MarkdownContent memoization', () => {
+  // A streamed event re-renders the whole transcript; settled messages must
+  // not re-run the markdown pipeline when their props have not changed.
+  it('skips re-rendering when the parent re-renders with the same props', () => {
+    const { rerender } = render(<MarkdownContent text="settled answer" id="m1" complete />);
+    const renders = useSkillNames.mock.calls.length;
+    rerender(<MarkdownContent text="settled answer" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders);
+    rerender(<MarkdownContent text="settled answer, edited" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders + 1);
   });
 });
