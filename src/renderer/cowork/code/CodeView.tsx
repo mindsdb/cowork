@@ -28,6 +28,7 @@ import { ProjectSettingsModal } from './ProjectSettingsModal';
 import type { CodeTaskListActions } from './useCodeTaskMenu';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
+import { taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { supportsTaskCapability } from './taskCapabilities';
@@ -269,6 +270,8 @@ export default function CodeView({
 
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
+  // Only this computer's workspaces are measured; a task elsewhere has none here.
+  const workspaceUsage = useWorkspaceUsage(taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null);
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
   const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.
@@ -398,6 +401,7 @@ export default function CodeView({
               setReviewOpen(false);
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
+            diskUsage={taskDiskUsage(workspaceUsage, taskBarSession.id)}
             onOpenControls={() => setControlsOpen(true)}
             onFork={() => void forkTask()}
           />

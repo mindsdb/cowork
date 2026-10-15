@@ -153,6 +153,29 @@ describe('TaskBar', () => {
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
   });
 
+  it('shows the task’s approximate storage and the total in its details', async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskBar
+        {...barProps}
+        session={{ ...session, workspace_kind: 'git_worktree', workspace_path: '/tasks/task-1/project' }}
+        diskUsage={{ taskBytes: 1_288_490_189, recoveryBytes: 0, totalBytes: 19_327_352_832, measuring: false }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
+    expect(screen.getByText('Storage')).toBeInTheDocument();
+    expect(screen.getByText('~1.2 GB · 18 GB across tasks')).toBeInTheDocument();
+  });
+
+  it('leaves out storage when there is no measurement', async () => {
+    const user = userEvent.setup();
+    render(<TaskBar {...barProps} />);
+
+    await user.click(screen.getByRole('button', { name: 'Show task details for original folder' }));
+    expect(screen.queryByText('Storage')).not.toBeInTheDocument();
+  });
+
   it('makes the isolated working copy legible without exposing implementation terms', async () => {
     const user = userEvent.setup();
     render(
