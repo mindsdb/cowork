@@ -10,6 +10,10 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 //              optional eyebrow + subtitle, and a right-aligned `actions` slot.
 //   • trail    drill-down surfaces (a schedule, a project, a skill) — pass
 //              `crumbs` and/or `current`, or `onBack` for a "← label" link.
+//              Add `title` (and optionally `subtitle`) for a drill-down page
+//              that names itself: the trail sits above the title, the trail
+//              holds only the ancestors (the title is the current page), and
+//              `actions` move beside the title.
 //
 // Both shapes own the titlebar-safe inset: paddingTop honours
 // --titlebar-safe-top (set on <main> by the shell) so the header drops below
@@ -36,6 +40,44 @@ export function PageHeader({
 
   if (isTrail) {
     const leadingSep = onBack || (crumbs && crumbs.length > 0);
+    const trail = (
+      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+        {onBack && (
+          <Crumb label={`← ${backLabel}`} onClick={onBack} title={backLabel} />
+        )}
+        {(crumbs || []).map((c, i) => (
+          <Fragment key={c.key ?? i}>
+            {(i > 0 || onBack) && <CrumbSep />}
+            <Crumb label={c.label} onClick={c.onClick} title={c.title} maxWidth={c.maxWidth} />
+          </Fragment>
+        ))}
+        {current != null && (
+          <>
+            {leadingSep && <CrumbSep />}
+            <CrumbCurrent label={current} maxWidth={360} />
+          </>
+        )}
+      </div>
+    );
+
+    if (title != null) {
+      return (
+        <header className="flex flex-col gap-1.5 shrink-0 min-w-0 pb-5 pt-[max(14px,var(--titlebar-safe-top,0px))]">
+          {/* The crumb's own inline padding lines its text up with the title. */}
+          <nav aria-label="Breadcrumb" className="flex min-w-0 pl-[26px] pr-8">{trail}</nav>
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0 px-8">
+            <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
+              <h1 className="s-h1 m-0 text-ink [overflow-wrap:anywhere]">{title}</h1>
+              {subtitle && (
+                <div className="m-0 text-[13.5px] leading-[1.5] text-ink-3">{subtitle}</div>
+              )}
+            </div>
+            {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          </div>
+        </header>
+      );
+    }
+
     return (
       <header
         className={cn(
@@ -43,23 +85,7 @@ export function PageHeader({
           'pb-3.5 pr-7 pl-7 pt-[max(14px,var(--titlebar-safe-top,0px))]',
         )}
       >
-        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-          {onBack && (
-            <Crumb label={`← ${backLabel}`} onClick={onBack} title={backLabel} />
-          )}
-          {(crumbs || []).map((c, i) => (
-            <Fragment key={c.key ?? i}>
-              {(i > 0 || onBack) && <CrumbSep />}
-              <Crumb label={c.label} onClick={c.onClick} title={c.title} maxWidth={c.maxWidth} />
-            </Fragment>
-          ))}
-          {current != null && (
-            <>
-              {leadingSep && <CrumbSep />}
-              <CrumbCurrent label={current} maxWidth={360} />
-            </>
-          )}
-        </div>
+        {trail}
         {actions && (
           <div className="flex items-center gap-2 shrink-0">{actions}</div>
         )}
