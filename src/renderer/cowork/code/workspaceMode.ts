@@ -36,9 +36,36 @@ export function offersWorkspaceChoice(options: WorkspaceModeOptions): boolean {
   return options.supported.length > 1;
 }
 
-/** The user's last choice when this task can use it, otherwise the server's default. */
-export function effectiveWorkspaceMode(options: WorkspaceModeOptions, remembered: WorkspaceMode | null): WorkspaceMode {
-  return remembered && options.supported.includes(remembered) ? remembered : options.default;
+export interface WorkspaceModePreferences {
+  /** Picked in the composer for this task. */
+  explicit?: WorkspaceMode | null;
+  /** Set in the selected project's settings. */
+  projectDefault?: WorkspaceMode | null;
+  /** The last choice the user made, on any task. */
+  remembered?: WorkspaceMode | null;
+}
+
+/**
+ * The mode a new task starts in, from the first of these this task can use:
+ *
+ * 1. the choice made for this task,
+ * 2. the selected project's default,
+ * 3. the remembered last choice, only when the project sets no default,
+ * 4. the server's default.
+ *
+ * A project default the task cannot use falls through to the server's
+ * default rather than to the remembered choice, so a project's setting is
+ * not overridden by another project's habit.
+ */
+export function effectiveWorkspaceMode(
+  options: WorkspaceModeOptions,
+  { explicit = null, projectDefault = null, remembered = null }: WorkspaceModePreferences,
+): WorkspaceMode {
+  const usable = (mode: WorkspaceMode | null): mode is WorkspaceMode => !!mode && options.supported.includes(mode);
+  if (usable(explicit)) return explicit;
+  if (projectDefault) return usable(projectDefault) ? projectDefault : options.default;
+  if (usable(remembered)) return remembered;
+  return options.default;
 }
 
 export function storedWorkspaceMode(): WorkspaceMode | null {
