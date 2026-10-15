@@ -14,12 +14,14 @@ export function FileReviewControls({
   onAction,
   onAgentNote,
   selectionLabel = '',
+  editsOriginal = false,
 }: {
   file: DiffFile;
   busy: boolean;
   onAction: (action: ReviewFileAction) => Promise<void>;
   onAgentNote: (note: string) => Promise<void>;
   selectionLabel?: string;
+  editsOriginal?: boolean;
 }) {
   const [commenting, setCommenting] = useState(false);
   const [note, setNote] = useState('');
@@ -85,7 +87,9 @@ export function FileReviewControls({
       <ConfirmModal
         open={discardOpen}
         title="Discard this file’s changes?"
-        message={`${file.path} will return to the current task version. This cannot be undone.`}
+        message={editsOriginal
+          ? `${file.path} will go back to its last committed version in your folder, including any edits made before this task started. This cannot be undone.`
+          : `${file.path} will return to the current task version. This cannot be undone.`}
         confirmLabel="Discard changes"
         destructive
         busy={localBusy}

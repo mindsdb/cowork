@@ -7,6 +7,7 @@ import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
 import { openCodeExternalUrl, openCodePath } from './shellLinks';
 import { supportsTaskCapability, type TaskCapabilityName } from './taskCapabilities';
+import { worksInPlace } from './taskWorkspace';
 
 
 export function TaskBar({
@@ -55,7 +56,10 @@ export function TaskBar({
   const worktreeLabel = compactPath(session.workspace_path);
   const folderCount = session.workspaces?.length || 1;
   const usesOriginalFolder = session.workspace_kind === 'direct_folder';
-  const workingCopyLabel = usesOriginalFolder
+  const inPlace = worksInPlace(session);
+  const workingCopyLabel = inPlace
+    ? folderCount > 1 ? `Local · your ${folderCount} folders` : 'Local · your folder'
+    : usesOriginalFolder
     ? 'Original folder'
     : folderCount > 1
       ? `${folderCount} isolated folders`
@@ -74,7 +78,7 @@ export function TaskBar({
   // on the task's sidebar row, and agent commands such as /compact in the composer.
   const workspaceActions = [
     ...(can('open_workspace') ? [{
-      label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
+      label: inPlace ? 'Open your folder' : usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
       icon: Ico.openFolder(14),
       onClick: () => void openCodePath(session.workspace_path),
       title: worktreeLabel,
@@ -140,7 +144,7 @@ export function TaskBar({
                       <strong>Task setup</strong>
                     </div>
                     <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
-                    {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}
+                    {git?.branch && (!usesOriginalFolder || inPlace) && <div><span>Branch</span><strong>{git.branch}</strong></div>}
                     {session.computer_name && <div><span>Computer</span><strong>{session.computer_name}</strong></div>}
                     <div><span>Agent</span><strong>{engineLabel}</strong></div>
                     <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>

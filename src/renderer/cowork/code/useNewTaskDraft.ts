@@ -176,18 +176,26 @@ export function useNewTaskDraft({
   }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
   const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
   const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, rememberedWorkspaceMode);
-  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
-    setRememberedWorkspaceMode(mode);
-    storeWorkspaceMode(mode);
-  }, []);
   const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
   const [repositoryChoice, setRepositoryChoice] = useState<{
     key: string;
     setup: TaskRepositorySetup;
   } | null>(null);
+  const rememberWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setRememberedWorkspaceMode(mode);
+    storeWorkspaceMode(mode);
+  }, []);
+  // Branch choices set up an isolated worktree, and a Local task works on each
+  // folder's current branch, so choosing one gives up the other.
+  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    rememberWorkspaceMode(mode);
+    if (mode === 'in_place') setRepositoryChoice(null);
+  }, [rememberWorkspaceMode]);
   const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
-  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) =>
+  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) => {
     setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
+    if (setup && workspaceModeChoice && workspaceMode === 'in_place') rememberWorkspaceMode('worktree');
+  };
   const resourceScopeKey = JSON.stringify(resourceIds);
 
   const engines = codingCatalog.engines;

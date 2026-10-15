@@ -58,6 +58,8 @@ export type WorkspaceMode = 'in_place' | 'worktree';
 export interface WorkspaceModeOptions {
   supported: WorkspaceMode[];
   default: WorkspaceMode;
+  /** Why working in the folder itself is not offered; older servers omit it. */
+  in_place_unavailable_reason?: string | null;
 }
 
 export interface SessionCreateBody {
