@@ -305,7 +305,8 @@ export default function ScheduleDetailView({
               <Button
                 variant="primary"
                 onClick={() => withBusy(() => onRunNow?.(task.id))}
-                disabled={busy}
+                // One run at a time: the server refuses a second while one is going.
+                disabled={busy || task.running}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 {Ico.send ? Ico.send(14) : null}
