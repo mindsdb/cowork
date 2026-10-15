@@ -11,7 +11,8 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { registerKeepAwakeHandlers } from './keep-awake';
@@ -66,7 +67,7 @@ import {
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -103,12 +104,8 @@ function getAntonEnvPath(): string {
   return coworkEnvPath();
 }
 
-function getCoworkStatePath(): string {
-  return coworkStatePath();
-}
-
-function clearStoredProviderState(): void {
-  const statePath = getCoworkStatePath();
+function clearStoredProviderState(accountRoot: string): void {
+  const statePath = coworkStatePathIn(accountRoot);
   if (!fs.existsSync(statePath)) return;
   try {
     const raw = fs.readFileSync(statePath, 'utf-8');
@@ -639,6 +636,8 @@ async function performMindsSignOut() {
  * the real implementations it drives.
  */
 function mindsSignOutDeps(): SignOutDeps {
+  // Read once with the stores, so the marks and the list agree on it.
+  let serverClears: boolean | null = null;
   return {
     getRevokeToken,
     getRefreshToken,
@@ -655,7 +654,20 @@ function mindsSignOutDeps(): SignOutDeps {
     httpRequest,
     getAuthHeader: authHeader,
     scrubEnvCredentials,
-    getAntonEnvPath,
+    captureSignOutStores: () => {
+      const home = coworkHome();
+      const active = readActiveAccount(home);
+      const activeStore = activeStoreRoot();
+      serverClears = serverClearsPendingCredentials();
+      return {
+        accountRoot: accountDataHome(home, active),
+        stores: storesToClearAtSignOut(home, active, activeStore, serverClears),
+        activeStore,
+      };
+    },
+    markStoresForCredentialClear: (stores, activeStore) =>
+      markStoresForSignOut(coworkHome(), stores, activeStore, serverClears),
+    getAntonEnvPath: coworkEnvPathIn,
     clearStoredProviderState,
     startSidecarFlush: () => {
       void startSignOutSidecarFlush({

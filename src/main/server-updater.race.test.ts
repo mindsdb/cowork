@@ -20,6 +20,7 @@ vi.mock('./server-process', async () => {
   const { withServerLifecycle } = await vi.importActual<typeof import('./server-lifecycle')>('./server-lifecycle');
   return {
     withServerMaintenance: <T>(fn: () => Promise<T>) => withServerLifecycle(fn),
+    forgetServerCapability: () => {},
     // Mirror the real server-process: startServer/stopServer enter the same
     // lifecycle queue, so an external start serializes behind a maintenance
     // transaction (and a nested one inside a transaction runs immediately).

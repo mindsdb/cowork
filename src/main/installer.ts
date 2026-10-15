@@ -6,7 +6,7 @@ import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getChannel, getInstallSpec, getMinServerVersion } from './server-source';
 import { installerStepPlan, meetsMinVersion } from './update-logic';
-import { withServerMaintenance } from './server-process';
+import { forgetServerCapability, withServerMaintenance } from './server-process';
 import {
   PYTHON_RANGE,
   getLocalBin,
@@ -529,7 +529,11 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
     const installResult = await withServerMaintenance(
-      () => runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv }),
+      () => {
+        // The install replaces the server whose answer is recorded.
+        forgetServerCapability();
+        return runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv });
+      },
     );
     if (abortIfRequested()) return false;
 

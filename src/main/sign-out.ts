@@ -20,6 +20,13 @@ export type SignOutHttpRequest = (
   options: { method: string; headers: Record<string, string>; body?: string; rejectUnauthorized?: boolean },
 ) => Promise<{ status: number; body: string }>;
 
+/** What a sign-out acts on, read before the token clear can change it. */
+export interface SignOutStores {
+  accountRoot: string;
+  stores: string[];
+  activeStore: string | null;
+}
+
 export interface SignOutDeps {
   // Keycloak session and token store.
   getRevokeToken: () => Promise<string | null>;
@@ -42,10 +49,15 @@ export interface SignOutDeps {
   // (the local-mode default) these calls need this themselves, same reason
   // minds-credential.ts's PUT does.
   getAuthHeader: () => Record<string, string>;
-  // Local files.
+  // The account's stores, read once at entry. Each organization has its own
+  // database, and only the one a live sidecar serves can be cleared over HTTP,
+  // so every store is marked for the sidecar to clear on its next start.
+  captureSignOutStores: () => SignOutStores;
+  markStoresForCredentialClear: (stores: string[], activeStore: string | null) => void;
+  // Local files, under the account root captured at entry.
   scrubEnvCredentials: (envPath: string) => Promise<void>;
-  getAntonEnvPath: () => string;
-  clearStoredProviderState: () => void;
+  getAntonEnvPath: (accountRoot: string) => string;
+  clearStoredProviderState: (accountRoot: string) => void;
   // The two steps that must not be awaited here.
   startSidecarFlush: () => void;
   reloadRenderer: () => void;
@@ -86,6 +98,16 @@ export function isSignOutRoutingActive(): boolean {
 }
 
 export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
+  // First, before anything can move the account record: `clearTokens` lifts the
+  // in-memory quarantine, after which the record on disk may name another
+  // account, and every path below would then point at that account's files.
+  const signOutStores = deps.captureSignOutStores();
+  try {
+    deps.markStoresForCredentialClear(signOutStores.stores, signOutStores.activeStore);
+  } catch (err) {
+    console.warn('[logout] could not mark stores for their credential clear:', err);
+  }
+
   // Full sign-out: clear every credential + LLM-config key so the
   // next launch's checkConfigured() returns false and the user is
   // routed straight to onboarding. We deliberately keep
@@ -206,11 +228,11 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   // could read a leftover ANTON_MINDS_API_KEY and route a signed-out user
   // back into the app.
   try {
-    await deps.scrubEnvCredentials(deps.getAntonEnvPath());
+    await deps.scrubEnvCredentials(deps.getAntonEnvPath(signOutStores.accountRoot));
   } catch (err) {
     console.warn('[logout] failed to scrub credential keys from .env (best-effort):', err);
   }
-  deps.clearStoredProviderState();
+  deps.clearStoredProviderState(signOutStores.accountRoot);
 
   // Restart the server so in-memory caches (settings, provider objects) are
   // flushed. The DB clear above already dropped the credential rows and
