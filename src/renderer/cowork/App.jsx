@@ -82,7 +82,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
-import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { initialStreamState, reduceStream, visibleFirstTake } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -2330,6 +2330,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3572,6 +3573,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4063,6 +4065,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4348,6 +4351,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
