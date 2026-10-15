@@ -26,7 +26,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildKind } from './cowork-home';
 import { authHeader } from './server-auth';
-import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
+import { forgetServerCapability, startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
   getCoworkRef,
@@ -208,6 +208,8 @@ function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promis
   return withServerMaintenance(
     () =>
       new Promise((resolve) => {
+        // The install replaces the server whose answer is recorded.
+        forgetServerCapability();
         execFile(
           uv,
           args,

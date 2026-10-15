@@ -8,7 +8,7 @@ import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
-import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
+import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -5447,7 +5447,7 @@ function AppCore() {
         };
       case 'style':
         return {
-          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          label: styleToggleLabel(skin),
           icon: Ico.gamepad(14),
           onClick: () => setSkin(nextToggledSkin(skin)),
         };
