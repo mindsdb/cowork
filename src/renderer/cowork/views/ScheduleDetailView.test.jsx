@@ -178,3 +178,25 @@ describe('ScheduleDetailView — hero', () => {
     expect(props.onBack).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ScheduleDetailView — auto-pause', () => {
+  const AUTO_PAUSED = {
+    ...TASK, enabled: false, autoPausedAt: '2026-10-14T09:00:00Z', consecutiveFailures: 3,
+    lastError: 'Run did not complete — open the run’s task for details.',
+  };
+
+  it('explains an auto-pause and resumes from the alert', async () => {
+    const { props, user } = setup({ task: AUTO_PAUSED });
+    const alert = await screen.findByText('Paused after 3 failed runs in a row');
+    const box = alert.closest('[role="alert"]') || alert.parentElement.parentElement;
+    expect(within(box).getByText(AUTO_PAUSED.lastError)).toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: 'Resume' }));
+    expect(props.onResume).toHaveBeenCalledWith('s1');
+  });
+
+  it('shows no auto-pause alert for a schedule the user paused', async () => {
+    setup({ task: { ...TASK, enabled: false } });
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.queryByText(/failed runs in a row/)).not.toBeInTheDocument();
+  });
+});

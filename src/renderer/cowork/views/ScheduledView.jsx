@@ -140,7 +140,7 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. If a run was due while the app was closed, ${agentLabel} runs the latest one when it reopens.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task

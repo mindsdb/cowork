@@ -5,6 +5,9 @@ describe('scheduleStatusBadge', () => {
   it.each([
     [{ running: true, enabled: true }, { label: 'Running', variant: 'accent' }],
     [{ running: false, enabled: false }, { label: 'Paused', variant: 'muted' }],
+    [{ running: false, enabled: false, autoPausedAt: '2026-10-14T09:00:00Z' }, { label: 'Auto-paused', variant: 'danger' }],
+    [{ running: false, enabled: true, retryAt: '2026-10-14T09:01:00Z', lastError: 'failed' }, { label: 'Retrying', variant: 'warning' }],
+    [{ running: true, enabled: true, retryAt: '2026-10-14T09:01:00Z' }, { label: 'Running', variant: 'accent' }],
     [{ running: false, enabled: true, lastError: 'failed' }, { label: 'Last failed', variant: 'danger' }],
     [{ running: false, enabled: true }, { label: 'Active', variant: 'success' }],
   ])('maps task state %o to %o', (task, expected) => {
