@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
+import { missedRunText } from '../../lib/scheduleCopy';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 import { productName } from '../../../lib/deploymentBrand';
@@ -197,7 +198,7 @@ export default function ScheduleTaskModal({
           </Field>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label="Cadence">
+            <Field label="Cadence" help={missedRunText(form.cadence)}>
               <Select
                 value={form.cadence}
                 onValueChange={(v) => update('cadence', v)}
