@@ -1919,6 +1919,21 @@ export default function SettingsView({
               aria-label="Act first, ask later"
             />
           </Section>
+          {isElectron && (
+            <Section
+              title="Stay awake for scheduled tasks"
+              subtitle="Keeps this computer from sleeping on its own while a scheduled task is running, about to run, or waiting to retry. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
+            >
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.scheduleKeepAwake !== false}
+                  onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
+                  aria-label="Stay awake for scheduled tasks"
+                />
+                <AutoSaveTag settingKey="scheduleKeepAwake" />
+              </div>
+            </Section>
+          )}
         </SettingsGroup>
 
         {hasBudgetSettings && (
