@@ -44,6 +44,7 @@ function settingsFor(provider, extra = {}) {
     codingModel: 'configured-model',
     routerModel: 'configured-model',
     modelMode: 'default',
+    actFirst: true,
     configReady: true,
     providerStatus: {},
     providerStatusDetails: {},
@@ -85,6 +86,11 @@ function editKey(provider) {
   fireEvent.change(screen.getByLabelText(`${name} API key`), { target: { value: 'updated-key' } });
 }
 
+function editAvailableSetting(provider, platformUi) {
+  if (platformUi) editKey(provider);
+  else fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+}
+
 function expectNoProviderCheck() {
   expect(mocks.testProviders).not.toHaveBeenCalled();
   expect(screen.queryByLabelText('Testing…')).not.toBeInTheDocument();
@@ -111,18 +117,59 @@ beforeEach(() => {
   mocks.validateSettings.mockReset().mockResolvedValue({ configReady: true });
 });
 
+it('saves a retained setting without changing an unnamed hidden provider', async () => {
+  const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+  const initial = settingsFor(provider, { providerStatus: { [provider.type]: 'ok' } });
+  const { latest, onSave } = renderSettings(initial);
+  expect(screen.queryByLabelText('Custom provider name')).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+  const save = screen.getByRole('button', { name: 'Save settings' });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+
+  await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ actFirst: false }));
+  expect(latest.current).toEqual({ ...initial, actFirst: false });
+  expectNoProviderCheck();
+});
+
+it('requires a name before saving an editable custom provider', async () => {
+  mocks.deployment.PLATFORM_UI = true;
+  const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+  const { latest, onSave } = renderSettings(settingsFor(provider));
+  fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+  const save = screen.getByRole('button', { name: 'Save settings' });
+  expect(save).toBeDisabled();
+  expect(save).toHaveAttribute('title', 'Each custom provider needs a name');
+  fireEvent.click(save);
+  expect(onSave).not.toHaveBeenCalled();
+
+  fireEvent.change(screen.getByLabelText('Custom provider name'), { target: { value: 'Local endpoint' } });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+  expect(latest.current.providers.find((card) => card.type === provider.type)).toEqual({ ...provider, name: 'Local endpoint' });
+  expect(latest.current.actFirst).toBe(false);
+  expectNoProviderCheck();
+});
+
 describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => ({
   provider, type: provider.type, platformUi,
 }))))('disabled web provider tests: $type, platform UI $platformUi', ({ provider, platformUi }) => {
   beforeEach(() => { mocks.deployment.PLATFORM_UI = platformUi; });
 
-  function expectSavedProviderEdit(received) {
+  function expectSavedEdit(received) {
+    if (!platformUi) {
+      expect(received.actFirst).toBe(false);
+      expect(received.providers).toEqual([provider]);
+      return;
+    }
     const expected = [{ ...provider, apiKey: 'updated-key' }];
     // Hosted Settings also includes its empty managed-provider row when saving BYOK.
     if (platformUi && provider.type !== 'minds-cloud') {
       expected.unshift(expect.objectContaining({ type: 'minds-cloud', apiKey: '' }));
     }
-    expect(received).toEqual(expected);
+    expect(received.providers).toEqual(expected);
   }
 
   it('opens configured settings without testing or inventing a provider result', async () => {
@@ -134,10 +181,10 @@ describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => 
     expect(screen.getByRole('button', { name: 'Saved' })).toBeDisabled();
   });
 
-  it('saves a provider edit and validates configuration without a provider test', async () => {
+  it('saves an available edit and validates configuration without a provider test', async () => {
     const user = userEvent.setup();
     const { latest, onSave, setSetting } = renderSettings(settingsFor(provider));
-    editKey(provider);
+    editAvailableSetting(provider, platformUi);
     setSetting.mockClear();
     const saveButton = screen.getByRole('button', { name: 'Save settings' });
     await user.hover(saveButton);
@@ -146,7 +193,9 @@ describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => 
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Saved' })).toBeDisabled());
     expect(onSave).toHaveBeenCalledOnce();
-    expectSavedProviderEdit(onSave.mock.calls[0][0].providers);
+    if (platformUi) expectSavedEdit(onSave.mock.calls[0][0]);
+    else expect(onSave).toHaveBeenCalledWith({ actFirst: false });
+    expectSavedEdit(latest.current);
     expect(mocks.validateSettings).toHaveBeenCalledOnce();
     expect(screen.getByRole('status')).toHaveTextContent('Settings saved.');
     expect(screen.queryByText(/Test passed/)).not.toBeInTheDocument();
@@ -158,12 +207,16 @@ describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => 
   it('retains a rejected edit without validating or testing it', async () => {
     const onSave = vi.fn(async () => { throw new Error('Settings could not be saved.'); });
     const { latest } = renderSettings(settingsFor(provider), onSave);
-    editKey(provider);
+    editAvailableSetting(provider, platformUi);
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
     await screen.findByText('Settings could not be saved.');
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
     expect(latest.current.providers).toEqual([provider]);
+    if (!platformUi) {
+      expect(screen.getByRole('switch', { name: 'Act first, ask later' })).not.toBeChecked();
+      expect(latest.current.actFirst).toBe(true);
+    }
     expect(mocks.validateSettings).not.toHaveBeenCalled();
     expectNoProviderCheck();
   });
@@ -171,11 +224,11 @@ describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => 
   it('reports failed validation while keeping the accepted edit', async () => {
     mocks.validateSettings.mockRejectedValue(new Error('Configuration unavailable.'));
     const { latest } = renderSettings(settingsFor(provider));
-    editKey(provider);
+    editAvailableSetting(provider, platformUi);
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
     await screen.findByText('Settings saved, but verification failed: Configuration unavailable.');
-    expectSavedProviderEdit(latest.current.providers);
+    expectSavedEdit(latest.current);
     expect(screen.getByRole('button', { name: 'Saved' })).toBeDisabled();
     expectNoProviderCheck();
   });
@@ -195,7 +248,7 @@ describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => 
     expect(latest.current.providerStatus).toEqual(initial.providerStatus);
 
     // Renaming preserves the failed status, unlike changing a key, which clears it.
-    if (provider.type === 'openai-compatible') {
+    if (platformUi && provider.type === 'openai-compatible') {
       fireEvent.change(screen.getByLabelText('Custom provider name'), { target: { value: 'Renamed endpoint' } });
     } else {
       fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
@@ -220,11 +273,17 @@ it.each([false, true])('keeps a stored MindsHub rate limit neutral with testing 
   });
   const { latest } = renderSettings(initial);
   await act(async () => {});
-  const neutral = 'The configured provider is unavailable. Try again, or contact your administrator.';
-  const card = screen.getByRole('heading', { name: 'MindsHub' }).closest('.settings-provider-row');
-  expect(within(card).getByText(neutral)).toBeInTheDocument();
-  const router = screen.getByRole('heading', { name: 'Model Router' }).parentElement;
-  expect(within(router).getAllByText(neutral).length).toBeGreaterThan(0);
+  if (platformUi) {
+    const neutral = 'The configured provider is unavailable. Try again, or contact your administrator.';
+    const card = screen.getByRole('heading', { name: 'MindsHub' }).closest('.settings-provider-row');
+    expect(within(card).getByText(neutral)).toBeInTheDocument();
+    const router = screen.getByRole('heading', { name: 'Model Router' }).parentElement;
+    expect(within(router).getAllByText(neutral).length).toBeGreaterThan(0);
+  } else {
+    expect(screen.queryByRole('heading', { name: 'LLM Providers' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Model Router' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/configured provider is unavailable/i)).not.toBeInTheDocument();
+  }
   expect(screen.queryByText(/test again|re-test|run a test/i)).not.toBeInTheDocument();
   expect(latest.current.providerStatus).toEqual(initial.providerStatus);
   expect(latest.current.providerStatusReasons).toEqual(initial.providerStatusReasons);
@@ -266,19 +325,20 @@ it.each([
   { name: 'standalone web with explicit true', isWeb: true, platformUi: false, flag: 'true' },
   { name: 'desktop', isWeb: false, platformUi: true, flag: 'false' },
   { name: 'desktop without platform UI', isWeb: false, platformUi: false, flag: 'false' },
-])('preserves mount and dirty-save tests on $name', async ({ isWeb, platformUi, flag }) => {
+])('preserves mount and save-time tests on $name', async ({ isWeb, platformUi, flag }) => {
   setProviderTesting(flag);
   mocks.host.isWeb = isWeb;
   mocks.host.isElectron = !isWeb;
   mocks.deployment.PLATFORM_UI = platformUi;
   const provider = providers[0];
-  renderSettings(settingsFor(provider));
+  // With hidden provider inputs, an existing failure still retries on a retained setting's save.
+  renderSettings(settingsFor(provider, platformUi ? {} : { providerStatus: { [provider.type]: 'fail' } }));
   await waitFor(() => expect(mocks.testProviders).toHaveBeenCalledExactlyOnceWith([provider]));
 
-  editKey(provider);
+  editAvailableSetting(provider, platformUi);
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   await waitFor(() => expect(mocks.testProviders).toHaveBeenCalledTimes(2));
-  expect(mocks.testProviders).toHaveBeenLastCalledWith([{ ...provider, apiKey: 'updated-key' }]);
+  expect(mocks.testProviders).toHaveBeenLastCalledWith([platformUi ? { ...provider, apiKey: 'updated-key' } : provider]);
   expect(mocks.validateSettings).toHaveBeenCalledOnce();
   expect(screen.getByRole('status')).toHaveTextContent('Test passed — provider, model, and credentials look good.');
 });
