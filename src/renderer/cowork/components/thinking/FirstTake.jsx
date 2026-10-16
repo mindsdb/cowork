@@ -47,13 +47,18 @@ export function FirstTake({ take }) {
   const text = take?.text || '';
   const typed = useTypedText(text);
   if (!text) return null;
+  // The typing animation stays out of the live region, so a screen reader
+  // announces the finished sentence once instead of every fragment.
   return (
-    <p
-      className="mb-2 whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink-3"
-      data-testid="first-take"
-      aria-live="polite"
-    >
-      {typed}
-    </p>
+    <>
+      <p
+        className="mb-2 whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink-3"
+        data-testid="first-take"
+        aria-hidden="true"
+      >
+        {typed}
+      </p>
+      <div className="sr-only" role="status" aria-live="polite">{take.done ? text : ''}</div>
+    </>
   );
 }

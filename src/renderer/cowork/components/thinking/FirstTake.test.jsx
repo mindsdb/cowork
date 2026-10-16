@@ -22,6 +22,16 @@ describe('FirstTake', () => {
     expect(screen.getByTestId('first-take').textContent).toBe(text);
   });
 
+  it('announces the finished sentence once, not each typed fragment', () => {
+    vi.useFakeTimers();
+    const text = "I'll pull your sales.";
+    const { rerender } = render(<FirstTake take={{ text, done: false }} />);
+    advance(90);
+    expect(screen.getByRole('status').textContent).toBe('');
+    rerender(<FirstTake take={{ text, done: true }} />);
+    expect(screen.getByRole('status').textContent).toBe(text);
+  });
+
   it('renders nothing without a take', () => {
     const { container } = render(<FirstTake take={null} />);
     expect(container).toBeEmptyDOMElement();

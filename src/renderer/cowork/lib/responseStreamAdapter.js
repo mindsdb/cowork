@@ -16,9 +16,10 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //                                 answer so far; the next delta replaces it
 //   response.answer_restore     — that continuation handed back instead of
 //                                 replacing; carries the set-aside answer
-//   response.first_take.delta   — the instant first take (ENG-3406): a short
+//   response.first_take.delta   — the instant first take: a short
 //                                 placeholder reply on a fast model, shown
-//                                 until Anton speaks. `.done` ends it,
+//                                 above the thinking block until the turn
+//                                 ends or asks the user. `.done` ends it,
 //                                 `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
 //   response.artifact_created   — an artifact this turn produced (any type);
@@ -73,9 +74,9 @@ export function initialStreamState() {
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
-    /** The instant first take (ENG-3406): what the user reads while Anton
-     *  works, until Anton's own words, a question, or the turn's end take its
-     *  place. `{ text, done } | null`. Never part of the answer. */
+    /** The instant first take: what the user reads above Anton's steps,
+     *  until a question or the turn's end takes its place.
+     *  `{ text, done } | null`. Never part of the answer. */
     firstTake: null,
     /** Harness/agent ID from `response.created` (e.g. 'anton'). */
     harness: null,
@@ -399,18 +400,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
     // The model has moved from thinking to producing the visible
-    // response — end the current thought burst. Anton is speaking, so the
-    // first take steps aside (the server clears it too; this covers a stream
-    // that dropped the frame).
-    return {
-      ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
-      firstTake: delta.trim() ? CLEARED_TAKE : state.firstTake,
-    };
+    // response — end the current thought burst.
+    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
   }
 
-  // The instant first take (ENG-3406). It only ever fills the wait: once the
-  // turn has its own words or has ended, a late frame is ignored rather than
-  // putting a placeholder back over the real thing.
+  // The instant first take. Once the turn has asked the user or ended, a
+  // late frame is ignored rather than putting a placeholder back.
   if (type === 'response.first_take.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta || state.firstTake?.cleared || state.status === 'done' || state.status === 'error') return state;

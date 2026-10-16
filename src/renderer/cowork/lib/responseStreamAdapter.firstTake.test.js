@@ -7,22 +7,17 @@ const takeDone = { type: 'response.first_take.done' };
 const cleared = { type: 'response.first_take.cleared' };
 const text = (delta) => ({ type: 'response.output_text.delta', delta });
 
-describe('responseStreamAdapter — instant first take (ENG-3406)', () => {
-  it('collects the take while Anton has said nothing', () => {
+describe('responseStreamAdapter — instant first take', () => {
+  it('collects the take', () => {
     const state = reduceAll([created, take("I'll pull "), take('your sales.'), takeDone]);
     expect(visibleFirstTake(state.firstTake)).toEqual({ text: "I'll pull your sales.", done: true });
     expect(state.bodyText).toBe('');
   });
 
-  it("never becomes part of the answer, and goes once Anton speaks", () => {
+  it("never becomes part of the answer, and stays while Anton writes", () => {
     const state = reduceAll([created, take('Checking.'), text('Revenue rose 4%.')]);
-    expect(visibleFirstTake(state.firstTake)).toBeNull();
-    expect(state.bodyText).toBe('Revenue rose 4%.');
-  });
-
-  it('a blank delta is not Anton speaking', () => {
-    const state = reduceAll([created, take('Checking.'), text('\n\n')]);
     expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
+    expect(state.bodyText).toBe('Revenue rose 4%.');
   });
 
   it('goes on the server clear, and nothing late brings it back', () => {
@@ -30,13 +25,12 @@ describe('responseStreamAdapter — instant first take (ENG-3406)', () => {
     expect(visibleFirstTake(state.firstTake)).toBeNull();
   });
 
-  it('stays gone after narration moves into the thinking block', () => {
+  it('stays while narration moves into the thinking block', () => {
     const state = reduceAll([
       created, take('Checking.'), text('Let me look.'),
       { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 't1' },
-      take(' late'),
     ]);
-    expect(visibleFirstTake(state.firstTake)).toBeNull();
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
   });
 
   it('a question for the user takes its place', () => {
