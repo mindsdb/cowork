@@ -6,7 +6,8 @@
 // active theme automatically.
 
 import {
-  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef, useState,
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
+  useSyncExternalStore,
 } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -411,14 +412,23 @@ const _KATEX_OPTIONS = Object.freeze({
 // KaTeX and its stylesheet are a large share of the boot bundle but only
 // matter for messages that contain math, so they load on first use. A failed
 // load resets so a later message can retry; until then math renders as code.
+// Success notifies every math instance, including ones whose own load failed.
 let _rehypeKatex = null;
 let _katexLoad = null;
+const _katexListeners = new Set();
+const _subscribeKatex = (listener) => {
+  _katexListeners.add(listener);
+  return () => { _katexListeners.delete(listener); };
+};
+const _subscribeNever = () => () => {};
+const _getKatex = () => _rehypeKatex;
 export function _loadKatex() {
   _katexLoad ??= Promise.all([
     import('rehype-katex'),
     import('katex/dist/katex.min.css'),
   ]).then(([mod]) => {
     _rehypeKatex = mod.default;
+    _katexListeners.forEach((listener) => listener());
     return _rehypeKatex;
   }, () => {
     _katexLoad = null;
@@ -689,15 +699,11 @@ export const MarkdownContent = memo(function MarkdownContent({
   const sz = dense ? _SIZES.dense : _SIZES.default;
 
   // Every delimiter style is rewritten to `$$` above, so this catches all math.
+  // Only math instances subscribe, so the load doesn't re-render every message.
   const hasMath = !!normalized?.includes('$$');
-  const [rehypeKatex, setRehypeKatex] = useState(() => _rehypeKatex);
+  const rehypeKatex = useSyncExternalStore(hasMath ? _subscribeKatex : _subscribeNever, _getKatex);
   useEffect(() => {
-    if (!hasMath || rehypeKatex) return undefined;
-    let live = true;
-    _loadKatex().then((plugin) => {
-      if (live && plugin) setRehypeKatex(() => plugin);
-    });
-    return () => { live = false; };
+    if (hasMath && !rehypeKatex) _loadKatex();
   }, [hasMath, rehypeKatex]);
 
   // Skill names from the shared store → colour "/mention" tokens. useSkillNames
