@@ -26,16 +26,16 @@ import { TooltipBubble, tokenDelay } from '../ui/Tooltip';
 import { CodeBlock } from '../thinking/CodeBlock';
 import { host } from '../../../platform/host';
 import { copyText } from '../../lib/clipboard';
-import { NO_SOURCE_TEXT, figureSourceText } from '../../lib/figureSources';
+import { NO_SOURCE_TEXT, REPEATED_TEXT, figureSourceText } from '../../lib/figureSources';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 
 /** @typedef {import('../../lib/figureSources').LinkedFigure} LinkedFigure */
 /** @typedef {import('../../lib/figureSources').LinkedFigureSource} LinkedFigureSource */
 
-const KIND_LABELS = { query: 'Query', file: 'File', web: 'Web page', memory: 'Memory', step: 'Step' };
+const KIND_LABELS = { query: 'Query', file: 'File', web: 'Web page', step: 'Step' };
 
 /* The short state after the figure in a mark's accessible name. */
-const KIND_STATES = { query: 'from a query', file: 'from a file', web: 'from the web', memory: 'from memory', step: 'from a step' };
+const KIND_STATES = { query: 'from a query', file: 'from a file', web: 'from the web', step: 'from a step' };
 
 const TABLE_HINT = 'Arrow keys move between the figures in this table.';
 
@@ -46,6 +46,7 @@ const TOOLTIP_CLOSE_GRACE_MS = 120;
 /** @param {LinkedFigure} figure */
 function shortState(figure) {
   if (figure.origin === 'none') return 'no source';
+  if (figure.origin === 'earlier_answer') return 'repeated from an earlier answer';
   return KIND_STATES[figure.sources[0]?.kind] || KIND_STATES.step;
 }
 
@@ -118,7 +119,7 @@ function SourceLink({ url }) {
    chat by its files-store id; the caller decides which it can read. */
 function SourceItem({ source, onViewFile, onOpenStep }) {
   const kindLabel = KIND_LABELS[source.kind] || KIND_LABELS.step;
-  // A memory source's label is "memory", which the kind already says.
+  // Drop a label that only repeats the kind.
   const label = source.label && source.label.toLowerCase() !== kindLabel.toLowerCase() ? source.label : '';
   const viewFile = (source.path || source.attachment_id) && onViewFile ? () => onViewFile(source) : null;
   const openStep = source.stepId && onOpenStep ? () => onOpenStep(source.stepId) : null;
@@ -339,8 +340,10 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
                 <Popover.Title className="m-0 py-3 px-4 shrink-0 text-[13px] font-semibold leading-[1.4] text-ink border-b border-t-0 border-x-0 border-solid border-line">
                   {`Where ${figure.text} came from`}
                 </Popover.Title>
-                {figure.origin === 'none' ? (
-                  <p className="m-0 py-3 px-4 min-h-0 overflow-y-auto overscroll-contain text-[13px] leading-[1.5] text-ink-2">{NO_SOURCE_TEXT}</p>
+                {figure.origin === 'none' || figure.origin === 'earlier_answer' ? (
+                  <p className="m-0 py-3 px-4 min-h-0 overflow-y-auto overscroll-contain text-[13px] leading-[1.5] text-ink-2">
+                    {figure.origin === 'none' ? NO_SOURCE_TEXT : REPEATED_TEXT}
+                  </p>
                 ) : (
                   <ul className="list-none m-0 px-4 min-h-0 overflow-y-auto overscroll-contain">
                     {figure.sources.map((source, i) => (

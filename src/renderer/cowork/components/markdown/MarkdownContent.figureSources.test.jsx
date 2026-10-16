@@ -30,7 +30,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
 vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
 import { MarkdownContent } from './MarkdownContent';
-import { NO_SOURCE_TEXT, linkFigureSteps, rebaseFigureSources } from '../../lib/figureSources';
+import { NO_SOURCE_TEXT, REPEATED_TEXT, linkFigureSteps, rebaseFigureSources } from '../../lib/figureSources';
 import { initialStreamState, reduceStream } from '../../lib/responseStreamAdapter';
 import { hydrateMessagesFromServerEvents } from '../../lib/conversationHistory';
 import { restoredFigureEvents, RESTORED_LIVE_TEXT, RESTORED_SAVED_TEXT } from '../../../visual-fixtures/restored-figure-sources';
@@ -85,7 +85,6 @@ const SQL = "SELECT qty FROM stock WHERE site = 'S1'";
 const QUERY = source('toolu_03', 'query', 'Query stock for site S1', { queries: [SQL], stepId: 'step-3' });
 const API = source('toolu_04', 'query', 'Read inventory from the ERP API', { requests: ['GET {DS_ERP_URL}/inventory'] });
 const WEB = source('toolu_05', 'web', 'example.com/rates', { url: 'https://example.com/rates' });
-const MEMORY = source('toolu_06', 'memory', 'memory');
 
 /* A figure the way the server sends it: offsets into the answer's markdown
    source. `from` picks a later occurrence. */
@@ -142,7 +141,6 @@ describe('MarkdownContent figure marks', () => {
   it.each([
     ['query', QUERY, 'from a query', 'From a query: Query stock for site S1'],
     ['web', WEB, 'from the web', 'From the web: example.com/rates'],
-    ['memory', MEMORY, 'from memory', 'From memory'],
     ['step', source('toolu_07', 'step', 'read_file'), 'from a step', 'From a step: read_file'],
   ])('keeps the tooltip to one line for a %s source', async (_kind, s, state, text) => {
     const answer = 'There are 250 units.';
@@ -160,6 +158,20 @@ describe('MarkdownContent figure marks', () => {
     expect(mark).toHaveClass('anton-figure', 'anton-figure--unsourced');
     await userEvent.hover(mark);
     expect(await screen.findByText(NO_SOURCE_TEXT)).toBeVisible();
+  });
+
+  it('marks a figure an earlier answer gave as repeated, with the grey underline', async () => {
+    const answer = '5,200 in 2024, up from 4,600.';
+    const { container } = render(
+      <MarkdownContent text={answer} isAssistant figureSources={[figure('5,200', answer, 'step', [QUERY]), figure('4,600', answer, 'earlier_answer', [])]} />,
+    );
+    const mark = screen.getByRole('button', { name: '4,600, repeated from an earlier answer' });
+    expect(mark).toHaveAccessibleDescription(REPEATED_TEXT);
+    expect(mark).toHaveClass('anton-figure');
+    expect(mark).not.toHaveClass('anton-figure--unsourced');
+    expect(marks(container).map((b) => b.textContent)).toEqual(['5,200', '4,600']);
+    await userEvent.hover(mark);
+    expect(await screen.findByText(REPEATED_TEXT)).toBeVisible();
   });
 
   it('leaves a figure from the question unmarked', () => {
@@ -424,11 +436,20 @@ describe('MarkdownContent figure source popover', () => {
     expect(within(popup).queryByRole('listitem')).toBeNull();
   });
 
-  it('names a memory source once, by its kind', async () => {
-    const answer = 'You prefer 250 units.';
-    render(<MarkdownContent text={answer} isAssistant figureSources={[figure('250', answer, 'step', [MEMORY])]} />);
+  it('shows the repeated text and no source for a figure an earlier answer gave', async () => {
+    const answer = 'Up from 4,600.';
+    render(<MarkdownContent text={answer} isAssistant figureSources={[figure('4,600', answer, 'earlier_answer', [])]} />);
+    const popup = await openPopover(/^4,600,/);
+    expect(popup).toHaveAccessibleName('Where 4,600 came from');
+    expect(popup).toHaveTextContent(REPEATED_TEXT);
+    expect(within(popup).queryByRole('listitem')).toBeNull();
+  });
+
+  it('names a source whose label only repeats its kind once, by its kind', async () => {
+    const answer = 'There are 250 units.';
+    render(<MarkdownContent text={answer} isAssistant figureSources={[figure('250', answer, 'step', [source('toolu_06', 'web', 'web page')])]} />);
     const popup = await openPopover(/^250,/);
-    expect(within(popup).getByRole('listitem').textContent).toBe('Memory');
+    expect(within(popup).getByRole('listitem').firstChild.textContent).toBe('Web page');
   });
 });
 
@@ -509,15 +530,18 @@ describe('MarkdownContent marks on a restored answer after a continuation tool c
     const reloadParagraphs = [...reload.querySelectorAll('p')].map(markedText);
     expect(liveParagraphs).toEqual([
       '📦 Site S1 holds [250] units; site S2 may need [99?] units.',
-      'The [250]-unit count stands; I cannot confirm the [12?]-unit adjustment.',
+      'The [250]-unit count stands, up from [240]; I cannot confirm the [12?]-unit adjustment.',
     ]);
     expect(reloadParagraphs).toEqual([
       liveParagraphs[0],
       'I will recheck [250] units and [99?] requested units.',
       liveParagraphs[1],
     ]);
-    expect(marks(live)).toHaveLength(4);
-    expect(marks(reload)).toHaveLength(6);
+    expect(marks(live)).toHaveLength(5);
+    expect(marks(reload)).toHaveLength(7);
+    for (const container of [live, reload]) {
+      expect(within(container).getByRole('button', { name: '240, repeated from an earlier answer' })).toBeInTheDocument();
+    }
     // Live projection never mutates the event offsets needed by hydration.
     expect(hydrated.figureSources).toEqual(state.figureSources);
   });

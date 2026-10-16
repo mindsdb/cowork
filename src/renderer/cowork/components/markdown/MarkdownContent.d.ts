@@ -4,7 +4,7 @@ import type { ComponentType, ReactNode } from 'react';
    its step (linkFigureSteps in lib/figureSources). */
 export interface MarkdownFigureSource {
   tool_use_id: string;
-  kind: 'query' | 'file' | 'web' | 'memory' | 'step';
+  kind: 'query' | 'file' | 'web' | 'step';
   label: string;
   /* Relative to `project_id`, the project the turn ran in. */
   path: string | null;
@@ -22,7 +22,7 @@ export interface MarkdownFigure {
   start: number;
   end: number;
   text: string;
-  origin: 'step' | 'question' | 'none';
+  origin: 'step' | 'question' | 'none' | 'earlier_answer';
   sources: MarkdownFigureSource[];
 }
 

@@ -5,7 +5,7 @@
  * sequence, including repeated values in narration the live UI removes. */
 export const RESTORED_ANSWER = '📦 Site S1 holds 250 units; site S2 may need 99 units.';
 export const RESTORED_NARRATION = '\n\nI will recheck 250 units and 99 requested units.';
-export const RESTORED_DIAGNOSIS = '\n\nThe 250-unit count stands; I cannot confirm the 12-unit adjustment.';
+export const RESTORED_DIAGNOSIS = '\n\nThe 250-unit count stands, up from 240; I cannot confirm the 12-unit adjustment.';
 export const RESTORED_SAVED_TEXT = RESTORED_ANSWER + RESTORED_NARRATION + RESTORED_DIAGNOSIS;
 export const RESTORED_LIVE_TEXT = RESTORED_ANSWER + RESTORED_DIAGNOSIS;
 
@@ -36,6 +36,7 @@ export const restoredFigureEvents = (conversationId = 'conv-a') => [
       traced('250', 'step', RESTORED_ANSWER.length),
       traced('99', 'none', RESTORED_ANSWER.length),
       traced('250', 'step', RESTORED_ANSWER.length + RESTORED_NARRATION.length),
+      traced('240', 'earlier_answer', 0),
       traced('12', 'none', RESTORED_ANSWER.length + RESTORED_NARRATION.length),
     ],
   },
