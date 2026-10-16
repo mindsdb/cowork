@@ -11,7 +11,8 @@ import { beforeEach, afterEach, describe, it, expect, onTestFinished, vi } from 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// The panel's note and cowork-server's 403 message share this sentence.
+/* The panel's note and cowork-server's 403 (SHARED_CONNECTION_REFUSAL in
+   cowork/services/connectors/layered_vault.py) share this sentence. */
 const READ_ONLY_NOTE = "This connection is shared with you and can't be changed here.";
 const OPERATOR_NOTE = "Your operator provides this connection, and it can't be changed here.";
 const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
@@ -193,7 +194,7 @@ describe('CustomizeView Reconnect', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
       "The existing Google Drive connection will be removed and you'll connect it again from scratch. Continue?",
     );
@@ -218,7 +219,9 @@ describe('CustomizeView Reconnect', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    /* Shared, so the existing name rides along: the submit updates that entry
+       in place instead of saving a second one under a fresh slug. */
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, { existingName: 'google_drive-team' }));
     expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
       "You'll connect Google Drive again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?",
     );
@@ -257,7 +260,7 @@ describe('CustomizeView Reconnect', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     expect(window.alert).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -280,7 +283,7 @@ describe('CustomizeView Reconnect', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     // Once on mount, once for the refresh that failed.
     expect(fetchDatasources).toHaveBeenCalledTimes(2);
     expect(window.alert).not.toHaveBeenCalled();
@@ -332,6 +335,23 @@ describe('CustomizeView panel Remove', () => {
     expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect google_drive/google_drive-team?');
     expect(deleteDatasource).not.toHaveBeenCalled();
   });
+
+  it('drops the card when the panel Remove hits a 404, without an alert', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    vi.mocked(deleteDatasource).mockImplementationOnce(() => {
+      state.connections = [];
+      return Promise.reject(refusal(404, 'Connection not found.'));
+    });
+    const dialog = await openPanel([CONNECTION], SAVED);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
+
+    await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
+    expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
 
 describe('CustomizeView Reconnect on desktop', () => {
@@ -352,7 +372,7 @@ describe('CustomizeView Reconnect on desktop', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC));
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     expect(host.keychainRevoke).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team', 'team@example.com');
     expect(deleteDatasource).not.toHaveBeenCalled();
     expect(window.alert).not.toHaveBeenCalled();

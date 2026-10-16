@@ -252,7 +252,12 @@ describe('SkillCard create-time sharing', () => {
     await user.click(screen.getByRole('button', { name: 'Save skill' }));
 
     await waitFor(() => expect(store.saveSkillAndSync).toHaveBeenCalledTimes(1));
-    expect(store.saveSkillAndSync.mock.calls[0][0].shared).toBe(true);
+    const [payload, isEdit] = store.saveSkillAndSync.mock.calls[0];
+    expect(isEdit).toBe(false);
+    /* Shared with everyone, so created unscoped: the chat's project ('billing')
+       never rides along, since a reader would apply the creator's scope. */
+    expect(payload).toMatchObject({ label: 'shared-skill', shared: true });
+    expect(payload).not.toHaveProperty('projects');
     expect(await screen.findByText('Saved and shared with everyone')).toBeInTheDocument();
   });
 

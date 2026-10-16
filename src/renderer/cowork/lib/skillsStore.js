@@ -35,8 +35,9 @@ function _emit() {
 }
 
 function _getSnapshot() {
-  // Must return a stable reference between mutations or useSyncExternalStore
-  // loops. `_skills` is only reassigned inside reloadSkills, so it is stable.
+  /* Must return a stable reference between mutations or useSyncExternalStore
+     loops. `_skills` is reassigned only by a reload or the sharing patch in
+     setSkillSharingAndSync, and each emits, so it is stable between mutations. */
   return _skills;
 }
 
@@ -150,7 +151,15 @@ export async function saveSkillAndSync(payload, isEdit = false) {
  *  the caller can revert the control and show the server's refusal. */
 export async function setSkillSharingAndSync(label, shared) {
   const saved = await setSkillSharing(label, shared);
-  await reloadSkills({ afterCurrent: true });
+  /* The PUT succeeded, so the row's `shared` is settled even when the reload
+     that would carry it can't run. Patch the cached row so the list badge, a
+     reopened detail and the control's equality guard all read the same value;
+     don't adopt `saved`, whose capabilities a mutation response may omit. */
+  const refreshed = await reloadSkills({ afterCurrent: true });
+  if (!refreshed.ok && Array.isArray(_skills)) {
+    _skills = _skills.map((s) => (s.label === label ? { ...s, shared } : s));
+    _emit();
+  }
   return saved;
 }
 

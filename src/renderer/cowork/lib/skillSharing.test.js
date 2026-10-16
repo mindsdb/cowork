@@ -5,6 +5,7 @@ import {
   SKILL_SHARING_OPTIONS,
   SKILL_SHARING_PRIVATE,
   canShareSkill,
+  isSharedSkill,
   sharedFromValue,
   sharingValue,
 } from './skillSharing';
@@ -24,6 +25,21 @@ describe('canShareSkill', () => {
     ['a non-boolean canShare', { capabilities: { canShare: 'true' } }],
   ])('is false with %s', (_, skill) => {
     expect(canShareSkill(skill)).toBe(false);
+  });
+});
+
+describe('isSharedSkill', () => {
+  it('is true only for an explicit shared true', () => {
+    expect(isSharedSkill({ shared: true })).toBe(true);
+  });
+
+  it.each([
+    ['no skill', undefined],
+    ['shared false', { shared: false }],
+    ['a non-boolean shared', { shared: 'true' }],
+    ['no shared key', { label: 'x' }],
+  ])('is false with %s', (_, skill) => {
+    expect(isSharedSkill(skill)).toBe(false);
   });
 });
 

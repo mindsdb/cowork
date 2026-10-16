@@ -58,14 +58,18 @@ export interface ConnectorConnection {
   updatedAt?: string | null;
   /**
    * True for a connection the caller can't change: one the operator provides,
-   * or one someone else shares with the caller. The page shows it read-only.
-   * Absent means false.
+   * or one someone else shares with the caller. The page shows it read-only,
+   * with no Reconnect or Remove. With `shared` false, only the operator can
+   * change it. Absent means false.
    */
   managed?: boolean;
   /**
-   * True for a connection the operator shares with everyone. With `managed`
-   * false it is the caller's own: the page shows a Shared badge and keeps
-   * every action. Absent means false.
+   * True for a connection in the shared-connection registry, and also for
+   * another person's connection in a deployment-wide vault (connections left
+   * off COWORK_PERSONAL_RESOURCES). With `managed` true it is shared with the
+   * caller, who can't change it. With `managed` false it is the caller's own
+   * shared connection: the page shows a Shared badge and keeps every action.
+   * Absent means false.
    */
   shared?: boolean;
 }

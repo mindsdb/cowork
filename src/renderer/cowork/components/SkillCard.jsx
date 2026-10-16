@@ -148,8 +148,14 @@ export default function SkillCard({ skill, projectName }) {
       ? { ...payload, projects: [projectName] }
       : payload;
     const sharedOnCreate = asksSharing && sharedFromValue(sharing);
+    /* A skill shared with everyone is created unscoped. The card never shows
+       the chat's project, so the person never chose it, and a reader applies
+       the creator's scope (shared_turn_skills in cowork/services/skills.py), so
+       a silent scope would keep the skill out of every other person's turns.
+       The creator's own copy then applies in all of their projects. */
+    const createBase = sharedOnCreate ? payload : scopedPayload;
     const createPayload = asksSharing
-      ? { ...scopedPayload, shared: sharedOnCreate }
+      ? { ...createBase, shared: sharedOnCreate }
       : scopedPayload;
 
     const markSaved = (text) => {

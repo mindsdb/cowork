@@ -60,10 +60,12 @@ function ConnectionsCounts({ search, total, filtered }) {
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
-/* The same sentence cowork-server answers when it refuses a change to a
-   connection the caller can't change: one someone else shares, or one the
-   operator provides. */
-const MANAGED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
+/* The UI note beside a connection someone else shares with the caller.
+   cowork-server answers this same sentence (SHARED_CONNECTION_REFUSAL in
+   cowork/services/connectors/layered_vault.py) when it refuses a change to any
+   connection the caller can't change, one the operator provides included; the
+   operator's own gets OPERATOR_CONNECTION_NOTE in the UI below. */
+const SHARED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
 
 /* The same read-only note for a connection the operator provides, which no
    person created or shared. */
@@ -449,7 +451,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           )}
           {managed ? (
             <p className="m-0 text-[12px] text-ink-3" role="note">
-              {shared ? MANAGED_CONNECTION_NOTE : OPERATOR_CONNECTION_NOTE}
+              {shared ? SHARED_CONNECTION_NOTE : OPERATOR_CONNECTION_NOTE}
             </p>
           ) : (
             <>
@@ -588,9 +590,9 @@ export default function CustomizeView({
       // eslint-disable-next-line no-console
       console.warn('[connectors] refresh after delete failed', e);
     }
-    // Project files' Context card holds its own Google Drive file list and
-    // has no other way to learn a connection just vanished (and with it,
-    // that connection's _picked_files grant).
+    /* Project files' Context card holds its own Google Drive file list and has
+       no other way to learn a connection just vanished (and with it, that
+       connection's _picked_files grant). */
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
   };
 
@@ -731,14 +733,18 @@ export default function CustomizeView({
           onReconnect={async (conn, spec, { shared = false } = {}) => {
             /* The creator's own shared connection is never deleted first:
                everyone it's shared with would lose it, and cowork-server
-               refuses a new connection under the name the operator still
-               shares. Connecting the same account again updates it in place.
-               Otherwise a failed delete leaves the old connection in place,
-               so don't start a new connect flow for it; the panel stays open.
-               A connection that is already gone counts as deleted. */
+               refuses a new connection under the name the operator still shares
+               (STILL_SHARED_CONNECTION_REFUSAL in
+               cowork/services/connectors/layered_vault.py). Connecting the same
+               account again updates it in place, so its name rides along: a
+               connector with no identity field would otherwise derive a fresh
+               random slug and save a second, private connection. Otherwise a
+               failed delete leaves the old connection in place, so don't start
+               a new connect flow for it; the panel stays open. A connection
+               that is already gone counts as deleted. */
             if (!shared && !await handleDelete(conn)) return;
             setSelectedConn(null);
-            onReconnect?.(spec);
+            onReconnect?.(spec, shared ? { existingName: conn.name } : {});
           }}
         />
       )}

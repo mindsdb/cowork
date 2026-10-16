@@ -2167,6 +2167,7 @@ function AppCore() {
   const bootIntroDone = useBootDecisions({
     serverOnline,
     health,
+    route,
     projects,
     selectedProject,
     setServerHelpOpen,
@@ -2919,7 +2920,7 @@ function AppCore() {
     }
   };
 
-  const handleConnectorPicked = async (connector) => {
+  const handleConnectorPicked = async (connector, { existingName } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
     // Snapshot the origin now, before we switch into the connect task below.
@@ -2997,6 +2998,10 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        /* Reconnecting a shared connection carries its name so the submit
+           (DataVaultFormPanel reads spec._existing_name) updates that entry in
+           place instead of saving a second one under a fresh random slug. */
+        ...(existingName ? { _existing_name: existingName } : {}),
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
@@ -6037,7 +6042,7 @@ function AppCore() {
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}
             onConnectNew={handleStartConnectChat}
-            onReconnect={(spec) => handleConnectorPicked(spec)}
+            onReconnect={(spec, opts) => handleConnectorPicked(spec, opts)}
             agentLabel={agentLabel}
           />
         )}

@@ -760,17 +760,24 @@ included. Deploy cowork-server#417, confirm hosted responses carry
 `capabilities`, and only then deploy the renderer.
 
 A person can share their own skill with everyone, read-only, or stop sharing
-it. The skill's page shows that "Who can use it" control only when the skill's
-`capabilities.canShare` is true, and a change goes to
-`PUT /api/v1/skills/{skill}/sharing`. Creating a skill (the Write form, Upload
-and the chat's skill card) asks the same question, with Only me preselected,
-only when the skills list's top-level `canShare` is true, and sends the answer
-as `shared`. Unlike the other capabilities, a missing `canShare` is false on
+it. The skill's page and its Edit form show that "Who can use it" control only
+when the skill's `capabilities.canShare` is true; a change goes to
+`PUT /api/v1/skills/{skill}/sharing` (the Edit form sends it after saving the
+rest). Creating a skill (the Write form, Upload and the chat's skill card) asks
+the same question, with Only me preselected, only when the skills list's
+top-level `canShare` is true, and sends the answer as `shared`. The chat's
+skill card creates a skill shared with everyone without the chat's project
+scope, since a reader applies the creator's scope. Unlike the other capabilities, a missing `canShare` is false on
 every build, desktop included. cowork-server grants it only where each person
 keeps their own skills, so hosted Cowork, the desktop app and a deployment
 whose skills everyone already shares never show it. Deploy cowork-server
 first: against an older server the renderer shows no control and sends no
 `shared` field.
+
+The Connections page reads the same way. Each connection carries `managed` and
+`shared`, and the page keys its Reconnect, Remove and read-only note on them; a
+missing field keeps every control, and cowork-server's 403 enforces the rule
+when a change is refused.
 
 ### A model that can't run right now is not selectable
 

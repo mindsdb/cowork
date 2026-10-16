@@ -29,10 +29,15 @@ export function canShareSkill(skill) {
   return skill?.capabilities?.canShare === true;
 }
 
-/* The control's value for a skill. Only an explicit `shared: true` reads as
-   shared, the same rule the Shared badge follows. */
+/* Whether a skill is shared with everyone. Only an explicit `shared: true`
+   counts, the same rule the Shared badge, the hint and the note all follow. */
+export function isSharedSkill(skill) {
+  return skill?.shared === true;
+}
+
+/* The control's value for a skill. */
 export function sharingValue(skill) {
-  return skill?.shared === true ? SKILL_SHARING_EVERYONE : SKILL_SHARING_PRIVATE;
+  return isSharedSkill(skill) ? SKILL_SHARING_EVERYONE : SKILL_SHARING_PRIVATE;
 }
 
 /* The `shared` flag the API takes for a control value. */

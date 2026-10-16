@@ -28,6 +28,7 @@ import {
   SKILL_SHARING_OPTIONS,
   SKILL_SHARING_PRIVATE,
   canShareSkill,
+  isSharedSkill,
   sharedFromValue,
   sharingValue,
 } from '../lib/skillSharing';
@@ -49,7 +50,7 @@ const SHARED_SKILL_NOTE = "This skill is shared with you and can't be changed he
    explicit `shared: true` names sharing; a built-in keeps its own label. */
 function lockedActionHint(skill) {
   if (skill.isBuiltin) return 'Built-in';
-  if (skill.shared === true) return 'Shared with you';
+  if (isSharedSkill(skill)) return 'Shared with you';
   return 'Admin or creator';
 }
 
@@ -60,7 +61,7 @@ function lockedActionHint(skill) {
    in cowork/services/skills.py), so the creator's switch and Uninstall reach
    them too. */
 function isOwnSharedSkill(skill) {
-  return skill.shared === true && canUseSharedResource(skill, 'canEdit');
+  return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
 }
 
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
@@ -72,7 +73,7 @@ const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's
 // The detail view's note for a skill the caller can't edit.
 function readOnlyNote(skill) {
   if (skill.isBuiltin) return 'Built-in skills are read only.';
-  if (skill.shared === true) return SHARED_SKILL_NOTE;
+  if (isSharedSkill(skill)) return SHARED_SKILL_NOTE;
   return 'Read only — only the creator or an organization admin can change this skill.';
 }
 
@@ -85,7 +86,7 @@ function SkillRow({ skill, onClick, projects = [] }) {
   const author = sharedResourceAttribution(skill)?.createdBy;
   /* `shared: true` marks the creator's own shared skill and one someone else
      shares alike; the detail view's actions tell the two apart. */
-  const shared = skill.shared === true;
+  const shared = isSharedSkill(skill);
   return (
     <ListItem
       as="article"
@@ -137,15 +138,16 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
-  /* Only a create asks who can use the skill, and only where the server lets
-     this person share. An edit never changes sharing; that has its own control
-     and its own refusals on the skill's page. */
-  const asksSharing = !isEdit && canShare;
+  /* Who can use the skill: a create asks where the list grants sharing, the
+     creator's own edit where this skill's own capabilities do. A create sends
+     the answer as `shared`; an edit applies a changed choice through the
+     sharing route after the save, and surfaces its refusal. */
+  const asksSharing = isEdit ? canShareSkill(initial) : canShare;
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS, sharing: sharingValue(initial) });
     } else {
       setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
@@ -169,12 +171,20 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     try {
       const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
       const payload = { label, description: draft.description, declarative: draft.declarative, projects: scopedProject };
-      if (asksSharing) payload.shared = sharedFromValue(draft.sharing);
+      const sharedChoice = sharedFromValue(draft.sharing);
+      /* A create sends the sharing choice inline. The edit PUT never carries
+         it, so an edit applies a changed choice through the sharing route. */
+      if (asksSharing && !isEdit) payload.shared = sharedChoice;
+      const sharingChanged = isEdit && asksSharing && draft.sharing !== sharingValue(initial);
       const saved = await saveSkillAndSync(payload, isEdit);
+      if (sharingChanged) await setSkillSharingAndSync(label, sharedChoice);
       handleClose();
-      await onSaved(saved);
+      await onSaved(saved, {
+        shared: (!isEdit && payload.shared === true) || (sharingChanged && sharedChoice),
+        stoppedSharing: sharingChanged && !sharedChoice,
+      });
     } catch (err) {
-      onError?.(`Error: ${err.message}.`);
+      onError?.(err?.message || 'Could not save skill.');
     } finally {
       setBusy(false);
     }
@@ -225,7 +235,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
             />
           </Field>
           {asksSharing && (
-            <Field label={SKILL_SHARING_LABEL} help={SKILL_SHARING_CREATE_HINT}>
+            <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
               <Select
                 ariaLabel={SKILL_SHARING_LABEL}
                 value={draft.sharing}
@@ -285,7 +295,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
     try {
       const saved = await uploadSkillFile(file, canShare ? { shared: sharedFromValue(sharing) } : {});
       onClose();
-      await onSaved(saved);
+      await onSaved(saved, { shared: canShare && sharedFromValue(sharing) });
     } catch (err) {
       onError?.(err.message || 'Could not upload skill.');
     } finally {
@@ -455,11 +465,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      lock the creator out of the skill they just saved. The effect above
      re-points `selected` at the reloaded entry; a save response only names
      the skill for the toast. */
-  const onSkillSaved = (saved) => {
-    showToast(`Saved ${saved?.label}.`, 'success');
+  const onSkillSaved = (saved, { shared = false, stoppedSharing = false } = {}) => {
+    const label = saved?.label;
+    if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
+    else if (stoppedSharing) showToast(`Saved ${label} and stopped sharing it.`, 'success');
+    else showToast(`Saved ${label}.`, 'success');
   };
 
-  const onSkillUploaded = async (saved) => {
+  const onSkillUploaded = async (saved, options) => {
     const refreshed = await reload({ afterCurrent: true });
     // An upload bypasses the store, so re-point the open skill from the list
     // this reload verified rather than from the upload response.
@@ -469,7 +482,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     if (fresh) {
       setSelected((current) => (current?.label === fresh.label ? fresh : current));
     }
-    onSkillSaved(saved);
+    onSkillSaved(saved, options);
   };
 
   const remove = (skill) => {
@@ -495,7 +508,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const changeSharing = async (skill, value) => {
     const targetLabel = skill.label;
     const shared = sharedFromValue(value);
-    if (shared === (skill.shared === true)) return;
+    if (sharingValue(skill) === value) return;
     const setShared = (next) => setSelected((current) => (
       current?.label === targetLabel ? { ...current, shared: next } : current
     ));

@@ -261,6 +261,49 @@ describe('SkillsView: who can use a skill', () => {
       ['daily-digest', false],
     ]);
   });
+
+  const control = () => screen.getByRole('combobox', { name: 'Who can use it' });
+  const sharedRow = () => within(screen.getByRole('article', { name: own.label }));
+
+  it('keeps the badge and the reopened choice when every reload after a share fails', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+    api.setSkillSharing.mockResolvedValue({ ...own, shared: true });
+    /* The PUT lands but no catalogue read does, so only the store's own patch
+       of the cached row can keep the acknowledged `shared`. */
+    api.fetchSkills.mockRejectedValue(new Error('catalogue down'));
+
+    await choose(user, await openSkill(user, own.label), EVERYONE);
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledWith('weekly-report', true));
+
+    await user.click(screen.getByRole('button', { name: 'Skills' }));
+    expect(sharedRow().getByText('Shared')).toBeInTheDocument();
+
+    await openSkill(user, own.label);
+    await waitFor(() => expect(control()).toHaveTextContent('Everyone (read-only)'));
+
+    api.setSkillSharing.mockResolvedValue(own);
+    await choose(user, control(), ONLY_ME);
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledWith('weekly-report', false));
+  });
+
+  it('shows the badge the moment the person goes back when one reload fails then recovers', async () => {
+    const user = userEvent.setup();
+    const shared = { ...own, shared: true };
+    await renderPage([own]);
+    api.setSkillSharing.mockResolvedValue(shared);
+    api.fetchSkills
+      .mockRejectedValueOnce(new Error('catalogue blip'))
+      .mockResolvedValue({ skills: [shared], canShare: true });
+
+    await choose(user, await openSkill(user, own.label), EVERYONE);
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledWith('weekly-report', true));
+
+    await user.click(screen.getByRole('button', { name: 'Skills' }));
+    /* The store's patch shows the badge now, not only after a reopen retries
+       the failed read. */
+    expect(sharedRow().getByText('Shared')).toBeInTheDocument();
+  });
 });
 
 describe('SkillsView: asking who can use a new skill', () => {
@@ -303,6 +346,35 @@ describe('SkillsView: asking who can use a new skill', () => {
     expect(api.saveSkill.mock.calls[0][0].shared).toBe(true);
   });
 
+  it('confirms the share in the toast when a new skill is created for Everyone', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+    api.saveSkill.mockResolvedValue({ label: 'new-skill', shared: true });
+
+    const dialog = await openWriteForm(user);
+    await choose(user, within(dialog).getByRole('combobox', { name: 'Who can use it' }), EVERYONE);
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Saved and shared new-skill with everyone.',
+      type: 'success',
+    }));
+  });
+
+  it('confirms a plain save in the toast when a new skill stays Only me', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+    api.saveSkill.mockResolvedValue({ label: 'new-skill' });
+
+    const dialog = await openWriteForm(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Saved new-skill.',
+      type: 'success',
+    }));
+  });
+
   it("shows the server's refusal and keeps the form open", async () => {
     const user = userEvent.setup();
     const refusal = "Sharing one skill at a time isn't available here: every skill is already shared with everyone.";
@@ -313,7 +385,7 @@ describe('SkillsView: asking who can use a new skill', () => {
     await choose(user, within(dialog).getByRole('combobox', { name: 'Who can use it' }), EVERYONE);
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({ title: `Error: ${refusal}.`, type: 'danger' }));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({ title: refusal, type: 'danger' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
@@ -330,22 +402,108 @@ describe('SkillsView: asking who can use a new skill', () => {
     expect(api.saveSkill.mock.calls[0][0]).not.toHaveProperty('shared');
   });
 
-  it("never asks in the Edit form, which leaves sharing to the skill's page", async () => {
+  async function openEditForm(user, label) {
+    await openSkill(user, label);
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Edit/ }));
+    return screen.findByRole('dialog');
+  }
+
+  it("shows the sharing control in the Edit form of the creator's own skill", async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+
+    const dialog = await openEditForm(user, own.label);
+
+    expect(within(dialog).getByRole('combobox', { name: 'Who can use it' })).toHaveTextContent('Only me');
+    // The Edit form applies the choice here, so it drops the create-time hint.
+    expect(dialog).not.toHaveTextContent("You can change this later on the skill's page.");
+  });
+
+  it('applies a changed choice through the sharing route on Save, and the PUT carries no shared', async () => {
     const user = userEvent.setup();
     await renderPage([own]);
     api.saveSkill.mockResolvedValue(own);
+    api.setSkillSharing.mockResolvedValue({ ...own, shared: true });
 
-    await openSkill(user, own.label);
-    await user.click(screen.getByRole('button', { name: 'More actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: /Edit/ }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByRole('combobox', { name: 'Who can use it' })).not.toBeInTheDocument();
+    const dialog = await openEditForm(user, own.label);
+    await choose(user, within(dialog).getByRole('combobox', { name: 'Who can use it' }), EVERYONE);
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(api.saveSkill).toHaveBeenCalledTimes(1));
     const [payload, isEdit] = api.saveSkill.mock.calls[0];
     expect(isEdit).toBe(true);
     expect(payload).not.toHaveProperty('shared');
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledWith('weekly-report', true));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Saved and shared weekly-report with everyone.',
+      type: 'success',
+    }));
+  });
+
+  it('opens the Edit form of a shared skill at Everyone, keeps it on a plain Save, and stops sharing on Only me', async () => {
+    const user = userEvent.setup();
+    const sharedOwn = { ...own, shared: true };
+    await renderPage([sharedOwn]);
+    api.saveSkill.mockResolvedValue(sharedOwn);
+    api.setSkillSharing.mockResolvedValue(own);
+
+    const first = await openEditForm(user, own.label);
+    expect(within(first).getByRole('combobox', { name: 'Who can use it' })).toHaveTextContent('Everyone (read-only)');
+    await user.click(within(first).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.saveSkill).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(api.setSkillSharing).not.toHaveBeenCalled();
+    expect(toast.add).toHaveBeenCalledWith({ title: 'Saved weekly-report.', type: 'success' });
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Edit/ }));
+    const second = await screen.findByRole('dialog');
+    await choose(user, within(second).getByRole('combobox', { name: 'Who can use it' }), ONLY_ME);
+    await user.click(within(second).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledExactlyOnceWith('weekly-report', false));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Saved weekly-report and stopped sharing it.',
+      type: 'success',
+    }));
+  });
+
+  it('leaves sharing untouched when the Edit choice is unchanged', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+    api.saveSkill.mockResolvedValue(own);
+
+    const dialog = await openEditForm(user, own.label);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.saveSkill).toHaveBeenCalledTimes(1));
+    expect(api.setSkillSharing).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a refused share from the Edit form and keeps it open', async () => {
+    const user = userEvent.setup();
+    const refusal = 'Someone else already shares a skill named weekly-report. Rename your skill before you share it.';
+    await renderPage([own]);
+    api.saveSkill.mockResolvedValue(own);
+    api.setSkillSharing.mockRejectedValue(new Error(refusal));
+
+    const dialog = await openEditForm(user, own.label);
+    await choose(user, within(dialog).getByRole('combobox', { name: 'Who can use it' }), EVERYONE);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({ title: refusal, type: 'danger' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it("hides the Edit sharing control where the skill's own capabilities don't grant it", async () => {
+    const user = userEvent.setup();
+    const noShare = { ...own, capabilities: { ...OWNER } };
+    await renderPage([noShare]);
+
+    const dialog = await openEditForm(user, noShare.label);
+
+    expect(within(dialog).queryByRole('combobox', { name: 'Who can use it' })).not.toBeInTheDocument();
   });
 
   async function cancel(user, dialog) {
@@ -442,6 +600,19 @@ describe('SkillsView: asking who can use a new skill', () => {
     const { file } = await uploadWith(user, pick);
 
     expect(api.uploadSkillFile).toHaveBeenCalledWith(file, options);
+  });
+
+  it('confirms the share in the toast when an upload is shared with Everyone', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+    api.uploadSkillFile.mockResolvedValue({ label: 'new-skill' });
+
+    await uploadWith(user, EVERYONE);
+
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Saved and shared new-skill with everyone.',
+      type: 'success',
+    }));
   });
 
   it('sends no choice with an upload where the list says nobody can share', async () => {
