@@ -19,6 +19,19 @@ permissions:
   contents: read
 
 jobs:
+  spa-wrapper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install SPA wrapper test dependencies
+        run: python -m pip install fastapi==0.141.1 httpx==0.28.1
+      - name: SPA wrapper route tests
+        run: python -m unittest discover -s scripts -p test_spa_wrapper.py -v
+
   test:
     runs-on: ubuntu-latest # unit/component only — no native/Electron dep
     timeout-minutes: 10
