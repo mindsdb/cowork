@@ -8,6 +8,8 @@
 //
 // Pure — no fs, no electron, no network. Tested directly.
 
+import { STOCK_PRODUCT_NAME } from './product-name';
+
 /** Why a start attempt failed, as classified by the main process.
  *
  *  - `spawn-error`  — the OS refused to launch the program (EPERM from an AV
@@ -117,7 +119,7 @@ export function backendFailureCopy(input: {
     case 'spawn-error':
       headline = "The backend program couldn't be launched at all.";
       hints.push(
-        'Antivirus or endpoint protection blocking the executable is the usual cause; allow the MindsHub Cowork backend and try again.',
+        `Antivirus or endpoint protection blocking the executable is the usual cause; allow the ${STOCK_PRODUCT_NAME} backend and try again.`,
         'If that is not it, re-run the installer to reinstall the backend.',
       );
       break;
@@ -128,14 +130,14 @@ export function backendFailureCopy(input: {
     case 'credential-clear':
       headline = "The backend couldn't remove the API keys from your last sign-out, so it stopped instead of using them.";
       hints.push(
-        'Quit MindsHub Cowork completely and reopen it. The backend tries again on every start.',
+        `Quit ${STOCK_PRODUCT_NAME} completely and reopen it. The backend tries again on every start.`,
         'If it keeps failing, another program may be holding files in the Cowork data folder open; close it, or restart the machine.',
       );
       break;
     case 'incompatible':
-      headline = 'The backend needs to be updated for this version of MindsHub Cowork.';
+      headline = `The backend needs to be updated for this version of ${STOCK_PRODUCT_NAME}.`;
       hints.push(
-        'Quit MindsHub Cowork completely and reopen it so the matching backend can be installed and started.',
+        `Quit ${STOCK_PRODUCT_NAME} completely and reopen it so the matching backend can be installed and started.`,
         'If the update does not complete, re-run the latest installer.',
       );
       break;

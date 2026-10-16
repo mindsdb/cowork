@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { trimCopiedSelection } from './clipboard';
+import { copyText, trimCopiedSelection } from './clipboard';
 
 function copyEvent(currentTarget = document.body) {
   const data = {};
@@ -82,5 +82,42 @@ describe('trimCopiedSelection', () => {
     trimCopiedSelection(event);
 
     expect(event.data['text/html']).toBe('<ul><li id="a">One</li><li id="b"></li></ul>');
+  });
+});
+
+/* The fallback copies from a hidden textarea it has to focus, the way the
+   browser selects text in one. Run from a button in a popover, the focus must
+   come back to that button, and the textarea must sit beside it: a popover
+   whose focus leaves it (to the page's body) stops Tab from reaching its
+   buttons. */
+describe('copyText without the Clipboard API', () => {
+  const execCommand = document.execCommand;
+  afterEach(() => {
+    document.execCommand = execCommand;
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('copies from beside the focused element and gives focus back to it', async () => {
+    document.body.innerHTML = '<div id="popup"><button id="copy">Copy</button><button id="next">Next</button></div>';
+    const button = document.getElementById('copy');
+    button.focus();
+    if (navigator.clipboard) vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    // A browser focuses a textarea when it selects its text.
+    vi.spyOn(HTMLTextAreaElement.prototype, 'select').mockImplementation(function select() {
+      this.focus();
+    });
+    let copiedFrom = null;
+    document.execCommand = vi.fn(() => {
+      const el = document.activeElement;
+      copiedFrom = { tagName: el.tagName, value: el.value, parent: el.parentElement };
+      return true;
+    });
+
+    await expect(copyText('SELECT 1')).resolves.toBe(true);
+
+    expect(copiedFrom).toEqual({ tagName: 'TEXTAREA', value: 'SELECT 1', parent: document.getElementById('popup') });
+    expect(document.activeElement).toBe(button);
+    expect(document.querySelector('textarea')).toBeNull();
   });
 });
