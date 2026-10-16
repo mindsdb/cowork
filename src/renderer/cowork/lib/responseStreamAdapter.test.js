@@ -947,6 +947,30 @@ describe('ToolProgress rows (ENG-2981)', () => {
   });
 });
 
+// ENG-3436: an answer that stopped early says why on response.completed.
+describe('incompleteReason', () => {
+  it('starts null', () => {
+    expect(initialStreamState().incompleteReason).toBeNull();
+  });
+
+  it('captures the reason when the response is incomplete', () => {
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'part' },
+      { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } } },
+    ]);
+    expect(state.status).toBe('done');
+    expect(state.incompleteReason).toBe('spend_ceiling');
+    expect(state.bodyText).toBe('part');
+  });
+
+  it('stays null for a finished answer, and for a server that sends no status', () => {
+    expect(reduceAll([
+      { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+    ]).incompleteReason).toBeNull();
+    expect(reduceAll([{ type: 'response.completed' }]).incompleteReason).toBeNull();
+  });
+});
+
 describe('response.figure_sources', () => {
   const STEPS = [
     { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] },
@@ -1018,6 +1042,22 @@ describe('answerText', () => {
     ]);
     expect(state.answerText).toBe(NARRATION + ANSWER);
     expect(state.bodyText).toBe(ANSWER);
+  });
+
+  it('keeps the text of an answer that stopped early, next to its reason', () => {
+    const state = fold([
+      { type: 'response.output_text.delta', delta: ANSWER },
+      {
+        type: 'response.completed',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'spend_ceiling' },
+          output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text: ANSWER }] }],
+        },
+      },
+    ]);
+    expect(state.answerText).toBe(ANSWER);
+    expect(state.incompleteReason).toBe('spend_ceiling');
   });
 
   it('stays null when response.completed carries no text', () => {

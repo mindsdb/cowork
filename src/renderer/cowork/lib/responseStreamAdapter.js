@@ -78,6 +78,9 @@ export function initialStreamState() {
      *  only thing that gives that row a real id during its own turn. Null on
      *  a producer that persists no user row (the probe path). */
     userMessageId: null,
+    /** Why a finished turn stopped early, off `response.completed`'s
+     *  `incomplete_details.reason` (e.g. 'spend_ceiling'). Null when it finished. */
+    incompleteReason: null,
     /** Where each figure in the final answer came from and the steps it
      *  names, off `response.figure_sources` (lib/figureSources), as sent: its
      *  offsets index `answerText`. Null when the turn sent none: an answer
@@ -339,6 +342,9 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       status: 'done',
       currentThought: null,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
+      incompleteReason: event.response?.status === 'incomplete'
+        ? (event.response.incomplete_details?.reason || null)
+        : null,
       answerText: completedAnswerText(event) ?? state.answerText,
     };
   }

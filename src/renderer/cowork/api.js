@@ -338,6 +338,7 @@ function _hydrateAssistantEvents(messages) {
         : {}),
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
