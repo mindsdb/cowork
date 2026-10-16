@@ -231,7 +231,7 @@ This boots both processes:
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+`/api` proxy. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
 ### Build a production bundle
@@ -242,7 +242,7 @@ npm run build:web
 
 Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
-and point its `/v1` requests at a running cowork-server process.
+and point its `/api` requests at a running cowork-server process.
 
 ### Browser tab icon
 
@@ -252,6 +252,46 @@ a square image of at least 32 × 32 pixels works best. Changes preview immediate
 and persist through the settings API. Removing the override restores the page's
 original icon, including a deployment's custom branding. Desktop does not show
 this control, and the browser's home-screen icon is unchanged.
+
+### Deployment brand
+
+A web build with the platform UI off (`BUILD_TARGET=web` and
+`VITE_PLATFORM_UI` not `true`) reads an optional brand from its own origin
+when the page loads. One build then serves any number of deployments, and a
+deployment changes its brand by serving different files, with no rebuild.
+Hosted web and desktop never load a brand: their HTML has no reference to it.
+
+| Path | What it is |
+|---|---|
+| `/brand/brand.js` | A classic script that only assigns `window.COWORK_DEPLOYMENT_BRAND = { ... };` |
+| `/brand/brand.css` | A stylesheet, loaded after the app's own CSS |
+| `/brand/<file>` | Any image the config names |
+
+The build adds the script right after `<title>`, as a blocking script before
+the app's bundle, so the first render already has the brand. It must never be
+`async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
+stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
+serves them, so a deployment that serves nothing of its own looks stock.
+
+Every field is optional. A field that breaks its rule is ignored, with one
+console warning, and the rest still apply. Unknown keys are ignored, so the
+format only ever gains optional fields.
+
+| Field | Rule | Used for |
+|---|---|---|
+| `productName` | 1 to 64 characters after trimming | The tab title and the places that name the product |
+| `skin` | `{ "id", "label" }`: an id of lowercase letters, digits and single hyphens, up to 32 characters; a label of 1 to 32 characters | A style listed first in Settings > Appearance > Style. `brand.css` styles `body[data-skin="<id>"]` |
+| `theme` | `light` or `dark` | The theme a browser starts in |
+| `skinLocked` | `true` or `false` | `true` keeps every browser on the default style: the brand's `skin` when its id is not a stock style's (`normal`, `8bit` or `custom`), or Normal otherwise. Settings shows the style without a picker, and the corner and top-bar buttons switch only light and dark. A browser's saved style is kept and comes back once the lock is off. The theme stays each person's choice |
+| `logoUrl`, `iconUrl`, `appleTouchIconUrl` | `/brand/<file>`, with an optional `?v=<token>` | The sidebar logo, the tab icon and the home-screen icon |
+
+A person's own Settings win over the brand: a sidebar title, logo or tab icon
+set there is shown instead, and clearing the tab icon brings back the brand's.
+The style is the one exception while the brand sets `skinLocked: true`.
+If `brand.js` doesn't load, or doesn't set an object, the page shows stock
+names, styles and icons with no style lock, and logs one console error naming
+the file. A server that serves the brand should send `Cache-Control: no-cache`
+with an ETag, so a changed brand shows after a reload.
 
 ### Platform abstraction
 
@@ -888,6 +928,10 @@ it from a type an old sidecar never classified). To see the notices, the Provide
 copy, the restricted hint and an open picker with a restricted row, open
 `/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
 per-case `id`s work the same way.
+
+Settings > Appearance carries "Show where figures came from", on by default and kept with the server's settings (`show_figure_sources`); the switch shows only when the server serves that key. With it on, each figure in a finished answer that cowork-server traced (the `response.figure_sources` event) is a button: a grey dotted underline when a step returned it, a solid amber one when no step did. Hover or keyboard focus shows where it came from, and a click or Enter lists every source: its SQL and requests with a Copy button each, a web link, Open step, and View file. View file opens the file read only, as it is now: a project file by its path, offered only while the chat is in the project the answer ran in, or a file attached to the chat by its files-store id, offered only while the chat has a project, since the attachment route goes through it. Inside a table the figures share one tab stop and the arrow keys move between them. With the setting off, answers render with no marks.
+
+To see every mark without running such a turn, open `/figure-sources-fixture.html` under the same dev server; `?theme=dark` and the per-case `id`s work the same way. `npx playwright test --config playwright.figure-sources.config.ts` checks on that page that a figure's popover stays on screen on 375x667 and 320x568 phones and at 200% zoom.
 
 ---
 
