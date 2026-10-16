@@ -1,10 +1,11 @@
 // Characterization tests for the connect-intro bubble ChatView renders for a
 // `connect_intro` message: clicking it (or Enter / Space) re-opens the cached
-// connection form, it stops offering that once the form is open, and in modify
-// mode it carries Cancel and Disconnect. ConnectIntroBubble is not exported,
+// connection form, it stops offering that once the form is open, Escape closes
+// the form and leaves the bubble able to re-open it, and in modify mode it
+// carries Cancel and Disconnect. ConnectIntroBubble is not exported,
 // so these go through ChatView like the other ChatView.*.test.jsx files.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('../../platform/host', () => ({
@@ -43,6 +44,16 @@ const taskWith = (messages) => ({ id: TASK_ID, title: 'Connect task', status: 'i
 // The card is named by what it reads: its title plus the re-open prompt.
 const reopenCard = () => screen.getByRole('button', { name: /Connect PostgreSQL.*re-open the form/ });
 
+// Opens the form and puts the caret in its first text box, where a user
+// pressing Escape would be. (Initial focus lands on the X, whose Base UI
+// tooltip trigger keeps Escape from the dialog under happy-dom only;
+// Chromium closes from there too.)
+const openedDialog = async (user) => {
+  const dialog = await screen.findByRole('dialog', { name: 'Connection form' });
+  await user.click(within(dialog).getAllByRole('textbox')[0]);
+  return dialog;
+};
+
 afterEach(() => {
   clearForm(TASK_ID);
 });
@@ -57,8 +68,39 @@ describe('ConnectIntroBubble (via ChatView)', () => {
     expect(getForm(TASK_ID)).toEqual(SPEC);
 
     // With the form open there is nothing to re-open: the card goes inert.
-    expect(screen.queryByRole('button', { name: /re-open the form/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Fill out the form on the side panel/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /re-open the form/, hidden: true })).not.toBeInTheDocument();
+    expect(screen.getByText('Fill out the form to connect')).toBeInTheDocument();
+  });
+
+  // Regression: the form opens as a centred modal, not a side panel.
+  it('never says "side panel"', () => {
+    render(<ChatView task={taskWith([intro()])} />);
+    expect(screen.queryByText(/side panel/i)).not.toBeInTheDocument();
+  });
+
+  // Regression: Escape did nothing; the modal stayed over the bubble.
+  it('closes the form on Escape, and the bubble can open it again', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith([intro({ _form_spec: SPEC })])} />);
+
+    await user.click(reopenCard());
+    await openedDialog(user);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(getForm(TASK_ID)).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(reopenCard()).toBeInTheDocument();
+  });
+
+  it('hands Escape to the host dismissal when there is one', async () => {
+    const user = userEvent.setup();
+    const onDismissConnectForm = vi.fn();
+    render(<ChatView task={taskWith([intro({ _form_spec: SPEC })])} onDismissConnectForm={onDismissConnectForm} />);
+
+    await user.click(reopenCard());
+    await openedDialog(user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(onDismissConnectForm).toHaveBeenCalledWith(TASK_ID));
   });
 
   it.each([['Enter', '{Enter}'], ['Space', ' ']])('re-opens the form from the keyboard with %s', async (_, key) => {
@@ -73,8 +115,39 @@ describe('ConnectIntroBubble (via ChatView)', () => {
   it('is not interactive when no form spec was cached', () => {
     render(<ChatView task={taskWith([intro()])} />);
     expect(screen.getByText('Connect PostgreSQL')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /re-open the form/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Fill out the form on the side panel/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /re-open the form/, hidden: true })).not.toBeInTheDocument();
+    expect(screen.getByText('Fill out the form to connect')).toBeInTheDocument();
+  });
+
+  // Regression: the form opens as a centred modal, not a side panel.
+  it('never says "side panel"', () => {
+    render(<ChatView task={taskWith([intro()])} />);
+    expect(screen.queryByText(/side panel/i)).not.toBeInTheDocument();
+  });
+
+  // Regression: Escape did nothing; the modal stayed over the bubble.
+  it('closes the form on Escape, and the bubble can open it again', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith([intro({ _form_spec: SPEC })])} />);
+
+    await user.click(reopenCard());
+    await openedDialog(user);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(getForm(TASK_ID)).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(reopenCard()).toBeInTheDocument();
+  });
+
+  it('hands Escape to the host dismissal when there is one', async () => {
+    const user = userEvent.setup();
+    const onDismissConnectForm = vi.fn();
+    render(<ChatView task={taskWith([intro({ _form_spec: SPEC })])} onDismissConnectForm={onDismissConnectForm} />);
+
+    await user.click(reopenCard());
+    await openedDialog(user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(onDismissConnectForm).toHaveBeenCalledWith(TASK_ID));
   });
 
   it('has no Cancel or Disconnect outside modify mode', () => {
