@@ -37,7 +37,9 @@ function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
   downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
 
-function SkillModal({ skill, open, onClose }) {
+// The skill preview: read-only SKILL.md. Opened from the card body, and from
+// the skill's step row in the thinking block (ChatView).
+export function SkillModal({ skill, open, onClose }) {
   const body = skill.instructions || skill.skill_md || '_No content._';
   return (
     <Modal open={open} onClose={onClose} width="640px" labelledBy="skill-card-modal-title">
