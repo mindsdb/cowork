@@ -117,16 +117,46 @@ describe('EventTimeline', () => {
   });
 
   it('collapses repeated connection failures and renders one terminal outcome', () => {
-    const events = [1, 2, 3, 4, 5].map((seq) => event(seq, 'error', `Attempt ${seq} failed`));
+    const events = [1, 2, 3, 4, 5].map((seq) => event(seq, 'error', `Reconnecting... ${seq}/5`));
 
     render(<EventTimeline {...timelineProps(events)} session={{ ...session('failed'), last_error: 'Connection unavailable' }} />);
 
     expect(screen.getByText('Retried 5 times')).toBeInTheDocument();
     expect(screen.getAllByText('Failed')).toHaveLength(1);
     expect(screen.getByText('Connection unavailable')).toBeInTheDocument();
-    expect(screen.queryByText('Attempt 1 failed')).toBeNull();
+    expect(screen.queryByText('Reconnecting... 1/5')).toBeNull();
     fireEvent.click(screen.getByText('Retried 5 times'));
-    expect(screen.getAllByText('after the connection dropped')).toHaveLength(5);
+    expect(screen.getByText('after the connection dropped (1/5)')).toBeInTheDocument();
+    expect(screen.getAllByText(/^after the connection dropped/)).toHaveLength(5);
+  });
+
+  it('shows an error that ended work as a failed step with its message', () => {
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: 'git fetch' } },
+      { ...event(2, 'error', 'Codex did not accept the instruction (busy). Send it again.'), title: 'Follow-up not delivered' },
+      event(3, 'error', 'Reconnecting... 1/2'),
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    const group = container.querySelector('.code-activity-group.is-failed');
+    expect(group).not.toBeNull();
+    expect(group).not.toHaveAttribute('open');
+    expect(screen.getByText('Ran 1 command, retried once, and hit an error')).toBeInTheDocument();
+    expect(screen.getByText('1 failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Ran 1 command, retried once, and hit an error'));
+    expect(screen.getByText('after the connection dropped (1/2)')).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: /Follow-up not delivered/ });
+    expect(row.closest('.code-step')).toHaveClass('is-failed');
+    expect(screen.queryByText(/did not accept the instruction/)).toBeNull();
+    fireEvent.click(row);
+    expect(screen.getByText('Codex did not accept the instruction (busy). Send it again.')).toBeInTheDocument();
+  });
+
+  it('does not say reconnecting after an error that ended work', () => {
+    const events = [event(1, 'user_message', 'Go'), { ...event(2, 'error', 'Codex did not accept the instruction.'), title: 'Follow-up not delivered' }];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).not.toHaveTextContent(/Reconnecting/);
   });
 
   it('folds a recovered retry into the work around it', () => {
