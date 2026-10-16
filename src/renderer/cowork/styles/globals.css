@@ -3596,7 +3596,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    on exactly the desktop case it was reported on. */
 .chat-transcript-col { container: chat-col / inline-size; }
 /* A small window onto the artifact, on the railed card treatment: the head
-   cells carry their own inset, and the footer cells are the rail. */
+   cells carry their own inset, and the footer cells are the rail. The skill
+   draft card (SkillCard) is the same object row, so it uses this grid too. */
 .card.chat-artifact-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
