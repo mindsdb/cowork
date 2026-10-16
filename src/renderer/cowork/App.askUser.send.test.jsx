@@ -1541,6 +1541,10 @@ describe('superseded data-vault stream', () => {
     return handle;
   }
 
+  // The connect form is still open (probing) after submit. It is a modal, so
+  // the composer behind it is inert; these tests drive Stop past it.
+  const stopButton = () => screen.findByRole('button', { name: /stop/i, hidden: true });
+
   it('replaces a live reply on the same conversation instead of running beside it', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
@@ -1554,7 +1558,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
     expect(reply.abort).toHaveBeenCalled();
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopButton());
     await waitFor(() => expect(vault.abort).toHaveBeenCalled());
   });
 
@@ -1564,7 +1568,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
 
     // Stop supersedes the stream: bump, then abort.
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopButton());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
@@ -1584,7 +1588,7 @@ describe('superseded data-vault stream', () => {
     const composer = await openTask(user);
     const vault = await submitConnectForm(user);
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopButton());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
