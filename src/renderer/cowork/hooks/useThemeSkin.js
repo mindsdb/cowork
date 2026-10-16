@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { loadSkin, persistSkin } from '../../lib/skins';
+import { loadSkin, persistSkin, SKIN_LOCKED } from '../../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../../lib/customTheme';
+
+/* Under a deployment brand's style lock, setSkin does nothing, so the skin
+   stays on the locked style it started with. */
+function keepLockedSkin() {}
 
 // The app's appearance axes — theme (light | dark), skin, and the
 // "design your own" custom-skin recipe — plus the Display picker modal's
@@ -60,7 +64,7 @@ export function useThemeSkin() {
 
   return {
     theme, setTheme,
-    skin, setSkin,
+    skin, setSkin: SKIN_LOCKED ? keepLockedSkin : setSkin,
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
   };

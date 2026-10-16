@@ -16,7 +16,7 @@ import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../component
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
-import { SKINS, normalizeSkin } from '../../../lib/skins';
+import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -33,6 +33,8 @@ import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
 import { visibleProviderCards } from './providerVisibility';
+import { productName } from '../../../lib/deploymentBrand';
+import { STOCK_WORDMARK } from '../../../../shared/product-name';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -2133,21 +2135,27 @@ export default function SettingsView({
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
       <SettingsGroup title="Appearance">
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
+        {SKIN_LOCKED ? (
+          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+            <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
+          </Section>
+        ) : (
+          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+            <ToggleGroup
+              value={normalizeSkin(skin)}
+              onValueChange={(v) => onSkinChange?.(v)}
+              aria-label="Style"
+              options={SKINS.map((s) => ({
+                value: s.id,
+                label: s.icon && Ico[s.icon]
+                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
+                  : s.label,
+                'aria-label': `${s.label} style`,
+                title: s.title,
+              }))}
+            />
+          </Section>
+        )}
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -2267,14 +2275,14 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
-        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
-                placeholder="MindsHub"
-                title="Replaces the MindsHub wordmark in the nav panel."
+                placeholder={productName(STOCK_WORDMARK)}
+                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
                 ariaLabel="Sidebar title text"
               />
             </div>
@@ -2367,6 +2375,22 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+        {/* Gated on its own key. A server older than this setting does not
+            serve the key and rejects a write to it with a 400, and it sends
+            no figure sources to mark either. The renderer ships OTA and
+            leads the installed server. */}
+        {'showFigureSources' in settings && (
+          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showFigureSources !== false}
+                onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
+                aria-label="Show where figures came from"
+              />
+              <AutoSaveTag settingKey="showFigureSources" />
+            </div>
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">
@@ -2398,16 +2422,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
-            <div className="flex items-center">
-              <Switch
-                checked={settings.show8bitToggle !== false}
-                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                aria-label="8-bit style toggle button"
-              />
-              <AutoSaveTag settingKey="show8bitToggle" />
-            </div>
-          </Section>
+          {!SKIN_LOCKED && (
+            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.show8bitToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                  aria-label="8-bit style toggle button"
+                />
+                <AutoSaveTag settingKey="show8bitToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>

@@ -16,6 +16,8 @@ import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 import { surfaceCopy } from '../lib/surface';
+import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../../shared/product-name';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -556,15 +558,15 @@ export default function Sidebar({
             aria-hidden="true"
             className="text-ink-3 opacity-50 text-[13px] select-none"
           >·</span>
-          {navLogo && (
+          {(navLogo || brandLogoUrl()) && (
             <img
-              src={navLogo}
+              src={navLogo || brandLogoUrl()}
               alt=""
               aria-hidden="true"
               className="anton-sidebar__logo"
             />
           )}
-          <div className="anton-sidebar__wordmark">{navTitle || 'MindsHub'}</div>
+          <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>
         </div>
       </div>
 
@@ -810,7 +812,7 @@ export default function Sidebar({
               {/* Where a returning user looks for missing work. The two apps
                   keep separate work by design, so the honest answer is to
                   point at the other one, not to imply the work is gone. */}
-              <div className="mt-1 text-ink-4">{surface.tasksNote}</div>
+              {surface.tasksNote && <div className="mt-1 text-ink-4">{surface.tasksNote}</div>}
             </div>
           )}
           {recents.map((t) => {
@@ -882,7 +884,7 @@ export default function Sidebar({
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
-                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and ${updateBanner.debInstaller ? debInstallStep(updateBanner.version) : 'open it to update'}`}>
+                <Tooltip content={`A new version of ${STOCK_PRODUCT_NAME} is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and ${updateBanner.debInstaller ? debInstallStep(updateBanner.version) : 'open it to update'}`}>
                   <button
                     type="button"
                     onClick={() => onUpdateAction?.(updateBanner.action)}

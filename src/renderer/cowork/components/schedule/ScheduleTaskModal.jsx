@@ -13,11 +13,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
-import { missedRunText } from '../../lib/scheduleCopy';
+import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
   WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
+import { host } from '../../../platform/host';
+import { askToNotify } from '../../hooks/useAutoPauseNotifications';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -112,6 +114,8 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
+    // Still inside the click, which browsers require before they will ask.
+    askToNotify();
     // The server keys the project association by `project_id` (a UUID); a
     // bare name is silently dropped and the schedule falls back to the general
     // project (ENG-1255). Resolve the selected path → project id via
@@ -154,7 +158,9 @@ export default function ScheduleTaskModal({
         title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
         subtitle={isEdit
           ? `Changes apply from the next run.`
-          : `${agentLabel} runs this on its own while MindsHub is open.`}
+          : host.isWeb
+            ? `${agentLabel} runs this on its own, even with this tab closed.`
+            : `${agentLabel} runs this on its own while MindsHub is open.`}
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
@@ -178,7 +184,7 @@ export default function ScheduleTaskModal({
               <Tooltip content={missedRunText(form.cadence)}>
                 <button
                   type="button"
-                  aria-label="If MindsHub is closed at this time"
+                  aria-label={missedRunLabel()}
                   className="inline-flex cursor-help border-0 bg-transparent p-0 text-ink-3 hover:text-ink"
                 >
                   {Ico.info(12)}

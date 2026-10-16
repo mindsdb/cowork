@@ -22,7 +22,9 @@ SPA_DIR = Path(os.environ.get("COWORK_SPA_DIR", "/app/dist/renderer-web"))
 if SPA_DIR.exists():
     # Subdirectories that the SPA build emits — served by StaticFiles so
     # they get correct MIME-types and range-request handling for free.
-    for _sub in ("assets", "fonts", "gravity-field", "logos"):
+    # "brand" holds the stock deployment brand; mounting it also answers an
+    # unknown brand file with 404 instead of the SPA shell.
+    for _sub in ("assets", "brand", "fonts", "gravity-field", "logos"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
             app.mount(

@@ -132,9 +132,9 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(screen.getAllByRole('button', { name: /^Cancel$/ })).toHaveLength(1);
   });
 
-  it('keeps what happens when the app is closed behind an info button by When', () => {
+  it('keeps what happens when a task misses its time behind an info button by When', () => {
     renderModal();
-    expect(screen.getByRole('button', { name: 'If MindsHub is closed at this time' })).toBeInTheDocument();
-    expect(screen.queryByText(/runs once when it reopens/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'If the server is down at this time' })).toBeInTheDocument();
+    expect(screen.queryByText(/runs once when it’s back/)).not.toBeInTheDocument();
   });
 });
