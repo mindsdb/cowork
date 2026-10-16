@@ -3,6 +3,8 @@
 // the "Design your own" CustomTheme recipe (customTheme.ts, local-only,
 // tied to the Custom skin), branding applies regardless of skin/theme.
 
+import type { DeploymentBrand } from './deploymentBrand';
+
 /**
  * Apply (or with null/empty, clear) the sidebar wordmark color as an inline
  * body property. Independent of the active skin — works in every style.
@@ -10,6 +12,26 @@
 export function applyNavTitleColor(color: string | null | undefined): void {
   if (color) document.body.style.setProperty('--nav-title-color', color);
   else document.body.style.removeProperty('--nav-title-color');
+}
+
+/**
+ * Point the tab and home-screen icons at a deployment brand's own files.
+ * Runs before the app renders, so the brand's icon is the page's own icon:
+ * a favicon set in Settings still wins, and clearing it brings the brand's
+ * icon back. Does nothing without a brand, or for an icon the brand doesn't set.
+ */
+export function applyBrandIcons(brand: DeploymentBrand | null, doc: Document = document): void {
+  if (brand?.iconUrl) {
+    const icon = doc.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (icon) {
+      icon.setAttribute('href', brand.iconUrl);
+      // The stock link declares SVG; the brand's icon may be any image type.
+      icon.removeAttribute('type');
+    }
+  }
+  if (brand?.appleTouchIconUrl) {
+    doc.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.setAttribute('href', brand.appleTouchIconUrl);
+  }
 }
 
 interface OriginalFavicon {

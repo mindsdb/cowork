@@ -239,6 +239,30 @@ describe('SettingsView draft ownership', () => {
 
 
 describe('SettingsView appearance request ownership', () => {
+  it('auto-saves "Show where figures came from", on until turned off', async () => {
+    const latest = { current: null };
+    const onSave = vi.fn(async () => ({}));
+    render(<Harness onSave={onSave} latest={latest} initial={{ ...SERVER, showFigureSources: true }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    const toggle = screen.getByLabelText('Show where figures came from');
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(latest.current.showFigureSources).toBe(false));
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({ showFigureSources: false });
+    expect(toggle).not.toBeChecked();
+    // Outside the wrapper that hides rows on a phone: the setting is about
+    // reading answers, which a phone does too.
+    expect(toggle.closest('.settings-hide-mobile')).toBeNull();
+  });
+
+  it('hides "Show where figures came from" on a server that does not serve the key', () => {
+    render(<Harness onSave={vi.fn()} latest={{ current: null }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    // The Appearance pane rendered; only the figure switch is absent.
+    expect(screen.getByLabelText('Animated background')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Show where figures came from')).toBeNull();
+  });
+
   it.each([
     ['Sidebar title text', 'navTitle'],
     ['Greeting text', 'greeting'],
