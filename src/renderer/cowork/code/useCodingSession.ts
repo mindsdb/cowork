@@ -66,6 +66,18 @@ export function indexLatestEvents(
 }
 
 
+const RECONCILE_TICK_MS = 2_500;
+const MAX_RECONCILE_MS = 30_000;
+
+// A connected stream already delivers every event, so polling then is only a
+// slow safety net. Without one, poll at the tick, backing off while the
+// backend keeps failing; the first retry stays at the tick so a blip clears fast.
+export function reconcileDelayMs(streamHealthy: boolean, failures: number): number {
+  if (streamHealthy) return MAX_RECONCILE_MS;
+  return Math.min(RECONCILE_TICK_MS * 2 ** Math.max(0, failures - 1), MAX_RECONCILE_MS);
+}
+
+
 export function useCodingSession(sessionId: string | null, active = true) {
   const [session, setSession] = useState<CodingSession | null>(null);
   const [timeline, setTimeline] = useState<Timeline>(EMPTY_TIMELINE);
@@ -196,12 +208,17 @@ export function useCodingSession(sessionId: string | null, active = true) {
 
     let alive = true;
     let historyLoaded = false;
-    let closeStream = () => {};
+    let stopStream: (() => void) | null = null;
+    let streamHealthy = false;
+    const closeStream = () => {
+      stopStream?.();
+      stopStream = null;
+      streamHealthy = false;
+    };
     const openStream = () => {
       closeStream();
-      closeStream = () => {};
       if (!historyLoaded || !isAppVisible()) return;
-      closeStream = openCodingEventStream(
+      stopStream = openCodingEventStream(
         sessionId,
         cursor.current,
         (event) => {
@@ -215,7 +232,13 @@ export function useCodingSession(sessionId: string | null, active = true) {
             scheduleReview(sessionId);
           }
         },
-        () => { if (alive) setError('Live updates disconnected. Reconnecting…'); },
+        () => {
+          streamHealthy = false;
+          if (alive) setError('Live updates disconnected. Reconnecting…');
+        },
+        // EventSource reconnects from the URL's original cursor, so a reopen
+        // replays rather than skips; ingest dedupes by seq.
+        () => { streamHealthy = true; },
       );
     };
     setLoading(true);
@@ -243,8 +266,12 @@ export function useCodingSession(sessionId: string | null, active = true) {
     // prerequisite for restoring the conversation or accepting input.
     void refreshReview(sessionId);
 
+    let failures = 0;
+    // Counted in ticks, not wall time, so timer jitter never skips a due poll.
+    let ticksSinceReconcile = 0;
     const reconcile = () => {
       if (!isAppVisible()) return;
+      ticksSinceReconcile = 0;
       Promise.allSettled([
         codingApi.session(sessionId),
         codingApi.events(sessionId, cursor.current),
@@ -259,8 +286,10 @@ export function useCodingSession(sessionId: string | null, active = true) {
           }
         }
         if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') {
+          failures = 0;
           setError('');
         } else {
+          failures += 1;
           // Both reads failed: the backend is unreachable or answering errors.
           // Say so instead of leaving the last known state on screen as if it
           // were live.
@@ -270,10 +299,14 @@ export function useCodingSession(sessionId: string | null, active = true) {
       });
     };
     const onVisibilityChange = () => {
-      openStream();
+      if (!isAppVisible()) closeStream();
+      else if (!stopStream) openStream();
       reconcile();
     };
-    const reconcileTimer = window.setInterval(reconcile, 2_500);
+    const reconcileTimer = window.setInterval(() => {
+      ticksSinceReconcile += 1;
+      if (ticksSinceReconcile * RECONCILE_TICK_MS >= reconcileDelayMs(streamHealthy, failures)) reconcile();
+    }, RECONCILE_TICK_MS);
     const unsubscribeVisibility = subscribeAppVisibility(onVisibilityChange);
     return () => {
       alive = false;
