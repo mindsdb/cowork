@@ -4,9 +4,10 @@ import { scheduleState } from '../components/schedule/ScheduleStatusBadge';
 // What this device knows about each auto-pause, keyed by schedule id + the
 // time it was paused, so a later pause of the same task counts as new:
 //
-// - notified: a desktop notification was tried for it, whatever came of the
-//   try (no API, permission refused, or shown). It is never tried twice, so
-//   a refused permission is not asked again on every poll or restart.
+// - notified: a desktop notification was settled for it: shown, or not
+//   possible (no API, permission refused). It is never tried twice. While the
+//   user has not answered the permission question yet, nothing is recorded,
+//   so a pause still unreviewed when they allow notifications is shown then.
 // - reviewed: the user opened that schedule since it was paused. Until then
 //   the pause is unseen and the app keeps saying so, whether or not the
 //   notification reached anyone.
@@ -37,15 +38,21 @@ function writeStore(store) {
   } catch { /* private mode */ }
 }
 
-async function canNotify() {
-  if (typeof Notification === 'undefined') return false;
-  if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
+// 'granted', 'denied', 'default' (not answered yet) or 'unsupported'.
+function notificationPermission() {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  return Notification.permission;
+}
+
+// Asks for permission to notify, if the user has not answered yet. Call it
+// straight from a click: browsers refuse or hide a request that doesn't come
+// from one, which is why the poll below never asks. Desktop already allows
+// notifications, so there it does nothing.
+export function askToNotify() {
+  if (notificationPermission() !== 'default') return;
   try {
-    return (await Notification.requestPermission()) === 'granted';
-  } catch {
-    return false;
-  }
+    void Promise.resolve(Notification.requestPermission()).catch(() => {});
+  } catch { /* older browsers without a promise API */ }
 }
 
 export function pauseKey(schedule) {
@@ -70,28 +77,29 @@ export function useAutoPauseNotifications(schedules, onOpen) {
 
   useEffect(() => {
     const store = readStore();
-    const notified = new Set(store.notified);
-    const fresh = autoPaused(schedules).filter((s) => !notified.has(pauseKey(s)));
+    const settled = new Set([...store.notified, ...store.reviewed]);
+    const fresh = autoPaused(schedules).filter((s) => !settled.has(pauseKey(s)));
     if (fresh.length === 0) return;
-    // Recorded before the try, so a slow permission prompt can't notify twice.
+    const permission = notificationPermission();
+    // Not answered yet: the in-app notice covers it, and the pause is left
+    // unrecorded so it can still be notified once the user allows it.
+    if (permission === 'default') return;
     writeStore({ ...store, notified: [...store.notified, ...fresh.map(pauseKey)] });
-    void canNotify().then((allowed) => {
-      if (!allowed) return;
-      for (const schedule of fresh) {
-        const title = schedule.title || 'Scheduled task';
-        // The task's own name only: the reason can carry details from the
-        // run, and notifications show on the lock screen.
-        const notice = new Notification('Scheduled task paused', {
-          body: `“${title}” failed several runs in a row and was paused. Click to review.`,
-          tag: `schedule-auto-pause-${schedule.id}`,
-        });
-        notice.onclick = () => {
-          window.focus();
-          openRef.current?.(schedule.id);
-          notice.close();
-        };
-      }
-    });
+    if (permission !== 'granted') return;
+    for (const schedule of fresh) {
+      const title = schedule.title || 'Scheduled task';
+      // The task's own name only: the reason can carry details from the
+      // run, and notifications show on the lock screen.
+      const notice = new Notification('Scheduled task paused', {
+        body: `“${title}” failed several runs in a row and was paused. Click to review.`,
+        tag: `schedule-auto-pause-${schedule.id}`,
+      });
+      notice.onclick = () => {
+        window.focus();
+        openRef.current?.(schedule.id);
+        notice.close();
+      };
+    }
   }, [schedules]);
 
   const markReviewed = useCallback((schedule) => {
