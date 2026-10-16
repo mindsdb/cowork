@@ -123,25 +123,30 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
     if (stuck.current && !anchored()) scrollToBottom('auto');
   }, [scrollToBottom]);
 
-  // Re-measure the reserved space as the content grows or shrinks. When it
-  // grows under a held anchor (the composer shrinking after a send), the
-  // earlier scroll was clamped short of the target, so go the rest of the way.
+  // Re-measure as the content grows or shrinks: the reserved space, and how
+  // far the reader now is from the end, since an answer growing below a still
+  // reader fires no scroll. When the reserve grows under a held anchor (the
+  // composer shrinking after a send), the earlier scroll was clamped short of
+  // the target, so go the rest of the way.
   const updateReserve = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !anchor.current) return;
-    const before = reserveHeight();
-    const { target, reserve } = anchorPlan({
-      turnTop: anchor.current.target + ANCHOR_OFFSET_PX,
-      baseHeight: el.scrollHeight - before,
-      clientHeight: el.clientHeight,
-    });
-    setReserve(reserve);
-    if (anchored() && reserve > before) {
-      el.scrollTo({ top: target, behavior: anchor.current.behavior });
-      lastTop.current = target;
+    if (!el) return;
+    if (anchor.current) {
+      const before = reserveHeight();
+      const { target, reserve } = anchorPlan({
+        turnTop: anchor.current.target + ANCHOR_OFFSET_PX,
+        baseHeight: el.scrollHeight - before,
+        clientHeight: el.clientHeight,
+      });
+      setReserve(reserve);
+      if (anchored() && reserve > before) {
+        el.scrollTo({ top: target, behavior: anchor.current.behavior });
+        lastTop.current = target;
+      }
+      if (!reserve) anchor.current = anchor.current.active ? anchor.current : null;
+      if (anchored()) setIsAtBottom(distanceFromBottom(el) < STICK_THRESHOLD_PX);
     }
-    if (!reserve) anchor.current = anchor.current.active ? anchor.current : null;
-    if (anchored()) setIsAtBottom(distanceFromBottom(el) < STICK_THRESHOLD_PX);
+    setIsFar(farFromEnd(el));
   }, [scrollRef]);
 
   const anchorLastTurn = useCallback((behavior: ScrollBehavior = 'smooth') => {
