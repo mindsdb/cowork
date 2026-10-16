@@ -141,7 +141,8 @@ describe('SkillsView shared-resource permissions', () => {
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(await screen.findByRole('button', { name: 'Upload' }));
 
-    await waitFor(() => expect(mocks.uploadSkillFile).toHaveBeenCalledWith(file));
+    // The list grants no sharing here, so the upload carries no sharing choice.
+    await waitFor(() => expect(mocks.uploadSkillFile).toHaveBeenCalledWith(file, {}));
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
     expect(mocks.reload.mock.calls[1]).toEqual([{ afterCurrent: true }]);
   });

@@ -86,6 +86,10 @@ export default defineConfig({
         // that proves the refusals still fire.
         'src/main/account-data.ts': { statements: 99, branches: 98 },
         'src/renderer/cowork/lib/accountLocalState.ts': { statements: 90, branches: 94 },
+        /* Whether a skill offers "Who can use it". A missing server flag must
+           read as no on the desktop too, and a control that wrongly appears
+           looks like a working feature until its request is refused. */
+        'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
       },
     },
     projects: [

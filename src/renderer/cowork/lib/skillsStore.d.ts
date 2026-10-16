@@ -17,6 +17,10 @@ export type SkillCapabilities = {
   canEdit?: boolean;
   canDelete?: boolean;
   canDisable?: boolean;
+  /** Whether the caller may share this, their own skill, with everyone or
+   *  stop sharing it. Unlike the keys above, a missing key is false
+   *  everywhere, desktop included (lib/skillSharing.js). */
+  canShare?: boolean;
 };
 
 /** One catalogue entry as the API serializes it. Everything but `label` is
@@ -32,7 +36,7 @@ export type CoworkSkill = {
   enabled?: boolean;
   isBuiltin?: boolean;
   /**
-   * True for a skill the operator shares with everyone. With a change
+   * True for a skill its creator shares with everyone. With a change
    * capability false it is someone else's skill and the page says so beside
    * the disabled action; with the capabilities granted it is the caller's own
    * and keeps every action. Absent means false.
@@ -71,6 +75,9 @@ export type SkillSavePayload = {
   declarative?: string;
   enabled?: boolean;
   projects?: string[];
+  /** Create only: the "Who can use it" answer, true for Everyone. Sent only
+   *  when the skills list's `canShare` asked; omitted means Only me. */
+  shared?: boolean;
 };
 
 export function reloadSkills(options?: ReloadSkillsOptions): Promise<SkillsReloadResult>;
@@ -78,8 +85,13 @@ export function useSkills(): {
   skills: CoworkSkill[] | null;
   catalogueStatus: SkillCatalogueStatus;
   reload: typeof reloadSkills;
+  /** The list's own `canShare`: whether creating a skill asks who can use it.
+   *  False until a load succeeds; a failed refresh keeps the last answer. */
+  canShare: boolean;
 };
 export function useSkillNames(): Set<string>;
 export function saveSkillAndSync(payload: SkillSavePayload, isEdit?: boolean): Promise<CoworkSkill>;
+/** PUT /skills/{label}/sharing, then a reload that starts after it. */
+export function setSkillSharingAndSync(label: string, shared: boolean): Promise<CoworkSkill>;
 /** The API answers a delete with 204, which the client surfaces as `{ ok: true }`. */
 export function deleteSkillAndSync(label: string): Promise<{ ok: true }>;
