@@ -1,5 +1,5 @@
-// Side-panel host that mounts the latest `data-vault-form` for the
-// active conversation. Subscribes to the form store; the markdown
+// Form host that mounts the latest `data-vault-form` for the active
+// conversation. ChatView shows it in the app's Modal. Subscribes to the form store; the markdown
 // extension publishes specs into that store as it parses
 // `data-vault-form` code blocks during streaming.
 //
@@ -45,7 +45,7 @@ function getOAuthMethod(spec, methodId) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose }) {
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -221,7 +221,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           payload: { kind: 'retry_form', form_id: spec.form_id },
         });
       }
-      // Any action on the error form clears it from the side panel
+      // Any action on the error form clears it from the form modal
       // so a successful retry can replace it cleanly.
       return;
     }
@@ -708,23 +708,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
-      // `shrink-0`: the panel sits in the right rail's flex column —
-      // without it, the rail squeezes the panel down to fit its own
-      // height, our `overflow-hidden` clips the content, and the rail's
-      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
-      // to 0 makes the panel claim its full content height so the rail's
-      // scroll engages naturally.
-      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
-      style={{
-        // Highlight ring driven from outside (e.g. the chat's
-        // connect-intro bubble on hover) — accent border + soft
-        // halo so the form card draws the eye without layout shift.
-        boxShadow: highlighted
-          ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
-          : 'none',
-        transition: 'box-shadow var(--dur-hover) ease',
-        animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',
-      }}
+      // No border or radius of its own: the Modal around it draws the frame.
+      className="relative bg-surface overflow-hidden"
+      style={{ animation: 'dvf-appear var(--dur-layout) var(--ease-out) both' }}
     >
       {/* Header bar — during the connect flow it's the
           "← Back to options · <method>" navigation (when a method is

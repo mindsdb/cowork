@@ -1,15 +1,17 @@
 // react-markdown `code` slot replacement. Adapted from mdb-ai/MarkdownCode.
 // Three behaviours:
-//   - ```data-vault-form / -patch → form side panel (assistant turns only)
+//   - ```data-vault-form / -patch → connection form card + form modal (assistant turns only)
 //   - other fenced blocks         → highlighted code block with Copy
 //   - inline code                 → plain <code> with our token style
 
 import { useEffect, useMemo, useRef } from 'react';
 import { highlightCode } from './hljs';
 import Ico from '../Icons';
-import { Alert } from '../ui';
+import ChatCardShell, { cardActions } from '../ChatCardShell';
 import { patchForm, setForm, getForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
+
+const FORM_CARD = 'my-2 max-w-[560px]';
 
 export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
@@ -97,7 +99,7 @@ export function MarkdownCode(props) {
     }
     if (parseError) {
       // Push a synthetic "parse error" spec into the form store so
-      // the side panel surfaces a retry affordance instead of just
+      // the form surfaces a retry affordance instead of just
       // a dead inline error. The user clicks "Ask Anton to retry"
       // → DataVaultFormPanel dispatches a recovery message.
       setForm(conversationId, {
@@ -131,73 +133,39 @@ export function MarkdownCode(props) {
     // render NOTHING in chat. Full `data-vault-form` blocks (initial
     // form appearance) still get a one-time pointer card.
     if (isPatch) return null;
+    // The pointer, its streaming placeholder and its parse error are one
+    // ChatCardShell card, the same frame as the other cards in the turn.
     if (!complete) {
-      return (
-        <div style={{
-          margin: '8px 0',
-          padding: '10px 12px',
-          borderRadius: 8,
-          background: 'var(--surface-2)',
-          border: '1px dashed var(--line-2)',
-          color: 'var(--ink-4)',
-          fontFamily: 'var(--font-body)', fontSize: 12.5,
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-        }}>
-          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
-          Preparing form…
-        </div>
-      );
+      return <ChatCardShell tone="connection" title="Preparing form…" className={FORM_CARD} />;
     }
     if (!formSpec) {
       return (
-        <Alert variant="danger" title="Form spec did not parse." className="my-2">
-          {parseError && (
-            <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
-              {parseError}
-            </span>
-          )}
-          <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>
-            Use the side panel to ask the agent to retry.
-          </span>
-        </Alert>
+        <ChatCardShell tone="connection" state="failed" title="Form did not parse" className={FORM_CARD}>
+          {parseError && <span className="mb-1 block font-mono text-xs text-ink-3">{parseError}</span>}
+          Ask the agent to send the form again.
+        </ChatCardShell>
       );
     }
-    // The card is clickable: clicking re-opens the side panel when it's
-    // been closed (mirrors ConnectIntroBubble for the picker path). No-op
-    // when a form is already active for this conversation — the panel is
-    // showing, and re-publishing the original spec would clobber any
-    // in-progress input. Gated at click time via getForm() so we don't
-    // need to subscribe to the store from inside the markdown renderer.
-    const reopenPanel = () => {
+    // "Open form" re-opens the form when it has been closed (mirrors
+    // ConnectIntroBubble for the picker path). No-op when a form is already
+    // active for this conversation: the form is showing, and re-publishing the
+    // original spec would clobber any in-progress input. Gated at click time
+    // via getForm() so we don't need to subscribe to the store from inside the
+    // markdown renderer.
+    const reopenForm = () => {
       if (!conversationId || !formSpec) return;
       if (getForm(conversationId)) return; // already open
       setForm(conversationId, formSpec);
     };
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={reopenPanel}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reopenPanel(); } }}
-        title="Open in the side panel"
-        style={{
-          margin: '8px 0',
-          padding: '10px 12px',
-          borderRadius: 8,
-          background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          color: 'var(--ink-2)',
-          fontFamily: 'var(--font-body)', fontSize: 12.5,
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          cursor: 'pointer',
-        }}
+      <ChatCardShell
+        tone="connection"
+        title={formSpec.title || 'Connect'}
+        actions={cardActions([{ label: 'Open form', onClick: reopenForm }])}
+        className={FORM_CARD}
       >
-        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
-        <span>
-          <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>
-          {' — fill it out in the side panel →'}
-        </span>
-      </div>
+        {formSpec.subtitle || 'Enter the connection details in the form.'}
+      </ChatCardShell>
     );
   }
 

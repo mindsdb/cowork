@@ -12,7 +12,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
-import { createPortal } from 'react-dom';
+import { Modal } from '../components/ui/Modal';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
@@ -175,15 +175,14 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
 // assistant bubble, so we surface the delete here instead.
 // Connect-intro bubble — synthesized assistant turn shown after the
 // user picks a connector. Reads as a small card with the connector
-// logo + label and a "Fill out the form on the side panel →" prompt.
-// Hovering it highlights the form panel on the right rail so the
-// affordance is obvious.
+// logo + label. The form opens as a modal over it; once the form is
+// closed (X, Escape or a click outside) the card offers to open it again.
 //
 // In modify mode, the bubble grows two affordances inline next to
 // the card: a borderless "← Cancel" and a danger-tinted
 // "Disconnect". Both stay in the chat row so the user can bail or
 // destroy without scrolling around to find a menu.
-function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, onCancel, onDisconnect, onClickCard }) {
+function ConnectIntroBubble({ title, connector, modify = false, onCancel, onDisconnect, onClickCard }) {
   const iconName = connector?.logo || 'database';
   const Icon = (Ico[iconName] || Ico.database);
   const clickable = typeof onClickCard === 'function';
@@ -199,8 +198,6 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           tabIndex={clickable ? 0 : undefined}
           onClick={clickable ? onClickCard : undefined}
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
-          onMouseEnter={() => onHoverChange?.(true)}
-          onMouseLeave={() => onHoverChange?.(false)}
           className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
@@ -214,7 +211,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
             <span className="font-body text-sm text-ink-3">
               {clickable
                 ? <>Click to re-open the form <span aria-hidden className="text-accent">→</span></>
-                : <>Fill out the form on the side panel <span aria-hidden className="text-accent">→</span></>}
+                : 'Fill out the form to connect'}
             </span>
           </div>
         </div>
@@ -2683,11 +2680,11 @@ export default function ChatView({
               }
               if (m._kind === 'connect_intro') {
                 // The card is clickable: clicking it re-opens the
-                // form panel when it's been closed. We stash the
-                // original spec on the message at creation time
-                // (App.jsx) so re-publishing is a one-liner. If the
-                // form is currently active there's nothing to do —
-                // the panel is already on the right rail.
+                // form when it's been closed. We stash the original
+                // spec on the message at creation time (App.jsx) so
+                // re-publishing is a one-liner. If the form is
+                // currently active there's nothing to do — the modal
+                // is already showing.
                 const cachedSpec = m._form_spec || null;
                 // Card click re-publishes the cached spec if the user
                 // dismissed/submitted the form — the modal re-mounts.
@@ -3488,34 +3485,31 @@ export default function ChatView({
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
-      {/* Data-vault connection form — rendered as a centered modal
-          overlay so it's front-and-center when a connector is picked. */}
-      {formActive && createPortal(
-        <div
-          onClick={() => (onDismissConnectForm
-            ? onDismissConnectForm(task?.id || '')
-            : clearDataVaultForm(task?.id || ''))}
-          // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
-          // so no separate WebkitBackdropFilter declaration is needed here.
-          className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-[min(90vw,460px)] max-h-[85vh] overflow-y-auto rounded-xl"
-          >
-            <FormErrorBoundary>
-              <DataVaultFormPanel
-                conversationId={task?.id || ''}
-                onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
-                onSubmit={onSubmitDataVaultForm}
-                onNavigateToConnectors={onNavigateToConnectors}
-                onClose={onDismissConnectForm}
-              />
-            </FormErrorBoundary>
-          </div>
-        </div>,
-        document.body,
-      )}
+      {/* Data-vault connection form, in the app's Modal: Escape, a click
+          outside and the form's own X all close it, and focus goes back to
+          where it was. Closing leaves the connect-intro bubble and the
+          pointer card in the transcript, each able to open it again. */}
+      <Modal
+        open={formActive}
+        onClose={() => (onDismissConnectForm
+          ? onDismissConnectForm(task?.id || '')
+          : clearDataVaultForm(task?.id || ''))}
+        ariaLabel="Connection form"
+        width="min(460px, 90vw)"
+        maxHeight="85vh"
+      >
+        <div className="min-h-0 overflow-y-auto">
+          <FormErrorBoundary>
+            <DataVaultFormPanel
+              conversationId={task?.id || ''}
+              onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
+              onSubmit={onSubmitDataVaultForm}
+              onNavigateToConnectors={onNavigateToConnectors}
+              onClose={onDismissConnectForm}
+            />
+          </FormErrorBoundary>
+        </div>
+      </Modal>
     </div>
   );
 }
