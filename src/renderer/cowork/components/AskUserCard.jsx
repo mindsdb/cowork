@@ -37,7 +37,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
   // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
-  // single-newline lines; forms and charts stay off so a fence is plain code.
+  // single-newline lines; forms stay off so a fence is plain code.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
   const prompt = q.prompt || '';
@@ -48,7 +48,6 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
         softBreaks
         neutralizeLoopback
         enableForms={false}
-        enableCharts={false}
       />
     ) : (
       <MarkdownPlainText>{prompt.trim()}</MarkdownPlainText>
