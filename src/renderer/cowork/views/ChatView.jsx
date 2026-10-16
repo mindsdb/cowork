@@ -21,6 +21,7 @@ import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { FirstTake } from '../components/thinking/FirstTake';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
@@ -1407,12 +1408,12 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       deleting={deleting}
       time={time}
       kind="Connection"
-      title="Connect a provider to start chatting"
+      title={PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}
       body={PLATFORM_UI
         ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
-        : 'Add an API key or configure an endpoint in Settings. Contact your administrator if provider setup is managed for you.'}
-      buttons={[
-        ...(PLATFORM_UI ? [{
+        : 'Ask your operator to configure the model provider before starting a task.'}
+      buttons={PLATFORM_UI ? [
+        {
           label: 'Start for free',
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1422,9 +1423,9 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        }] : []),
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !PLATFORM_UI },
-      ]}
+        },
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: false },
+      ] : []}
     />
   );
 }
@@ -1624,20 +1625,24 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   // so they never contradict the buttons shown. We deliberately don't reuse the
   // server's copy here: it's provider-aware but not web-aware (it can't know the
   // desktop-only Reconnect is unavailable on web).
-  const title = done
-    ? 'Reconnected'
-    : canReconnect ? 'Reconnect to continue'
-    : PLATFORM_UI && reconnectable ? 'Sign in again'
-    : 'Update your API key';
-  const body = done
-    ? 'Your MindsHub session was refreshed. Send your message again to continue.'
-    : err || (
-        canReconnect
-          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-          : PLATFORM_UI && reconnectable
-            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
-            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
-      );
+  const title = !PLATFORM_UI
+    ? 'The provider could not authenticate'
+    : done
+      ? 'Reconnected'
+      : canReconnect ? 'Reconnect to continue'
+      : reconnectable ? 'Sign in again'
+      : 'Update your API key';
+  const body = !PLATFORM_UI
+    ? 'The model provider rejected its credentials. Ask your operator to check the provider configuration.'
+    : done
+      ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+      : err || (
+          canReconnect
+            ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+            : reconnectable
+              ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+              : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+        );
 
   return (
     <ActionCard
@@ -1647,7 +1652,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       kind="Connection"
       title={title}
       body={body}
-      buttons={done ? [] : [
+      buttons={!PLATFORM_UI || done ? [] : [
         ...(canReconnect ? [{
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
@@ -1712,12 +1717,12 @@ export function ModelUnavailableCard({
         agentLabel={agentLabel}
         kind="Model"
         title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
-        body={code === 'model_restricted'
-          ? 'An admin in your organization restricted this model. Choose another model in Settings.'
-          : 'The provider cannot serve this model. Choose another model in Settings or contact your administrator.'}
-        buttons={[
+        body={!PLATFORM_UI
+          ? 'Ask your operator to check the configured model and its access.'
+          : 'An admin in your organization restricted this model. Choose another model in Settings.'}
+        buttons={PLATFORM_UI ? [
           { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-        ]}
+        ] : []}
       />
     );
   }
@@ -2802,19 +2807,22 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
-                      body={badModel
-                        ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
-                        : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      /* Open Settings only. cowork-server does apply a turn's
+                      body={!PLATFORM_UI
+                        ? 'The provider cannot serve the configured model. Ask your operator to check the model configuration.'
+                        : badModel
+                          ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
+                          : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                      /* With platform UI on, offer Open Settings only.
+                         cowork-server does apply a turn's
                          own model (the request's `model`, handed to
                          providers.build_llm_client as `model_override`), so a
                          "Switch to MindsHub Air" here would move this one task.
                          The dead id lives in the planning_model setting, though,
                          and every new task would fail on it again, so the card
                          sends the user to where the id is set. */
-                      buttons={[
+                      buttons={PLATFORM_UI ? [
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-                      ]}
+                      ] : []}
                     />
                   );
                 }
@@ -2949,12 +2957,14 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind="Agent"
                       title="The model didn't respond"
-                      body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
+                      body={PLATFORM_UI
+                        ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
+                        : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
                       buttons={[
                         ...(resend
                           ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                           : []),
-                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                        ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
                     />
                   );
@@ -3176,6 +3186,9 @@ export default function ChatView({
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies).
                     With questions, the header is in the live segment (TurnSegments). */}
+                {/* The instant first take; the adapter drops it once Anton
+                    writes, asks the user, or the turn ends. */}
+                <FirstTake take={streamingMsg.firstTake} />
                 <TurnSegments
                   steps={streamingMsg.steps}
                   startedAt={streamingMsg.startedAt}

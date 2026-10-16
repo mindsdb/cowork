@@ -711,19 +711,17 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // MODEL_ROUTER_ID never leaves the renderer — it's how the
           // composer represents "let this account's Settings decide"
           // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that.
-          model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          // model as exactly that. With platform UI off, all callers use
+          // operator-configured role settings, including restored tasks.
+          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // Per-task reasoning-effort override (ENG-1940) — takes precedence
-          // over the account-wide per-role effort setting for this turn only.
-          // Same conditional-key pattern as `harness` just above: omitted
-          // entirely when the caller doesn't pass one, so older servers and
-          // effort-less models never see the field.
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          // A per-task effort is available only with platform UI on. Omit
+          // the key otherwise so this request cannot override role settings.
+          ...(PLATFORM_UI && reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

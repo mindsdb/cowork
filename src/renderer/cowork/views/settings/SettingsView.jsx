@@ -961,14 +961,13 @@ export default function SettingsView({
     return types;
   })();
 
-  // Custom providers must carry a non-empty name. Pre-compute so the
-  // Models dropdown can show the name and the Save button knows to
-  // block when any custom row is missing one.
+  // Editable custom providers must carry a non-empty name. Hidden provider
+  // fields must not prevent saving the settings that remain available.
   const providerDisplayName = (p) => {
     if (p.type === 'openai-compatible') return (p.name || '').trim() || 'OpenAI-compatible';
     return typeLabels[p.type] || p.type;
   };
-  const missingCustomNames = providers.some(
+  const missingCustomNames = PLATFORM_UI && providers.some(
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
 
@@ -1290,8 +1289,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
-          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* Platform builds offer BYOK outside SaaS orgs, which use their managed provider. */}
+          {PLATFORM_UI && !orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
@@ -1562,7 +1561,7 @@ export default function SettingsView({
               </div>
             </SettingsGroup>
           </div>}
-          <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
+          {PLATFORM_UI && <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
@@ -1882,7 +1881,7 @@ export default function SettingsView({
                 );
               })()}
             </SettingsGroup>
-          </div>
+          </div>}
         </div>
 
         <SettingsGroup title="Memory">

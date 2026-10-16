@@ -223,6 +223,8 @@ component library, and two entrypoints.
 npm run dev:web
 ```
 
+Web development defaults to the platform UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
+
 This boots both processes:
 
 1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
@@ -927,6 +929,8 @@ A task that stops on a billing limit gets a card in its timeline, and the card n
 To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
 Settings > Agent tests configured providers by default on desktop and web, independently of `VITE_PLATFORM_UI`. For the Python-served Docker app, set `COWORK_PROVIDER_TESTS_ENABLED=false` in the container environment to skip provider tests on open, save and retry. Recreate the container and reload the page after changing it; the same image supports either value. The setting accepts `true` or `false` and defaults to `true`. The SPA wrapper supplies the value before the renderer starts. Static hosting and desktop retain enabled defaults.
+
+With the platform UI off, provider and model controls are hidden, but that does not disable background provider testing. Configure the runtime flag separately when the operator manages providers outside Cowork. Memory and Advanced Settings remain visible, and model or provider error cards direct users to the operator.
 
 With testing disabled, Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. This controls browser requests, not API authorization. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
