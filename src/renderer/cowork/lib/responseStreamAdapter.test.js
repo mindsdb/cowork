@@ -1103,3 +1103,83 @@ describe('answerText', () => {
     expect(fold([{ type: 'response.completed', response: { output: [{ content: [{ text: 7 }] }] } }]).answerText).toBeNull();
   });
 });
+
+// The server sends memorize / recall / recall_skill as their own roles and a
+// compaction notice as thought.context_compacted (cowork-server
+// stream_formatter.py). The adapter used to drop all of them, so the turn
+// showed no trace of saving or reading memory, or of losing older history.
+describe('memory and compaction rows', () => {
+  const now = () => 0;
+  const frame = (thought_role, extra = {}) => ({ type: 'response.in_progress', thought_role, ...extra });
+
+  it('turns a memorize call into one row that the result closes', () => {
+    const state = reduceAll([
+      frame('thought.memorize.start', { content: 'memorize', tool_use_id: 'm1', at_ms: 100 }),
+      frame('thought.memorize.end', {
+        tool_use_id: 'm1', at_ms: 110,
+        content: JSON.stringify({ entries: [{ text: 'Prefers weekly buckets', kind: 'profile', scope: 'global' }] }),
+      }),
+      frame('thought.scratchpad.result', { tool_use_id: 'm1', tool_name: 'memorize', content: 'Memorized 1 entry', at_ms: 300 }),
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0]).toMatchObject({
+      badge: 'Memory', icon: 'memory', label: 'Saving to memory: Prefers weekly buckets',
+      status: 'completed', startedAt: 100, completedAt: 300, _isScratchpad: false, _isToolCall: false,
+    });
+  });
+
+  it('counts several memorize entries instead of naming one', () => {
+    const state = reduceAll([
+      frame('thought.memorize.start', { content: 'memorize', tool_use_id: 'm1' }),
+      frame('thought.memorize.end', { tool_use_id: 'm1', content: JSON.stringify({ entries: [{ text: 'a' }, { text: 'b' }] }) }),
+    ], initialStreamState(), now);
+    expect(state.steps[0].label).toBe('Saving 2 notes to memory');
+  });
+
+  it('labels recall with its query and recall_skill with the skill', () => {
+    const state = reduceAll([
+      frame('thought.recall.start', { content: 'recall', tool_use_id: 'r1' }),
+      frame('thought.recall.end', { tool_use_id: 'r1', content: JSON.stringify({ query: 'pricing call' }) }),
+      frame('thought.recall.start', { content: 'recall_skill', tool_use_id: 'r2' }),
+      frame('thought.recall.end', { tool_use_id: 'r2', content: JSON.stringify({ label: 'build-html-dashboard' }) }),
+    ], initialStreamState(), now);
+    expect(state.steps.map((s) => [s.label, s.icon])).toEqual([
+      ['Searching past conversations for "pricing call"', 'memory'],
+      ['Loading the build-html-dashboard skill', 'cube'],
+    ]);
+  });
+
+  it('does not let a memory result patch the scratchpad cell before it', () => {
+    const state = reduceAll([
+      frame('thought.scratchpad.start', { tool_use_id: 'c1' }),
+      frame('thought.recall.start', { content: 'recall', tool_use_id: 'r1' }),
+      frame('thought.scratchpad.result', { tool_use_id: 'r1', tool_name: 'recall', content: 'No episodes found.' }),
+    ], initialStreamState(), now);
+    expect(state.steps[0]).toMatchObject({ _isScratchpad: true, status: 'in_progress', result: null });
+    expect(state.steps[1]).toMatchObject({ badge: 'Memory', status: 'completed' });
+  });
+
+  it('closes a memory row the turn ended without a result for', () => {
+    const state = reduceAll([
+      frame('thought.memorize.start', { content: 'memorize', tool_use_id: 'm1', at_ms: 100 }),
+      { type: 'response.completed', at_ms: 500 },
+    ], initialStreamState(), now);
+    expect(state.steps[0]).toMatchObject({ status: 'completed', completedAt: 500 });
+  });
+
+  it('adds a finished row for a context compaction', () => {
+    const state = reduceStream(initialStreamState(), frame('thought.context_compacted', {
+      content: 'Context was getting long — older history has been summarized.', at_ms: 200,
+    }), now);
+    expect(state.steps).toEqual([expect.objectContaining({
+      badge: 'Compaction', icon: 'compact', status: 'completed',
+      label: 'Context was getting long — older history has been summarized.',
+    })]);
+  });
+
+  it('gives an artifact row the artifact card glyph', () => {
+    const state = reduceStream(initialStreamState(), { type: 'response.artifact_created', artifact: { slug: 'a', title: 'A' } }, now);
+    expect(state.steps[0].icon).toBe('doc');
+  });
+});
