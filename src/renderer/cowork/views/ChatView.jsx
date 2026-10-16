@@ -22,7 +22,6 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
@@ -64,6 +63,8 @@ import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -100,68 +101,6 @@ function formatMetaTime(value) {
   if (Number.isNaN(d.getTime())) return '';
   const month = d.toLocaleString('en-US', { month: 'short' });
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
-}
-
-// ─── Shared turn-action toolbar ──────────────────────────────────────────
-// Used by both user and assistant turns for consistent styling. Actions
-// fade in on hover of the parent turn, but stay visible when `isLast`
-// is true (matching Claude's pattern where the most recent exchange
-// always shows its toolbar).
-const ICON_SZ = 16;
-function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    const text = typeof getText === 'function' ? getText() : '';
-    if (!text) return;
-    const ok = await copyText(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  return (
-    <div
-      className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
-    >
-      {onEdit && (
-        <Tooltip content="Edit and resend">
-          <button
-            type="button"
-            className="turn-action-btn"
-            onClick={onEdit}
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-      <Tooltip content={copied ? 'Copied' : 'Copy'}>
-        <button
-          type="button"
-          className="turn-action-btn"
-          aria-label={copied ? 'Copied' : 'Copy'}
-          onClick={onCopy}
-          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-          // beats a text-accent utility (equal specificity, globals.css loads later).
-          style={copied ? { color: 'var(--accent)' } : undefined}
-        >
-          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-        </button>
-      </Tooltip>
-      {onDelete && (
-        <Tooltip content="Delete">
-          <button
-            type="button"
-            className="turn-action-btn turn-action-btn--danger"
-            aria-label="Delete"
-            onClick={onDelete}
-          >
-            {Ico.trash(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
@@ -305,124 +244,71 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
-// pasted prompt doesn't dominate the viewport before the answer starts.
-const USER_CLAMP_MAX_PX = 176;
-
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false, deleting = false }) {
-  const contentRef = useRef(null);
-  const [collapsed, setCollapsed] = useState(true);
-  const [overflowing, setOverflowing] = useState(false);
+// The user's side of a Cowork turn: the shared UserTurn bubble, plus the
+// attachments and artifact-repair card only Cowork messages carry.
+function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const repair = parseArtifactRepairPrompt(content);
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return undefined;
-    // scrollHeight reports full content height even while max-height clamps
-    // the box, so overflow is measurable without expanding first. Re-runs on
-    // width changes (sidebar toggle, window resize) via the ResizeObserver.
-    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [content]);
-  return (
-    <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
-      aria-busy={deleting || undefined}
-      onCopy={trimCopiedSelection}
-    >
-      <div className="user-turn-inner">
-        <div className="user-turn-bubble">
-          {/* User messages flow through the same markdown pipeline as
-              assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
-              the composer can't trigger the side-effect renderers
-              reserved for assistant output. */}
-          {repair ? (
-            <ArtifactRepairCard
-              repair={repair}
-              projectId={projectId}
-              streaming={streaming}
-            />
-          ) : (
-          <div
-            ref={contentRef}
-            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
-            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
-          >
-            <MarkdownContent
-              text={content}
-              variant="user"
-              enableForms={false}
-              enableCharts={false}
-            />
-          </div>
-          )}
-          {!repair && overflowing && (
-            <button
-              type="button"
-              className="user-turn-more"
-              aria-expanded={!collapsed}
-              onClick={() => setCollapsed((c) => !c)}
-            >
-              {collapsed ? 'Show more' : 'Show less'}
-            </button>
-          )}
-        </div>
-        {attachments?.map((a) => {
-          // Image attachments preview inline as a thumbnail (fetched as a
-          // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image via the OS/browser. We can only build the
-          // raw URL when the conversation is project-scoped; without it,
-          // fall back to the icon+name chip.
-          const isImage = a.mime && String(a.mime).startsWith('image/');
-          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
-          if (rawUrl) {
-            return (
-              <AttachmentThumbnail
-                key={a.id}
-                url={rawUrl}
-                alt={a.name || 'Image'}
-                onOpen={() => {
-                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
-                }}
-              />
-            );
-          }
-          return (
-            <div key={a.id} className="user-turn-attachment">
-              <span className="user-turn-attachment-icon">
-                {userTurnAttachmentIcon(a)}
-              </span>
-              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-            </div>
-          );
-        })}
-        {deleting ? (
-          <span
-            // Primary ink, not the usual meta grey: the turn around it is at
-            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
-            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
-          >
-            Deleting…
-          </span>
-        ) : (
-          <TurnActions
-            getText={() => content || ''}
-            onEdit={onEdit ? () => onEdit(content) : null}
-            onDelete={onDelete}
-            isLast={isLast}
-            align="right"
-          />
-        )}
+  const attachmentRows = attachments?.map((a) => {
+    // Image attachments preview inline as a thumbnail (fetched as a
+    // blob — the CSP blocks a direct loopback <img src>). Clicking
+    // opens the full image via the OS/browser. We can only build the
+    // raw URL when the conversation is project-scoped; without it,
+    // fall back to the icon+name chip.
+    const isImage = a.mime && String(a.mime).startsWith('image/');
+    const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+    if (rawUrl) {
+      return (
+        <AttachmentThumbnail
+          key={a.id}
+          url={rawUrl}
+          alt={a.name || 'Image'}
+          onOpen={() => {
+            openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+          }}
+        />
+      );
+    }
+    return (
+      <div key={a.id} className="user-turn-attachment">
+        <span className="user-turn-attachment-icon">
+          {userTurnAttachmentIcon(a)}
+        </span>
+        <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+        <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
       </div>
-    </div>
+    );
+  });
+  const actions = deleting ? (
+    <span
+      // Primary ink, not the usual meta grey: the turn around it is at
+      // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+      className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
+    >
+      Deleting…
+    </span>
+  ) : (
+    <TurnActions
+      text={content || ''}
+      copyLabel="Copy message"
+      onEdit={onEdit ? () => onEdit(content) : null}
+      onDelete={onDelete}
+      isLast={isLast}
+      align="right"
+    />
+  );
+  return (
+    <UserTurn
+      content={content}
+      turnId={turnId}
+      deleting={deleting}
+      attachments={attachmentRows}
+      actions={actions}
+    >
+      {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
+    </UserTurn>
   );
 }
 
@@ -446,7 +332,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel="Copy response" onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
@@ -2403,9 +2289,9 @@ export default function ChatView({
         <ChatScroller
           stick={stick}
           scrollProps={{ 'data-scroll': 'true' }}
-          className="scroll-clean pt-8 px-7 max-sm:px-3.5 bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean pt-8 bg-transparent [-webkit-app-region:no-drag] select-text"
         >
-          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
               // Adapted from Sidebar's dashed-pill "Show more" idiom.
               <button
@@ -2460,8 +2346,9 @@ export default function ChatView({
                 if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
                 else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
                 return (
-                  <UserTurn
+                  <CoworkUserTurn
                     key={messageKey(m, i)}
+                    turnId={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2470,7 +2357,6 @@ export default function ChatView({
                     // Only the last turn can still be the one being worked on,
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
-                    time={formatTime(m.createdAt)}
                     // A row the server has seen is hidden until it has an id, not
                     // sent to 422; no turn offers a delete while one is out.
                     onDelete={deleteThisTurn}
