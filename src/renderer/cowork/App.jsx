@@ -2370,7 +2370,7 @@ function AppCore() {
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
-        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -3679,7 +3679,7 @@ function AppCore() {
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
-        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -4138,7 +4138,7 @@ function AppCore() {
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
-        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -4473,7 +4473,7 @@ function AppCore() {
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
-        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent);
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.

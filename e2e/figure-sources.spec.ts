@@ -65,3 +65,19 @@ test('a long file name ends in an ellipsis inside the widest popover, whole on h
   await expect(label).toHaveText(name);
   expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
 });
+
+test('a restored answer keeps its live source marks and source actions before reload', async ({ page }) => {
+  await page.goto('/figure-sources-fixture.html');
+  const live = page.locator('#case-restored-live');
+  const reload = page.locator('#case-restored-reload');
+  await expect(live.getByRole('button', { name: '250, from a file' })).toHaveCount(2);
+  await expect(reload.getByRole('button', { name: '250, from a file' })).toHaveCount(3);
+  await expect(live.getByRole('button', { name: '99, no source' })).toHaveCount(1);
+  await expect(reload.getByRole('button', { name: '99, no source' })).toHaveCount(2);
+  await expect(live.getByRole('button', { name: '12, no source' })).toHaveCount(1);
+  await live.getByRole('button', { name: '250, from a file' }).first().click();
+  const popup = page.getByRole('dialog', { name: 'Where 250 came from' });
+  await expect(popup.getByText('stock.csv')).toBeVisible();
+  await popup.getByRole('button', { name: 'Open step' }).click();
+  await expect(live.getByText('Opened step-1 in the scratchpad.')).toBeVisible();
+});

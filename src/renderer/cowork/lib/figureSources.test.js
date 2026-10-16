@@ -403,6 +403,7 @@ describe('rebaseFigureSources', () => {
   const NARRATION = 'Let me read stock.csv for the 2 sites.';
   const ANSWER = '\n\nSite S1 holds 250 units.';
   const sources = (figures) => ({ project_id: 'proj-1', steps: STEPS, figures });
+  const map = (whole, ranges = [[0, whole.length]]) => ({ sourceLength: whole.length, ranges });
   const at = (text, whole, from = 0) => {
     const start = whole.indexOf(text, from);
     return { start, end: start + text.length, text, origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] };
@@ -410,7 +411,7 @@ describe('rebaseFigureSources', () => {
 
   it('moves every figure back by the narration the live message dropped, and leaves out the ones in it', () => {
     const whole = NARRATION + ANSWER;
-    const out = rebaseFigureSources(sources([at('2', whole), at('250', whole)]), whole, ANSWER);
+    const out = rebaseFigureSources(sources([at('2', whole), at('250', whole)]), whole, ANSWER, map(whole, [[NARRATION.length, whole.length]]));
     expect(out.figures).toEqual([at('250', ANSWER)]);
     expect(out.steps).toBe(STEPS);
     expect(out.project_id).toBe('proj-1');
@@ -419,19 +420,45 @@ describe('rebaseFigureSources', () => {
 
   it('keeps the figures as they are when the live message is the whole answer', () => {
     const figureSources = sources([at('250', ANSWER)]);
-    expect(rebaseFigureSources(figureSources, ANSWER, ANSWER)).toBe(figureSources);
+    expect(rebaseFigureSources(figureSources, ANSWER, ANSWER, map(ANSWER))).toBe(figureSources);
   });
 
-  it('keeps no figures when the live message is not the end of the answer the server traced', () => {
-    expect(rebaseFigureSources(sources([at('250', ANSWER)]), ANSWER, 'Site S1 holds 250 units, restored.')).toBeNull();
+  it('maps each retained segment without moving removed repeated figures onto visible ones', () => {
+    const whole = '250, 250, 250';
+    const figureSources = sources([
+      at('250', whole),
+      { ...at('250', whole, 4), origin: 'none', sources: [] },
+      { ...at('250', whole, 9), origin: 'none', sources: [] },
+    ]);
+    const out = rebaseFigureSources(figureSources, whole, '250250', map(whole, [[0, 3], [10, 13]]));
+    expect(out.figures).toEqual([
+      at('250', '250250'),
+      { ...at('250', '250250', 3), origin: 'none', sources: [] },
+    ]);
+    expect(figureSources.figures[2].start).toBe(10);
+  });
+
+  it('omits a figure that crosses a removed gap', () => {
+    const out = rebaseFigureSources(sources([at('250', '250')]), '250', '20', map('250', [[0, 1], [2, 3]]));
+    expect(out.figures).toEqual([]);
+  });
+
+  it('keeps no figures when retained text differs from the answer the server traced', () => {
+    expect(rebaseFigureSources(sources([at('250', ANSWER)]), ANSWER, 'Site S1 holds 250 units, restored.', map(ANSWER))).toBeNull();
+  });
+
+  it('keeps no figures when the completed source length differs from the streamed source', () => {
+    // Matching retained text alone does not prove the stream is complete.
+    const whole = ANSWER + NARRATION;
+    expect(rebaseFigureSources(sources([at('250', whole)]), whole, ANSWER, map(ANSWER))).toBeNull();
   });
 
   it('keeps no figures without the answer the server traced', () => {
-    expect(rebaseFigureSources(sources([at('250', ANSWER)]), null, ANSWER)).toBeNull();
+    expect(rebaseFigureSources(sources([at('250', ANSWER)]), null, ANSWER, map(ANSWER))).toBeNull();
   });
 
   it('is null without figure sources', () => {
-    expect(rebaseFigureSources(null, ANSWER, ANSWER)).toBeNull();
+    expect(rebaseFigureSources(null, ANSWER, ANSWER, map(ANSWER))).toBeNull();
   });
 });
 

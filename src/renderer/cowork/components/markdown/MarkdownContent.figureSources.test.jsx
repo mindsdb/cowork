@@ -32,6 +32,8 @@ vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 import { MarkdownContent } from './MarkdownContent';
 import { NO_SOURCE_TEXT, linkFigureSteps, rebaseFigureSources } from '../../lib/figureSources';
 import { initialStreamState, reduceStream } from '../../lib/responseStreamAdapter';
+import { hydrateMessagesFromServerEvents } from '../../lib/conversationHistory';
+import { restoredFigureEvents, RESTORED_LIVE_TEXT, RESTORED_SAVED_TEXT } from '../../../visual-fixtures/restored-figure-sources';
 import { copyText } from '../../lib/clipboard';
 import { host } from '../../../platform/host';
 
@@ -471,7 +473,7 @@ describe('MarkdownContent marks on a live answer after narration and a tool call
       <MarkdownContent
         text={state.bodyText}
         isAssistant
-        figureSources={linkFigureSteps(rebaseFigureSources(state.figureSources, state.answerText, state.bodyText), state.steps)}
+        figureSources={linkFigureSteps(rebaseFigureSources(state.figureSources, state.answerText, state.bodyText, state.bodyTextMap), state.steps)}
       />,
     ).container;
     const reload = render(
@@ -482,5 +484,41 @@ describe('MarkdownContent marks on a live answer after narration and a tool call
     // The narration figure is in the reloaded answer only.
     expect(markedText(reload.querySelector('p'))).toBe('Let me read stock.csv for the [2?] sites.');
     expect(marks(live)).toHaveLength(2);
+  });
+});
+
+describe('MarkdownContent marks on a restored answer after a continuation tool call', () => {
+  it('keeps sourced and unsourced restored and diagnosis figures identical to reload', () => {
+    const events = restoredFigureEvents();
+    const state = events.reduce((s, e) => reduceStream(s, e, () => 5000), initialStreamState());
+    const [hydrated] = hydrateMessagesFromServerEvents([{
+      id: 'a1', role: 'assistant', content: RESTORED_SAVED_TEXT, events,
+    }]);
+    expect(state.bodyText).toBe(RESTORED_LIVE_TEXT);
+    const live = render(
+      <MarkdownContent
+        text={state.bodyText}
+        isAssistant
+        figureSources={linkFigureSteps(rebaseFigureSources(state.figureSources, state.answerText, state.bodyText, state.bodyTextMap), state.steps)}
+      />,
+    ).container;
+    const reload = render(
+      <MarkdownContent text={hydrated.content} isAssistant figureSources={linkFigureSteps(hydrated.figureSources, hydrated.steps)} />,
+    ).container;
+    const liveParagraphs = [...live.querySelectorAll('p')].map(markedText);
+    const reloadParagraphs = [...reload.querySelectorAll('p')].map(markedText);
+    expect(liveParagraphs).toEqual([
+      '📦 Site S1 holds [250] units; site S2 may need [99?] units.',
+      'The [250]-unit count stands; I cannot confirm the [12?]-unit adjustment.',
+    ]);
+    expect(reloadParagraphs).toEqual([
+      liveParagraphs[0],
+      'I will recheck [250] units and [99?] requested units.',
+      liveParagraphs[1],
+    ]);
+    expect(marks(live)).toHaveLength(4);
+    expect(marks(reload)).toHaveLength(6);
+    // Live projection never mutates the event offsets needed by hydration.
+    expect(hydrated.figureSources).toEqual(state.figureSources);
   });
 });

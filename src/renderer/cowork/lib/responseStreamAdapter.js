@@ -61,6 +61,12 @@ export function initialStreamState() {
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
+    /** Retained ranges into the server's answer, including text hidden at
+     *  tool starts in sourceLength. Reset replaces that source; restore
+     *  prepends to it. This keeps the live offsets exact even when its body
+     *  is no longer a suffix of the saved answer.
+     *  @type {import('./figureSources').BodyTextMap} */
+    bodyTextMap: { sourceLength: 0, ranges: [] },
     /** Harness/agent ID from `response.created` (e.g. 'anton'). */
     harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
@@ -88,8 +94,8 @@ export function initialStreamState() {
     figureSources: null,
     /** The answer the server saved, off `response.completed`: every round's
      *  text, narration before a tool call included, where `bodyText` keeps
-     *  only what came after the last tool call. Null until the turn completes,
-     *  or when the event carries no text. */
+     *  only what came after the last tool call plus any restored answer.
+     *  Null until the turn completes, or when the event carries no text. */
     answerText: null,
   };
 }
@@ -240,6 +246,7 @@ function reclassifyPreambleOnToolStart(state, eventTs) {
       _isPreamble: true,
     },
     bodyText: '',
+    bodyTextMap: { ...state.bodyTextMap, ranges: [] },
   };
 }
 
@@ -403,9 +410,20 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.output_text.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
+    const { sourceLength, ranges } = state.bodyTextMap;
+    const end = sourceLength + delta.length;
+    const last = ranges.at(-1);
+    // Consecutive deltas belong to one retained segment, regardless of how
+    // the transport chunks them. Hidden narration leaves a gap instead.
+    const nextRanges = last?.[1] === sourceLength
+      ? [...ranges.slice(0, -1), [last[0], end]]
+      : [...ranges, [sourceLength, end]];
     // The model has moved from thinking to producing the visible
     // response — end the current thought burst.
-    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
+    return {
+      ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
+      bodyTextMap: { sourceLength: end, ranges: nextRanges },
+    };
   }
 
   // Anton's completion verifier forced a continuation, so the text that
@@ -416,7 +434,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // immediately before the replacement text, so the bubble is never left
   // empty, and a continuation that never speaks sends nothing at all.
   if (type === 'response.answer_reset') {
-    return { ...state, bodyText: '', currentThought: null };
+    return { ...state, bodyText: '', bodyTextMap: { sourceLength: 0, ranges: [] }, currentThought: null };
   }
 
   // The continuation never delivered the replacement the boundary promised —
@@ -426,7 +444,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.answer_restore') {
     const text = typeof event.text === 'string' ? event.text : '';
     if (!text) return state;
-    return { ...state, bodyText: text + state.bodyText };
+    const { sourceLength, ranges } = state.bodyTextMap;
+    const restoredRanges = ranges.map(([start, end]) => [start + text.length, end + text.length]);
+    if (restoredRanges[0]?.[0] === text.length) restoredRanges[0][0] = 0;
+    else restoredRanges.unshift([0, text.length]);
+    return {
+      ...state, bodyText: text + state.bodyText,
+      bodyTextMap: { sourceLength: sourceLength + text.length, ranges: restoredRanges },
+    };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for

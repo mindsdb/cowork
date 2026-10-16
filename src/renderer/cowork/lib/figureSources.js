@@ -63,6 +63,9 @@
  *   Where figure `index` of a list sits in a given source string.
  * @typedef {[number, number]} TextRange
  *   A [start, end) range of a source string.
+ * @typedef {{ sourceLength: number, ranges: TextRange[] }} BodyTextMap
+ *   The streamed server answer's length and its retained, ordered, disjoint
+ *   ranges. Joining those ranges produces the live message's body text.
  */
 
 const ORIGINS = new Set(['step', 'question', 'none']);
@@ -159,26 +162,35 @@ export function parseFigureSources(raw) {
 /**
  * `figureSources` with its offsets moved from `answerText`, the answer the
  * server traced and saved, onto `text`, the part of it a live message shows.
- * The live message drops narration that came before a tool call, so `text` is
- * the end of `answerText`: every figure moves back by the length of what was
- * dropped, and a figure inside the dropped part is left out. When `text` is
- * not the end of `answerText`, or the answer is unknown, no figure can be
- * placed, so none is kept (null).
+ * The reducer tracks which source ranges survive tool starts, resets and
+ * restores. A restore can leave hidden narration between two retained ranges,
+ * so a suffix match cannot recover the offsets. Verify the map against the
+ * completed answer, then keep only figures fully inside a retained range.
+ * Never search for a figure's text: repeated values can name different sources.
  *
  * @param {FigureSources | null | undefined} figureSources
  * @param {string | null | undefined} answerText
  * @param {string} text
+ * @param {BodyTextMap} bodyTextMap
  * @returns {FigureSources | null}
  */
-export function rebaseFigureSources(figureSources, answerText, text) {
-  if (!figureSources || typeof answerText !== 'string' || !answerText.endsWith(text)) return null;
-  const dropped = answerText.length - text.length;
-  if (dropped === 0) return figureSources;
+export function rebaseFigureSources(figureSources, answerText, text, bodyTextMap) {
+  if (!figureSources || typeof answerText !== 'string' || bodyTextMap.sourceLength !== answerText.length) return null;
+  const { ranges } = bodyTextMap;
+  if (ranges.map(([start, end]) => answerText.slice(start, end)).join('') !== text) return null;
+  if (ranges.length === 1 && ranges[0][0] === 0 && ranges[0][1] === answerText.length) return figureSources;
+  let liveOffset = 0;
+  const mappedRanges = ranges.map(([start, end]) => {
+    const range = { start, end, dropped: start - liveOffset };
+    liveOffset += end - start;
+    return range;
+  });
   return {
     ...figureSources,
-    figures: figureSources.figures
-      .filter((figure) => figure.start >= dropped)
-      .map((figure) => ({ ...figure, start: figure.start - dropped, end: figure.end - dropped })),
+    figures: figureSources.figures.flatMap((figure) => {
+      const range = mappedRanges.find(({ start, end }) => figure.start >= start && figure.end <= end);
+      return range ? [{ ...figure, start: figure.start - range.dropped, end: figure.end - range.dropped }] : [];
+    }),
   };
 }
 

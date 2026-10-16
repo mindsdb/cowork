@@ -758,6 +758,44 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
   });
 });
 
+describe('bodyTextMap retains exact server offsets through continuations', () => {
+  const delta = (text) => ({ type: 'response.output_text.delta', delta: text });
+  const reset = { type: 'response.answer_reset' };
+  const restore = (text) => ({ type: 'response.answer_restore', text });
+  const tool = (thought_role) => ({ type: 'response.in_progress', thought_role, tool_use_id: 'toolu_01' });
+
+  it.each(['thought.scratchpad.start', 'thought.tool_call.start'])('keeps the gap removed by %s after a restore', (role) => {
+    const state = reduceAll([
+      delta('📦 250'), reset, delta('Checking 250.'), tool(role), restore('📦 250'), delta(' Still 250.'),
+    ]);
+    expect(state.bodyText).toBe('📦 250 Still 250.');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 30, ranges: [[0, 6], [19, 30]] });
+  });
+
+  it('coalesces chunked text and a restore with no removed narration', () => {
+    const before = reduceAll([delta('Old'), reset, delta('25'), delta('0')]);
+    const state = reduceStream(before, restore('A '));
+    expect(before.bodyTextMap).toEqual({ sourceLength: 3, ranges: [[0, 3]] });
+    expect(state.bodyText).toBe('A 250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+
+  it('discards the previous source coordinates at each reset', () => {
+    const state = reduceAll([
+      delta('First'), reset, delta('Checking'), tool('thought.scratchpad.start'), restore('First'),
+      delta(' Handing back.'), reset, delta('Replacement'),
+    ]);
+    expect(state.bodyText).toBe('Replacement');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 11, ranges: [[0, 11]] });
+  });
+
+  it('retains whitespace when tool-start handling retains the body', () => {
+    const state = reduceAll([delta('\n\n'), tool('thought.scratchpad.start'), delta('250')]);
+    expect(state.bodyText).toBe('\n\n250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+});
+
 // The persisted assistant message id rides response.completed/
 // response.failed at the frame ROOT (not nested under `response`) — same
 // placement as conversation_id/harness on response.created.

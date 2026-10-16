@@ -6,6 +6,9 @@ import '../cowork/styles/skin-8bit.css';
 import '../styles.css';
 import '../cowork/styles/tailwind.css';
 import { TextBlock } from '../cowork/views/ChatView';
+import { initialStreamState, reduceStream } from '../cowork/lib/responseStreamAdapter';
+import { rebaseFigureSources } from '../cowork/lib/figureSources';
+import { restoredFigureEvents } from './restored-figure-sources';
 
 /* Every way a figure in a finished answer can be marked, on one page.
 
@@ -82,6 +85,7 @@ const TABLE = [
 ].join('\n');
 
 const sources = (figures, projectId = 'proj-1') => ({ project_id: projectId, steps: EVENT_STEPS, figures });
+const restored = restoredFigureEvents().reduce((state, event) => reduceStream(state, event, () => 5000, { replay: true }), initialStreamState());
 
 const CASES = [
   {
@@ -146,6 +150,20 @@ const CASES = [
     ]),
   },
   {
+    id: 'restored-live',
+    label: 'A restored answer after a continuation runs a tool: its source marks survive immediately, including the diagnosis. The continuation narration is hidden.',
+    text: restored.bodyText,
+    figureSources: rebaseFigureSources(restored.figureSources, restored.answerText, restored.bodyText, restored.bodyTextMap),
+    steps: restored.steps,
+  },
+  {
+    id: 'restored-reload',
+    label: 'The same restored answer after reload: the saved narration is also visible, and the original answer and diagnosis keep the same marks.',
+    text: restored.answerText,
+    figureSources: restored.figureSources,
+    steps: restored.steps,
+  },
+  {
     id: 'setting-off',
     label: 'Settings > Appearance > "Show where figures came from" turned off: the first answer, unmarked.',
     text: MAIN,
@@ -160,7 +178,7 @@ const CASES = [
   },
 ];
 
-function Case({ id, label, text, figureSources, showFigureSources = true }) {
+function Case({ id, label, text, figureSources, steps = STEPS, showFigureSources = true }) {
   const [opened, setOpened] = useState(null);
   return (
     // Anchored per case, so a screenshot run can crop to one state.
@@ -171,7 +189,7 @@ function Case({ id, label, text, figureSources, showFigureSources = true }) {
           text={text}
           id={`fixture-${id}`}
           figureSources={figureSources}
-          steps={STEPS}
+          steps={steps}
           onOpenStep={(stepId) => setOpened(`Opened ${stepId} in the scratchpad.`)}
           onViewFile={(source) => setOpened(source.path
             ? `Opened ${source.path} from the project in the file viewer.`

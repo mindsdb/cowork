@@ -117,6 +117,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 
 import App from './App';
 import { fetchInFlightStatus, fetchProjects } from './api';
+import { restoredFigureEvents, RESTORED_LIVE_TEXT } from '../visual-fixtures/restored-figure-sources';
 
 const NARRATION = 'Let me read stock.csv for the 2 sites.';
 const REPLY = '\n\nSite S1 holds 250 units and site S2 holds 250 too.';
@@ -149,19 +150,16 @@ const eventsFor = (conversationId) => [
 
 /* Every event of the turn, then its end, as the stream site's API call
    delivers them. */
-const finishTurn = (handle, conversationId) => act(() => {
-  for (const event of eventsFor(conversationId)) handle.opts.onEvent(event);
+const finishTurn = (handle, conversationId, events) => act(() => {
+  for (const event of events(conversationId)) handle.opts.onEvent(event);
   handle.opts.onDone(conversationId);
 });
 
 /* Each figure's offsets hold its text; the narration's 2 is gone. */
-const expectRebased = async () => {
+const expectRebased = async (content, figures) => {
   const answer = JSON.parse((await screen.findByTestId('answer')).textContent);
-  expect(answer.content).toBe(REPLY);
-  expect(answer.figures).toEqual([
-    ['250', '250', 'step'],
-    ['250', '250', 'none'],
-  ]);
+  expect(answer.content).toBe(content);
+  expect(answer.figures).toEqual(figures);
 };
 
 const openStockTask = async (user) => {
@@ -170,7 +168,14 @@ const openStockTask = async (user) => {
   expect(await screen.findByText('Chat task: Stock task')).toBeInTheDocument();
 };
 
-describe('a finished reply after narration and a tool call', () => {
+describe.each([
+  ['a finished reply after narration and a tool call', eventsFor, REPLY, [
+    ['250', '250', 'step'], ['250', '250', 'none'],
+  ]],
+  ['a restored reply after continuation narration and a tool call', restoredFigureEvents, RESTORED_LIVE_TEXT, [
+    ['250', '250', 'step'], ['99', '99', 'none'], ['250', '250', 'step'], ['12', '12', 'none'],
+  ]],
+])('%s', (_name, events, content, figures) => {
   beforeEach(() => {
     // App reads its first route from the address bar, which a test before this one moved.
     window.history.replaceState(null, '', '/');
@@ -186,8 +191,8 @@ describe('a finished reply after narration and a tool call', () => {
     await openStockTask(user);
 
     await user.click(screen.getByRole('button', { name: 'Send' }));
-    finishTurn(streams.opened.send[0], 'conv-a');
-    await expectRebased();
+    finishTurn(streams.opened.send[0], 'conv-a', events);
+    await expectRebased(content, figures);
   });
 
   it('hands ChatView the same offsets after reconnecting to a turn still running', async () => {
@@ -197,8 +202,8 @@ describe('a finished reply after narration and a tool call', () => {
     await openStockTask(user);
 
     await waitFor(() => expect(streams.opened.tail).toHaveLength(1));
-    finishTurn(streams.opened.tail[0], 'conv-a');
-    await expectRebased();
+    finishTurn(streams.opened.tail[0], 'conv-a', events);
+    await expectRebased(content, figures);
   });
 
   it('hands ChatView the same offsets for a chat started from home', async () => {
@@ -208,8 +213,8 @@ describe('a finished reply after narration and a tool call', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Send from home' }));
     await waitFor(() => expect(streams.opened.newSession).toHaveLength(1));
-    finishTurn(streams.opened.newSession[0], 'conv-new');
-    await expectRebased();
+    finishTurn(streams.opened.newSession[0], 'conv-new', events);
+    await expectRebased(content, figures);
   });
 
   it('hands ChatView the same offsets for a turn a connection form started', async () => {
@@ -219,7 +224,7 @@ describe('a finished reply after narration and a tool call', () => {
 
     await user.click(screen.getByRole('button', { name: 'Submit form' }));
     await waitFor(() => expect(streams.opened.vault).toHaveLength(1));
-    finishTurn(streams.opened.vault[0], 'conv-a');
-    await expectRebased();
+    finishTurn(streams.opened.vault[0], 'conv-a', events);
+    await expectRebased(content, figures);
   });
 });
