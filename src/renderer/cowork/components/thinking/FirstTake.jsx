@@ -1,7 +1,7 @@
-// The instant first take (ENG-3406): a short reply on a fast model that says
-// what Anton is about to do, shown while Anton works and gone the moment Anton
-// speaks. It is a placeholder, not the answer, so it reads as one: muted, no
-// actions, never persisted.
+// The instant first take: a short reply on a fast model that says what Anton
+// is about to do, shown above the steps while Anton works and gone when the
+// turn asks the user or ends. It is a placeholder, not the answer, so it reads
+// as one: muted, no actions, never persisted.
 //
 // It types out rather than landing in one block, quickly enough that the
 // first words show at once and the whole take is in within about a second and
