@@ -1003,12 +1003,16 @@ describe('model_timeout failure card', () => {
 });
 
 describe('anton_error / unmapped failure fallback', () => {
-  it('renders as a danger alert, not answer prose', () => {
+  it('renders as a failed card, not answer prose', () => {
     render(
       <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
     );
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('An unexpected error occurred.');
+    // The same ChatCardShell as every carded failure, in the failed state.
+    expect(alert).toHaveClass('chat-card-shell');
+    expect(alert).toHaveAttribute('data-state', 'failed');
+    expect(alert).toHaveTextContent('Something went wrong');
   });
 
   it('surfaces the request id when the failure carries one, so a report is traceable', () => {
