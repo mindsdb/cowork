@@ -961,14 +961,13 @@ export default function SettingsView({
     return types;
   })();
 
-  // Custom providers must carry a non-empty name. Pre-compute so the
-  // Models dropdown can show the name and the Save button knows to
-  // block when any custom row is missing one.
+  // Editable custom providers must carry a non-empty name. Hidden provider
+  // fields must not prevent saving the settings that remain available.
   const providerDisplayName = (p) => {
     if (p.type === 'openai-compatible') return (p.name || '').trim() || 'OpenAI-compatible';
     return typeLabels[p.type] || p.type;
   };
-  const missingCustomNames = providers.some(
+  const missingCustomNames = PLATFORM_UI && providers.some(
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
 

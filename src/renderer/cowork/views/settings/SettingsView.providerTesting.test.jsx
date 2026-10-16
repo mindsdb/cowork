@@ -117,6 +117,42 @@ beforeEach(() => {
   mocks.validateSettings.mockReset().mockResolvedValue({ configReady: true });
 });
 
+it('saves a retained setting without changing an unnamed hidden provider', async () => {
+  const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+  const initial = settingsFor(provider, { providerStatus: { [provider.type]: 'ok' } });
+  const { latest, onSave } = renderSettings(initial);
+  expect(screen.queryByLabelText('Custom provider name')).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+  const save = screen.getByRole('button', { name: 'Save settings' });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+
+  await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ actFirst: false }));
+  expect(latest.current).toEqual({ ...initial, actFirst: false });
+  expectNoProviderCheck();
+});
+
+it('requires a name before saving an editable custom provider', async () => {
+  mocks.deployment.PLATFORM_UI = true;
+  const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+  const { latest, onSave } = renderSettings(settingsFor(provider));
+  fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+  const save = screen.getByRole('button', { name: 'Save settings' });
+  expect(save).toBeDisabled();
+  expect(save).toHaveAttribute('title', 'Each custom provider needs a name');
+  fireEvent.click(save);
+  expect(onSave).not.toHaveBeenCalled();
+
+  fireEvent.change(screen.getByLabelText('Custom provider name'), { target: { value: 'Local endpoint' } });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+  expect(latest.current.providers.find((card) => card.type === provider.type)).toEqual({ ...provider, name: 'Local endpoint' });
+  expect(latest.current.actFirst).toBe(false);
+  expectNoProviderCheck();
+});
+
 describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => ({
   provider, type: provider.type, platformUi,
 }))))('disabled web provider tests: $type, platform UI $platformUi', ({ provider, platformUi }) => {
