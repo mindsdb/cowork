@@ -496,6 +496,19 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     await act(async () => { await fresh._loadKatex(); });
     expect(container.querySelector('.katex')).not.toBeNull();
   });
+  it('re-renders earlier math when a later load succeeds after a failure', async () => {
+    vi.resetModules();
+    vi.doMock('rehype-katex', () => { throw new Error('offline'); });
+    const fresh = await import('./MarkdownContent');
+    const first = render(<fresh.MarkdownContent text={'where \\(x\\) holds'} complete />);
+    await act(async () => { expect(await fresh._loadKatex()).toBeNull(); });
+    expect(first.container.querySelector('.katex')).toBeNull();
+
+    vi.doUnmock('rehype-katex');
+    render(<fresh.MarkdownContent text={'and \\(y\\) too'} complete />);
+    await act(async () => { await fresh._loadKatex(); });
+    expect(first.container.querySelector('.katex')).not.toBeNull();
+  });
   it('renders inline \\(…\\) as KaTeX', async () => {
     const { container } = await renderMath(
       <MarkdownContent text={'where \\(i=\\sqrt{-1}\\) holds'} complete />,
