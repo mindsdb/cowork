@@ -108,3 +108,8 @@ it.each(['no_credits', 'allowance_used', 'paused', 'slow_down', 'billing_unavail
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
   expect(screen.queryByText(/MindsHub|credits|allowance|funds|balance/i)).not.toBeInTheDocument();
 });
+
+it('keeps "Show where figures came from" in Appearance on a build without the platform UI', () => {
+  renderSettings({ ...settings, showFigureSources: true }, undefined, 'appearance');
+  expect(screen.getByLabelText('Show where figures came from')).toBeChecked();
+});

@@ -363,6 +363,17 @@ describe('parseUiManifest', () => {
 });
 
 describe('looksLikeBrokenInstall', () => {
+  it('does not take a failed credential clear for a broken install', () => {
+    // A reinstall cannot fix it, and one racing a retry can corrupt a healthy venv.
+    const log = [
+      '[ERROR] cowork.services.pending_credential_clear: pending credential clear failed for store /home/u/.cowork (OperationalError)',
+      'ERROR:    Traceback (most recent call last):',
+      'cowork.services.pending_credential_clear.PendingCredentialClearFailed: pending credential clear failed for store /home/u/.cowork',
+      'ERROR:    Application startup failed. Exiting.',
+    ].join('\n');
+    expect(looksLikeBrokenInstall(log)).toBe(false);
+  });
+
   it('matches the import-failure markers a broken/partial venv produces', () => {
     // The two real incidents this gate is built around.
     expect(
@@ -872,6 +883,11 @@ describe('decideStartWait', () => {
 });
 
 describe('startFailureMessage', () => {
+  it('names a failed credential clear as the reason the start stopped', () => {
+    expect(startFailureMessage({ kind: 'credential-clear', exitCode: 3, spawnError: null, elapsedMs: 2_000 }))
+      .toBe('The backend stopped before serving because it could not remove the API keys a sign-out left behind.');
+  });
+
   it('names the spawn error rather than blaming the health check', () => {
     expect(startFailureMessage({ kind: 'spawn-error', exitCode: null, spawnError: 'spawn EPERM', elapsedMs: 12 }))
       .toBe('The backend could not be launched: spawn EPERM.');
