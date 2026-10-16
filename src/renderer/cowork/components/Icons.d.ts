@@ -7,6 +7,7 @@ declare const Ico: {
   attach: IconRenderer;
   brain: IconRenderer;
   building: IconRenderer;
+  chats: IconRenderer;
   arrowUpLeft: IconRenderer;
   arrowUpRight: IconRenderer;
   appWindow: IconRenderer;
@@ -21,6 +22,7 @@ declare const Ico: {
   copy: IconRenderer;
   cube: IconRenderer;
   doc: IconRenderer;
+  download: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
   folder: IconRenderer;
@@ -43,9 +45,11 @@ declare const Ico: {
   play: IconRenderer;
   phone: IconRenderer;
   reload: IconRenderer;
+  save: IconRenderer;
   send: IconRenderer;
   settings: IconRenderer;
   slider: IconRenderer;
+  sparkle: IconRenderer;
   stop: IconRenderer;
   taskCheck: IconRenderer;
   trash: IconRenderer;

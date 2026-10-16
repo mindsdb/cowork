@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CodingEvent } from './api';
-import { activityHeadline, displayCommand, errorTitle, fileChanges, isCompaction, isIgnoredActivity, isRetryNotice, liveStatusLabel, planPosition, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
+import { activityHeadline, codeStepStatus, displayCommand, errorTitle, fileChanges, isCompaction, isIgnoredActivity, isRetryNotice, liveStatusLabel, planPosition, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
 
 
 function event(overrides: Partial<CodingEvent>): CodingEvent {
@@ -230,5 +230,60 @@ describe('ignored items', () => {
     expect(isIgnoredActivity(event({ type: 'tool', data: { type: 'userMessage' } }))).toBe(true);
     expect(isIgnoredActivity(event({ type: 'tool', data: { type: 'mcpToolCall' } }))).toBe(false);
     expect(isCompaction(event({ type: 'tool', data: { type: 'contextCompaction' } }))).toBe(true);
+  });
+});
+
+
+describe('web search', () => {
+  function search(data: Record<string, unknown>, phase: CodingEvent['phase'] = 'completed', seq = 1): CodingEvent {
+    // The server titles a webSearch item "Web search", which used to read "Used Web search".
+    return event({ type: 'tool', seq, item_id: `ws${seq}`, title: 'Web search', phase, data: { type: 'webSearch', id: `ws${seq}`, ...data } });
+  }
+
+  it('names the query', () => {
+    expect(stepLabel(search({ query: 'vite 7 release notes', action: { type: 'search', query: 'vite 7 release notes' } })))
+      .toEqual({ icon: 'web', verb: 'Searched the web for', target: 'vite 7 release notes' });
+  });
+
+  it('falls back to the action\'s queries', () => {
+    expect(stepLabel(search({ query: '', action: { type: 'search', queries: ['react 19', 'use hook'] } })).target).toBe('react 19, use hook');
+  });
+
+  it('reads plainly without a query', () => {
+    expect(stepLabel(search({ query: '' }))).toEqual({ icon: 'web', verb: 'Searched the web', target: '' });
+  });
+
+  it('names the page it opened, without the protocol', () => {
+    expect(stepLabel(search({ query: '', action: { type: 'openPage', url: 'https://www.example.com/docs/' } })))
+      .toEqual({ icon: 'web', verb: 'Opened', target: 'example.com/docs' });
+  });
+
+  it('names what it looked for inside a page', () => {
+    expect(stepLabel(search({ query: '', action: { type: 'findInPage', url: 'https://vitejs.dev/guide', pattern: 'ssr' } })))
+      .toEqual({ icon: 'web', verb: 'Searched vitejs.dev/guide for', target: 'ssr' });
+  });
+
+  it('counts web searches apart from tools in a group headline', () => {
+    expect(activityHeadline([search({ query: 'a' }, 'completed', 1), search({ query: 'b' }, 'completed', 2), command('c1', [{ type: 'unknown', command: 'ls' }])]))
+      .toBe('Ran 1 command and searched the web 2 times');
+  });
+
+  it('names a lone search by its query', () => {
+    expect(activityHeadline([search({ query: 'codex app-server' })])).toBe('Searched the web for codex app-server');
+  });
+
+  it('says what it is searching for on the live status line', () => {
+    expect(liveStatusLabel([search({ query: 'tailwind v4' }, 'started')])).toBe('Searching the web for tailwind v4');
+    expect(liveStatusLabel([search({ query: '' }, 'started')])).toBe('Searching the web');
+  });
+});
+
+
+describe('codeStepStatus', () => {
+  it('marks a failed step failed and anything else done', () => {
+    expect(codeStepStatus(failure(1, 'Task did not start', 'No workspace'))).toBe('failed');
+    expect(codeStepStatus(event({ data: { exitCode: 1 } }))).toBe('failed');
+    expect(codeStepStatus(retry(1))).toBe('done');
+    expect(codeStepStatus(event({ data: { exitCode: 0 } }))).toBe('done');
   });
 });
