@@ -27,8 +27,11 @@ export async function copyText(value) {
     // fall through
   }
 
-  // Path 2 — execCommand via a hidden textarea. Has to be in the DOM
-  // and focused for the browser to consider this a user-initiated copy.
+  /* Path 2 — execCommand via a hidden textarea. Has to be in the DOM
+     and focused for the browser to consider this a user-initiated copy.
+     It goes beside the focused element, and focus goes back there after:
+     a Copy button in a popover keeps its focus, and the focus never leaves
+     the popover, which would stop Tab from reaching the popover's buttons. */
   try {
     if (typeof document === 'undefined') return false;
     const ta = document.createElement('textarea');
@@ -40,9 +43,14 @@ export async function copyText(value) {
     ta.style.left = '0';
     ta.style.opacity = '0';
     ta.style.pointerEvents = 'none';
-    document.body.appendChild(ta);
+    const focused = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
+    if (focused?.parentNode) focused.parentNode.insertBefore(ta, focused.nextSibling);
+    else document.body.appendChild(ta);
     const sel = document.getSelection();
     const prevRange = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    ta.focus({ preventScroll: true });
     ta.select();
     ta.setSelectionRange(0, text.length);
     let ok = false;
@@ -51,7 +59,8 @@ export async function copyText(value) {
     } catch {
       ok = false;
     }
-    document.body.removeChild(ta);
+    ta.remove();
+    focused?.focus({ preventScroll: true });
     // Restore the user's prior selection so we don't disturb anything.
     if (prevRange && sel) {
       try { sel.removeAllRanges(); sel.addRange(prevRange); } catch {}

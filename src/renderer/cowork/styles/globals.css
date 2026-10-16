@@ -3853,6 +3853,43 @@ body[data-theme="dark"] .phase-check-done {
   color: color-mix(in srgb, var(--accent) 82%, #000);
   font-weight: 500;
 }
+/* A figure in a finished answer marked with where it came from (FigureMark).
+   It is a button that opens the list of its sources, but reads as the
+   sentence's own text: only the underline says it has a source. A sourced
+   figure gets a quiet grey dotted line, darker while hovered or open. A
+   figure no step returned, which the reader should check, gets a solid amber
+   line, so the two differ in shape as well as color: forced-colors mode
+   paints every line one system color and keeps its shape. The sourced line
+   is the only cue that the figure can be clicked, so it keeps 3:1 against
+   the page: --ink-3 in the light theme (--ink-4 there is 2.55:1), --ink-4 in
+   the dark one. */
+.anton-figure {
+  --figure-line: var(--ink-3);
+  all: unset;
+  cursor: pointer;
+  border-radius: 2px;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--figure-line);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+body[data-theme="dark"] .anton-figure {
+  --figure-line: var(--ink-4);
+}
+.anton-figure:hover,
+.anton-figure[data-popup-open] { text-decoration-color: var(--ink-2); }
+.anton-figure--unsourced,
+.anton-figure--unsourced:hover,
+.anton-figure--unsourced[data-popup-open] {
+  text-decoration-style: solid;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--warning);
+}
+.anton-figure:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 body[data-theme="light"] .anton-inline-code {
   /* Darker terracotta on light keeps AA contrast; the chip fill itself is
      the neutral --ink tint inherited from the base rule. */

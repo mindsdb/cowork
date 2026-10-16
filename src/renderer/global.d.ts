@@ -150,6 +150,8 @@ declare global {
   const __BUILD_TIME__: string;
   interface Window {
     antontron: AntonTronAPI;
+    /** A deployment brand's config, set by /brand/brand.js on web builds with the platform UI off. */
+    COWORK_DEPLOYMENT_BRAND?: unknown;
   }
 
   namespace React {
