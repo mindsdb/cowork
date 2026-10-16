@@ -74,7 +74,7 @@ describe('applyFavicon', () => {
 
 describe('applyBrandIcons', () => {
   const brand = (fields: Partial<DeploymentBrand>): DeploymentBrand => ({
-    productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, ...fields,
+    productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, skinLocked: null, ...fields,
   });
   const icon = () => document.querySelector('link[rel="icon"]')!;
   const touch = () => document.querySelector('link[rel="apple-touch-icon"]')!;

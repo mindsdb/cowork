@@ -25,6 +25,8 @@ export interface DeploymentBrand {
   logoUrl: string | null;
   iconUrl: string | null;
   appleTouchIconUrl: string | null;
+  /** True keeps every browser on the default style: the brand's skin, or Normal. */
+  skinLocked: boolean | null;
 }
 
 /**
@@ -73,6 +75,10 @@ function parseAssetUrl(value: unknown): string | null {
   return typeof value === 'string' && ASSET_URL.test(value) ? value : null;
 }
 
+function parseFlag(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
 /** Checks each field of a brand's config on its own; unknown keys are ignored. */
 export function parseDeploymentBrand(raw: Record<string, unknown>): { brand: DeploymentBrand; dropped: string[] } {
   const brand: DeploymentBrand = {
@@ -82,6 +88,7 @@ export function parseDeploymentBrand(raw: Record<string, unknown>): { brand: Dep
     logoUrl: parseAssetUrl(raw.logoUrl),
     iconUrl: parseAssetUrl(raw.iconUrl),
     appleTouchIconUrl: parseAssetUrl(raw.appleTouchIconUrl),
+    skinLocked: parseFlag(raw.skinLocked),
   };
   const dropped = (Object.keys(brand) as (keyof DeploymentBrand)[])
     .filter((field) => raw[field] !== undefined && brand[field] === null);

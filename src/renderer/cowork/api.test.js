@@ -641,6 +641,26 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.requestId).toBe('corr-abc');
   });
 
+  it('carries the incomplete reason onto an answer that stopped early', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Stopped at a limit.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'round_cap' } } },
+      ] },
+      { role: 'user', content: 'again' },
+      { role: 'assistant', content: 'Done.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const answers = task.messages.filter((m) => m.role === 'assistant');
+    expect(answers[0].incompleteReason).toBe('round_cap');
+    expect(answers[1]).not.toHaveProperty('incompleteReason');
+  });
+
   it("carries a hosted billing stop's reset instant onto its error row", async () => {
     stubEndpoints([
       { role: 'user', content: 'hi' },
@@ -973,6 +993,36 @@ describe('streamNewSession — stream closes without a terminal event', () => {
     });
 
     expect(result.event?.code).toBeUndefined();
+    expect(result.done).toBe(true);
+  });
+
+  it('ends with onDone when the answer stopped early (status incomplete)', async () => {
+    const enc = new TextEncoder();
+    const completed = {
+      type: 'response.completed',
+      response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } },
+    };
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode(`event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`),
+    ];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => (i < frames.length
+            ? { done: false, value: frames[i++] }
+            : { done: true, value: undefined }),
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ event }) });
+    });
+
     expect(result.done).toBe(true);
   });
 });

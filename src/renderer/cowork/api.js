@@ -337,6 +337,7 @@ function _hydrateAssistantEvents(messages) {
         ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
         : {}),
       ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);

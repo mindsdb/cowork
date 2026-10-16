@@ -267,6 +267,7 @@ export function reduceServerEvents(events, fallbackStartedAt) {
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    incompleteReason: state.incompleteReason,
   };
 }
 
@@ -330,6 +331,7 @@ export function hydrateMessagesFromServerEvents(messages) {
     out.push({
       ...rest,
       ...completeFlag,
+      ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
         ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
         : {}),
