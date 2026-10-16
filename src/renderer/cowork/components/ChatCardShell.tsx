@@ -1,6 +1,7 @@
 // ChatCardShell — the one frame for cards the agent drops into the transcript
 // with something for the user to do: failure, billing and usage notices
-// (ChatView's ActionCard) and ask_user questions (AskUserCard).
+// (ChatView's ActionCard), ask_user questions (AskUserCard), and the pointer
+// to a connection form (MarkdownCode's data-vault-form card).
 //
 //   <ChatCardShell kind="Billing" title="Task stopped" actions={{ primary, secondary }}>
 //     Your balance ran out before this task finished.
@@ -19,16 +20,17 @@
 // finished answer. A pending card looks like a card with no state.
 
 import { isValidElement, type HTMLAttributes, type ReactNode } from 'react';
-import { Ban, Check, CircleAlert, Clock, MessageCircleQuestion } from 'lucide-react';
+import { Ban, Check, CircleAlert, Clock, MessageCircleQuestion, Plug } from 'lucide-react';
 import { Icon } from './ui/Icon';
 import ActionBar, { type ActionBarProps, type ActionSpec } from './ui/ActionBar';
 import { cn } from '../lib/cn';
 
-type Tone = 'notice' | 'question';
+type Tone = 'notice' | 'question' | 'connection';
 
 const TONES: Record<Tone, { icon: typeof CircleAlert; label: string }> = {
   notice: { icon: CircleAlert, label: 'Notice' },
   question: { icon: MessageCircleQuestion, label: 'Question' },
+  connection: { icon: Plug, label: 'Connection' },
 };
 
 export type CardState = 'pending' | 'answered' | 'denied' | 'failed' | 'expired';
@@ -86,9 +88,10 @@ export function cardActions(buttons: CardButton[] = []): ActionBarProps | null {
 export default function ChatCardShell({
   tone = 'notice', kind, title, actions, footer, state, receipt, className, children, ...rest
 }: ChatCardShellProps) {
-  const { icon, label } = TONES[tone];
+  const { label } = TONES[tone];
+  // A failed card's kind row carries the alert glyph, whatever the tone.
+  const icon = state === 'failed' ? CircleAlert : TONES[tone].icon;
   const settled = isSettledCardState(state);
-  // A failed card's kind row already carries the alert glyph.
   const stateIcon = settled ? CARD_STATES[state!].icon : null;
   return (
     <div

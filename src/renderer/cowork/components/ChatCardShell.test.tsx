@@ -79,3 +79,17 @@ describe('ChatCardShell state', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 });
+
+describe('ChatCardShell connection tone', () => {
+  it('names the card a Connection, with the plug glyph', () => {
+    const { container } = render(<ChatCardShell tone="connection" title="Connect PostgreSQL" />);
+    expect(screen.getByText('Connection')).toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-plug')).not.toBeNull();
+  });
+
+  it('swaps the tone glyph for the alert glyph once failed', () => {
+    const { container } = render(<ChatCardShell tone="connection" state="failed" title="Form did not parse" />);
+    expect(container.querySelector('svg.lucide-plug')).toBeNull();
+    expect(container.querySelector('svg.lucide-circle-alert')).not.toBeNull();
+  });
+});

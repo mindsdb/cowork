@@ -1,6 +1,6 @@
 // Tiny pub/sub for the latest active `data-vault-form` per
 // conversation. The markdown extension calls `setForm(cid, spec)`
-// each time it parses a `data-vault-form` block; the side panel
+// each time it parses a `data-vault-form` block; the form modal
 // subscribes via `useActiveForm(cid)` and re-renders.
 //
 // Why a side store instead of just rendering inline in the message:

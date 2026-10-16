@@ -26,7 +26,7 @@
 //   }
 //
 // Submit / skip / cancel are surfaced via `onAction({id, kind, values, skipped})`.
-// The host (the side panel) is responsible for posting to the
+// The host (the form modal) is responsible for posting to the
 // server and dispatching the chat continuation.
 
 import { useEffect, useRef, useState } from 'react';
