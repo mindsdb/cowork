@@ -5,13 +5,21 @@ import { act, renderHook } from '@testing-library/react';
 vi.mock('../../lib/deployment', () => ({ PLATFORM_UI: true }));
 const apiMock = vi.hoisted(() => ({ fetchHubUsage: vi.fn(async () => ({ reachable: false })) }));
 vi.mock('../api', () => apiMock);
-const visibility = vi.hoisted(() => ({ visible: true }));
-vi.mock('../code/useAppVisible', () => ({ isAppVisible: () => visibility.visible }));
+const visibility = vi.hoisted(() => ({ visible: true, listeners: new Set() }));
+vi.mock('../code/useAppVisible', () => ({
+  isAppVisible: () => visibility.visible,
+  subscribeAppVisibility: (listener) => {
+    visibility.listeners.add(listener);
+    return () => { visibility.listeners.delete(listener); };
+  },
+}));
 
 import { useHubUsage } from './useHubUsage';
 
 afterEach(() => {
   visibility.visible = true;
+  visibility.listeners.clear();
+  apiMock.fetchHubUsage.mockClear();
   vi.useRealTimers();
 });
 
@@ -31,5 +39,20 @@ describe('useHubUsage poll', () => {
     visibility.visible = true;
     await act(async () => { vi.advanceTimersByTime(1_000); });
     expect(apiMock.fetchHubUsage).toHaveBeenCalledTimes(2);
+  });
+
+  // The window signal only starts once something subscribes, and outside
+  // Code Mode this hook is the only subscriber.
+  it('subscribes to app visibility and refreshes on restore', async () => {
+    const { unmount } = renderHook(() => useHubUsage({ sub: 'user-1' }, { pollMs: 0 }));
+    await act(async () => { await Promise.resolve(); });
+    expect(visibility.listeners.size).toBe(1);
+    expect(apiMock.fetchHubUsage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { visibility.listeners.forEach((listener) => listener()); });
+    expect(apiMock.fetchHubUsage).toHaveBeenCalledTimes(2);
+
+    unmount();
+    expect(visibility.listeners.size).toBe(0);
   });
 });
