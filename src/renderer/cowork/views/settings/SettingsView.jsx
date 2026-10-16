@@ -1290,8 +1290,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
-          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* Platform builds offer BYOK outside SaaS orgs, which use their managed provider. */}
+          {PLATFORM_UI && !orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
@@ -1562,7 +1562,7 @@ export default function SettingsView({
               </div>
             </SettingsGroup>
           </div>}
-          <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
+          {PLATFORM_UI && <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
@@ -1882,7 +1882,7 @@ export default function SettingsView({
                 );
               })()}
             </SettingsGroup>
-          </div>
+          </div>}
         </div>
 
         <SettingsGroup title="Memory">

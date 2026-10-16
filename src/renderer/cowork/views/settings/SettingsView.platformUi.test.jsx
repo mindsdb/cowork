@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/deployment', () => ({ PLATFORM_UI: false }));
@@ -27,6 +27,7 @@ const settings = {
   openaiBaseUrl: local.baseUrl, planningProvider: 'openai-compatible', codingProvider: 'openai-compatible',
   planningModel: 'local-model', codingModel: 'local-model', modelMode: 'default', configReady: true,
   recommendedModels: { 'openai-compatible': ['local-model'] },
+  maxToolRounds: '50', maxContinuations: '5', actFirst: true,
 };
 
 function renderSettings(data = settings, onSave = vi.fn(async () => ({})), section = 'agent') {
@@ -40,65 +41,40 @@ function renderSettings(data = settings, onSave = vi.fn(async () => ({})), secti
 it('offers Agent, Appearance and Channels and rejects an old Usage deep link', () => {
   expect(navItemsForHost(true, true, true).map(({ id }) => id)).toEqual(['agent', 'appearance', 'channels']);
   renderSettings(settings, undefined, 'usage');
-  expect(screen.getByRole('heading', { name: 'Local endpoint' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Usage' })).not.toBeInTheDocument();
 });
 
-it('shows the configured endpoint, hides platform acquisition, and preserves its hidden publishing credential on save', async () => {
-  const save = vi.fn(async () => ({}));
-  renderSettings(settings, save);
-  expect(screen.getByRole('heading', { name: 'Local endpoint' })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'MindsHub' })).not.toBeInTheDocument();
-  expect(screen.queryByText(/All frontier models/)).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: /Sign up/ })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole('textbox', { name: 'Custom provider name' }), { target: { value: 'Renamed local' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-  await waitFor(() => expect(save).toHaveBeenCalled());
-  expect(save.mock.calls[0][0].providers).toEqual([minds, { ...local, name: 'Renamed local' }]);
-});
-
-it('keeps a MindsHub inference card without signup or console links', () => {
-  renderSettings({ ...settings, openaiBaseUrl: 'https://api.mindshub.ai/v1', planningProvider: 'minds-cloud' });
-  expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: /Sign up|mindshub/i })).not.toBeInTheDocument();
-  expect(screen.queryByText(/All frontier models/)).not.toBeInTheDocument();
-});
-
-it('keeps the MindsHub inference key editor available while replacing its key', async () => {
-  const save = vi.fn(async () => ({}));
-  renderSettings({
+it.each([
+  ['local inference with a publishing credential', settings],
+  ['MindsHub inference', {
     ...settings, providers: [minds], openaiBaseUrl: 'https://api.mindshub.ai/v1',
     planningProvider: 'minds-cloud', codingProvider: 'minds-cloud', routerProvider: 'minds-cloud',
-  }, save);
-  fireEvent.click(screen.getByRole('button', { name: 'Clear key' }));
-  expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
-  const key = screen.getByLabelText('minds API key');
-  expect(key).toHaveValue('');
-  fireEvent.change(key, { target: { value: 'replacement-key' } });
+  }],
+  ['empty providers', { ...settings, providers: [] }],
+])('hides provider and model settings but keeps Memory and Advanced Settings with %s', (_name, data) => {
+  const save = vi.fn();
+  renderSettings(data, save);
+  expect(screen.queryByRole('heading', { name: 'LLM Providers' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Model Router' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Local endpoint' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'MindsHub' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Custom provider name')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /Sign up|mindshub/i })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: 'Act first, ask later' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Advanced Settings' })).toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('saves a retained setting without changing hidden providers or models', async () => {
+  const save = vi.fn(async () => ({}));
+  renderSettings(settings, save);
+  fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
-  expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({
-    mindsApiKey: 'replacement-key', providers: [{ ...minds, apiKey: 'replacement-key' }],
-  }));
-});
-
-it.each([
-  'wallet_empty', 'included_allowance_exhausted', 'free_air_daily_spend_fuse_exceeded', 'policy_unavailable',
-])('keeps a failed MindsHub inference card neutral for %s', async (code) => {
-  renderSettings({
-    ...settings, providers: [minds], planningProvider: 'minds-cloud',
-    providerStatus: { 'minds-cloud': 'fail' },
-    providerStatusDetails: { 'minds-cloud': 'HTTP 402: No credits available. Add funds to use MindsHub.' },
-    providerStatusReasons: { 'minds-cloud': { code } },
-  });
-  const card = screen.getByRole('heading', { name: 'MindsHub' }).closest('.settings-provider-row');
-  await within(card).findByText('The configured provider is unavailable. Try again, or contact your administrator.');
-  expect(card).not.toHaveTextContent(/credits|funds|balance|free MindsHub|billing/i);
-});
-
-it('does not inject a MindsHub card into empty settings', () => {
-  renderSettings({});
-  expect(screen.queryByRole('heading', { name: 'MindsHub' })).not.toBeInTheDocument();
+  expect(save).toHaveBeenCalledWith({ actFirst: false });
 });
 
 it.each(['no_credits', 'allowance_used', 'paused', 'slow_down', 'billing_unavailable'])('keeps provider refusals neutral: %s', (kind) => {
