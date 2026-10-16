@@ -36,7 +36,7 @@ export const restoredFigureEvents = (conversationId = 'conv-a') => [
       traced('250', 'step', RESTORED_ANSWER.length),
       traced('99', 'none', RESTORED_ANSWER.length),
       traced('250', 'step', RESTORED_ANSWER.length + RESTORED_NARRATION.length),
-      traced('240', 'earlier_answer', 0),
+      traced('240', 'earlier_answer', RESTORED_ANSWER.length + RESTORED_NARRATION.length),
       traced('12', 'none', RESTORED_ANSWER.length + RESTORED_NARRATION.length),
     ],
   },

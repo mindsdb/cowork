@@ -26,7 +26,7 @@ import { TooltipBubble, tokenDelay } from '../ui/Tooltip';
 import { CodeBlock } from '../thinking/CodeBlock';
 import { host } from '../../../platform/host';
 import { copyText } from '../../lib/clipboard';
-import { NO_SOURCE_TEXT, REPEATED_TEXT, figureSourceText } from '../../lib/figureSources';
+import { figureSourceText } from '../../lib/figureSources';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 
 /** @typedef {import('../../lib/figureSources').LinkedFigure} LinkedFigure */
@@ -341,9 +341,7 @@ export function FigureMark({ figure, onOpenStep = null, onViewFile = null, child
                   {`Where ${figure.text} came from`}
                 </Popover.Title>
                 {figure.origin === 'none' || figure.origin === 'earlier_answer' ? (
-                  <p className="m-0 py-3 px-4 min-h-0 overflow-y-auto overscroll-contain text-[13px] leading-[1.5] text-ink-2">
-                    {figure.origin === 'none' ? NO_SOURCE_TEXT : REPEATED_TEXT}
-                  </p>
+                  <p className="m-0 py-3 px-4 min-h-0 overflow-y-auto overscroll-contain text-[13px] leading-[1.5] text-ink-2">{sentence}</p>
                 ) : (
                   <ul className="list-none m-0 px-4 min-h-0 overflow-y-auto overscroll-contain">
                     {figure.sources.map((source, i) => (
