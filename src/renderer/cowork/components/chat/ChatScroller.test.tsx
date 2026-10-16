@@ -51,6 +51,22 @@ describe('the scroll-to-latest button', () => {
     expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
   });
 
+  it('appears when the answer grows below a reader who stopped short of the end', () => {
+    let stick!: ReturnType<typeof useStickToBottom>;
+    function Exposed() {
+      stick = useStickToBottom();
+      return <ChatScroller stick={stick} scrollProps={{ 'data-scroll': 'true' }}><p>Conversation</p></ChatScroller>;
+    }
+    render(<Exposed />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => fake.scrollReaderTo(box(), 1000));
+    expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
+    // The answer streams on; content resizes but nothing scrolls.
+    fake.height = 3000;
+    act(() => stick.updateReserve());
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+  });
+
   it('comes back within reach of the end without the button', () => {
     render(<Transcript />);
     act(() => fake.scrollReaderTo(box(), 1400));
