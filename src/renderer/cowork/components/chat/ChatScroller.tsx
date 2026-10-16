@@ -6,7 +6,7 @@ import { TurnMinimap } from './TurnMinimap';
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
 
-type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onPointerDown' | 'onKeyDown'> & {
+type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onPointerDown' | 'onKeyDown' | 'onClickCapture'> & {
   [data: `data-${string}`]: string | undefined;
 };
 
@@ -38,7 +38,7 @@ export function ChatScroller({
   children: ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const { isStuck, scrollToBottom, isAtBottom, updateReserve, releaseAnchor } = stick;
+  const { isStuck, scrollToBottom, isAtBottom, isFar, updateReserve, releaseAnchor, pause, setSelecting } = stick;
   // Bumped when the content changes size or its nodes change, so the minimap
   // re-reads turns. Switching between two equally tall conversations swaps
   // the turns without a resize.
@@ -63,9 +63,21 @@ export function ChatScroller({
     mutation.observe(content, { childList: true, subtree: true });
     return () => { resize.disconnect(); mutation.disconnect(); cancelAnimationFrame(versionFrame.current); };
   }, [isStuck, scrollToBottom, updateReserve]);
+  // Stop following while the reader selects text in the transcript.
+  useEffect(() => {
+    const onSelection = () => {
+      const box = stick.scrollRef.current;
+      const selection = document.getSelection();
+      setSelecting(!!(box && selection && !selection.isCollapsed && selection.anchorNode && box.contains(selection.anchorNode)));
+    };
+    document.addEventListener('selectionchange', onSelection);
+    return () => document.removeEventListener('selectionchange', onSelection);
+  }, [stick.scrollRef, setSelecting]);
   return (
     <div className="chat-scroller relative flex flex-1 flex-col min-h-0 min-w-0">
       <div
+        // A log: new entries are announced politely, as ai-elements does.
+        role="log"
         {...scrollProps}
         ref={stick.scrollRef}
         onScroll={stick.onScroll}
@@ -74,6 +86,12 @@ export function ChatScroller({
         // A press on the native scrollbar targets the box itself; a press on
         // the content targets something inside it.
         onPointerDown={(event) => { if (event.target === event.currentTarget) releaseAnchor(); }}
+        // Opening a collapsed block (a <details>, an aria-expanded toggle)
+        // pauses following, so the block opens where the reader clicked.
+        onClickCapture={(event) => {
+          const toggle = (event.target as Element | null)?.closest?.('summary, [aria-expanded="false"]');
+          if (toggle) pause();
+        }}
         onKeyDown={(event) => {
           if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) releaseAnchor();
         }}
@@ -86,7 +104,7 @@ export function ChatScroller({
           <div ref={stick.reserveRef} className="chat-scroller__reserve" aria-hidden="true" />
         </div>
       </div>
-      {!isAtBottom && (
+      {!isAtBottom && isFar && (
         <button
           type="button"
           className="chat-jump"
