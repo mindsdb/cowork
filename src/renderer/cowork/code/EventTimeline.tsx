@@ -1,13 +1,14 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
-import type { IconSize } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { StepRow } from '../components/steps/StepRow';
 import {
   activityHeadline,
   changeLabel,
+  codeStepStatus,
   commandOutput,
   displayCommand,
   errorTitle,
@@ -24,7 +25,6 @@ import {
   stepLabel,
   turnDiffFiles,
   type FileChange,
-  type StepIcon,
 } from './activitySummary';
 import { DiffPatchView } from './DiffPatchView';
 import { accountFailure } from './composerNotices';
@@ -207,55 +207,9 @@ function activityRows(events: CodingEvent[]): ActivityRow[] {
 }
 
 
-const STEP_ICON: Record<StepIcon, (size: IconSize) => ReactNode> = {
-  read: Ico.doc,
-  search: Ico.search,
-  list: Ico.folder,
-  command: Ico.code,
-  edit: Ico.edit,
-  tool: Ico.cube,
-  image: Ico.image,
-  thought: Ico.brain,
-  compact: Ico.list,
-  plan: Ico.taskCheck,
-  retry: Ico.refresh,
-  error: Ico.warning,
-  approval: Ico.key,
-};
-
-
-function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb: string; target: string; failed?: boolean; extra?: ReactNode }) {
-  return (
-    <>
-      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](14)}</span>
-      <span className="code-step__label">
-        {verb && <span className="code-step__verb">{verb}</span>}
-        {verb && target ? ' ' : ''}
-        <span className="code-step__target">{target}</span>
-      </span>
-      {failed && <span className="code-step__status">Failed</span>}
-      {extra}
-    </>
-  );
-}
-
-
-// A step with nothing more to show is a plain line; otherwise the line
-// opens onto its detail. A failure starts closed like any other step: the
-// agent usually moves past it, and its failed marker already says so.
-function Step({ head, failed = false, detail }: { head: ReactNode; failed?: boolean; detail?: () => ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const className = `code-step${failed ? ' is-failed' : ''}`;
-  if (!detail) return <div className={className}><div className="code-step__head">{head}</div></div>;
-  return (
-    <div className={`${className}${open ? ' is-open' : ''}`}>
-      <button type="button" className="code-step__head" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        {head}
-        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(12)}</span>
-      </button>
-      {open && <div className="code-step__detail">{detail()}</div>}
-    </div>
-  );
+// A step's detail sits in a bordered box under its line.
+function inDetail(render: (() => ReactNode) | undefined): (() => ReactNode) | undefined {
+  return render && (() => <div className="code-step__detail">{render()}</div>);
 }
 
 
@@ -304,9 +258,11 @@ function stepDetail(event: CodingEvent): (() => ReactNode) | undefined {
 }
 
 
-function StepRow({ event }: { event: CodingEvent }) {
-  const failed = stepFailed(event);
-  return <Step head={<StepHead {...stepLabel(event)} failed={failed} />} failed={failed} detail={stepDetail(event)} />;
+// A step with nothing more to show is a plain line; otherwise the line
+// opens onto its detail. A failure starts closed like any other step: the
+// agent usually moves past it, and its failed marker already says so.
+function EventStepRow({ event }: { event: CodingEvent }) {
+  return <StepRow className="code-step" {...stepLabel(event)} status={codeStepStatus(event)} detail={inDetail(stepDetail(event))} />;
 }
 
 
@@ -333,9 +289,12 @@ function changeDetail(change: FileChange): (() => ReactNode) | undefined {
 
 function ChangeRow({ change }: { change: FileChange }) {
   return (
-    <Step
-      head={<StepHead icon="edit" {...changeLabel(change)} extra={<LineCounts additions={change.additions} deletions={change.deletions} />} />}
-      detail={changeDetail(change)}
+    <StepRow
+      className="code-step"
+      icon="edit"
+      {...changeLabel(change)}
+      extra={<LineCounts additions={change.additions} deletions={change.deletions} />}
+      detail={inDetail(changeDetail(change))}
     />
   );
 }
@@ -381,7 +340,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
         <div className="code-activity-group__body">
           {single ? <div className="code-step__detail">{single()}</div> : rows.map((row) => (row.kind === 'change'
             ? <ChangeRow key={row.key} change={row.change} />
-            : <StepRow key={row.key} event={row.event} />))}
+            : <EventStepRow key={row.key} event={row.event} />))}
         </div>
       )}
     </details>

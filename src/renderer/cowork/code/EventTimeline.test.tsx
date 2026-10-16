@@ -461,6 +461,14 @@ describe('EventTimeline', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Compacting context');
   });
 
+  it('shows a web search with its query', () => {
+    const search = { ...event(1, 'tool', ''), item_id: 'ws1', title: 'Web search', data: { type: 'webSearch', query: 'vite 7 release notes', action: { type: 'search', query: 'vite 7 release notes' } } };
+    const { container } = render(<EventTimeline {...timelineProps([search])} session={session('completed')} />);
+
+    expect(container.querySelector('.code-activity-group__line')).toHaveTextContent('Searched the web for vite 7 release notes');
+    expect(screen.queryByText(/Used Web search/)).toBeNull();
+  });
+
   it('shows a lone step with nothing to open as a plain line', () => {
     const tool = { ...event(1, 'tool', ''), item_id: 't1', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue' } };
     const { container } = render(<EventTimeline {...timelineProps([tool])} session={session('completed')} />);
@@ -621,7 +629,7 @@ describe('EventTimeline', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Running npm test');
     expect(screen.queryByText('The coding agent is working…')).toBeNull();
-    expect(screen.queryByText('npm test', { selector: '.code-step__target' })).toBeNull();
+    expect(screen.queryByText('npm test', { selector: '.step-row__target' })).toBeNull();
   });
 
   it('shows parallel Codex work as one compact, live status card', () => {

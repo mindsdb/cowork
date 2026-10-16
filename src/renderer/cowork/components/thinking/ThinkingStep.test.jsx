@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
-import { ThinkingStep } from './ThinkingStep';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { ThinkingStep, thinkingStepStatus } from './ThinkingStep';
 
 // An in-progress step row must be the same height as a settled one, or the
 // thinking block visibly jumps every time a step starts or finishes. The row
@@ -66,5 +66,44 @@ describe('ThinkingStep object rows', () => {
       <ThinkingStep step={{ id: 'skill-a', label: 'Digest', badge: 'Skill', status: 'completed' }} />,
     );
     expect(container.textContent).toContain('skill');
+  });
+});
+
+describe('thinkingStepStatus', () => {
+  it.each([
+    [{ status: 'in_progress' }, 'running'],
+    [{ status: 'completed' }, 'done'],
+    [{ status: 'completed', cellStatus: 'timeout' }, 'failed'],
+    [{ status: 'completed', cellStatus: 'error' }, 'recovered'],
+  ])('maps %o to %s', (step, status) => {
+    expect(thinkingStepStatus(step).status).toBe(status);
+  });
+});
+
+describe('ThinkingStep status markers', () => {
+  it('names a killed cell "Timed out"', () => {
+    render(<ThinkingStep step={{ id: 's1', label: 'Running code', status: 'completed', cellStatus: 'timeout' }} />);
+    expect(screen.getByText('Timed out')).toHaveClass('text-danger');
+  });
+
+  // Errors inside a scratchpad run are normal: the agent recovers. A loud
+  // marker read as the turn failing, so the row keeps a quiet dot.
+  it('keeps a quiet dot for a cell that ended with an error', () => {
+    render(<ThinkingStep step={{ id: 's1', label: 'Running code', status: 'completed', cellStatus: 'error' }} />);
+    expect(screen.getByRole('img', { name: 'Ended with an error' })).toBeInTheDocument();
+    expect(screen.queryByText('Failed')).toBeNull();
+  });
+
+  it('opens the step from a button', () => {
+    const onActivate = vi.fn();
+    const step = { id: 's1', label: 'Running code', status: 'completed', _isScratchpad: true };
+    render(<ThinkingStep step={step} onActivate={onActivate} />);
+    fireEvent.click(screen.getByRole('button', { name: /Running code/ }));
+    expect(onActivate).toHaveBeenCalledWith(step);
+  });
+
+  it('is plain text when it opens nothing', () => {
+    render(<ThinkingStep step={{ id: 'm1', label: 'Remembered a preference', badge: 'Memory', status: 'completed' }} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });
