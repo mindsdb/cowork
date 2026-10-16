@@ -29,7 +29,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
-import SkillCard from '../components/SkillCard';
+import SkillCard, { SkillModal } from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
@@ -50,7 +50,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget } from '../lib/artifactActions';
-import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { artifactDeletedNow, revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -775,6 +775,139 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
+/*
+ * Where opening an artifact goes. Match the Working folder card's behavior:
+ * HTML and text artifacts (.md/.txt/.csv) and images open the in-app viewer —
+ * HTML via sandboxed iframe, text via inline markdown / table / preformatted
+ * render, images from the serve URL. Anything else falls through to the OS
+ * handler via the Electron bridge. In org mode the same question is answered
+ * from the authenticated draft URL instead, which rules images and fullstack
+ * apps out.
+ *
+ * Shared by ArtifactCard and the turn's step row for the same artifact, so
+ * clicking either one does the same thing.
+ */
+function artifactOpenState(artifact, { orgMode, deleted }) {
+  const path = artifact.canonicalPath || artifact.file_path || artifact.path;
+  const disabledReason = artifact.actionDisabledReason || '';
+  const canAct = !!path && !disabledReason && !deleted;
+  const openTarget = artifactOpenTarget({
+    orgMode,
+    published: !!artifact.publishedUrl,
+    canPreviewInline: canPreviewLocally(artifact),
+    canPreviewDraft: canPreviewOrgDraft(artifact),
+    hasBridge: host.isElectron || !host.isWeb,
+    hasDraft: canDownloadOrgDraft(artifact),
+  });
+  /*
+   * Org-mode destinations are addressed by the server card, through the draft
+   * URL or the shared URL, so a path this client could not canonicalize does
+   * not disable them. Desktop still needs the local path it hands to the OS.
+   *
+   * `deleted` stays in both branches. It is the one term of `canAct` that says
+   * nothing about addressing: a deleted artifact has a perfectly good draft URL
+   * and still cannot be opened, so dropping it here would leave a tombstoned
+   * card looking live and hand the whole guard to openArtifactCard alone.
+   */
+  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
+  /*
+   * What the card says when it has nowhere to go. Org mode has no local file to
+   * blame, and blaming one is actively wrong there: the card prints its own
+   * server path two lines down. Desktop keeps the path reason it can act on.
+   */
+  const noDestinationReason = orgMode && !openTarget
+    ? 'This artifact cannot be previewed and has no shared link yet.'
+    : (disabledReason || 'No file path');
+  return { path, disabledReason, canAct, openTarget, canActivate, noDestinationReason };
+}
+
+// An action that failed may have failed because the artifact is gone. Ask the
+// server rather than guess from the error: a 404 detail, an Electron bridge
+// `{ ok: false }` and a transient network blip are indistinguishable here, and
+// only the artifacts list can settle it. Best-effort — a failed revalidation
+// just leaves the card as it was.
+const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
+
+/*
+ * The shared URL stays reachable beside the preview: it is the address a
+ * collaborator gets, and the chat turn is where the artifact was just made.
+ *
+ * Awaited so a rejected bridge call is caught rather than left unhandled.
+ * No raw window.open fallback: host.openExternal is what restricts the
+ * agent-writable URL to http(s)/mailto.
+ */
+async function openPublishedArtifact(artifact) {
+  try { await host.openExternal(artifact.publishedUrl); } catch {}
+}
+
+/** Save the artifact's file. Returns the status line to show. */
+async function downloadArtifactCard(artifact, { orgMode, deleted }) {
+  const { path, disabledReason, canAct } = artifactOpenState(artifact, { orgMode, deleted });
+  /*
+   * `canAct` is a desktop notion — a canonical local path. Org mode addresses
+   * the file by its draft URL and never has such a path, so gating on it
+   * there would refuse the one action that works. `deleted` still applies.
+   */
+  if (orgMode ? deleted : !canAct) {
+    return {
+      kind: 'error',
+      text: orgMode ? 'This artifact was deleted.' : (disabledReason || 'No artifact file path is available.'),
+    };
+  }
+  if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
+    return { kind: 'error', text: 'This artifact has no downloadable file yet.' };
+  }
+  return { kind: 'ok', text: 'Downloading…' };
+}
+
+/** Open the artifact: the card's body and title click, and its step row.
+ *  `onOpen` shows the in-app viewer. Returns the status line to show, or null. */
+async function openArtifactCard(artifact, { orgMode, deleted, onOpen }) {
+  const { path, disabledReason, canAct, openTarget, noDestinationReason } = artifactOpenState(artifact, { orgMode, deleted });
+  /*
+   * The branches that need no local file return before the `canAct` check, so
+   * they would survive a deletion. Their buttons are not rendered in that
+   * state, but relying on two conditions in different parts of the file
+   * agreeing is not worth the risk.
+   */
+  if (deleted) return { kind: 'error', text: 'This artifact was deleted.' };
+  if (openTarget === 'preview' && onOpen) {
+    /*
+     * The viewer reads the draft URL in org mode and the local bytes on
+     * desktop, so it opens on either without a canonical path of its own.
+     */
+    onOpen(artifact);
+    return null;
+  }
+  if (openTarget === 'published') {
+    await openPublishedArtifact(artifact);
+    return null;
+  }
+  if (openTarget === 'download') {
+    /*
+     * Org mode, an artifact the draft cannot render and nobody shared: the
+     * authenticated draft URL still streams the file, so the click saves it
+     * instead of dead-ending on "no shared link yet" (ENG-2044).
+     */
+    return downloadArtifactCard(artifact, { orgMode, deleted });
+  }
+  if (openTarget === null) {
+    return { kind: 'error', text: orgMode ? noDestinationReason : (disabledReason || 'No artifact file path is available.') };
+  }
+  if (!canAct) return { kind: 'error', text: disabledReason || 'No artifact file path is available.' };
+  try {
+    const result = await host.openPath(path);
+    if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
+    return { kind: 'ok', text: 'Opened.' };
+  }
+  catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[artifact-open] failed', e);
+    revalidateAfterFailure();
+    return { kind: 'error', text: e?.message || 'Could not open artifact.' };
+  }
+}
+
 export function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
@@ -791,10 +924,10 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
 
-  const path = artifact.canonicalPath || artifact.file_path || artifact.path;
+  const {
+    path, disabledReason, canAct, openTarget, canActivate, noDestinationReason,
+  } = artifactOpenState(artifact, { orgMode, deleted });
   const displayPath = artifact.displayPath || path;
-  const disabledReason = artifact.actionDisabledReason || '';
-  const canAct = !!path && !disabledReason && !deleted;
   const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
@@ -804,126 +937,23 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
 
-  // An action that failed may have failed because the artifact is gone. Ask the
-  // server rather than guess from the error: a 404 detail, an Electron bridge
-  // `{ ok: false }` and a transient network blip are indistinguishable here, and
-  // only the artifacts list can settle it. Best-effort — a failed revalidation
-  // just leaves the card as it was.
-  const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
-
-  /*
-   * Match the Working folder card's behavior: HTML and text artifacts
-   * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
-   * iframe, text via inline markdown / table / preformatted render, images
-   * from the serve URL. Anything else falls through to the OS handler via the
-   * Electron bridge. In org mode the same question is answered from the
-   * authenticated draft URL instead, which rules images and fullstack apps out.
-   */
   const isImage = isImageArtifact(artifact);
   const canPreviewInline = canPreviewLocally(artifact);
-  const canPreviewDraft = canPreviewOrgDraft(artifact);
   // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
   // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
-  const openTarget = artifactOpenTarget({
-    orgMode,
-    published,
-    canPreviewInline,
-    canPreviewDraft,
-    hasBridge: host.isElectron || !host.isWeb,
-    hasDraft: canDownloadOrgDraft(artifact),
-  });
-  /*
-   * Org-mode destinations are addressed by the server card, through the draft
-   * URL or the shared URL, so a path this client could not canonicalize does
-   * not disable them. Desktop still needs the local path it hands to the OS.
-   *
-   * `deleted` stays in both branches. It is the one term of `canAct` that says
-   * nothing about addressing: a deleted artifact has a perfectly good draft URL
-   * and still cannot be opened, so dropping it here would leave a tombstoned
-   * card looking live and hand the whole guard to handleOpen alone.
-   */
-  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
   const activateLabel = openTarget === 'published'
     ? 'Open shared artifact'
     : openTarget === 'download'
       ? 'Download'
       : openTarget === 'os' ? 'Open' : 'Open preview';
-  /*
-   * What the card says when it has nowhere to go. Org mode has no local file to
-   * blame, and blaming one is actively wrong there: the card prints its own
-   * server path two lines down. Desktop keeps the path reason it can act on.
-   */
-  const noDestinationReason = orgMode && !openTarget
-    ? 'This artifact cannot be previewed and has no shared link yet.'
-    : (disabledReason || 'No file path');
-  /*
-   * The shared URL stays reachable beside the preview: it is the address a
-   * collaborator gets, and the chat turn is where the artifact was just made.
-   *
-   * Awaited so a rejected bridge call is caught rather than left unhandled.
-   * No raw window.open fallback: host.openExternal is what restricts the
-   * agent-writable URL to http(s)/mailto.
-   */
-  const handleOpenPublished = async () => {
-    try { await host.openExternal(artifact.publishedUrl); } catch {}
-  };
+  const handleOpenPublished = () => openPublishedArtifact(artifact);
   const handleOpen = async () => {
-    /*
-     * The branches that need no local file return before the `canAct` check, so
-     * they would survive a deletion. Their buttons are not rendered in that
-     * state, but relying on two conditions in different parts of the file
-     * agreeing is not worth the risk.
-     */
-    if (deleted) {
-      showStatus('error', 'This artifact was deleted.');
-      return;
-    }
-    if (openTarget === 'preview' && onOpen) {
-      /*
-       * The viewer reads the draft URL in org mode and the local bytes on
-       * desktop, so it opens on either without a canonical path of its own.
-       */
-      onOpen(artifact);
-      return;
-    }
-    if (openTarget === 'published') {
-      await handleOpenPublished();
-      return;
-    }
-    if (openTarget === 'download') {
-      /*
-       * Org mode, an artifact the draft cannot render and nobody shared: the
-       * authenticated draft URL still streams the file, so the click saves it
-       * instead of dead-ending on "no shared link yet" (ENG-2044).
-       */
-      handleDownload();
-      return;
-    }
-    if (openTarget === null) {
-      showStatus('error', orgMode
-        ? noDestinationReason
-        : (disabledReason || 'No artifact file path is available.'));
-      return;
-    }
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    try {
-      const result = await host.openPath(path);
-      if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
-      showStatus('ok', 'Opened.');
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-open] failed', e);
-      showStatus('error', e?.message || 'Could not open artifact.');
-      revalidateAfterFailure();
-    }
+    const next = await openArtifactCard(artifact, { orgMode, deleted, onOpen });
+    if (next) showStatus(next.kind, next.text);
   };
   const handleReveal = async () => {
     if (!canAct) {
@@ -953,22 +983,8 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     }
   };
   const handleDownload = async () => {
-    /*
-     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
-     * the file by its draft URL and never has such a path, so gating on it
-     * there would refuse the one action that works. `deleted` still applies.
-     */
-    if (orgMode ? deleted : !canAct) {
-      showStatus('error', orgMode
-        ? 'This artifact was deleted.'
-        : (disabledReason || 'No artifact file path is available.'));
-      return;
-    }
-    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
-      showStatus('error', 'This artifact has no downloadable file yet.');
-      return;
-    }
-    showStatus('ok', 'Downloading…');
+    const next = await downloadArtifactCard(artifact, { orgMode, deleted });
+    showStatus(next.kind, next.text);
   };
   /*
    * One primary action button instead of an Open/Show-in-Finder pair: what it
@@ -1993,6 +2009,9 @@ export default function ChatView({
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewArt(artifact);
   };
+  // The skill draft open in its preview (a step row click). null = closed.
+  const [previewSkill, setPreviewSkill] = useState(null);
+  const orgMode = useOrgMode();
   // Task settings menu (kebab in header).
   const settingsBtnRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2076,6 +2095,26 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // A clicked step row. An artifact or skill row opens the object it made,
+  // as its card does; any other row opens its cells in ScratchpadModal.
+  // `live` marks the streaming turn, whose artifacts the loaded index may not
+  // hold yet (see StepArtifacts).
+  const activateStep = (msgKey, step, { live = false } = {}) => {
+    if (step.badge === 'Artifact') {
+      const card = artifactStepToCard(step, artifactProjectPath);
+      const deleted = artifactDeletedNow(card, { live });
+      // A row has no status line, so it does nothing where the card's own
+      // click does nothing; the card beside it says why.
+      if (!artifactOpenState(card, { orgMode, deleted }).canActivate) return;
+      openArtifactCard(card, { orgMode, deleted, onOpen: handleArtifactOpen });
+      return;
+    }
+    if (step.badge === 'Skill') {
+      setPreviewSkill(step.data || {});
+      return;
+    }
+    setOpenScratchpadStepId(prefixId(msgKey, step.id));
+  };
   // Which project's artifacts the liveness store should describe. An effect, not
   // a render-time call: the store emits. Both deps are primitives, so an equal
   // scope cannot re-trigger it.
@@ -3115,7 +3154,7 @@ export default function ChatView({
                     // on this conversation.
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    onActivateStep={(step) => activateStep(messageKey(m, i), step)}
                     idPrefix={messageKey(m, i)}
                   />
                   <TextBlock
@@ -3131,12 +3170,6 @@ export default function ChatView({
                     projectName={project?.name ?? null}
                     showFigureSources={showFigureSources}
                   />
-                  {m.artifact && (
-                    <ArtifactCard
-                      artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
-                      onOpen={handleArtifactOpen}
-                    />
-                  )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   {m.incompleteReason && (
@@ -3185,7 +3218,7 @@ export default function ChatView({
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
-                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  onActivateStep={(step) => activateStep(streamingKey, step, { live: true })}
                   idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
@@ -3363,7 +3396,7 @@ export default function ChatView({
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
           onActivateStep={(step) => railMsgKey
-            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
+            ? activateStep(railMsgKey, step, { live: railMsgKey === streamingKey })
             : null}
         />
         <WorkingFolderBox
@@ -3411,6 +3444,10 @@ export default function ChatView({
         note={figureFileNote(figureFileSource)}
         onClose={() => setFigureFileSource(null)}
       />
+
+      {/* A skill draft's preview, opened from its step row. The card opens
+          its own copy of the same modal. */}
+      <SkillModal skill={previewSkill || {}} open={!!previewSkill} onClose={() => setPreviewSkill(null)} />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts
           page and the Working folder card use. The card only routes
