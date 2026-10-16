@@ -92,7 +92,7 @@ describe('ScheduleDetailView — runs', () => {
   it('shows the slots it skipped while the app was closed', async () => {
     setup({ task: { ...TASK, lastSkipped: { slotCount: 3, reason: 'offline', firstSlot: '2026-10-01T09:00:00Z', lastSlot: '2026-10-03T09:00:00Z' } } });
     await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
-    expect(screen.getByText(/^Skipped 3 runs while MindsHub was closed/)).toBeInTheDocument();
+    expect(screen.getByText(/^Skipped 3 runs while the server was down/)).toBeInTheDocument();
   });
 
   it('shows older runs on request', async () => {
