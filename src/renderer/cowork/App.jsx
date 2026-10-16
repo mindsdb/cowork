@@ -5428,11 +5428,13 @@ function AppCore() {
     // hunting for a second spot.
     theme,
     showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    /* Opens Display settings only when the corner button would; otherwise it
+       flips the theme. */
     onToggleTheme: () => {
-      if (appearanceSettings.show8bitToggle === false) {
-        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-      } else {
+      if (displayToggleMode(appearanceSettings) === 'menu') {
         setThemeModalOpen(true);
+      } else {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
   };

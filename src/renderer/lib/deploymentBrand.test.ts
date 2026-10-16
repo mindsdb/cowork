@@ -3,7 +3,7 @@ import { TITLE_SNIPPET } from '../../shared/deployment-brand';
 import { parseDeploymentBrand, resolveBrandLoad } from './deploymentBrand';
 
 const EMPTY = {
-  productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null,
+  productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, skinLocked: null,
 };
 
 describe('parseDeploymentBrand', () => {
@@ -15,6 +15,7 @@ describe('parseDeploymentBrand', () => {
       logoUrl: '/brand/sidebar-logo.svg?v=3f9a1c2b7d10',
       iconUrl: '/brand/icon.png',
       appleTouchIconUrl: '/brand/apple-touch-icon.png?v=91d0c3e4f5a6',
+      skinLocked: true,
     };
     expect(parseDeploymentBrand(raw)).toEqual({
       brand: {
@@ -24,9 +25,14 @@ describe('parseDeploymentBrand', () => {
         logoUrl: '/brand/sidebar-logo.svg?v=3f9a1c2b7d10',
         iconUrl: '/brand/icon.png',
         appleTouchIconUrl: '/brand/apple-touch-icon.png?v=91d0c3e4f5a6',
+        skinLocked: true,
       },
       dropped: [],
     });
+  });
+
+  it('keeps skinLocked false as a set value', () => {
+    expect(parseDeploymentBrand({ skinLocked: false })).toEqual({ brand: { ...EMPTY, skinLocked: false }, dropped: [] });
   });
 
   it('reads an empty config as no brand', () => {
@@ -57,6 +63,8 @@ describe('parseDeploymentBrand', () => {
     ['logoUrl', '/brand/logo.svg?x=1'],
     ['iconUrl', 'data:image/svg+xml;base64,PHN2Zy8+'],
     ['appleTouchIconUrl', 'javascript:alert(1)'],
+    ['skinLocked', 'true'],
+    ['skinLocked', 1],
   ])('drops a bad %s (%j) and keeps the rest', (field, value) => {
     const { brand, dropped } = parseDeploymentBrand({ productName: 'Acme Cowork', [field]: value });
     expect(dropped).toEqual(field === 'productName' ? ['productName'] : [field]);

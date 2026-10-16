@@ -1,21 +1,24 @@
-// Registry of app skins — the "Style" axis, orthogonal to light/dark.
-//
-// Adding a new theme is a two-step change:
-//   1. Add an entry to SKINS below.
-//   2. Add a stylesheet that re-declares the design tokens under
-//      body[data-skin="<id>"] — see styles/skin-8bit.css for the
-//      pattern (provide both [data-theme="dark"] and [data-theme="light"]
-//      blocks so the skin composes with the Theme toggle) — and import
-//      it next to skin-8bit.css in main.tsx / web-main.tsx.
-//
-// Everything else reads this registry: the Settings → Appearance →
-// Style control, the floating corner toggle (cycles through entries),
-// persistence, and the first-paint bootstrap in each entry file. An
-// unknown stored id normalizes back to the default, and an unknown
-// body[data-skin] value is harmless (no CSS matches it → normal look).
-//
-// A deployment brand (lib/deploymentBrand.ts) can add one more style, listed
-// first so it is the default; the brand's own stylesheet styles it.
+/*
+ * Registry of app skins — the "Style" axis, orthogonal to light/dark.
+ *
+ * Adding a new theme is a two-step change:
+ *   1. Add an entry to SKINS below.
+ *   2. Add a stylesheet that re-declares the design tokens under
+ *      body[data-skin="<id>"] — see styles/skin-8bit.css for the
+ *      pattern (provide both [data-theme="dark"] and [data-theme="light"]
+ *      blocks so the skin composes with the Theme toggle) — and import
+ *      it next to skin-8bit.css in main.tsx / web-main.tsx.
+ *
+ * Everything else reads this registry: the Settings → Appearance →
+ * Style control, the floating corner toggle (cycles through entries),
+ * persistence, and the first-paint bootstrap in each entry file. An
+ * unknown stored id normalizes back to the default, and an unknown
+ * body[data-skin] value is harmless (no CSS matches it → normal look).
+ *
+ * A deployment brand (lib/deploymentBrand.ts) can add one more style, listed
+ * first so it is the default; the brand's own stylesheet styles it. A brand
+ * with skinLocked keeps every browser on that default and saves no style.
+ */
 
 import type { BrandTheme } from './deploymentBrand';
 import { BRAND_LOAD, DEPLOYMENT_BRAND } from './deploymentBrand';
@@ -47,6 +50,13 @@ export const SKINS: Skin[] = BRAND_SKIN ? [BRAND_SKIN, ...STOCK_SKINS] : STOCK_S
 
 export const DEFAULT_SKIN = SKINS[0].id;
 
+/**
+ * A loaded brand with skinLocked keeps every browser on DEFAULT_SKIN. Hosted
+ * web and desktop load no brand, and a brand that failed to load sets nothing,
+ * so it is false there.
+ */
+export const SKIN_LOCKED = DEPLOYMENT_BRAND?.skinLocked === true;
+
 const STORAGE_KEY = 'anton.skin';
 const THEME_KEY = 'anton.theme';
 // The brand defaults this browser last applied, so a changed brand applies
@@ -76,8 +86,9 @@ function readAppliedBrandDefaults(): AppliedBrandDefaults | null {
  * preference. With unchanged defaults it does nothing, so a person's later
  * choice sticks; a switch to another brand and back applies the defaults
  * again. A theme-only change keeps a style the person picked, and a brand
- * that sets no style or theme leaves that preference alone. Without a loaded
- * brand it does nothing at all.
+ * that sets no style or theme leaves that preference alone. A locked brand
+ * never writes its style, so the saved one returns once the lock is off.
+ * Without a loaded brand it does nothing at all.
  */
 export function seedBrandDefaults(): void {
   if (BRAND_LOAD.status !== 'loaded') return;
@@ -85,14 +96,15 @@ export function seedBrandDefaults(): void {
   const applied = readAppliedBrandDefaults();
   if (applied && applied.skin === next.skin && applied.theme === next.theme) return;
   try {
-    if (next.skin && next.skin !== applied?.skin) window.localStorage.setItem(STORAGE_KEY, next.skin);
+    if (next.skin && !SKIN_LOCKED && next.skin !== applied?.skin) window.localStorage.setItem(STORAGE_KEY, next.skin);
     if (next.theme) window.localStorage.setItem(THEME_KEY, next.theme);
     window.localStorage.setItem(BRAND_DEFAULTS_KEY, JSON.stringify(next));
   } catch {}
 }
 
-/** Coerce any stored/passed value onto a registered skin id. */
+/** Coerce any stored/passed value onto a registered skin id; under a style lock, the default. */
 export function normalizeSkin(value: string | null | undefined): string {
+  if (SKIN_LOCKED) return DEFAULT_SKIN;
   return SKINS.some((s) => s.id === value) ? (value as string) : DEFAULT_SKIN;
 }
 
@@ -106,9 +118,11 @@ export function loadSkin(): string {
 }
 
 export function persistSkin(id: string): void {
-  // A brand that failed to load leaves its style unregistered, so this page
-  // shows Normal. Saving that would erase the brand style this browser chose.
-  if (BRAND_LOAD.status === 'failed') return;
+  /* A brand that failed to load leaves its style unregistered, so this page
+     shows Normal. Saving that would erase the brand style this browser chose.
+     A locked brand keeps the page on the default style; the saved style stays
+     for when the lock is off. */
+  if (BRAND_LOAD.status === 'failed' || SKIN_LOCKED) return;
   try { window.localStorage.setItem(STORAGE_KEY, normalizeSkin(id)); } catch {}
 }
 

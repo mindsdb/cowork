@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrandLoad, DeploymentBrand } from './deploymentBrand';
 
 const NONE: DeploymentBrand = {
-  productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null,
+  productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, skinLocked: null,
 };
 const OFF: BrandLoad = { status: 'off' };
 const FAILED: BrandLoad = { status: 'failed' };
@@ -148,6 +148,60 @@ describe('a brand that failed to load', () => {
     expect(stored('anton.skin')).toBe('acme');
     expect(await shows(ACME)).toEqual({ skin: 'acme', theme: 'light' });
   });
+});
+
+describe('a style lock', () => {
+  const LOCKED = loaded({ skinLocked: true });
+  const LOCKED_ACME = loaded({ skin: { id: 'acme', label: 'Acme' }, skinLocked: true });
+
+  it('keeps every browser on Normal when the brand sets no style', async () => {
+    window.localStorage.setItem('anton.skin', '8bit');
+    const skins = await pageLoad(LOCKED);
+    expect(skins.SKIN_LOCKED).toBe(true);
+    expect(skins.loadSkin()).toBe('normal');
+    expect(skins.normalizeSkin('custom')).toBe('normal');
+  });
+
+  it("keeps every browser on the brand's own style", async () => {
+    window.localStorage.setItem('anton.skin', '8bit');
+    const skins = await pageLoad(LOCKED_ACME);
+    expect(skins.loadSkin()).toBe('acme');
+    expect(skins.normalizeSkin('normal')).toBe('acme');
+  });
+
+  it('saves no style over the one the browser saved', async () => {
+    window.localStorage.setItem('anton.skin', '8bit');
+    const skins = await pageLoad(LOCKED);
+    skins.persistSkin(skins.loadSkin());
+    skins.persistSkin('custom');
+    expect(stored('anton.skin')).toBe('8bit');
+  });
+
+  it('gives the saved style back once the lock is off', async () => {
+    window.localStorage.setItem('anton.skin', '8bit');
+    expect(await shows(LOCKED_ACME)).toEqual({ skin: 'acme', theme: null });
+    expect(stored('anton.skin')).toBe('8bit');
+    expect(await shows(loaded({ skin: { id: 'acme', label: 'Acme' } }))).toEqual({ skin: '8bit', theme: null });
+  });
+
+  it('leaves the theme to the person', async () => {
+    window.localStorage.setItem('anton.theme', 'light');
+    expect(await shows(LOCKED)).toEqual({ skin: 'normal', theme: 'light' });
+  });
+
+  it.each([
+    ['a brand with skinLocked false', loaded({ skinLocked: false })],
+    ['a brand that failed to load', FAILED],
+    ['the platform UI on', OFF],
+  ] as const)(
+    'is off for %s',
+    async (_name, load) => {
+      window.localStorage.setItem('anton.skin', '8bit');
+      const skins = await pageLoad(load);
+      expect(skins.SKIN_LOCKED).toBe(false);
+      expect(skins.loadSkin()).toBe('8bit');
+    },
+  );
 });
 
 describe('blocked storage', () => {
