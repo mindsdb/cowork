@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../lib/deploymentBrand', () => {
   const brand = {
-    productName: null, skin: { id: 'acme', label: 'Acme' }, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null,
+    productName: null, skin: { id: 'acme', label: 'Acme' }, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, skinLocked: null,
   };
   return { BRAND_LOAD: { status: 'loaded', brand, dropped: [] }, DEPLOYMENT_BRAND: brand };
 });

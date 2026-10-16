@@ -39,6 +39,8 @@ export default defineConfig({
         // The brand's style defaults and the pause on a failed load, which
         // keeps a broken deploy from overwriting a browser's saved style.
         'src/renderer/lib/skins.ts': { statements: 91, branches: 97 },
+        // The style lock's hold on the corner and phone top-bar buttons.
+        'src/renderer/cowork/lib/displayToggle.js': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
         // The sign-out sequence and the sidecar restart it no longer waits for.
         // Pinned for the same reason as the entries above: the ordering has no

@@ -282,14 +282,16 @@ format only ever gains optional fields.
 | `productName` | 1 to 64 characters after trimming | The tab title and the places that name the product |
 | `skin` | `{ "id", "label" }`: an id of lowercase letters, digits and single hyphens, up to 32 characters; a label of 1 to 32 characters | A style listed first in Settings > Appearance > Style. `brand.css` styles `body[data-skin="<id>"]` |
 | `theme` | `light` or `dark` | The theme a browser starts in |
+| `skinLocked` | `true` or `false` | `true` keeps every browser on the default style: the brand's `skin` when its id is not a stock style's (`normal`, `8bit` or `custom`), or Normal otherwise. Settings shows the style without a picker, and the corner and top-bar buttons switch only light and dark. A browser's saved style is kept and comes back once the lock is off. The theme stays each person's choice |
 | `logoUrl`, `iconUrl`, `appleTouchIconUrl` | `/brand/<file>`, with an optional `?v=<token>` | The sidebar logo, the tab icon and the home-screen icon |
 
 A person's own Settings win over the brand: a sidebar title, logo or tab icon
 set there is shown instead, and clearing the tab icon brings back the brand's.
+The style is the one exception while the brand sets `skinLocked: true`.
 If `brand.js` doesn't load, or doesn't set an object, the page shows stock
-names, styles and icons and logs one console error naming the file. A server
-that serves the brand should send `Cache-Control: no-cache` with an ETag, so a
-changed brand shows after a reload.
+names, styles and icons with no style lock, and logs one console error naming
+the file. A server that serves the brand should send `Cache-Control: no-cache`
+with an ETag, so a changed brand shows after a reload.
 
 ### Platform abstraction
 
