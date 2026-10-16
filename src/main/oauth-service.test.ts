@@ -81,6 +81,26 @@ describe('oauthConnect', () => {
     expect(exchangeBody).toContain('code=the-code');
   });
 
+  it('returns the exchange response\'s non-token fields as extra', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    net.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: 'at', token_type: 'bearer', workspace_id: 'ws-1', workspace_name: 'Acme Wiki',
+      }),
+    })) as unknown as typeof net.fetch;
+
+    const flow = oauthConnect(OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+
+    const result = await flow;
+    expect(result.ok).toBe(true);
+    expect(result.refresh_token).toBeUndefined();
+    expect(result.extra).toEqual({ workspace_id: 'ws-1', workspace_name: 'Acme Wiki' });
+  });
+
   // ─── GitHub regression: classic OAuth apps return form-urlencoded ───
   // bodies from /login/oauth/access_token unless the request asks for
   // JSON. Without this header the exchange threw "Unexpected token 'a',

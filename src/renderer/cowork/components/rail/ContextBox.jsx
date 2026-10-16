@@ -18,6 +18,9 @@ export function ContextBox({
   onAddGoogleDriveFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
+  onAddNotionPages,
+  onFetchNotionPages,
+  onRemoveNotionPage,
 }) {
   return (
     <RailCard title="Context" defaultOpen={defaultOpen} slim={slim} maxBodyHeight={maxBodyHeight}>
@@ -29,6 +32,9 @@ export function ContextBox({
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}
+        onAddNotionPages={onAddNotionPages}
+        onFetchNotionPages={onFetchNotionPages}
+        onRemoveNotionPage={onRemoveNotionPage}
       />
     </RailCard>
   );

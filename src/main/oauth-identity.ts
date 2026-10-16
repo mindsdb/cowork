@@ -233,7 +233,36 @@ async function fetchHubspotIdentity(accessToken: string): Promise<OAuthIdentity>
   return { email: data.account_email || '', name: data.account_name || undefined };
 }
 
-const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> = {
+// Notion's token is likewise MCP-only, so this goes through the same
+// identity bridge as HubSpot. The workspace id and name exist only in the
+// code-exchange response, so they arrive here via `extra` and are forwarded
+// for the bridge to build the per-workspace identity.
+async function fetchNotionIdentity(accessToken: string, extra?: OAuthExtra): Promise<OAuthIdentity> {
+  const res = await fetch(
+    `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/notion/mcp/identity`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({
+        access_token: accessToken,
+        workspace_id: typeof extra?.workspace_id === 'string' ? extra.workspace_id : undefined,
+        workspace_name: typeof extra?.workspace_name === 'string' ? extra.workspace_name : undefined,
+      }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({})) as { detail?: string };
+    return { email: '', reason: detail.detail || `Notion identity lookup failed (${res.status}).` };
+  }
+  const data = await res.json() as { account_email?: string; account_name?: string };
+  return { email: data.account_email || '', name: data.account_name || undefined };
+}
+
+/** Non-token fields of a provider's code-exchange response (e.g. Notion's
+ * workspace_id), for fetchers that need them. */
+export type OAuthExtra = Record<string, unknown>;
+
+const FETCHERS: Record<string, (accessToken: string, extra?: OAuthExtra) => Promise<OAuthIdentity>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
   gmail: fetchGoogleIdentity,
@@ -244,12 +273,15 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> 
   posthog: fetchPostHogIdentity,
   supabase: fetchSupabaseIdentity,
   hubspot: fetchHubspotIdentity,
+  notion: fetchNotionIdentity,
 };
 
-export async function fetchAccountIdentity(engine: string, accessToken: string): Promise<OAuthIdentity> {
+export async function fetchAccountIdentity(
+  engine: string, accessToken: string, extra?: OAuthExtra,
+): Promise<OAuthIdentity> {
   const fetcher = FETCHERS[engine] || fetchGoogleIdentity;
   try {
-    return await fetcher(accessToken);
+    return await fetcher(accessToken, extra);
   } catch {
     return { email: '' };
   }
