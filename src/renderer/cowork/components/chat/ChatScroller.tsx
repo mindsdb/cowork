@@ -39,7 +39,9 @@ export function ChatScroller({
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const { isStuck, scrollToBottom, isAtBottom } = stick;
-  // Bumped when the content's size changes, so the minimap re-reads turns.
+  // Bumped when the content changes size or its nodes change, so the minimap
+  // re-reads turns. Switching between two equally tall conversations swaps
+  // the turns without a resize.
   const [layoutVersion, setLayoutVersion] = useState(0);
   const versionFrame = useRef(0);
   // Content that grows in place (a streamed answer, an opened tray) keeps a
@@ -47,13 +49,18 @@ export function ChatScroller({
   useEffect(() => {
     const content = contentRef.current;
     if (!content || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => {
-      if (isStuck()) scrollToBottom('auto');
+    const bump = () => {
       cancelAnimationFrame(versionFrame.current);
       versionFrame.current = requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
+    };
+    const resize = new ResizeObserver(() => {
+      if (isStuck()) scrollToBottom('auto');
+      bump();
     });
-    observer.observe(content, { box: 'border-box' });
-    return () => { observer.disconnect(); cancelAnimationFrame(versionFrame.current); };
+    resize.observe(content, { box: 'border-box' });
+    const mutation = new MutationObserver(bump);
+    mutation.observe(content, { childList: true, subtree: true });
+    return () => { resize.disconnect(); mutation.disconnect(); cancelAnimationFrame(versionFrame.current); };
   }, [isStuck, scrollToBottom]);
   return (
     <div className="chat-scroller relative flex flex-1 flex-col min-h-0 min-w-0">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ChatScroller } from './ChatScroller';
@@ -29,6 +29,16 @@ describe('the turn minimap', () => {
     const nav = screen.getByRole('navigation', { name: 'Conversation turns' });
     expect(nav.querySelectorAll('button')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Go to message 2: Draft the email' })).toBeInTheDocument();
+  });
+
+  // happy-dom never resizes, so this is the equal-height switch: only the
+  // nodes change.
+  it('re-reads the turns when the conversation changes without a resize', async () => {
+    const { rerender } = render(<Transcript prompts={['Plan the launch', 'Draft the email', 'Price it']} />);
+    rerender(<Transcript prompts={['Fix the parser', 'Add a test', 'Ship it']} />);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(screen.getByRole('button', { name: 'Go to message 1: Fix the parser' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Plan the launch/ })).toBeNull();
   });
 
   it('scrolls the transcript to a turn when its tick is clicked', () => {
