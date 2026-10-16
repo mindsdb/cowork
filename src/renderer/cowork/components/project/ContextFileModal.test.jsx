@@ -136,21 +136,23 @@ describe('ContextFileModal previewing a project HTML file', () => {
 
   /* An iframe `src` can't carry the Bearer token, so on web the markup is read
      with it and handed over as `srcdoc`. */
-  it('reads the file with auth on web and renders it as srcdoc', async () => {
-    const html = '<html><body>report</body></html>';
+  it('reads the file with auth on web, inlines its stylesheet and renders it as srcdoc', async () => {
+    const html = '<html><head><link rel="stylesheet" href="style.css"></head><body>report</body></html>';
     mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers(),
       blob: async () => new Blob([html]),
     });
+    mocks.fetchAuthenticatedBlob.mockResolvedValueOnce(new Blob(['p { color: green }']));
     vi.mocked(mountProjectFilePreview).mockClear();
 
-    const iframe = await renderHtml('report.html');
+    const iframe = await renderHtml('reports/report.html');
 
-    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/report.html');
+    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/report.html');
+    expect(mocks.fetchAuthenticatedBlob).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/style.css');
     expect(mountProjectFilePreview).not.toHaveBeenCalled();
-    expect(iframe?.getAttribute('srcdoc')).toBe(html);
+    expect(iframe?.getAttribute('srcdoc')).toContain('<style>p { color: green }</style>');
     expect(iframe?.hasAttribute('src')).toBe(false);
   });
 

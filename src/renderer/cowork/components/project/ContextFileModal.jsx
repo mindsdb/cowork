@@ -48,6 +48,7 @@ import {
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
+import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -383,17 +384,20 @@ export default function ContextFileModal({
     if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
       setLoading(true);
       // Web: an iframe `src` can't carry the Bearer token, so read the file
-      // with it and hand the markup over as `srcdoc`.
-      // TODO: inline relative <link>/<script>/<img> assets; they don't load yet.
+      // with it, inline its relative assets and hand the markup over as
+      // `srcdoc`. See inlineHtmlAssets for what still can't load.
       if (host.isWeb) {
         readInlineText(projectFileDownloadUrl(projectName, filePath))
-          .then((text) => {
+          .then(async (text) => {
             if (cancelled) return;
             if (text == null) {
               setMode('binary');
               return;
             }
-            setPreviewHtml(text);
+            const html = await inlineHtmlAssets(text, filePath, (path) =>
+              fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)));
+            if (cancelled) return;
+            setPreviewHtml(html);
             setMode('html');
           })
           .catch((e) => {
