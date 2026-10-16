@@ -43,7 +43,7 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
   // The sent turn's resting position. `active` while the view holds it; the
   // reserved space below keeps tracking it after the reader takes over, so it
   // goes on shrinking as the answer streams rather than staying as a gap.
-  const anchor = useRef<{ target: number; active: boolean } | null>(null);
+  const anchor = useRef<{ target: number; active: boolean; behavior: ScrollBehavior } | null>(null);
   const anchored = () => !!anchor.current?.active;
   const lastTop = useRef(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -58,7 +58,7 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
     if (reserveRef.current) reserveRef.current.style.height = px ? `${px}px` : '';
   };
 
-  // The reader took over: a wheel, a key, a touch. Normal following rules
+  // The reader took over: a wheel, a key, a touch, a scrollbar press. Normal following rules
   // resume from wherever they scroll to.
   const releaseAnchor = useCallback(() => {
     if (anchor.current) anchor.current.active = false;
@@ -98,16 +98,23 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
     if (stuck.current && !anchored()) scrollToBottom('auto');
   }, [scrollToBottom]);
 
-  // Re-measure the reserved space as the content grows or shrinks.
+  // Re-measure the reserved space as the content grows or shrinks. When it
+  // grows under a held anchor (the composer shrinking after a send), the
+  // earlier scroll was clamped short of the target, so go the rest of the way.
   const updateReserve = useCallback(() => {
     const el = scrollRef.current;
     if (!el || !anchor.current) return;
-    const { reserve } = anchorPlan({
+    const before = reserveHeight();
+    const { target, reserve } = anchorPlan({
       turnTop: anchor.current.target + ANCHOR_OFFSET_PX,
-      baseHeight: el.scrollHeight - reserveHeight(),
+      baseHeight: el.scrollHeight - before,
       clientHeight: el.clientHeight,
     });
     setReserve(reserve);
+    if (anchored() && reserve > before) {
+      el.scrollTo({ top: target, behavior: anchor.current.behavior });
+      lastTop.current = target;
+    }
     if (!reserve) anchor.current = anchor.current.active ? anchor.current : null;
     if (anchored()) setIsAtBottom(distanceFromBottom(el) < STICK_THRESHOLD_PX);
   }, [scrollRef]);
@@ -123,7 +130,7 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
       baseHeight: el.scrollHeight - reserveHeight(),
       clientHeight: el.clientHeight,
     });
-    anchor.current = { target, active: true };
+    anchor.current = { target, active: true, behavior };
     stuck.current = false;
     setReserve(reserve);
     setIsAtBottom(true);

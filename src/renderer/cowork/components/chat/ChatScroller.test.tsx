@@ -75,3 +75,71 @@ describe('scrolling up with a wheel', () => {
   });
 });
 
+describe('a sent message held at the top', () => {
+  let fake: FakeScrollBox;
+  let stick: ReturnType<typeof useStickToBottom>;
+  // The content's height without the reserved room; the box's scroll height
+  // is that plus whatever room the hook reserves.
+  let base = 800;
+  const reserve = () => document.querySelector('.chat-scroller__reserve') as HTMLElement;
+  const reserved = () => parseFloat(reserve()?.style.height || '') || 0;
+
+  function Sent() {
+    stick = useStickToBottom();
+    return (
+      <ChatScroller stick={stick} scrollProps={{ 'data-scroll': 'true' }}>
+        <div data-turn-id="t0">Plan the launch</div>
+      </ChatScroller>
+    );
+  }
+
+  beforeEach(() => {
+    base = 800;
+    fake = fakeScrollBox((el) => el.dataset?.scroll === 'true');
+    Object.defineProperty(fake, 'height', { get: () => base + reserved() });
+    fake.client = 600;
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) { return this === reserve() ? reserved() : 0; },
+    });
+  });
+  afterEach(() => {
+    fake.restore();
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+  });
+
+  function send() {
+    render(<Sent />);
+    const turn = document.querySelector('[data-turn-id]') as HTMLElement;
+    turn.getBoundingClientRect = () => ({ top: 300 } as DOMRect);
+    act(() => fake.scrollReaderTo(box(), 200));
+    act(() => stick.anchorLastTurn('auto'));
+  }
+
+  it('resumes following once the reader drags the scrollbar to the end', () => {
+    send();
+    expect(stick.isStuck()).toBe(false);
+    act(() => { fireEvent.pointerDown(box()); });
+    act(() => fake.scrollReaderTo(box(), base + reserved() - 600));
+    expect(stick.isStuck()).toBe(true);
+  });
+
+  it('keeps the anchor through a press on the content', () => {
+    send();
+    act(() => { fireEvent.pointerDown(document.querySelector('[data-turn-id]')!); });
+    act(() => fake.scrollReaderTo(box(), base + reserved() - 600));
+    expect(stick.isStuck()).toBe(false);
+  });
+
+  it('reaches the send position when the reserved room grows after the scroll', () => {
+    send();
+    expect(box().scrollTop).toBe(476);
+    // The composer shrinks after the send: less content, so the browser
+    // clamps the scroll before the reserve catches up.
+    base = 700;
+    box().scrollTop = box().scrollTop;
+    expect(box().scrollTop).toBe(376);
+    act(() => stick.updateReserve());
+    expect(box().scrollTop).toBe(476);
+  });
+});
