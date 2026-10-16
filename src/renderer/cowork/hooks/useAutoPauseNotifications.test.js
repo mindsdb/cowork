@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { pauseKey, unseenAutoPauses, useAutoPauseNotifications } from './useAutoPauseNotifications';
+import { askToNotify, pauseKey, unseenAutoPauses, useAutoPauseNotifications } from './useAutoPauseNotifications';
 
 const paused = { id: 's1', title: 'Weekly digest', enabled: false, state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' };
 
@@ -59,23 +59,49 @@ describe('useAutoPauseNotifications', () => {
     expect(onOpen).toHaveBeenCalledWith('s1');
   });
 
-  it('keeps a denied pause unseen until it is reviewed, and asks once', async () => {
+  it('never asks from the poll, and notifies a pause once the user allows it', async () => {
     FakeNotification.permission = 'default';
-    FakeNotification.requestPermission = vi.fn(async () => 'denied');
     const { result, rerender } = renderHook(({ list }) => useAutoPauseNotifications(list, vi.fn()), {
       initialProps: { list: [paused] },
     });
-    await waitFor(() => expect(FakeNotification.requestPermission).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(FakeNotification.requestPermission).not.toHaveBeenCalled();
     expect(shown).toHaveLength(0);
     expect(result.current.unseen).toEqual([paused]);
 
+    FakeNotification.permission = 'granted';
+    rerender({ list: [{ ...paused }] });
+    await waitFor(() => expect(shown).toHaveLength(1));
+  });
+
+  it('keeps a denied pause unseen until it is reviewed, and does not notify it later', async () => {
+    FakeNotification.permission = 'denied';
+    const { result, rerender } = renderHook(({ list }) => useAutoPauseNotifications(list, vi.fn()), {
+      initialProps: { list: [paused] },
+    });
+    await Promise.resolve();
+    expect(shown).toHaveLength(0);
+    expect(result.current.unseen).toEqual([paused]);
+
+    FakeNotification.permission = 'granted';
     rerender({ list: [{ ...paused }] });
     await Promise.resolve();
-    expect(FakeNotification.requestPermission).toHaveBeenCalledTimes(1);
-    expect(result.current.unseen).toHaveLength(1);
+    expect(shown).toHaveLength(0);
 
     act(() => result.current.markReviewed(paused));
     expect(result.current.unseen).toEqual([]);
+  });
+
+  it('does not notify a pause the user already reviewed', async () => {
+    FakeNotification.permission = 'default';
+    const { result, rerender } = renderHook(({ list }) => useAutoPauseNotifications(list, vi.fn()), {
+      initialProps: { list: [paused] },
+    });
+    act(() => result.current.markReviewed(paused));
+    FakeNotification.permission = 'granted';
+    rerender({ list: [{ ...paused }] });
+    await Promise.resolve();
+    expect(shown).toHaveLength(0);
   });
 
   it('remembers across a restart what was notified and what was reviewed', async () => {
@@ -100,5 +126,29 @@ describe('useAutoPauseNotifications', () => {
     vi.stubGlobal('Notification', undefined);
     const { result } = renderHook(() => useAutoPauseNotifications([paused], vi.fn()));
     expect(result.current.unseen).toEqual([paused]);
+  });
+});
+
+describe('askToNotify', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks only while the user has not answered', () => {
+    const requestPermission = vi.fn(async () => 'granted');
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission });
+    askToNotify();
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+
+    for (const permission of ['granted', 'denied']) {
+      vi.stubGlobal('Notification', { permission, requestPermission });
+      askToNotify();
+    }
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing without a notification API', () => {
+    vi.stubGlobal('Notification', undefined);
+    expect(() => askToNotify()).not.toThrow();
   });
 });

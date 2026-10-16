@@ -22,7 +22,7 @@ import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
-import { PLATFORM_UI } from '../../lib/deployment';
+import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
@@ -146,7 +146,9 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={PLATFORM_UI
+        // Desktop runs its own server, so tasks stop with the app. Every web
+        // build, hosted or self-hosted, runs them on a server that stays up.
+        subtitle={!host.isWeb
           ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while the app was closed, ${agentLabel} runs the latest one when it reopens.`
           : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one when it's back.`}
         actions={
@@ -222,7 +224,7 @@ export default function ScheduledView({
             </span>
           ),
           title: 'No scheduled tasks yet',
-          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them ${PLATFORM_UI ? 'while the desktop app is open' : 'on the server, even with this tab closed'}.`,
+          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them ${host.isWeb ? 'on the server, even with this tab closed' : 'while the desktop app is open'}.`,
           action: (
             <Button variant="primary" onClick={openCreate}>
               {Ico.plus(14)} Schedule your first task
