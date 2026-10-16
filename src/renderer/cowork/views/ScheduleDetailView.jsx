@@ -23,7 +23,7 @@ import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { scheduleState, scheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
 import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
-import { missedRunText } from '../lib/scheduleCopy';
+import { missedRunPast, missedRunText } from '../lib/scheduleCopy';
 import { describeWhen, timeZoneLabel, whenFromDate } from '../lib/scheduleWhen';
 import { relativeTime } from '../lib/formatTime';
 
@@ -74,11 +74,12 @@ function nextRunText(task, state) {
 function skippedText(period) {
   const count = period.slotCount;
   const runs = `${count} ${count === 1 ? 'run' : 'runs'}`;
-  if (period.reason === 'one_off_missed') return 'Its time passed while MindsHub was closed.';
+  const { absent, back } = missedRunPast();
+  if (period.reason === 'one_off_missed') return `Its time passed ${absent}.`;
   const from = absoluteTime(period.firstSlot);
   const to = absoluteTime(period.lastSlot);
   const span = from && to && from !== to ? ` (${from} – ${to})` : from ? ` (${from})` : '';
-  return `Skipped ${runs} while MindsHub was closed${span}. The latest one ran when it reopened.`;
+  return `Skipped ${runs} ${absent}${span}. The latest one ran ${back}.`;
 }
 
 export default function ScheduleDetailView({

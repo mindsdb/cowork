@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missedOnceTitle, missedRunLabel, missedRunText } from './scheduleCopy';
+import { missedOnceTitle, missedRunLabel, missedRunPast, missedRunText } from './scheduleCopy';
 
 describe('missedRunText', () => {
   it('gives a one-off the hour cutoff', () => {
@@ -24,5 +24,7 @@ describe('missedRunText', () => {
     expect(missedRunLabel(true)).toBe('If the server is down at this time');
     expect(missedOnceTitle(false)).toMatch(/while MindsHub was closed$/);
     expect(missedOnceTitle(true)).toMatch(/while the server was down$/);
+    expect(missedRunPast(false)).toEqual({ absent: 'while MindsHub was closed', back: 'when it reopened' });
+    expect(missedRunPast(true)).toEqual({ absent: 'while the server was down', back: 'when it was back' });
   });
 });
