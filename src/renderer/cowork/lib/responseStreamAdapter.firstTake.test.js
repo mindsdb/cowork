@@ -33,6 +33,15 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
   });
 
+  it("hides Anton's opening sentence from the thinking line while a take is shown", () => {
+    const toolStart = { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 't1' };
+    const withTake = reduceAll([created, take('Checking your sales.'), text('Let me check your sales.'), toolStart]);
+    expect(withTake.currentThought).toBeNull();
+    expect(withTake.bodyText).toBe('');
+    const withoutTake = reduceAll([created, text('Let me check your sales.'), toolStart]);
+    expect(withoutTake.currentThought?.text).toBe('Let me check your sales.');
+  });
+
   it('a question for the user takes its place', () => {
     const state = reduceAll([
       created, take('On it.'),

@@ -259,6 +259,11 @@ export function truncateLabel(text) {
 function reclassifyPreambleOnToolStart(state, eventTs) {
   const preamble = (state.bodyText || '').trim();
   if (!preamble) return { currentThought: null };
+  // A visible first take already says what Anton is about to do; showing
+  // Anton's own opening sentence as well would say it twice.
+  if (visibleFirstTake(state.firstTake)) {
+    return { currentThought: null, bodyText: '', bodyTextMap: { ...state.bodyTextMap, ranges: [] } };
+  }
   return {
     currentThought: {
       text: preamble,
