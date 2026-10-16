@@ -1296,13 +1296,14 @@ export async function readProjectFile(projectName, path) {
 }
 
 // HTML preview-mount for a project file — server registers the
-// parent dir under a token and returns a relative URL the iframe
-// should load with `src=`. Mirrors the artifact preview flow.
+// parent dir under a token and returns `relUrl`, relative to BASE.
+// `url` is the absolute iframe `src`.
 export async function mountProjectFilePreview(projectName, path) {
-  return req(`/projects/preview-mount-file`, {
+  const data = await req(`/projects/preview-mount-file`, {
     method: 'POST',
     body: JSON.stringify({ name: projectName, path }),
   });
+  return { ...data, url: data?.relUrl ? `${BASE}${data.relUrl}` : '' };
 }
 
 // Absolute URL for downloading a project file's raw bytes. Server

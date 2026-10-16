@@ -38,7 +38,6 @@ import {
   mountProjectFilePreview,
   projectFileDownloadUrl,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
-  BASE,
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import SharedResourceAttribution from '../SharedResourceAttribution';
@@ -378,18 +377,14 @@ export default function ContextFileModal({
       return () => { cancelled = true; };
     }
 
-    // HTML branch: project-file preview-mount, iframe srcs `BASE + relUrl`.
+    // HTML branch: project-file preview-mount, iframe srcs the mount's `url`.
     if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
       setLoading(true);
       mountProjectFilePreview(projectName, filePath)
         .then((res) => {
           if (cancelled) return;
-          // `relUrl` ships with `/v1/...`; the API helpers' BASE already
-          // includes the `/v1` prefix so we splice it onto the origin.
-          const origin = String(BASE || '').replace(/\/v1\/?$/, '');
-          const url = `${origin}${res?.relUrl || ''}`;
-          if (!url) throw new Error('Preview mount returned no URL');
-          setPreviewUrl(url);
+          if (!res?.url) throw new Error('Preview mount returned no URL');
+          setPreviewUrl(res.url);
           setMode('html');
         })
         .catch((e) => {
