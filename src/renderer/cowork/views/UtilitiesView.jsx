@@ -109,6 +109,11 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
   );
 }
 
+function projectMemoryHeading(memory, projects) {
+  if (memory.deploymentShared === true && !memory.projectName) return 'Project memory';
+  return `Project · ${projectLabelByName(projects, memory.projectName)}`;
+}
+
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
@@ -239,7 +244,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={`Project · ${projectLabelByName(projects, section.projectName)}`}
+              heading={projectMemoryHeading(section, projects)}
               files={section.files || []}
               selected={selected}
               onSelect={selectEntry}
@@ -257,8 +262,8 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(selected.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${projectLabelByName(projects, selected.projectName)}`
+                    {selected.scope === 'Project' && (selected.projectName || selected.deploymentShared === true)
+                      ? projectMemoryHeading(selected, projects)
                       : selected.scope}
                   </div>
                   <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
@@ -280,8 +285,8 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(displayed.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {displayed.scope === 'Project' && displayed.projectName
-                      ? `Project · ${projectLabelByName(projects, displayed.projectName)}`
+                    {displayed.scope === 'Project' && (displayed.projectName || displayed.deploymentShared === true)
+                      ? projectMemoryHeading(displayed, projects)
                       : displayed.scope}
                   </div>
                   <SharedResourceAttribution resource={displayed} className="mt-1" />

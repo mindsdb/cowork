@@ -30,6 +30,7 @@ vi.mock('../lib/clipboard', () => ({ copyText: vi.fn() }));
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import UtilitiesView from './UtilitiesView';
+import { groupMemoryItems } from '../lib/memoryTransform';
 
 const entry = {
   path: 'Project:project-1:rules',
@@ -193,5 +194,83 @@ describe('UtilitiesView memory capability gates', () => {
     expect(screen.getByRole('note')).toHaveTextContent('Read only');
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  });
+});
+
+describe('UtilitiesView deployment-shared memory labels', () => {
+  const raw = {
+    scope: 'project',
+    project_id: 'project-1',
+    category: 'rules',
+    content: 'Original rules.',
+    capabilities: { canEdit: true, canDelete: true },
+  };
+
+  it('labels an unknown shared project in the list, selected entry and editor', async () => {
+    api.fetchMemory.mockResolvedValue(groupMemoryItems([{ ...raw, deployment_shared: true }], []));
+    render(<UtilitiesView kind="memory" />);
+
+    expect(await screen.findByText('Project memory')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Rules/ }));
+    expect(screen.getAllByText('Project memory')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getAllByText('Project memory')).toHaveLength(2);
+    expect(screen.getByRole('textbox')).toHaveValue(raw.content);
+    expect(screen.queryByText('Project · null')).toBeNull();
+    expect(document.body.textContent).not.toContain(raw.project_id);
+  });
+
+  it.each([undefined, false, null, 'true', 1])(
+    'preserves the unknown-project display without a true sharing marker (%s)',
+    async (marker) => {
+      const incoming = marker === undefined ? raw : { ...raw, deployment_shared: marker };
+      api.fetchMemory.mockResolvedValue(groupMemoryItems([incoming], []));
+      render(<UtilitiesView kind="memory" />);
+
+      expect(await screen.findByText('Project · null')).toBeInTheDocument();
+      expect(screen.queryByText('Project memory')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Rules/ }));
+      expect(screen.getByText('Project', { exact: true })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      expect(screen.getByText('Project', { exact: true })).toBeInTheDocument();
+      expect(screen.queryByText('Project memory')).toBeNull();
+    },
+  );
+
+  it.each([undefined, true])('retains a known projects display name with marker %s', async (marker) => {
+    const projects = [{ id: raw.project_id, name: 'billing', display_name: 'Billing team' }];
+    const incoming = marker === undefined ? raw : { ...raw, deployment_shared: marker };
+    api.fetchMemory.mockResolvedValue(groupMemoryItems([incoming], projects));
+    render(<UtilitiesView kind="memory" projects={projects} />);
+
+    expect(await screen.findByText('Project · Billing team')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Rules/ }));
+    expect(screen.getAllByText('Project · Billing team')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getAllByText('Project · Billing team')).toHaveLength(2);
+    expect(screen.queryByText('Project memory')).toBeNull();
+  });
+
+  it('edits the selected tier when two shared projects have the same generic label', async () => {
+    api.fetchMemory.mockResolvedValue(groupMemoryItems([
+      { ...raw, deployment_shared: true },
+      { ...raw, project_id: 'project-2', content: 'Answer in pallets.', deployment_shared: true },
+    ], []));
+    render(<UtilitiesView kind="memory" />);
+
+    const buttons = await screen.findAllByRole('button', { name: /Rules/ });
+    expect(screen.getAllByText('Project memory')).toHaveLength(2);
+    fireEvent.click(buttons[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('textbox')).toHaveValue('Answer in pallets.');
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Answer in crates.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.saveMemory).toHaveBeenCalledWith({
+      scope: 'Project',
+      category: 'rules',
+      content: 'Answer in crates.',
+      projectId: 'project-2',
+    }));
   });
 });

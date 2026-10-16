@@ -28,12 +28,14 @@ export function groupMemoryItems(items, projects) {
     const projectId = item.project_id ?? item.projectId ?? null;
     const category = item.category;
     const key = `${scopeToApi(item.scope)}:${projectId || 'global'}`;
+    const sharing = item.deployment_shared === true ? { deploymentShared: true } : {};
 
     if (!sectionMap.has(key)) {
       sectionMap.set(key, {
         scope: scopeLabel,
         projectName: projectId ? (projectNameById.get(String(projectId)) || null) : null,
         projectId: projectId || null,
+        ...sharing,
         files: [],
       });
     }
@@ -49,6 +51,7 @@ export function groupMemoryItems(items, projects) {
     sectionMap.get(key).files.push({
       attribution: item.attribution ?? null,
       capabilities: item.capabilities ?? null,
+      ...sharing,
       category,
       projectId: projectId || null,
       content,
