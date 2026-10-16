@@ -268,16 +268,16 @@ describe('ScheduleDetailView — how the last run went', () => {
 });
 
 describe('ScheduleDetailView — controls by state', () => {
-  it('says what happens when the app is closed at a recurring task’s time', async () => {
+  it('says what happens when a recurring task misses its time', async () => {
     setup();
     await screen.findAllByRole('button', { name: 'Open task' });
-    expect(screen.getByText(/runs once when it reopens, for the latest time it missed/)).toBeInTheDocument();
+    expect(screen.getByText(/runs once when it’s back, for the latest time it missed/)).toBeInTheDocument();
   });
 
   it('gives a missed one-off Run now, and no switch to resume to a time that has passed', async () => {
     const task = { ...TASK, cadence: 'once', enabled: false, state: 'missed', nextRunAt: '2026-10-01T09:00:00Z' };
     const { props, user } = setup({ task });
-    const box = (await screen.findByText('This one-time task’s time passed while MindsHub was closed')).closest('[role="alert"]');
+    const box = (await screen.findByText('This one-time task’s time passed while the server was down')).closest('[role="alert"]');
     await user.click(within(box).getByRole('button', { name: 'Run now' }));
     expect(props.onRunNow).toHaveBeenCalledWith('s1');
     expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();

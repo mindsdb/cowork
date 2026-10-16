@@ -8,6 +8,7 @@
 
 import { Alert, Button } from '../ui';
 import { relativeTime } from '../../lib/formatTime';
+import { missedOnceTitle } from '../../lib/scheduleCopy';
 import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
 
 // Outcomes after which some of the run's actions may have happened.
@@ -30,7 +31,7 @@ export function runAlert(task) {
     return {
       kind: 'missed',
       variant: 'warning',
-      title: 'This one-time task’s time passed while MindsHub was closed',
+      title: missedOnceTitle(),
       reason: null,
       note: 'It was more than an hour late, so it didn’t run on its own. Run it now, or edit it to give it a new time.',
     };

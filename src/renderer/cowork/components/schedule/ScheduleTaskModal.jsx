@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
-import { missedRunText } from '../../lib/scheduleCopy';
+import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 import { productName } from '../../../lib/deploymentBrand';
@@ -202,12 +202,12 @@ export default function ScheduleTaskModal({
               label={(
                 <span className="inline-flex items-center gap-1">
                   Cadence
-                  {/* What happens when the app is closed at the task's time:
-                      too long to sit under the field, so it's a tooltip. */}
+                  {/* What happens when the task can't run at its time: too
+                      long to sit under the field, so it's a tooltip. */}
                   <Tooltip content={missedRunText(form.cadence)}>
                     <button
                       type="button"
-                      aria-label="If MindsHub is closed at this time"
+                      aria-label={missedRunLabel()}
                       className="inline-flex cursor-help border-0 bg-transparent p-0 text-ink-3 hover:text-ink"
                     >
                       {Ico.info(12)}
