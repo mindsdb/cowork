@@ -1,9 +1,9 @@
 // One row inside the expanded ThinkingBlock. Vertical-line "rail" on
 // the left, icon, label, optional duration on the right.
 //
-// Adapted from mdb-ai's ThinkingStep.jsx — without jotai. We don't need
-// the side-panel scratchpad navigation here either; click handling is
-// delegated via onActivate, which the parent can wire up when ready.
+// Adapted from mdb-ai's ThinkingStep.jsx — without jotai. Click handling is
+// delegated via onActivate; the block passes it only to rows that open
+// something (see isActivatableStep in ThinkingBlock).
 
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
@@ -25,6 +25,8 @@ function TextDots() {
   // the dots to the label keeps the row height constant across states.
   return <span className="inline-block w-5 text-ink-4 text-[12.5px] leading-[1.5]">{DOT_FRAMES[idx]}</span>;
 }
+
+const UNTIMED_BADGES = new Set(['ToolProgress', 'Artifact', 'Skill', 'Compaction']);
 
 function formatStepDuration(startedAt, completedAt) {
   if (!startedAt || !completedAt) return null;
@@ -96,8 +98,10 @@ export function ThinkingStep({
         <div className="ml-2 flex flex-none items-center gap-2 pr-1">
           {/* No duration on a tool's step line: fullstack generation runs
               steps in parallel, so "time until the next line" is not how
-              long the step took (ENG-2981). */}
-          {!isInProgress && duration && step.badge !== 'ToolProgress' && (
+              long the step took (ENG-2981). Nor on a row that marks a
+              moment rather than work (an artifact, a skill, a compaction):
+              it always read "0s". */}
+          {!isInProgress && duration && !UNTIMED_BADGES.has(step.badge) && (
             <span className="w-10 text-right text-[11px] text-ink-4">{duration}</span>
           )}
           {step.cellStatus === 'timeout' && (
@@ -115,9 +119,9 @@ export function ThinkingStep({
               title="This cell ended with an error."
             />
           )}
-          {step.badge === 'Artifact' && (
+          {(step.badge === 'Artifact' || step.badge === 'Skill') && (
             <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
-              artifact
+              {step.badge === 'Skill' ? 'skill' : 'artifact'}
             </span>
           )}
         </div>

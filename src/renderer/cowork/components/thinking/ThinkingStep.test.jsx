@@ -70,3 +70,20 @@ describe('ThinkingStep — opening Note stand-in (ENG-3554)', () => {
     expect(screen.getByText("Now I'll add the orbits.")).toBeInTheDocument();
   });
 });
+
+describe('ThinkingStep object rows', () => {
+  // An artifact or skill row marks a moment, not timed work: it read "0s".
+  it.each(['Artifact', 'Skill', 'Compaction'])('shows no duration for a %s row', (badge) => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 's1', label: 'Thing', badge, status: 'completed', startedAt: 1000, completedAt: 1000 }} />,
+    );
+    expect(container.textContent).not.toContain('0s');
+  });
+
+  it('tags a skill row like an artifact row', () => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 'skill-a', label: 'Digest', badge: 'Skill', status: 'completed' }} />,
+    );
+    expect(container.textContent).toContain('skill');
+  });
+});
