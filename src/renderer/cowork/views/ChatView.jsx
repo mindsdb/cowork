@@ -21,6 +21,7 @@ import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { FirstTake } from '../components/thinking/FirstTake';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
@@ -3176,6 +3177,9 @@ export default function ChatView({
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies).
                     With questions, the header is in the live segment (TurnSegments). */}
+                {/* The instant first take heads the steps; the adapter drops
+                    it when the turn asks the user or ends. */}
+                <FirstTake take={streamingMsg.firstTake} />
                 <TurnSegments
                   steps={streamingMsg.steps}
                   startedAt={streamingMsg.startedAt}
