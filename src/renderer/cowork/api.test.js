@@ -641,6 +641,26 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.requestId).toBe('corr-abc');
   });
 
+  it('carries the incomplete reason onto an answer that stopped early', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Stopped at a limit.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'round_cap' } } },
+      ] },
+      { role: 'user', content: 'again' },
+      { role: 'assistant', content: 'Done.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const answers = task.messages.filter((m) => m.role === 'assistant');
+    expect(answers[0].incompleteReason).toBe('round_cap');
+    expect(answers[1]).not.toHaveProperty('incompleteReason');
+  });
+
   it("carries a hosted billing stop's reset instant onto its error row", async () => {
     stubEndpoints([
       { role: 'user', content: 'hi' },
@@ -659,6 +679,52 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const task = await fetchSession('c1');
     const err = task.messages.find((m) => m.role === 'error');
     expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
+  });
+});
+
+/* A turn's figure sources come back with its saved events, so a reloaded
+   answer marks its figures the way the live one did. */
+describe('fetchSession figure sources hydration', () => {
+  const FIGURES = {
+    project_id: 'proj-1',
+    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] }],
+    figures: [
+      { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+      { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+    ],
+  };
+  const stubItems = (items) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? items : { id: 'c1', title: 'T', project: null },
+    )));
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the figure sources on the hydrated assistant turn', async () => {
+    stubItems([
+      { role: 'user', content: 'How many mugs?' },
+      { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [
+        { type: 'response.created' },
+        { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+        { type: 'response.figure_sources', item_id: 'msg-1', ...FIGURES },
+        { type: 'response.completed' },
+      ] },
+    ]);
+    const task = await fetchSession('c1');
+    const answer = task.messages.find((m) => m.role === 'assistant');
+    expect(answer.figureSources).toEqual(FIGURES);
+    expect(answer.steps[0]._toolUseId).toBe('toolu_01');
+  });
+
+  it('adds no figure sources to a turn that sent none', async () => {
+    stubItems([
+      { role: 'assistant', id: 'a1', content: 'hi', events: [{ type: 'response.created' }, { type: 'response.completed' }] },
+    ]);
+    const task = await fetchSession('c1');
+    expect(task.messages[0]).not.toHaveProperty('figureSources');
   });
 });
 
@@ -973,6 +1039,36 @@ describe('streamNewSession — stream closes without a terminal event', () => {
     });
 
     expect(result.event?.code).toBeUndefined();
+    expect(result.done).toBe(true);
+  });
+
+  it('ends with onDone when the answer stopped early (status incomplete)', async () => {
+    const enc = new TextEncoder();
+    const completed = {
+      type: 'response.completed',
+      response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } },
+    };
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode(`event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`),
+    ];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => (i < frames.length
+            ? { done: false, value: frames[i++] }
+            : { done: true, value: undefined }),
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ event }) });
+    });
+
     expect(result.done).toBe(true);
   });
 });

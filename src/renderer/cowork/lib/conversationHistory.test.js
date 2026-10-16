@@ -407,3 +407,52 @@ describe('applySessionMessages', () => {
     expect(out[0]).not.toHaveProperty('steps');
   });
 });
+
+/* The event as the server saves it, and the parsed copy a turn keeps. */
+const STEP = { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', url: null, queries: [], requests: [] };
+const FIGURE_LIST = [
+  { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+  { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+];
+const FIGURE_EVENT = { type: 'response.figure_sources', item_id: 'msg-1', project_id: 'proj-1', steps: [STEP], figures: FIGURE_LIST };
+const FIGURES = { project_id: 'proj-1', steps: [{ ...STEP, attachment_id: null }], figures: FIGURE_LIST };
+
+describe('figure sources on reload', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('reduceServerEvents replays them', () => {
+    expect(reduceServerEvents([FIGURE_EVENT, { type: 'response.completed' }]).figureSources).toEqual(FIGURES);
+    expect(reduceServerEvents([{ type: 'response.completed' }]).figureSources).toBeNull();
+  });
+
+  it('hydrateMessagesFromServerEvents puts them on the assistant turn', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [FIGURE_EVENT, { type: 'response.completed' }] },
+    ]);
+    expect(out[0].figureSources).toEqual(FIGURES);
+  });
+
+  it('hydrateMessagesFromServerEvents adds no field when the turn sent none', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', id: 'a1', content: 'hi', events: [{ type: 'response.completed' }] },
+    ]);
+    expect(out[0]).not.toHaveProperty('figureSources');
+  });
+
+  /* The server replays a turn's figure sources with its saved events. A live
+     turn's copy indexes the live message, which can lack narration the saved
+     answer keeps, so browser storage never holds one. */
+  it('persistTurnState saves no figure sources', () => {
+    persistTurnState('c1', 'a1', [{ id: 'step-1', status: 'completed', _isScratchpad: true, _toolUseId: 'toolu_01' }], 5, FIGURES);
+    const saved = readConvTurns('c1').a1;
+    expect(saved).toEqual({ steps: [expect.objectContaining({ id: 'step-1' })], startedAt: 5 });
+    expect(saved.steps[0]).not.toHaveProperty('_toolUseId');
+  });
+
+  it('mergeConvTurns puts no figure sources from browser storage on a turn', () => {
+    writeConvTurns('c1', { a1: { steps: [{ id: 'saved' }], startedAt: 5, figureSources: FIGURES } });
+    const [out] = mergeConvTurns('c1', [assistant({ id: 'a1' })]);
+    expect(out.steps).toEqual([{ id: 'saved' }]);
+    expect(out).not.toHaveProperty('figureSources');
+  });
+});

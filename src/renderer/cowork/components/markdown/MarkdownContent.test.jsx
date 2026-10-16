@@ -33,7 +33,8 @@ vi.mock('../../../platform/host', async (importOriginal) => {
   };
 });
 
-import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
+import { MarkdownContent, _normalizeMathDelimiters } from './MarkdownContent';
+import { isArtifactLocalPath } from './markdownLinks';
 
 describe('_normalizeMathDelimiters', () => {
   it('rewrites inline \\(…\\) to single-line $$…$$', () => {

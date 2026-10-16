@@ -11,6 +11,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
+import { PLATFORM_UI } from '../../../lib/deployment';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -173,7 +174,9 @@ export default function ScheduleTaskModal({
         title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
         subtitle={isEdit
           ? `Update the cadence or prompt. ${agentLabel} picks up changes on the next run.`
-          : `${agentLabel} runs this prompt on the cadence you set, while the desktop app is open.`}
+          : PLATFORM_UI
+            ? `${agentLabel} runs this prompt on the cadence you set, while the desktop app is open.`
+            : `${agentLabel} runs this prompt on the cadence you set.`}
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
