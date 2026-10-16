@@ -682,6 +682,52 @@ describe('fetchSession error hydration (ENG-1304)', () => {
   });
 });
 
+/* A turn's figure sources come back with its saved events, so a reloaded
+   answer marks its figures the way the live one did. */
+describe('fetchSession figure sources hydration', () => {
+  const FIGURES = {
+    project_id: 'proj-1',
+    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] }],
+    figures: [
+      { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+      { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+    ],
+  };
+  const stubItems = (items) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? items : { id: 'c1', title: 'T', project: null },
+    )));
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the figure sources on the hydrated assistant turn', async () => {
+    stubItems([
+      { role: 'user', content: 'How many mugs?' },
+      { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [
+        { type: 'response.created' },
+        { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+        { type: 'response.figure_sources', item_id: 'msg-1', ...FIGURES },
+        { type: 'response.completed' },
+      ] },
+    ]);
+    const task = await fetchSession('c1');
+    const answer = task.messages.find((m) => m.role === 'assistant');
+    expect(answer.figureSources).toEqual(FIGURES);
+    expect(answer.steps[0]._toolUseId).toBe('toolu_01');
+  });
+
+  it('adds no figure sources to a turn that sent none', async () => {
+    stubItems([
+      { role: 'assistant', id: 'a1', content: 'hi', events: [{ type: 'response.created' }, { type: 'response.completed' }] },
+    ]);
+    const task = await fetchSession('c1');
+    expect(task.messages[0]).not.toHaveProperty('figureSources');
+  });
+});
+
 // ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
 //
 // MODEL_ROUTER_ID is a renderer-only sentinel (the composer's default,

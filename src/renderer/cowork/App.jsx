@@ -83,6 +83,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { rebaseFigureSources } from './lib/figureSources';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -2367,6 +2368,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -2392,6 +2396,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
@@ -3672,6 +3677,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -3701,6 +3709,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
@@ -4127,6 +4136,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -4152,6 +4164,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
@@ -4458,6 +4471,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
@@ -4473,6 +4489,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
@@ -5732,6 +5749,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {

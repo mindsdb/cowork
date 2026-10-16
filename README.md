@@ -929,6 +929,10 @@ copy, the restricted hint and an open picker with a restricted row, open
 `/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
 per-case `id`s work the same way.
 
+Settings > Appearance carries "Show where figures came from", on by default and kept with the server's settings (`show_figure_sources`); the switch shows only when the server serves that key. With it on, each figure in a finished answer that cowork-server traced (the `response.figure_sources` event) is a button: a grey dotted underline when a step returned it, a solid amber one when no step did. Hover or keyboard focus shows where it came from, and a click or Enter lists every source: its SQL and requests with a Copy button each, a web link, Open step, and View file. View file opens the file read only, as it is now: a project file by its path, offered only while the chat is in the project the answer ran in, or a file attached to the chat by its files-store id, offered only while the chat has a project, since the attachment route goes through it. Inside a table the figures share one tab stop and the arrow keys move between them. With the setting off, answers render with no marks.
+
+To see every mark without running such a turn, open `/figure-sources-fixture.html` under the same dev server; `?theme=dark` and the per-case `id`s work the same way. `npx playwright test --config playwright.figure-sources.config.ts` checks on that page that a figure's popover stays on screen on 375x667 and 320x568 phones and at 200% zoom.
+
 ---
 
 ## Over-the-Air Updates
