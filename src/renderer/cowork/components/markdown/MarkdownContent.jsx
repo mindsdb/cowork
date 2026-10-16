@@ -5,12 +5,11 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { Children, cloneElement, isValidElement, memo, useEffect, useMemo, useRef } from 'react';
+import { Children, cloneElement, isValidElement, memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import rehypeKatex from 'rehype-katex';
 
 import { MarkdownCode } from './MarkdownCode';
 import {
@@ -406,6 +405,34 @@ const _KATEX_OPTIONS = Object.freeze({
   errorColor: 'var(--danger)',
 });
 
+// KaTeX and its stylesheet are a large share of the boot bundle but only
+// matter for messages that contain math, so they load on first use. A failed
+// load resets so a later message can retry; until then math renders as code.
+// Success notifies every math instance, including ones whose own load failed.
+let _rehypeKatex = null;
+let _katexLoad = null;
+const _katexListeners = new Set();
+const _subscribeKatex = (listener) => {
+  _katexListeners.add(listener);
+  return () => { _katexListeners.delete(listener); };
+};
+const _subscribeNever = () => () => {};
+const _getKatex = () => _rehypeKatex;
+export function _loadKatex() {
+  _katexLoad ??= Promise.all([
+    import('rehype-katex'),
+    import('katex/dist/katex.min.css'),
+  ]).then(([mod]) => {
+    _rehypeKatex = mod.default;
+    _katexListeners.forEach((listener) => listener());
+    return _rehypeKatex;
+  }, () => {
+    _katexLoad = null;
+    return null;
+  });
+  return _katexLoad;
+}
+
 // Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
 // inline, `\[ … \]` and `$$ … $$` display. remark-math only parses the `$`
 // family, and CommonMark eats the backslash in `\(` / `\[` before we ever
@@ -636,6 +663,14 @@ export const MarkdownContent = memo(function MarkdownContent({
     [text, enableForms, isAssistant, variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
+
+  // Every delimiter style is rewritten to `$$` above, so this catches all math.
+  // Only math instances subscribe, so the load doesn't re-render every message.
+  const hasMath = !!normalized?.includes('$$');
+  const rehypeKatex = useSyncExternalStore(hasMath ? _subscribeKatex : _subscribeNever, _getKatex);
+  useEffect(() => {
+    if (hasMath && !rehypeKatex) _loadKatex();
+  }, [hasMath, rehypeKatex]);
 
   // Skill names from the shared store → colour "/mention" tokens. useSkillNames
   // returns a stable Set rebuilt once per reload in the store, so all instances
@@ -882,7 +917,7 @@ export const MarkdownContent = memo(function MarkdownContent({
         // source) so it deliberately isn't re-sanitized.
         rehypePlugins={[
           [rehypeSanitize, sanitizeSchema],
-          [rehypeKatex, _KATEX_OPTIONS],
+          ...(rehypeKatex ? [[rehypeKatex, _KATEX_OPTIONS]] : []),
         ]}
         components={components}
       >
