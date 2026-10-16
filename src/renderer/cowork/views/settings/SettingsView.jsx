@@ -2375,6 +2375,22 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+        {/* Gated on its own key. A server older than this setting does not
+            serve the key and rejects a write to it with a 400, and it sends
+            no figure sources to mark either. The renderer ships OTA and
+            leads the installed server. */}
+        {'showFigureSources' in settings && (
+          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showFigureSources !== false}
+                onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
+                aria-label="Show where figures came from"
+              />
+              <AutoSaveTag settingKey="showFigureSources" />
+            </div>
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">

@@ -15,6 +15,7 @@ vi.mock('../../platform/host', () => ({ host: mocks.host }));
 import {
   downloadAuthenticatedResource,
   fetchAuthenticatedBlob,
+  fetchAuthenticatedResponse,
   openAuthenticatedResource,
 } from './authenticatedResource';
 
@@ -40,6 +41,25 @@ describe('authenticated private file resources', () => {
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).resolves.toBe(blob);
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).rejects.toThrow('426');
     expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
+  });
+
+  it('carries the HTTP status on a failure, so a caller can tell a missing file apart', async () => {
+    mocks.authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(fetchAuthenticatedBlob('/api/v1/files/f1/content')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('hands back the response with its body unread, so a caller can check its size first', async () => {
+    const response = { ok: true, status: 200, headers: new Headers({ 'Content-Length': '5' }), blob: vi.fn() };
+    mocks.authFetch.mockResolvedValueOnce(response);
+    await expect(fetchAuthenticatedResponse('/api/v1/files/f1/content')).resolves.toBe(response);
+    expect(response.blob).not.toHaveBeenCalled();
+  });
+
+  it('rejects a failed response with its status, and a URL outside the Cowork API before sending', async () => {
+    mocks.authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(fetchAuthenticatedResponse('/api/v1/files/f1/content')).rejects.toMatchObject({ status: 404 });
+    await expect(fetchAuthenticatedResponse('https://attacker.example/file')).rejects.toThrow('outside the Cowork API');
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
   });
 
   it('never forwards the browser bearer to a URL outside the Cowork API', async () => {

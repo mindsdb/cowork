@@ -758,6 +758,44 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
   });
 });
 
+describe('bodyTextMap retains exact server offsets through continuations', () => {
+  const delta = (text) => ({ type: 'response.output_text.delta', delta: text });
+  const reset = { type: 'response.answer_reset' };
+  const restore = (text) => ({ type: 'response.answer_restore', text });
+  const tool = (thought_role) => ({ type: 'response.in_progress', thought_role, tool_use_id: 'toolu_01' });
+
+  it.each(['thought.scratchpad.start', 'thought.tool_call.start'])('keeps the gap removed by %s after a restore', (role) => {
+    const state = reduceAll([
+      delta('📦 250'), reset, delta('Checking 250.'), tool(role), restore('📦 250'), delta(' Still 250.'),
+    ]);
+    expect(state.bodyText).toBe('📦 250 Still 250.');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 30, ranges: [[0, 6], [19, 30]] });
+  });
+
+  it('coalesces chunked text and a restore with no removed narration', () => {
+    const before = reduceAll([delta('Old'), reset, delta('25'), delta('0')]);
+    const state = reduceStream(before, restore('A '));
+    expect(before.bodyTextMap).toEqual({ sourceLength: 3, ranges: [[0, 3]] });
+    expect(state.bodyText).toBe('A 250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+
+  it('discards the previous source coordinates at each reset', () => {
+    const state = reduceAll([
+      delta('First'), reset, delta('Checking'), tool('thought.scratchpad.start'), restore('First'),
+      delta(' Handing back.'), reset, delta('Replacement'),
+    ]);
+    expect(state.bodyText).toBe('Replacement');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 11, ranges: [[0, 11]] });
+  });
+
+  it('retains whitespace when tool-start handling retains the body', () => {
+    const state = reduceAll([delta('\n\n'), tool('thought.scratchpad.start'), delta('250')]);
+    expect(state.bodyText).toBe('\n\n250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+});
+
 // The persisted assistant message id rides response.completed/
 // response.failed at the frame ROOT (not nested under `response`) — same
 // placement as conversation_id/harness on response.created.
@@ -944,5 +982,124 @@ describe('ToolProgress rows (ENG-2981)', () => {
       ['other tool line', 'in_progress'],
       ['Verifying the backend (step 5 of 9)', 'in_progress'],
     ]);
+  });
+});
+
+// ENG-3436: an answer that stopped early says why on response.completed.
+describe('incompleteReason', () => {
+  it('starts null', () => {
+    expect(initialStreamState().incompleteReason).toBeNull();
+  });
+
+  it('captures the reason when the response is incomplete', () => {
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'part' },
+      { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } } },
+    ]);
+    expect(state.status).toBe('done');
+    expect(state.incompleteReason).toBe('spend_ceiling');
+    expect(state.bodyText).toBe('part');
+  });
+
+  it('stays null for a finished answer, and for a server that sends no status', () => {
+    expect(reduceAll([
+      { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+    ]).incompleteReason).toBeNull();
+    expect(reduceAll([{ type: 'response.completed' }]).incompleteReason).toBeNull();
+  });
+});
+
+describe('response.figure_sources', () => {
+  const STEPS = [
+    { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] },
+  ];
+  const FIGURES = [
+    { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+    { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+  ];
+  const turn = (withFigures) => [
+    { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+    { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01', at_ms: 1100 },
+    { type: 'response.output_text.delta', delta: 'You have 250 units; last year $30.', at_ms: 1200 },
+    ...(withFigures
+      ? [{ type: 'response.figure_sources', sequence_number: 57, item_id: 'msg-1', at_ms: 1300, project_id: 'proj-1', steps: STEPS, figures: FIGURES }]
+      : []),
+    { type: 'response.completed', assistant_message_id: 'a1', at_ms: 1400 },
+  ];
+  const fold = (events, replay) => events.reduce(
+    (s, e) => reduceStream(s, e, () => 5000, { replay }),
+    initialStreamState(),
+  );
+
+  it('starts null', () => {
+    expect(initialStreamState().figureSources).toBeNull();
+  });
+
+  it.each([[false], [true]])('keeps the steps and figures on a live stream and on replay (replay=%s)', (replay) => {
+    expect(fold(turn(true), replay).figureSources).toEqual({ project_id: 'proj-1', steps: STEPS, figures: FIGURES });
+  });
+
+  it('changes nothing else in the state', () => {
+    const { figureSources, ...withEvent } = fold(turn(true), false);
+    const { figureSources: none, ...without } = fold(turn(false), false);
+    expect(figureSources).toEqual({ project_id: 'proj-1', steps: STEPS, figures: FIGURES });
+    expect(none).toBeNull();
+    expect(withEvent).toEqual(without);
+  });
+
+  it('ignores an event without a figure list', () => {
+    const before = fold(turn(false).slice(0, 3), false);
+    expect(reduceStream(before, { type: 'response.figure_sources' })).toBe(before);
+    expect(reduceStream(before, { type: 'response.figure_sources', steps: STEPS })).toBe(before);
+  });
+});
+
+/* The figures' offsets index the answer the server saved, which keeps the
+   narration a live message moves into a thought at the next tool call. */
+describe('answerText', () => {
+  const NARRATION = 'Let me read stock.csv first.';
+  const ANSWER = '\n\nYou have 250 units.';
+  const completed = (text) => ({
+    type: 'response.completed',
+    assistant_message_id: 'a1',
+    response: { id: 'r1', status: 'completed', output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text }] }] },
+  });
+  const fold = (events) => events.reduce((s, e) => reduceStream(s, e, () => 5000), initialStreamState());
+
+  it('starts null', () => {
+    expect(initialStreamState().answerText).toBeNull();
+  });
+
+  it('is the text response.completed carries, narration included, while bodyText is the last round', () => {
+    const state = fold([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: NARRATION },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+      { type: 'response.output_text.delta', delta: ANSWER },
+      completed(NARRATION + ANSWER),
+    ]);
+    expect(state.answerText).toBe(NARRATION + ANSWER);
+    expect(state.bodyText).toBe(ANSWER);
+  });
+
+  it('keeps the text of an answer that stopped early, next to its reason', () => {
+    const state = fold([
+      { type: 'response.output_text.delta', delta: ANSWER },
+      {
+        type: 'response.completed',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'spend_ceiling' },
+          output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text: ANSWER }] }],
+        },
+      },
+    ]);
+    expect(state.answerText).toBe(ANSWER);
+    expect(state.incompleteReason).toBe('spend_ceiling');
+  });
+
+  it('stays null when response.completed carries no text', () => {
+    expect(fold([{ type: 'response.output_text.delta', delta: ANSWER }, { type: 'response.completed' }]).answerText).toBeNull();
+    expect(fold([{ type: 'response.completed', response: { output: [{ content: [{ text: 7 }] }] } }]).answerText).toBeNull();
   });
 });
