@@ -32,6 +32,7 @@ import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
+import { providerTestsEnabled } from '../../../lib/providerTests';
 import { visibleProviderCards } from './providerVisibility';
 import { productName } from '../../../lib/deploymentBrand';
 import { STOCK_WORDMARK } from '../../../../shared/product-name';
@@ -69,8 +70,8 @@ const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Tr
 
    `usage` is the `/hub/usage/` view, which decides the allowance copy (a
    refill time, or the no-grant sentence). */
-export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
-  if (!PLATFORM_UI) {
+export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
+  if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
   }
   const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
@@ -776,7 +777,7 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
-  const providerTestsAvailable = !host.isWeb || PLATFORM_UI;
+  const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
   // allowance copy and the funds link. Null outside the provider (tests).
   const hubUsageCtx = useHubUsageContext();
@@ -796,8 +797,8 @@ export default function SettingsView({
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
   // Start by distrusting a persisted provider failure. The mount-time check
-  // below decides whether it is still real before failure UI is shown. Standalone
-  // web keeps the stored result because it does not run connectivity tests.
+  // below decides whether it is still real before failure UI is shown. A deployment
+  // with testing disabled keeps the stored result without running connectivity tests.
   const [initialProviderTestDone, setInitialProviderTestDone] = useState(!providerTestsAvailable);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
@@ -1317,12 +1318,15 @@ export default function SettingsView({
                 const detail = configured ? st.detail : '';
                 // The probe's reason names which MindsHub limit a 402/429 was,
                 // which the detail string alone cannot.
-                const neutralProbeError = !PLATFORM_UI && p.type === 'minds-cloud'
+                const neutralProbeError = (!PLATFORM_UI || !providerTestsAvailable) && p.type === 'minds-cloud'
                   && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
                   ? PROVIDER_UNAVAILABLE_MESSAGE : '';
                 const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
-                const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+                const statusPillTitle = status === 'ok'
+                  ? (!providerTestsAvailable && st.raw !== 'ok'
+                    ? 'Connected through MindsHub sign-in.'
+                    : `Last test passed${detail ? ` (${detail})` : ''}`)
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
                       : providerTestsAvailable ? 'Not tested yet — save settings and run a test to verify.'
@@ -1677,7 +1681,7 @@ export default function SettingsView({
                   );
 
                   const probeNoticeNode = probeNotice ? (
-                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} />
+                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
                   ) : null;
 
                   const subtitle = role === 'planning'

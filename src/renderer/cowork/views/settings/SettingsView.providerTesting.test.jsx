@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   deployment: { PLATFORM_UI: false },
@@ -53,7 +53,7 @@ function settingsFor(provider, extra = {}) {
   };
 }
 
-function renderSettings(initial, onSave = vi.fn(async () => ({}))) {
+function renderSettings(initial, onSave = vi.fn(async () => ({})), props = {}) {
   const latest = { current: initial };
   const setSetting = vi.fn();
   function Harness() {
@@ -73,6 +73,7 @@ function renderSettings(initial, onSave = vi.fn(async () => ({}))) {
       theme="dark" skin="default" customTheme={{}}
       onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
       agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()}
+      {...props}
     />;
   }
   const view = render(<Harness />);
@@ -90,7 +91,19 @@ function expectNoProviderCheck() {
   expect(screen.queryByText(/^Checking .+ connection/)).not.toBeInTheDocument();
 }
 
+function setProviderTesting(value) {
+  document.head.querySelectorAll('meta[name="cowork-provider-tests-enabled"]').forEach((node) => node.remove());
+  if (value === undefined) return;
+  const meta = document.createElement('meta');
+  meta.name = 'cowork-provider-tests-enabled';
+  meta.content = value;
+  document.head.append(meta);
+}
+
+afterEach(() => setProviderTesting(undefined));
+
 beforeEach(() => {
+  setProviderTesting('false');
   mocks.deployment.PLATFORM_UI = false;
   mocks.host.isWeb = true;
   mocks.host.isElectron = false;
@@ -98,7 +111,20 @@ beforeEach(() => {
   mocks.validateSettings.mockReset().mockResolvedValue({ configReady: true });
 });
 
-describe.each(providers)('standalone web provider tests: $type', (provider) => {
+describe.each(providers.flatMap((provider) => [false, true].map((platformUi) => ({
+  provider, type: provider.type, platformUi,
+}))))('disabled web provider tests: $type, platform UI $platformUi', ({ provider, platformUi }) => {
+  beforeEach(() => { mocks.deployment.PLATFORM_UI = platformUi; });
+
+  function expectSavedProviderEdit(received) {
+    const expected = [{ ...provider, apiKey: 'updated-key' }];
+    // Hosted Settings also includes its empty managed-provider row when saving BYOK.
+    if (platformUi && provider.type !== 'minds-cloud') {
+      expected.unshift(expect.objectContaining({ type: 'minds-cloud', apiKey: '' }));
+    }
+    expect(received).toEqual(expected);
+  }
+
   it('opens configured settings without testing or inventing a provider result', async () => {
     const { latest, setSetting } = renderSettings(settingsFor(provider));
     await act(async () => {});
@@ -120,7 +146,7 @@ describe.each(providers)('standalone web provider tests: $type', (provider) => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Saved' })).toBeDisabled());
     expect(onSave).toHaveBeenCalledOnce();
-    expect(onSave.mock.calls[0][0].providers).toEqual([{ ...provider, apiKey: 'updated-key' }]);
+    expectSavedProviderEdit(onSave.mock.calls[0][0].providers);
     expect(mocks.validateSettings).toHaveBeenCalledOnce();
     expect(screen.getByRole('status')).toHaveTextContent('Settings saved.');
     expect(screen.queryByText(/Test passed/)).not.toBeInTheDocument();
@@ -149,7 +175,7 @@ describe.each(providers)('standalone web provider tests: $type', (provider) => {
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
     await screen.findByText('Settings saved, but verification failed: Configuration unavailable.');
-    expect(latest.current.providers).toEqual([{ ...provider, apiKey: 'updated-key' }]);
+    expectSavedProviderEdit(latest.current.providers);
     expect(screen.getByRole('button', { name: 'Saved' })).toBeDisabled();
     expectNoProviderCheck();
   });
@@ -184,7 +210,8 @@ describe.each(providers)('standalone web provider tests: $type', (provider) => {
   });
 });
 
-it('keeps a stored MindsHub rate limit neutral in the provider card and model notices', async () => {
+it.each([false, true])('keeps a stored MindsHub rate limit neutral with testing disabled and platform UI %s', async (platformUi) => {
+  mocks.deployment.PLATFORM_UI = platformUi;
   const provider = providers[1];
   const initial = settingsFor(provider, {
     providerStatus: { [provider.type]: 'fail' },
@@ -204,11 +231,43 @@ it('keeps a stored MindsHub rate limit neutral in the provider card and model no
   expectNoProviderCheck();
 });
 
+it.each([undefined, 'fail', 'ok'])('distinguishes SSO from recorded provider test status %s when tests are disabled', async (stored) => {
+  mocks.deployment.PLATFORM_UI = true;
+  const providerStatus = stored ? { 'minds-cloud': stored } : {};
+  const { latest, setSetting } = renderSettings(
+    settingsFor(providers[1], {
+      providerStatus, providerStatusDetails: stored === 'fail' ? { 'minds-cloud': 'HTTP 401' } : {},
+    }), undefined, { isSsoConnected: true },
+  );
+  await act(async () => {});
+  if (stored === 'ok') {
+    expect(screen.getByLabelText('Last test passed')).toBeInTheDocument();
+  } else {
+    expect(screen.getByLabelText('Connected through MindsHub sign-in.')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last test passed/)).not.toBeInTheDocument();
+  }
+  expectNoProviderCheck();
+  expect(setSetting).not.toHaveBeenCalled();
+  expect(latest.current.providerStatus).toEqual(providerStatus);
+});
+
+it('preserves enabled SSO testing and status copy', async () => {
+  setProviderTesting(undefined);
+  mocks.deployment.PLATFORM_UI = true;
+  renderSettings(settingsFor(providers[1]), undefined, { isSsoConnected: true });
+  await waitFor(() => expect(mocks.testProviders).toHaveBeenCalledExactlyOnceWith([providers[1]]));
+  expect(screen.getByLabelText('Last test passed')).toBeInTheDocument();
+});
+
 it.each([
-  { name: 'hosted web', isWeb: true, platformUi: true },
-  { name: 'desktop', isWeb: false, platformUi: true },
-  { name: 'desktop without platform UI', isWeb: false, platformUi: false },
-])('preserves mount and dirty-save tests on $name', async ({ isWeb, platformUi }) => {
+  { name: 'hosted web by default', isWeb: true, platformUi: true },
+  { name: 'standalone web by default', isWeb: true, platformUi: false },
+  { name: 'hosted web with explicit true', isWeb: true, platformUi: true, flag: 'true' },
+  { name: 'standalone web with explicit true', isWeb: true, platformUi: false, flag: 'true' },
+  { name: 'desktop', isWeb: false, platformUi: true, flag: 'false' },
+  { name: 'desktop without platform UI', isWeb: false, platformUi: false, flag: 'false' },
+])('preserves mount and dirty-save tests on $name', async ({ isWeb, platformUi, flag }) => {
+  setProviderTesting(flag);
   mocks.host.isWeb = isWeb;
   mocks.host.isElectron = !isWeb;
   mocks.deployment.PLATFORM_UI = platformUi;
