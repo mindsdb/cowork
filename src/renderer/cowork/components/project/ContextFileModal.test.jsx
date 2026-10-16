@@ -126,17 +126,15 @@ describe('ContextFileModal file actions on desktop', () => {
   });
 });
 
-/* The server's `relUrl` is relative to `/api/v1`; dropping `/v1` 404s the iframe. */
 describe('ContextFileModal previewing a project HTML file', () => {
-  it('points the iframe at the preview-asset route under /api/v1', async () => {
-    mountProjectFilePreview.mockResolvedValueOnce({
-      token: 'tok', entry: 'report.html', relUrl: '/projects/preview-asset/tok/report.html',
-    });
+  it.each(['report.html', 'report.htm'])('loads %s in the iframe from the mount url', async (filePath) => {
+    const url = `http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/${filePath}`;
+    mountProjectFilePreview.mockResolvedValueOnce({ url });
     await act(async () => {
-      root.render(<ContextFileModal open projectName="acme" filePath="report.html" onClose={() => {}} />);
+      root.render(<ContextFileModal open projectName="acme" filePath={filePath} onClose={() => {}} />);
     });
-    expect(document.querySelector('iframe')?.getAttribute('src'))
-      .toBe('http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/report.html');
+    expect(mountProjectFilePreview).toHaveBeenLastCalledWith('acme', filePath);
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(url);
   });
 });
 
