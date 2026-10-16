@@ -14,10 +14,15 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(state.bodyText).toBe('');
   });
 
-  it("never becomes part of the answer, and stays while Anton writes", () => {
+  it('never becomes part of the answer, and hands over once Anton speaks', () => {
     const state = reduceAll([created, take('Checking.'), text('Revenue rose 4%.')]);
-    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
+    expect(visibleFirstTake(state.firstTake)).toBeNull();
     expect(state.bodyText).toBe('Revenue rose 4%.');
+  });
+
+  it('a blank delta is not Anton speaking', () => {
+    const state = reduceAll([created, take('Checking.'), text('\n\n')]);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
   });
 
   it('goes on the server clear, and nothing late brings it back', () => {
@@ -25,12 +30,14 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(visibleFirstTake(state.firstTake)).toBeNull();
   });
 
-  it('stays while narration moves into the thinking block', () => {
+  it("keeps Anton's narration, and a late take can't reappear beside it", () => {
     const state = reduceAll([
       created, take('Checking.'), text('Let me look.'),
       { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 't1' },
+      take(' late'),
     ]);
-    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
+    expect(visibleFirstTake(state.firstTake)).toBeNull();
+    expect(state.currentThought?.text).toBe('Let me look.');
   });
 
   it('a question for the user takes its place', () => {

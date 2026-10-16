@@ -19,8 +19,8 @@ import { parseFigureSources } from './figureSources';
 //                                 replacing; carries the set-aside answer
 //   response.first_take.delta   — the instant first take: a short
 //                                 placeholder reply on a fast model, shown
-//                                 above the thinking block until the turn
-//                                 ends or asks the user. `.done` ends it,
+//                                 until Anton writes its own text, asks the
+//                                 user, or the turn ends. `.done` ends it,
 //                                 `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
 //   response.artifact_created   — an artifact this turn produced (any type);
@@ -83,8 +83,8 @@ export function initialStreamState() {
      *  is no longer a suffix of the saved answer.
      *  @type {import('./figureSources').BodyTextMap} */
     bodyTextMap: { sourceLength: 0, ranges: [] },
-    /** The instant first take: what the user reads above Anton's steps,
-     *  until a question or the turn's end takes its place.
+    /** The instant first take: what the user reads until Anton's own words,
+     *  a question, or the turn's end take its place.
      *  `{ text, done } | null`. Never part of the answer. */
     firstTake: null,
     /** Harness/agent ID from `response.created` (e.g. 'anton'). */
@@ -441,15 +441,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ? [...ranges.slice(0, -1), [last[0], end]]
       : [...ranges, [sourceLength, end]];
     // The model has moved from thinking to producing the visible
-    // response — end the current thought burst.
+    // response — end the current thought burst. Anton is speaking, so the
+    // first take hands over to it: one sentence on screen, never two.
     return {
       ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
       bodyTextMap: { sourceLength: end, ranges: nextRanges },
+      firstTake: delta.trim() ? CLEARED_TAKE : state.firstTake,
     };
   }
 
-  // The instant first take. Once the turn has asked the user or ended, a
-  // late frame is ignored rather than putting a placeholder back.
+  // The instant first take. Once Anton has spoken, asked the user, or the
+  // turn has ended, a late frame is ignored rather than putting a
+  // placeholder back.
   if (type === 'response.first_take.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta || state.firstTake?.cleared || state.status === 'done' || state.status === 'error') return state;

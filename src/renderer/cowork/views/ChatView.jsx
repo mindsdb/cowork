@@ -3177,8 +3177,8 @@ export default function ChatView({
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies).
                     With questions, the header is in the live segment (TurnSegments). */}
-                {/* The instant first take heads the steps; the adapter drops
-                    it when the turn asks the user or ends. */}
+                {/* The instant first take; the adapter drops it once Anton
+                    writes, asks the user, or the turn ends. */}
                 <FirstTake take={streamingMsg.firstTake} />
                 <TurnSegments
                   steps={streamingMsg.steps}
