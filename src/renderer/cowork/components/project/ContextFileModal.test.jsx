@@ -38,7 +38,7 @@ vi.mock('../../api', () => ({
 }));
 
 import ContextFileModal from './ContextFileModal';
-import { readProjectFile, writeProjectFile } from '../../api';
+import { mountProjectFilePreview, readProjectFile, writeProjectFile } from '../../api';
 
 let container;
 let root;
@@ -123,6 +123,20 @@ describe('ContextFileModal file actions on desktop', () => {
     const labels = await headerButtons({ showOpenAction: false });
     expect(labels.some((label) => label.endsWith('Reveal'))).toBe(true);
     expect(labels.some((label) => label.endsWith('Open'))).toBe(false);
+  });
+});
+
+/* The server's `relUrl` is relative to `/api/v1`; dropping `/v1` 404s the iframe. */
+describe('ContextFileModal previewing a project HTML file', () => {
+  it('points the iframe at the preview-asset route under /api/v1', async () => {
+    mountProjectFilePreview.mockResolvedValueOnce({
+      token: 'tok', entry: 'report.html', relUrl: '/projects/preview-asset/tok/report.html',
+    });
+    await act(async () => {
+      root.render(<ContextFileModal open projectName="acme" filePath="report.html" onClose={() => {}} />);
+    });
+    expect(document.querySelector('iframe')?.getAttribute('src'))
+      .toBe('http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/report.html');
   });
 });
 

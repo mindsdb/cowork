@@ -379,17 +379,15 @@ export default function ContextFileModal({
     }
 
     // HTML branch: project-file preview-mount, iframe srcs `BASE + relUrl`.
-    if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
+    // `.html` only: the server answers `.htm` with 415.
+    if (!genericMode && filePath && /\.html$/i.test(filePath)) {
       setLoading(true);
       mountProjectFilePreview(projectName, filePath)
         .then((res) => {
           if (cancelled) return;
-          // `relUrl` ships with `/v1/...`; the API helpers' BASE already
-          // includes the `/v1` prefix so we splice it onto the origin.
-          const origin = String(BASE || '').replace(/\/v1\/?$/, '');
-          const url = `${origin}${res?.relUrl || ''}`;
-          if (!url) throw new Error('Preview mount returned no URL');
-          setPreviewUrl(url);
+          // `relUrl` is relative to `/api/v1`, same as artifact previews.
+          if (!res?.relUrl) throw new Error('Preview mount returned no URL');
+          setPreviewUrl(`${BASE}${res.relUrl}`);
           setMode('html');
         })
         .catch((e) => {
