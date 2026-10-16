@@ -6,7 +6,7 @@ import { TurnMinimap } from './TurnMinimap';
 import type { StickToBottom } from './useStickToBottom';
 import './chat.css';
 
-type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onKeyDown'> & {
+type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onPointerDown' | 'onKeyDown'> & {
   [data: `data-${string}`]: string | undefined;
 };
 
@@ -71,6 +71,9 @@ export function ChatScroller({
         onScroll={stick.onScroll}
         onWheel={stick.onWheel}
         onTouchStart={releaseAnchor}
+        // A press on the native scrollbar targets the box itself; a press on
+        // the content targets something inside it.
+        onPointerDown={(event) => { if (event.target === event.currentTarget) releaseAnchor(); }}
         onKeyDown={(event) => {
           if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) releaseAnchor();
         }}
