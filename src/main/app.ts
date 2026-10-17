@@ -15,6 +15,7 @@ import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapSe
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
+import { registerKeepAwakeHandlers } from './keep-awake';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
@@ -1585,6 +1586,7 @@ function setupIPC() {
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
   registerUpdateJournalHandlers();
+  registerKeepAwakeHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
