@@ -51,6 +51,21 @@ export interface PendingQuestion {
   }>;
 }
 
+/**
+ * Approximate storage Cowork manages for each task: workspaces, baselines and
+ * recovery data in its own folders. The user's checkout and the repository
+ * objects worktrees share are not counted, and on macOS folder copies share
+ * blocks with their source, so deleting a task can free much less.
+ */
+export interface WorkspaceUsagePage {
+  items: Array<{ session_id: string; bytes: number; recovery_bytes?: number }>;
+  /** Storage still held for removed tasks; older servers omit it. */
+  removed_task_bytes?: number;
+  total_bytes: number;
+  measured_at: string | null;
+  measuring: boolean;
+}
+
 export interface SessionCreateBody {
   repository_setup?: TaskRepositorySetup;
   task_mode?: TaskMode;
@@ -808,6 +823,9 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  workspaceUsage: (sessionId?: string) => requestJson<WorkspaceUsagePage>(
+    `/workspace-usage${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
+  ),
   computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
     method: 'POST',
   }),
