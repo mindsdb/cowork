@@ -21,10 +21,12 @@ import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { FirstTake } from '../components/thinking/FirstTake';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText } from '../lib/clipboard';
+import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
+import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
@@ -55,6 +57,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
+import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -330,6 +333,7 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
     <div
       className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
+      onCopy={trimCopiedSelection}
     >
       <div className="user-turn-inner">
         <div className="user-turn-bubble">
@@ -426,6 +430,16 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
 
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+const INCOMPLETE_REASON_TEXT = {
+  spend_ceiling: 'Stopped early: this task reached its token budget.',
+  round_cap: 'Stopped early: this task reached its step limit.',
+  handback_budget: 'Stopped early: automatic continuations ran out before the task was done.',
+  handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
+  handback_stuck: 'Stopped early: the agent judged the task stuck.',
+  retry_exhausted: 'Stopped early: the task kept failing.',
+};
+
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
@@ -456,11 +470,114 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
   );
 }
 
-function TextBlock({ text, id, complete = true, conversationId = null }) {
+/** @typedef {import('../lib/figureSources').FigureSources} FigureSources */
+/** @typedef {import('../lib/figureSources').LinkedFigureSource} LinkedFigureSource */
+
+/**
+ * Whether View file can read a figure source's project path in this chat.
+ * The path is relative to the project the answer ran in, and the viewer reads
+ * it from the chat's current project: with no project there is nothing to
+ * read it from, and after Move to project the same path there names another
+ * file. An answer saved before figure sources named their project (no
+ * project_id) reads it from the current project.
+ *
+ * @param {FigureSources | null | undefined} figureSources
+ * @param {string | null} projectId the chat's current project
+ * @param {string | null} projectName
+ */
+function canReadFigurePaths(figureSources, projectId, projectName) {
+  if (!projectName) return false;
+  const ranIn = figureSources?.project_id ?? null;
+  return ranIn == null || ranIn === projectId;
+}
+
+export function TextBlock({
+  text,
+  id,
+  complete = true,
+  conversationId = null,
+  /* A finished answer's figure sources (lib/figureSources), the turn's steps
+     they name, the opener for one of those steps by its id, and the opener
+     for the file a source read, called with the source. */
+  figureSources = null,
+  steps = null,
+  onOpenStep = null,
+  onViewFile = null,
+  // The chat's current project, which View file reads a project path from.
+  projectId = null,
+  projectName = null,
+  // Settings > Appearance "Show where figures came from"; off renders no marks.
+  showFigureSources = true,
+}) {
+  const figures = useMemo(() => {
+    if (!showFigureSources) return null;
+    const linked = linkFigureSteps(figureSources, steps);
+    if (!linked) return null;
+    /* A file this chat cannot read offers no View file: a project path
+       outside the project it reads from, or an attachment with no route to
+       read it by (attachmentRawUrl needs the project and the conversation). */
+    const readsPaths = canReadFigurePaths(figureSources, projectId, projectName);
+    const readable = (source) => ({
+      ...source,
+      path: readsPaths ? source.path : null,
+      attachment_id: source.attachment_id && attachmentRawUrl(projectName, conversationId, source.attachment_id)
+        ? source.attachment_id
+        : null,
+    });
+    return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
+  }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
-  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} isAssistant />;
+  return (
+    <MarkdownContent
+      text={text}
+      id={id}
+      complete={complete}
+      conversationId={conversationId}
+      isAssistant
+      figureSources={figures}
+      onOpenFigureStep={onOpenStep}
+      onViewFigureFile={onViewFile}
+    />
+  );
+}
+
+/**
+ * The figure viewer's file. A project file is read by its path from the
+ * chat's project. A file attached to the chat is read by its files-store id
+ * through its attachment route, and shown as text when it is text; `filePath` is its
+ * name then, for the header and the image check, as the Context card's
+ * attachment viewer does.
+ *
+ * @param {LinkedFigureSource | null} source
+ * @param {string | undefined} projectName
+ * @param {string | undefined} projectPath
+ * @param {string | null | undefined} conversationId
+ */
+function figureFileViewerProps(source, projectName, projectPath, conversationId) {
+  if (!source?.path && source?.attachment_id) {
+    const name = source.label || 'Attached file';
+    return {
+      title: name,
+      filePath: name,
+      rawUrl: attachmentRawUrl(projectName, conversationId, source.attachment_id),
+      showRawText: true,
+    };
+  }
+  return { projectName, projectPath, filePath: source?.path || '' };
+}
+
+/**
+ * The figure viewer's note. It shows the file as it is now, which a later
+ * upload under the same name may have changed; the step shows what it read.
+ *
+ * @param {LinkedFigureSource | null} source
+ */
+function figureFileNote(source) {
+  return source?.stepId
+    ? 'Shows the file as it is now. Open step shows what the step read.'
+    : 'Shows the file as it is now, which may differ from what the step read.';
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -748,14 +865,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
    *
-   * `host.openExternal` is async, so the await is what makes the catch reach a
-   * rejected bridge call. Without it the try block returns before the promise
-   * settles: the fallback below never runs on the one failure it exists for,
-   * and the rejection escapes as an unhandled one.
+   * Awaited so a rejected bridge call is caught rather than left unhandled.
+   * No raw window.open fallback: host.openExternal is what restricts the
+   * agent-writable URL to http(s)/mailto.
    */
   const handleOpenPublished = async () => {
-    try { await host.openExternal(artifact.publishedUrl); }
-    catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const handleOpen = async () => {
     /*
@@ -1293,12 +1408,12 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
       deleting={deleting}
       time={time}
       kind="Connection"
-      title="Connect a provider to start chatting"
+      title={PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}
       body={PLATFORM_UI
         ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
-        : 'Add an API key or configure an endpoint in Settings. Contact your administrator if provider setup is managed for you.'}
-      buttons={[
-        ...(PLATFORM_UI ? [{
+        : 'Ask your operator to configure the model provider before starting a task.'}
+      buttons={PLATFORM_UI ? [
+        {
           label: 'Start for free',
           // The click only. Whether this card deserves an
           // impression event of its own is an open
@@ -1308,9 +1423,9 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
             host.openExternal(MINDS_BILLING_URL);
           },
           primary: true,
-        }] : []),
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !PLATFORM_UI },
-      ]}
+        },
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: false },
+      ] : []}
     />
   );
 }
@@ -1510,20 +1625,24 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   // so they never contradict the buttons shown. We deliberately don't reuse the
   // server's copy here: it's provider-aware but not web-aware (it can't know the
   // desktop-only Reconnect is unavailable on web).
-  const title = done
-    ? 'Reconnected'
-    : canReconnect ? 'Reconnect to continue'
-    : PLATFORM_UI && reconnectable ? 'Sign in again'
-    : 'Update your API key';
-  const body = done
-    ? 'Your MindsHub session was refreshed. Send your message again to continue.'
-    : err || (
-        canReconnect
-          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-          : PLATFORM_UI && reconnectable
-            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
-            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
-      );
+  const title = !PLATFORM_UI
+    ? 'The provider could not authenticate'
+    : done
+      ? 'Reconnected'
+      : canReconnect ? 'Reconnect to continue'
+      : reconnectable ? 'Sign in again'
+      : 'Update your API key';
+  const body = !PLATFORM_UI
+    ? 'The model provider rejected its credentials. Ask your operator to check the provider configuration.'
+    : done
+      ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+      : err || (
+          canReconnect
+            ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+            : reconnectable
+              ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+              : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+        );
 
   return (
     <ActionCard
@@ -1533,7 +1652,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       kind="Connection"
       title={title}
       body={body}
-      buttons={done ? [] : [
+      buttons={!PLATFORM_UI || done ? [] : [
         ...(canReconnect ? [{
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
@@ -1598,12 +1717,12 @@ export function ModelUnavailableCard({
         agentLabel={agentLabel}
         kind="Model"
         title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
-        body={code === 'model_restricted'
-          ? 'An admin in your organization restricted this model. Choose another model in Settings.'
-          : 'The provider cannot serve this model. Choose another model in Settings or contact your administrator.'}
-        buttons={[
+        body={!PLATFORM_UI
+          ? 'Ask your operator to check the configured model and its access.'
+          : 'An admin in your organization restricted this model. Choose another model in Settings.'}
+        buttons={PLATFORM_UI ? [
           { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-        ]}
+        ] : []}
       />
     );
   }
@@ -1784,6 +1903,10 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  /* Settings > Appearance "Show where figures came from": mark each figure in
+     a finished answer with the step it came from. On unless the user turned
+     it off. */
+  showFigureSources = true,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1861,6 +1984,9 @@ export default function ChatView({
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
+  /* The figure source (a LinkedFigureSource) whose file is open in the
+     figure viewer. null = closed. */
+  const [figureFileSource, setFigureFileSource] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -2681,19 +2807,22 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
-                      body={badModel
-                        ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
-                        : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      /* Open Settings only. cowork-server does apply a turn's
+                      body={!PLATFORM_UI
+                        ? 'The provider cannot serve the configured model. Ask your operator to check the model configuration.'
+                        : badModel
+                          ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
+                          : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                      /* With platform UI on, offer Open Settings only.
+                         cowork-server does apply a turn's
                          own model (the request's `model`, handed to
                          providers.build_llm_client as `model_override`), so a
                          "Switch to MindsHub Air" here would move this one task.
                          The dead id lives in the planning_model setting, though,
                          and every new task would fail on it again, so the card
                          sends the user to where the id is set. */
-                      buttons={[
+                      buttons={PLATFORM_UI ? [
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-                      ]}
+                      ] : []}
                     />
                   );
                 }
@@ -2828,12 +2957,14 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind="Agent"
                       title="The model didn't respond"
-                      body="The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings."
+                      body={PLATFORM_UI
+                        ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
+                        : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
                       buttons={[
                         ...(resend
                           ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
                           : []),
-                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                        ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
                     />
                   );
@@ -2997,7 +3128,19 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
                   />
-                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
+                  <TextBlock
+                    text={m.content}
+                    id={m.id || `msg-${i}`}
+                    complete
+                    conversationId={task.id}
+                    figureSources={m.figureSources}
+                    steps={m.steps}
+                    onOpenStep={(stepId) => setOpenScratchpadStepId(prefixId(messageKey(m, i), stepId))}
+                    onViewFile={setFigureFileSource}
+                    projectId={project?.id ?? null}
+                    projectName={project?.name ?? null}
+                    showFigureSources={showFigureSources}
+                  />
                   {m.artifact && (
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
@@ -3006,6 +3149,12 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  {m.incompleteReason && (
+                    // role="note": a saved answer's notice must not be announced again on every reload.
+                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
+                      {INCOMPLETE_REASON_TEXT[m.incompleteReason] || 'Stopped before it finished.'}
+                    </Alert>
+                  )}
                 </AnswerTurn>
               );
               });
@@ -3037,6 +3186,9 @@ export default function ChatView({
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies).
                     With questions, the header is in the live segment (TurnSegments). */}
+                {/* The instant first take; the adapter drops it once Anton
+                    writes, asks the user, or the turn ends. */}
+                <FirstTake take={streamingMsg.firstTake} />
                 <TurnSegments
                   steps={streamingMsg.steps}
                   startedAt={streamingMsg.startedAt}
@@ -3253,6 +3405,21 @@ export default function ChatView({
         onClose={() => setOpenScratchpadStepId(null)}
         steps={scratchpadStepsPool}
         focusStepId={openScratchpadStepId}
+      />
+
+      {/* The file a figure's source read, opened from the figure's popover;
+          one viewer for the whole chat. The agent named the file, so the
+          viewer offers no Open (it hands the file to the OS default app). No
+          Edit or Delete either: the file is the figure's evidence, and the
+          Context card's list would not hear of a change. */}
+      <ContextFileModal
+        open={figureFileSource != null}
+        {...figureFileViewerProps(figureFileSource, project?.name, artifactProjectPath, task?.id)}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        note={figureFileNote(figureFileSource)}
+        onClose={() => setFigureFileSource(null)}
       />
 
       {/* Inline ArtifactCard viewer — same modal the Live artifacts

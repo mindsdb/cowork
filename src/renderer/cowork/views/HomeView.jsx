@@ -539,13 +539,13 @@ export default function HomeView({
             <div className="home-connect-card">
               <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(20)}</span>
               <div className="home-connect-card__body">
-                <div className="text-base font-[650] text-strong">Connect a provider to start chatting</div>
+                <div className="text-base font-[650] text-strong">{PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}</div>
                 <div className="text-sm text-[var(--frost-700)] mt-[3px]">{PLATFORM_UI
                   ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.'
-                  : 'Add an API key or configure an endpoint in Settings. Contact your administrator if provider setup is managed for you.'}</div>
+                  : 'Ask your operator to configure the model provider before starting a task.'}</div>
               </div>
-              <div className="home-connect-card__actions">
-                {PLATFORM_UI && <Button
+              {PLATFORM_UI && <div className="home-connect-card__actions">
+                <Button
                   variant="primary"
                   onClick={() => {
                     // Same card, same trigger as ChatView's provider_required
@@ -554,13 +554,13 @@ export default function HomeView({
                     trackBillingOpened('connect_provider');
                     host.openExternal(MINDS_BILLING_URL);
                   }}
-                >Start for free</Button>}
+                >Start for free</Button>
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
-                  style={PLATFORM_UI ? { background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' } : undefined}
+                  style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
                 >Open Settings</Button>
-              </div>
+              </div>}
             </div>
           ) : (
             <Composer

@@ -1,4 +1,5 @@
 import { PLATFORM_UI } from '../lib/deployment';
+import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
 // the loopback server on the per-OS-user port main resolved (ENG-439); Vite
@@ -311,8 +312,8 @@ function _failedEventMeta(events) {
 }
 
 // Replay the server-persisted SSE event log through the live stream
-// reducer to reconstruct `steps` + `startedAt` for each assistant
-// turn. The server saves raw events in a sidecar file and returns
+// reducer to reconstruct `steps`, `startedAt` and `figureSources` for each
+// assistant turn. The server saves raw events in a sidecar file and returns
 // them inline on `/conversations/{id}/items`; doing the replay
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
@@ -335,7 +336,9 @@ function _hydrateAssistantEvents(messages) {
       ...(state.steps?.length > 0
         ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
         : {}),
+      ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -708,19 +711,17 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // MODEL_ROUTER_ID never leaves the renderer — it's how the
           // composer represents "let this account's Settings decide"
           // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that.
-          model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          // model as exactly that. With platform UI off, all callers use
+          // operator-configured role settings, including restored tasks.
+          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // Per-task reasoning-effort override (ENG-1940) — takes precedence
-          // over the account-wide per-role effort setting for this turn only.
-          // Same conditional-key pattern as `harness` just above: omitted
-          // entirely when the caller doesn't pass one, so older servers and
-          // effort-less models never see the field.
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          // A per-task effort is available only with platform UI on. Omit
+          // the key otherwise so this request cannot override role settings.
+          ...(PLATFORM_UI && reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -1295,13 +1296,14 @@ export async function readProjectFile(projectName, path) {
 }
 
 // HTML preview-mount for a project file — server registers the
-// parent dir under a token and returns a relative URL the iframe
-// should load with `src=`. Mirrors the artifact preview flow.
+// parent dir under a token and returns `relUrl`, relative to BASE.
+// `url` is the absolute iframe `src`.
 export async function mountProjectFilePreview(projectName, path) {
-  return req(`/projects/preview-mount-file`, {
+  const data = await req(`/projects/preview-mount-file`, {
     method: 'POST',
     body: JSON.stringify({ name: projectName, path }),
   });
+  return { ...data, url: data?.relUrl ? `${BASE}${data.relUrl}` : '' };
 }
 
 // Absolute URL for downloading a project file's raw bytes. Server
@@ -1528,7 +1530,7 @@ export async function openArtifactFile(artifact) {
     const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
     if (!url) return { ok: false, reason: 'no-serve-url' };
     try { await host.openExternal(url); }
-    catch { window.open(url, '_blank', 'noreferrer'); }
+    catch { return { ok: false, reason: 'open-failed' }; }
     return { ok: true };
   }
   return openArtifact(artifact?.path || '');
@@ -1874,12 +1876,25 @@ export async function saveSkill(payload, isEdit = false) {
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function uploadSkillFile(file) {
+/* `shared` is the create-time "Who can use it" answer. The form field goes
+   out only when the caller passes a boolean, so a caller that never asks
+   leaves it to the server's default, Only me. */
+export async function uploadSkillFile(file, { shared } = {}) {
   const form = new FormData();
   form.append('file', file, file.name);
+  if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
   if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
+}
+
+/* Shares the caller's own skill with everyone, read-only, or stops sharing
+   it. The refusal's sentence comes back as the error message. */
+export async function setSkillSharing(label, shared) {
+  return req(`/skills/${encodeURIComponent(label)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({ shared }),
+  });
 }
 
 export async function deleteSkill(label) {
@@ -2667,8 +2682,8 @@ export const MOCK_DATA = {
       { role: 'user', content: 'Write website copy for agent platform' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
-    { id: 't5', title: 'Create website copy for MindsHub Cowork', subtitle: '2 weeks ago', status: 'done', messages: [
-      { role: 'user', content: 'Create website copy for MindsHub Cowork' },
+    { id: 't5', title: `Create website copy for ${STOCK_PRODUCT_NAME}`, subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: `Create website copy for ${STOCK_PRODUCT_NAME}` },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
     { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
@@ -2679,7 +2694,7 @@ export const MOCK_DATA = {
   projects: [
     { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
     { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
-    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the MindsHub Cowork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p3', name: 'Cowork brand', description: `Brand and identity for the ${STOCK_PRODUCT_NAME} app`, taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
     { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
   ],
 

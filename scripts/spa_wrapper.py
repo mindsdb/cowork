@@ -12,17 +12,22 @@ import os
 from pathlib import Path
 
 from fastapi import HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from cowork.server import app  # noqa: F401 — re-exported for uvicorn
 
 SPA_DIR = Path(os.environ.get("COWORK_SPA_DIR", "/app/dist/renderer-web"))
+_provider_tests = os.environ.get("COWORK_PROVIDER_TESTS_ENABLED", "true")
+if _provider_tests not in {"true", "false"}:
+    raise ValueError("COWORK_PROVIDER_TESTS_ENABLED must be 'true' or 'false'.")
 
 if SPA_DIR.exists():
     # Subdirectories that the SPA build emits — served by StaticFiles so
     # they get correct MIME-types and range-request handling for free.
-    for _sub in ("assets", "fonts", "gravity-field", "logos"):
+    # "brand" holds the stock deployment brand; mounting it also answers an
+    # unknown brand file with 404 instead of the SPA shell.
+    for _sub in ("assets", "brand", "fonts", "gravity-field", "logos"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
             app.mount(
@@ -40,6 +45,16 @@ if SPA_DIR.exists():
     }
     _spa_shell: Path = SPA_DIR / "index-web.html"
 
+    def shell_response() -> HTMLResponse:
+        html = _spa_shell.read_text(encoding="utf-8")
+        # The setting must arrive before the renderer runs, on every shell URL.
+        # Refuse a changed template rather than silently losing the operator's choice.
+        if html.count("<head>") != 1 or "cowork-provider-tests-enabled" in html:
+            raise ValueError("The SPA shell needs one <head> and no provider-testing metadata.")
+        meta = f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">'
+        html = html.replace("<head>", f"<head>\n    {meta}", 1)
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
     @app.get("/health")
     async def health_compat():
         # Compat endpoint — proxies to /api/v1/health for callers that probe /health.
@@ -51,7 +66,7 @@ if SPA_DIR.exists():
 
     @app.get("/")
     async def root():
-        return FileResponse(str(_spa_shell))
+        return shell_response()
 
     @app.api_route(
         "/{full_path:path}",
@@ -74,6 +89,6 @@ if SPA_DIR.exists():
         # a client-side route — serve the SPA shell so the renderer's
         # router can take over.
         served = _spa_files.get(full_path)
-        if served is not None:
+        if served is not None and served != _spa_shell:
             return FileResponse(str(served))
-        return FileResponse(str(_spa_shell))
+        return shell_response()

@@ -44,16 +44,58 @@ describe('ChatView with platform UI disabled', () => {
   );
 
   it.each(['model_access_denied', 'model_disabled', 'model_restricted'])(
-    '%s retains the settings action without a credit offer', (code) => {
+    '%s directs the tester to the operator without settings or credit offers', (code) => {
       const onOpenSettings = vi.fn();
       const { container } = render(
         <ChatView task={taskWith(code, { failedModel: 'sonnet' })} onOpenSettings={onOpenSettings} />,
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
-      expect(onOpenSettings).toHaveBeenCalledWith('agent');
+      expect(screen.getByText(code === 'model_restricted'
+        ? 'Sonnet is restricted' : "Sonnet isn't available right now")).toBeInTheDocument();
+      expect(screen.getByText('Ask your operator to check the configured model and its access.')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
+      expect(onOpenSettings).not.toHaveBeenCalled();
       expect(container).not.toHaveTextContent(/MindsHub|credits|top up|billing/i);
     },
   );
+
+  it.each([
+    ['model_not_found', 'removed-model'],
+    ['model_not_found', null],
+    ['unknown_model', 'removed-model'],
+    ['unknown_model', null],
+  ])('%s names the operator when the failed model is %s', (code, failedModel) => {
+    const onOpenSettings = vi.fn();
+    const { container } = render(<ChatView task={taskWith(code, { failedModel })} onOpenSettings={onOpenSettings} />);
+    expect(screen.getByText(failedModel ? `"${failedModel}" isn't a model we can use` : "That model isn't available")).toBeInTheDocument();
+    expect(screen.getByText('The provider cannot serve the configured model. Ask your operator to check the model configuration.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
+    expect(onOpenSettings).not.toHaveBeenCalled();
+    expect(container).not.toHaveTextContent(/Pick a model|Switch to another model|Your settings point/i);
+  });
+
+  it.each([
+    ['with a message to retry', true],
+    ['with nothing to retry', false],
+  ])('model_timeout names the operator %s without offering settings', (_label, canRetry) => {
+    const onSend = vi.fn();
+    const onOpenSettings = vi.fn();
+    const task = taskWith('model_timeout');
+    if (!canRetry) task.messages = task.messages.filter((message) => message.role !== 'user');
+    const { container } = render(<ChatView task={task} onSend={onSend} onOpenSettings={onOpenSettings} />);
+    const title = screen.getByText("The model didn't respond");
+    const card = within(title.parentElement);
+    expect(card.getByText('The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.')).toBeInTheDocument();
+    expect(card.queryAllByRole('button').map((button) => button.textContent)).toEqual(canRetry ? ['Try again'] : []);
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
+    expect(container).not.toHaveTextContent(/pick another model in Settings/i);
+    if (canRetry) {
+      fireEvent.click(card.getByRole('button', { name: 'Try again' }));
+      expect(onSend).toHaveBeenCalledWith('Summarize sales', attachments);
+    } else {
+      expect(onSend).not.toHaveBeenCalled();
+    }
+    expect(onOpenSettings).not.toHaveBeenCalled();
+  });
 
   it.each([
     ['provider_overloaded', false],
@@ -71,26 +113,29 @@ describe('ChatView with platform UI disabled', () => {
     expect(container).not.toHaveTextContent(/MindsHub|billing|set up MindsHub/i);
   });
 
-  it('offers provider configuration without platform sign-in when credentials fail', () => {
+  it.each([true, false])('names the operator when provider credentials fail and reconnectable is %s', (reconnectable) => {
     const onOpenSettings = vi.fn();
     const { container } = render(
-      <ChatView task={taskWith('provider_auth', { reconnectable: true })} onOpenSettings={onOpenSettings} />,
+      <ChatView task={taskWith('provider_auth', { reconnectable })} onOpenSettings={onOpenSettings} />,
     );
-    expect(screen.getByText('Update your API key')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
-    expect(onOpenSettings).toHaveBeenCalledWith('agent');
-    expect(container).not.toHaveTextContent(/MindsHub|sign in again|Reconnect to continue/i);
+    expect(screen.getByText('The provider could not authenticate')).toBeInTheDocument();
+    expect(screen.getByText('The model provider rejected its credentials. Ask your operator to check the provider configuration.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    expect(onOpenSettings).not.toHaveBeenCalled();
+    expect(container).not.toHaveTextContent(/MindsHub|sign in again|Reconnect to continue|Update your API key|Update it in Settings/i);
     expect(hostMock.host.mindshubFinalize).not.toHaveBeenCalled();
     expect(hostMock.host.mindshubLogin).not.toHaveBeenCalled();
   });
 
-  it('offers settings for a missing provider without the free signup offer', () => {
+  it('asks the operator to configure a missing provider without settings or signup offers', () => {
     const onOpenSettings = vi.fn();
     render(<ChatView task={{ id: 'task-1', messages: [{ role: 'provider_required' }] }} onOpenSettings={onOpenSettings} />);
-    expect(screen.getByText(/Add an API key or configure an endpoint in Settings/)).toBeInTheDocument();
+    expect(screen.getByText('Provider setup is required')).toBeInTheDocument();
+    expect(screen.getByText('Ask your operator to configure the model provider before starting a task.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
-    expect(onOpenSettings).toHaveBeenCalledWith('agent');
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
+    expect(onOpenSettings).not.toHaveBeenCalled();
     expect(hostMock.host.openExternal).not.toHaveBeenCalled();
   });
 

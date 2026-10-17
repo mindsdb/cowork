@@ -1,4 +1,5 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { parseFigureSources } from './figureSources';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -16,8 +17,16 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //                                 answer so far; the next delta replaces it
 //   response.answer_restore     — that continuation handed back instead of
 //                                 replacing; carries the set-aside answer
+//   response.first_take.delta   — the instant first take: a short
+//                                 placeholder reply on a fast model, shown
+//                                 until Anton writes its own text, asks the
+//                                 user, or the turn ends. `.done` ends it,
+//                                 `.cleared` takes it off screen. Never
+//                                 persisted, so only a live turn has one.
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
+//   response.figure_sources     — where each figure in the final answer came
+//                                 from; sent once, before response.completed
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
@@ -36,6 +45,16 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 // The reducer is pure — same input = same output, no side effects, no
 // time reads. Callers pass `now` (defaults to Date.now) so tests can
 // inject a clock.
+
+/** A first take that has left the screen. Kept as a marker rather than null,
+ *  so a take frame that arrives after it (late, or replayed on reconnect)
+ *  can't bring it back. */
+const CLEARED_TAKE = Object.freeze({ text: '', done: true, cleared: true });
+
+/** The first take to show, or null. */
+export function visibleFirstTake(firstTake) {
+  return firstTake && !firstTake.cleared && firstTake.text ? firstTake : null;
+}
 
 export function initialStreamState() {
   return {
@@ -58,6 +77,16 @@ export function initialStreamState() {
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
+    /** Retained ranges into the server's answer, including text hidden at
+     *  tool starts in sourceLength. Reset replaces that source; restore
+     *  prepends to it. This keeps the live offsets exact even when its body
+     *  is no longer a suffix of the saved answer.
+     *  @type {import('./figureSources').BodyTextMap} */
+    bodyTextMap: { sourceLength: 0, ranges: [] },
+    /** The instant first take: what the user reads until Anton's own words,
+     *  a question, or the turn's end take its place.
+     *  `{ text, done } | null`. Never part of the answer. */
+    firstTake: null,
     /** Harness/agent ID from `response.created` (e.g. 'anton'). */
     harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
@@ -75,7 +104,26 @@ export function initialStreamState() {
      *  only thing that gives that row a real id during its own turn. Null on
      *  a producer that persists no user row (the probe path). */
     userMessageId: null,
+    /** Why a finished turn stopped early, off `response.completed`'s
+     *  `incomplete_details.reason` (e.g. 'spend_ceiling'). Null when it finished. */
+    incompleteReason: null,
+    /** Where each figure in the final answer came from and the steps it
+     *  names, off `response.figure_sources` (lib/figureSources), as sent: its
+     *  offsets index `answerText`. Null when the turn sent none: an answer
+     *  with no figure, or a server that predates the event. */
+    figureSources: null,
+    /** The answer the server saved, off `response.completed`: every round's
+     *  text, narration before a tool call included, where `bodyText` keeps
+     *  only what came after the last tool call plus any restored answer.
+     *  Null until the turn completes, or when the event carries no text. */
+    answerText: null,
   };
+}
+
+/** The answer text a `response.completed` event carries, or null. */
+function completedAnswerText(event) {
+  const text = event.response?.output?.[0]?.content?.[0]?.text;
+  return typeof text === 'string' ? text : null;
 }
 
 /** Replace (immutably) the trailing scratchpad step regardless of its
@@ -218,6 +266,7 @@ function reclassifyPreambleOnToolStart(state, eventTs) {
       _isPreamble: true,
     },
     bodyText: '',
+    bodyTextMap: { ...state.bodyTextMap, ranges: [] },
   };
 }
 
@@ -319,7 +368,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
       currentThought: null,
+      firstTake: CLEARED_TAKE,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
+      incompleteReason: event.response?.status === 'incomplete'
+        ? (event.response.incomplete_details?.reason || null)
+        : null,
+      answerText: completedAnswerText(event) ?? state.answerText,
     };
   }
 
@@ -367,6 +421,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
       currentThought: null,
+      firstTake: CLEARED_TAKE,
       // Present only when a partial assistant row was persisted before the
       // failure — absent otherwise, not null-vs-unset here since
       // the wire frame itself omits the field in that case.
@@ -377,9 +432,38 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.output_text.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
+    const { sourceLength, ranges } = state.bodyTextMap;
+    const end = sourceLength + delta.length;
+    const last = ranges.at(-1);
+    // Consecutive deltas belong to one retained segment, regardless of how
+    // the transport chunks them. Hidden narration leaves a gap instead.
+    const nextRanges = last?.[1] === sourceLength
+      ? [...ranges.slice(0, -1), [last[0], end]]
+      : [...ranges, [sourceLength, end]];
     // The model has moved from thinking to producing the visible
-    // response — end the current thought burst.
-    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
+    // response — end the current thought burst. Anton is speaking, so the
+    // first take hands over to it: one sentence on screen, never two.
+    return {
+      ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
+      bodyTextMap: { sourceLength: end, ranges: nextRanges },
+      firstTake: delta.trim() ? CLEARED_TAKE : state.firstTake,
+    };
+  }
+
+  // The instant first take. Once Anton has spoken, asked the user, or the
+  // turn has ended, a late frame is ignored rather than putting a
+  // placeholder back.
+  if (type === 'response.first_take.delta') {
+    const delta = typeof event.delta === 'string' ? event.delta : '';
+    if (!delta || state.firstTake?.cleared || state.status === 'done' || state.status === 'error') return state;
+    return { ...state, firstTake: { text: (state.firstTake?.text || '') + delta, done: false } };
+  }
+  if (type === 'response.first_take.done') {
+    if (!state.firstTake || state.firstTake.cleared) return state;
+    return { ...state, firstTake: { ...state.firstTake, done: true } };
+  }
+  if (type === 'response.first_take.cleared') {
+    return { ...state, firstTake: CLEARED_TAKE };
   }
 
   // Anton's completion verifier forced a continuation, so the text that
@@ -390,7 +474,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // immediately before the replacement text, so the bubble is never left
   // empty, and a continuation that never speaks sends nothing at all.
   if (type === 'response.answer_reset') {
-    return { ...state, bodyText: '', currentThought: null };
+    return { ...state, bodyText: '', bodyTextMap: { sourceLength: 0, ranges: [] }, currentThought: null };
   }
 
   // The continuation never delivered the replacement the boundary promised —
@@ -400,7 +484,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.answer_restore') {
     const text = typeof event.text === 'string' ? event.text : '';
     if (!text) return state;
-    return { ...state, bodyText: text + state.bodyText };
+    const { sourceLength, ranges } = state.bodyTextMap;
+    const restoredRanges = ranges.map(([start, end]) => [start + text.length, end + text.length]);
+    if (restoredRanges[0]?.[0] === text.length) restoredRanges[0][0] = 0;
+    else restoredRanges.unshift([0, text.length]);
+    return {
+      ...state, bodyText: text + state.bodyText,
+      bodyTextMap: { sourceLength: sourceLength + text.length, ranges: restoredRanges },
+    };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for
@@ -521,6 +612,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     if (state.steps.some((s) => s.badge === 'AskUser' && s._questionKey === key)) {
       return state;
     }
+    // A question is Anton speaking: the first take steps aside.
+    state = { ...state, firstTake: CLEARED_TAKE };
     const step = {
       id: `question-${key}`,
       // Fixed text, not the prompt: the prompt can be a long markdown brief,
@@ -584,6 +677,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       };
     });
     return found ? { ...state, steps } : state;
+  }
+
+  /* The figures of the final answer and the steps they came from. Sent once,
+     just before response.completed, and replayed from the saved events on
+     reload; the chat marks each figure once the answer is finished. */
+  if (type === 'response.figure_sources') {
+    const figureSources = parseFigureSources(event);
+    return figureSources ? { ...state, figureSources } : state;
   }
 
   // ── thought.* sub-events live under response.in_progress ──────────

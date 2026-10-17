@@ -8,7 +8,7 @@ import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
-import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
+import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -82,7 +82,8 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
-import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { initialStreamState, reduceStream, visibleFirstTake } from './lib/responseStreamAdapter';
+import { rebaseFigureSources } from './lib/figureSources';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -2166,6 +2167,7 @@ function AppCore() {
   const bootIntroDone = useBootDecisions({
     serverOnline,
     health,
+    route,
     projects,
     selectedProject,
     setServerHelpOpen,
@@ -2298,13 +2300,12 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already tailing locally — second-mount of the same task should
-    // not double up. Deliberately still the shared refs and not the registry:
-    // a record also covers a live send, and re-attaching over one would abort
-    // it in favour of a tail that immediately 404s.
-    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
-      return true;
-    }
+    // A tail or send registered here, or a send holding the slot while it
+    // uploads. A second stream would abort it, whoever holds the shared slot.
+    const alreadyStreamingHere = () => (
+      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+    );
+    if (alreadyStreamingHere()) return true;
     let status;
     try {
       status = await fetchInFlightStatus(taskId);
@@ -2312,6 +2313,8 @@ function AppCore() {
       return false;
     }
     if (!status || !status.in_flight) return false;
+    // A send or queued drain may have started here while the probe was out.
+    if (alreadyStreamingHere()) return true;
 
     // Cache sync: the probe just confirmed the producer is alive.
     // Mark it now so any concurrent reconcile (e.g. switching to a
@@ -2329,6 +2332,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2366,9 +2370,13 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -2390,7 +2398,9 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -2911,7 +2921,7 @@ function AppCore() {
     }
   };
 
-  const handleConnectorPicked = async (connector) => {
+  const handleConnectorPicked = async (connector, { existingName } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
     // Snapshot the origin now, before we switch into the connect task below.
@@ -2989,6 +2999,10 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        /* Reconnecting a shared connection carries its name so the submit
+           (DataVaultFormPanel reads spec._existing_name) updates that entry in
+           place instead of saving a second one under a fresh random slug. */
+        ...(existingName ? { _existing_name: existingName } : {}),
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
@@ -3571,6 +3585,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3669,9 +3684,13 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         // Anton sometimes wraps auth failures into a 200 stream that
         // emits the error as plain assistant text. Detect that case
         // and replace the assistant turn with the provider_required
@@ -3697,7 +3716,9 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
@@ -4062,6 +4083,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4122,9 +4144,13 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -4146,7 +4172,9 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -4347,6 +4375,7 @@ function AppCore() {
           content: streamState.bodyText,
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4451,10 +4480,14 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -4465,7 +4498,9 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -5419,11 +5454,13 @@ function AppCore() {
     // hunting for a second spot.
     theme,
     showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    /* Opens Display settings only when the corner button would; otherwise it
+       flips the theme. */
     onToggleTheme: () => {
-      if (appearanceSettings.show8bitToggle === false) {
-        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-      } else {
+      if (displayToggleMode(appearanceSettings) === 'menu') {
         setThemeModalOpen(true);
+      } else {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
   };
@@ -5446,7 +5483,7 @@ function AppCore() {
         };
       case 'style':
         return {
-          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          label: styleToggleLabel(skin),
           icon: Ico.gamepad(14),
           onClick: () => setSkin(nextToggledSkin(skin)),
         };
@@ -5721,6 +5758,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -6008,7 +6046,7 @@ function AppCore() {
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}
             onConnectNew={handleStartConnectChat}
-            onReconnect={(spec) => handleConnectorPicked(spec)}
+            onReconnect={(spec, opts) => handleConnectorPicked(spec, opts)}
             agentLabel={agentLabel}
           />
         )}
