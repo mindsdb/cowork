@@ -20,6 +20,8 @@
                           them by tool_use_id, in step order
        origin 'question'  the user's own question holds it; nothing to mark
        origin 'none'      no step returned it
+       origin 'earlier_answer'  no step returned it, but an earlier answer in
+                          the chat gave it, sourced; `sources` is empty
 
    The stream reducer stores the parsed event on the turn. A live message
    drops narration that came before a tool call, so the finished live turn
@@ -29,7 +31,7 @@
    in the rendered answer (FigureMark). */
 
 /**
- * @typedef {'query' | 'file' | 'web' | 'memory' | 'step'} FigureStepKind
+ * @typedef {'query' | 'file' | 'web' | 'step'} FigureStepKind
  * @typedef {{
  *   tool_use_id: string,
  *   kind: FigureStepKind,
@@ -44,7 +46,7 @@
  *   files-store id of a file attached to the conversation, when the step read
  *   one; `path` is null then. `url` is http(s).
  * @typedef {{ tool_use_id: string, page: number | null }} FigureSourceRef
- * @typedef {'step' | 'question' | 'none'} FigureOrigin
+ * @typedef {'step' | 'question' | 'none' | 'earlier_answer'} FigureOrigin
  * @typedef {{
  *   start: number,
  *   end: number,
@@ -68,10 +70,11 @@
  *   ranges. Joining those ranges produces the live message's body text.
  */
 
-const ORIGINS = new Set(['step', 'question', 'none']);
-const KINDS = new Set(['query', 'file', 'web', 'memory', 'step']);
+const ORIGINS = new Set(['step', 'question', 'none', 'earlier_answer']);
+const KINDS = new Set(['query', 'file', 'web', 'step']);
 
 export const NO_SOURCE_TEXT = 'No source: no step in this answer returned this figure. Check it before you act on it.';
+export const REPEATED_TEXT = 'Repeated from an earlier answer';
 
 /* A path relative to the project, or null. The file viewer reads it through
    the project files API, so an absolute path, a Windows path or a `..` segment
@@ -204,7 +207,6 @@ function describeSource(source) {
   }
   if (kind === 'query') return label ? `From a query: ${label}` : 'From a query';
   if (kind === 'web') return label ? `From the web: ${label}` : 'From the web';
-  if (kind === 'memory') return 'From memory';
   return label ? `From a step: ${label}` : 'From a step';
 }
 
@@ -213,15 +215,18 @@ function describeSource(source) {
  *  @param {LinkedFigure} figure */
 export function figureSourceText(figure) {
   if (figure.origin === 'none') return NO_SOURCE_TEXT;
+  if (figure.origin === 'earlier_answer') return REPEATED_TEXT;
   const [first, ...rest] = figure.sources;
   if (!first) return '';
   return rest.length > 0 ? `${describeSource(first)} and ${rest.length} more` : describeSource(first);
 }
 
-/** Whether a figure gets a mark: a sourced one with a source to name, or one
- *  no step returned. A figure from the question is left as plain text. */
+/** Whether a figure gets a mark: a sourced one with a source to name, one no
+ *  step returned, or one repeated from an earlier answer. A figure from the
+ *  question is left as plain text. */
 function isMarked(figure) {
-  return figure.origin === 'none' || (figure.origin === 'step' && figure.sources.length > 0);
+  if (figure.origin === 'none' || figure.origin === 'earlier_answer') return true;
+  return figure.origin === 'step' && figure.sources.length > 0;
 }
 
 export function hasFigureMarks(figures) {
