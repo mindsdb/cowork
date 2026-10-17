@@ -11,6 +11,20 @@ import {
 const VIEW = 'https://br-ab12cd34.4nton.ai/sessions/main/view?et=tok';
 
 describe('isFramableViewUrl', () => {
+  it('accepts a standalone browser service on this machine', () => {
+    expect(isFramableViewUrl('http://localhost:8080/sessions/main/view?et=tok')).toBe(true);
+    expect(isFramableViewUrl('http://127.0.0.1:8080/sessions/main/view')).toBe(true);
+    expect(isFramableViewUrl('http://browser.acme.dev/sessions/main/view')).toBe(false);
+    expect(isFramableViewUrl('http://localhost.evil.com/v')).toBe(false);
+  });
+
+  it('accepts a standalone server over https, but only its viewer page', () => {
+    expect(isFramableViewUrl('https://browser.acme.dev/sessions/u-1/view?et=tok')).toBe(true);
+    expect(isFramableViewUrl('https://browser.acme.dev/')).toBe(false);
+    expect(isFramableViewUrl('https://evil.com/phish')).toBe(false);
+    expect(isFramableViewUrl('https://user:pw@browser.acme.dev/sessions/main/view')).toBe(false);
+  });
+
   it('accepts hosted browser instances only', () => {
     expect(isFramableViewUrl(VIEW)).toBe(true);
     expect(isFramableViewUrl('https://br-ab12cd34-alpha.dev.mindshub.ai/sessions/main/view')).toBe(true);

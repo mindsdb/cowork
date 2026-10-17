@@ -9,14 +9,22 @@
 
 export const BROWSER_BADGE = 'Browser';
 
-// Only a hosted browser instance may be framed: the same hosts the CSP lists.
+// What may be framed. A hosted browser instance (any path), or a standalone
+// browser service ("Your own server"): https anywhere, or plain http on this
+// machine, and then only its viewer page. The address comes from cowork-server,
+// which only hands out viewer links from the server configured in settings.
 const FRAMABLE_HOST = /^br-[a-z0-9-]+\.(?:[a-z0-9-]+\.)*(?:4nton\.ai|mindshub\.ai)$/;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
+const VIEWER_PATH = /^\/sessions\/[A-Za-z0-9_-]{1,64}\/view$/;
 
 export function isFramableViewUrl(url) {
   if (typeof url !== 'string' || !url) return false;
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && FRAMABLE_HOST.test(parsed.hostname);
+    if (parsed.protocol === 'https:' && FRAMABLE_HOST.test(parsed.hostname)) return true;
+    if (parsed.username || parsed.password || !VIEWER_PATH.test(parsed.pathname)) return false;
+    if (parsed.protocol === 'https:') return true;
+    return parsed.protocol === 'http:' && LOOPBACK_HOSTS.has(parsed.hostname);
   } catch {
     return false;
   }
