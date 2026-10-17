@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
 import { openExternal } from '../../../platform/host';
-import { isFramableViewUrl, needsFreshViewUrl } from '../../lib/browserSession';
+import { browserViewerTheme, isFramableViewUrl, needsFreshViewUrl } from '../../lib/browserSession';
 import './browser-panel.css';
 
 // The live view of the user's MindsHub browser, beside the chat (ENG-3299).
@@ -42,6 +42,30 @@ export function BrowserPanel({ session, agentLabel = 'Anton', onClose }) {
     }
   }, [session.key, session.viewUrl, session.expiresAt]);
 
+  // Keep the viewer's toolbar in the app's theme: send it when the viewer
+  // loads or asks, and again whenever the theme, skin or custom accent changes.
+  const frameRef = useRef(null);
+  useEffect(() => {
+    if (!viewUrl) return undefined;
+    const origin = new URL(viewUrl).origin;
+    const sendTheme = () => {
+      const target = frameRef.current?.contentWindow;
+      if (!target) return;
+      target.postMessage(browserViewerTheme(getComputedStyle(document.body), document.body.dataset.theme), origin);
+    };
+    const onMessage = (event) => {
+      if (event.origin === origin && event.source === frameRef.current?.contentWindow && event.data?.type === 'browser-viewer-ready') sendTheme();
+    };
+    window.addEventListener('message', onMessage);
+    const observer = new MutationObserver(sendTheme);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'data-skin', 'style'] });
+    sendTheme();
+    return () => {
+      window.removeEventListener('message', onMessage);
+      observer.disconnect();
+    };
+  }, [viewUrl, generation]);
+
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape' && event.target === document.body) onClose();
@@ -71,6 +95,11 @@ export function BrowserPanel({ session, agentLabel = 'Anton', onClose }) {
         <div className="browser-panel__stage">
           {viewUrl ? (
             <iframe
+              ref={frameRef}
+              onLoad={() => frameRef.current?.contentWindow?.postMessage(
+                browserViewerTheme(getComputedStyle(document.body), document.body.dataset.theme),
+                new URL(viewUrl).origin,
+              )}
               key={`${viewUrl}:${generation}`}
               title="Shared browser"
               src={viewUrl}

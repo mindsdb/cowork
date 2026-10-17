@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BROWSER_BADGE,
   browserStep,
+  browserViewerTheme,
   isFramableViewUrl,
   latestBrowserSession,
   needsFreshViewUrl,
@@ -77,3 +78,17 @@ describe('needsFreshViewUrl', () => {
     expect(needsFreshViewUrl({ viewUrl: '' }, now)).toBe(true);
   });
 });
+
+describe('browserViewerTheme', () => {
+  it('maps the app tokens onto the viewer variables', () => {
+    const tokens = { '--bg': ' #080d18 ', '--surface': '#0E1626', '--line': '#1E2A44', '--ink': '#F2F6FF', '--font-sans': "'JetBrains Mono', monospace" };
+    const style = { getPropertyValue: (name) => tokens[name] ?? '' };
+    expect(browserViewerTheme(style, 'dark')).toEqual({
+      type: 'browser-theme',
+      scheme: 'dark',
+      vars: { bg: '#080d18', panel: '#0E1626', border: '#1E2A44', text: '#F2F6FF', font: "'JetBrains Mono', monospace" },
+    });
+    expect(browserViewerTheme(style, undefined).scheme).toBe('light');
+  });
+});
+

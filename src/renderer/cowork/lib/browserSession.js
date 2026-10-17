@@ -85,3 +85,31 @@ export function needsFreshViewUrl(session, nowMs = Date.now()) {
   if (!session.expiresAt) return false;
   return session.expiresAt * 1000 - 60_000 <= nowMs;
 }
+
+
+// The app's theme, in the shape the browser viewer accepts (a
+// `browser-theme` postMessage): its toolbar then matches light, dark, any
+// skin and a custom accent. `style` is a CSSStyleDeclaration (computed style
+// of document.body, where skins and custom themes set their tokens).
+const VIEWER_THEME_TOKENS = {
+  bg: '--bg',
+  panel: '--surface',
+  border: '--line',
+  text: '--ink',
+  muted: '--ink-3',
+  accent: '--accent',
+  danger: '--danger',
+  human: '--ok',
+  font: '--font-sans',
+  radius: '--r-sm',
+};
+
+export function browserViewerTheme(style, theme) {
+  const vars = {};
+  for (const [name, token] of Object.entries(VIEWER_THEME_TOKENS)) {
+    const value = style.getPropertyValue(token).trim();
+    if (value) vars[name] = value;
+  }
+  return { type: 'browser-theme', scheme: theme === 'dark' ? 'dark' : 'light', vars };
+}
+
