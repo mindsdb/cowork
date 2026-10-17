@@ -67,6 +67,7 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
+  limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
   max_turn_tokens: 'maxTurnTokens',
@@ -558,6 +559,15 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
+    // The server's default for a budget: the safety limit in force while the
+    // limits switch is off, and what a cleared field resets to. Kept apart
+    // from the budget itself, which holds the user's saved value. A server
+    // that predates `default` still reveals it on an unset row, whose value
+    // is the default.
+    if (clientKey in BUDGET_FIELDS) {
+      const served = row.default ?? (row.is_set === false ? row.value : null);
+      if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
+    }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {
@@ -715,7 +725,8 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // is {} until the first successful fetch, so as a global rule this would
     // silently drop the first save of a session. For budget keys the trade
     // is worth it — absence really does mean a server that can't take them.
-    if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
+    // The limits switch rides the same rule: it reached the server later.
+    if ((clientKey in BUDGET_FIELDS || clientKey === 'limitsEnabled') && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
@@ -738,9 +749,11 @@ export function diffSettingsForWrite(patch, lastFetched) {
 // strings; the page-wide dirty compare is a JSON diff, so types must survive
 // the save → re-fetch round trip unchanged).
 
+// `fallback` is cowork-server's default, the safety limit a task runs to
+// while the limits switch is off; keep it equal to COWORK_DEFAULT_MAX_*.
 export const BUDGET_FIELDS = {
-  maxToolRounds: { min: 5, max: 500, fallback: 50 },
-  maxContinuations: { min: 0, max: 25, fallback: 5 },
+  maxToolRounds: { min: 5, max: 500, fallback: 250 },
+  maxContinuations: { min: 0, max: 25, fallback: 10 },
   // Per-turn spend ceiling (ENG-1286). `min` is 750_000, not 0 and not a
   // rounder-looking 100_000: a turn's first LLM call costs roughly the
   // conversation's context (~190k on a long one), so a ceiling below a couple
@@ -758,7 +771,7 @@ export const BUDGET_FIELDS = {
   // tokens) — this only tells the input to display and accept millions
   // (1.25 on screen means 1_250_000 tokens), since nobody wants to type or
   // read seven digits. See `toDisplayUnits`/`toNaturalUnits` below.
-  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1_000_000 },
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 25_000_000, unitDivisor: 1_000_000 },
 };
 
 /**
@@ -814,9 +827,9 @@ export function clampBudgetValue(raw, spec) {
  *
  * EFFECTIVELY off, not literally: a turn makes roughly
  * `maxToolRounds x (maxContinuations + 1)` LLM calls, so at the server's
- * defaults (50 x 6 = ~306) 50M is reached at ~163k per call — below the ~190k a
- * long conversation carries. It has never happened (largest turn in 30 days of
- * production: 8.26M), but the step cap is not a guarantee that it can't.
+ * defaults (250 x 11 = ~2,750) 50M is reached at ~18k per call — far below the
+ * ~190k a long conversation carries. It has never happened (largest turn in 30
+ * days of production: 34.4M), but the step cap is not a guarantee that it can't.
  *
  * A 0-means-unlimited sentinel was
  * built and removed: it needed a hole in the range, a server-side validator to
@@ -845,7 +858,26 @@ export function resolveBudgetRestore(remembered, saved, spec) {
     if (isBudgetUnlimited(candidate, spec)) continue;
     return clampBudgetValue(candidate, spec);
   }
+  // A served default can itself be the max (a deployment set to 50M), which
+  // would leave the switch stuck on; `restoreFallback` is the way out.
+  if (isBudgetUnlimited(spec.fallback, spec) && spec.restoreFallback != null) {
+    return String(spec.restoreFallback);
+  }
   return String(spec.fallback);
+}
+
+/**
+ * The spec a budget field edits with: `fallback` (the "default" hint, and what
+ * a cleared field resets to) is the server's served default when it sends one,
+ * since that is what the server applies with nothing stored. A newer renderer
+ * on an older server whose default is lower must not save its own, higher
+ * number as a "reset".
+ */
+export function budgetSpec(key, budgetDefaults) {
+  const spec = BUDGET_FIELDS[key];
+  const served = Number(budgetDefaults?.[key]);
+  if (budgetDefaults?.[key] == null || !Number.isFinite(served)) return spec;
+  return { ...spec, fallback: served, restoreFallback: spec.fallback };
 }
 
 /**

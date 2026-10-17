@@ -3,7 +3,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -186,7 +186,10 @@ export function UnavailableModelHint({ label, restricted }) {
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
+// `lockedValue`: while the limits switch is off the field is read-only and
+// shows the safety limit in force instead of the user's saved value, which is
+// left untouched for when the switch goes back on.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, lockedValue = null }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
   // "No limit" writes the TOP of the range, which already was the off switch —
@@ -195,12 +198,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // a server-side validator and no special case in the clamp.
   //
   // The hint below says "only the step and auto-continue caps apply" rather
-  // than promising infinity, and that wording is load-bearing: at ~306 calls
-  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
-  // call, which a long conversation can carry. Never observed — largest turn in
-  // 30 days was 8.26M — but not impossible.
+  // than promising infinity, and that wording is load-bearing: at ~2,750 calls
+  // (the server's default 250 rounds x 11 passes) 50M is reached at ~18k per
+  // call, which almost any conversation carries. Never observed — largest turn
+  // in 30 days was 34.4M — but not impossible.
+  const locked = lockedValue != null;
   const showUnlimited = unlimitedLabel != null && spec.max != null;
-  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  const isUnlimited = showUnlimited && isBudgetUnlimited(locked ? lockedValue : value, spec);
   // The number to put back when the switch goes off. A ref, not state: it must
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
@@ -227,12 +231,14 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             inputMode="decimal"
             min={toDisplay(min)}
             max={toDisplay(max)}
-            disabled={isUnlimited}
+            disabled={locked || isUnlimited}
             // Show the number they'd return to, not the max: a disabled field
             // reading 50000000 invites someone to "fix" it back down by hand.
-            value={isUnlimited
-              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
-              : toDisplay(value ?? String(fallback))}
+            value={locked
+              ? toDisplay(lockedValue)
+              : isUnlimited
+                ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+                : toDisplay(value ?? String(fallback))}
             onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
             onBlur={(e) => {
               if (value == null) return; // untouched — don't materialize the key
@@ -248,7 +254,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
         </div>
         <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
-          {isUnlimited ? (
+          {locked ? (
+            <span className="whitespace-nowrap">safety limit</span>
+          ) : isUnlimited ? (
             <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
           ) : (
             <>
@@ -264,6 +272,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <Checkbox
               checked={isUnlimited}
+              disabled={locked}
               onCheckedChange={(on) => setSetting(
                 settingKey,
                 on
@@ -852,6 +861,15 @@ export default function SettingsView({
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
+  // The limits switch, probed the same way. A server without it applies the
+  // budgets on every turn, so they stay editable there.
+  const hasLimitsSwitch = settings != null && 'limitsEnabled' in settings;
+  const limitsOn = !hasLimitsSwitch || settings.limitsEnabled === true;
+  // What a budget field shows while the switch is off: the safety limit the
+  // server serves, or the factory default from a server that doesn't.
+  const safetyLimit = (key) => (limitsOn
+    ? null
+    : settings.budgetDefaults?.[key] ?? String(BUDGET_FIELDS[key].fallback));
   // Async provider tests merge their status into the latest displayed values.
   // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
@@ -1922,15 +1940,30 @@ export default function SettingsView({
 
         {hasBudgetSettings && (
           <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
+            {hasLimitsSwitch && (
+              <Section
+                title="Limit how much a task can do"
+                subtitle={limitsOn
+                  ? `${agentLabel || 'Anton'} stops or asks before going further at the steps, auto-continues and tokens you set below.`
+                  : `Off: a task runs until it's done, up to a high safety limit where ${agentLabel || 'Anton'} asks before going further. Turn on to set your own limits.`}
+              >
+                <Switch
+                  checked={limitsOn}
+                  onCheckedChange={(v) => setSetting('limitsEnabled', v)}
+                  aria-label="Limit how much a task can do"
+                />
+              </Section>
+            )}
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
             >
               <BudgetNumberField
                 settingKey="maxToolRounds"
+                lockedValue={safetyLimit('maxToolRounds')}
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
-                spec={BUDGET_FIELDS.maxToolRounds}
+                spec={budgetSpec('maxToolRounds', settings.budgetDefaults)}
                 label="Max steps per task"
                 setSetting={setSetting}
               />
@@ -1941,9 +1974,10 @@ export default function SettingsView({
             >
               <BudgetNumberField
                 settingKey="maxContinuations"
+                lockedValue={safetyLimit('maxContinuations')}
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
-                spec={BUDGET_FIELDS.maxContinuations}
+                spec={budgetSpec('maxContinuations', settings.budgetDefaults)}
                 label="Max auto-continues"
                 setSetting={setSetting}
               />
@@ -1960,9 +1994,10 @@ export default function SettingsView({
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
+                  lockedValue={safetyLimit('maxTurnTokens')}
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
-                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  spec={budgetSpec('maxTurnTokens', settings.budgetDefaults)}
                   label="Max tokens per task"
                   setSetting={setSetting}
                   unlimitedLabel="No limit"

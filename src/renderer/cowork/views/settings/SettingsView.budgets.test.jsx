@@ -208,6 +208,117 @@ describe('SettingsView — Max tokens per task', () => {
   });
 });
 
+describe('SettingsView — limits switch', () => {
+  const budgetInputs = () => ['Max steps per task', 'Max auto-continues', 'Max tokens per task']
+    .map((label) => screen.getByLabelText(label));
+  const limitsSwitch = () => screen.getByRole('switch', { name: 'Limit how much a task can do' });
+
+  it('is off by default and the budgets cannot be edited', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).not.toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeDisabled();
+    // Base UI's checkbox is a span: disabled shows as data-disabled.
+    expect(noLimitBox()).toHaveAttribute('data-disabled');
+  });
+
+  it('turning it on saves the switch and makes the budgets editable', async () => {
+    const props = baseProps(withBudgets({ limitsEnabled: false }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(limitsSwitch());
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Max steps per task'), { target: { value: '40' } });
+
+    const patch = await savePatch(props);
+    expect(patch.limitsEnabled).toBe(true);
+    expect(patch.maxToolRounds).toBe('40');
+  });
+
+  const served = { maxToolRounds: '300', maxContinuations: '12', maxTurnTokens: '30000000' };
+  const saved = { maxToolRounds: '40', maxContinuations: '2', maxTurnTokens: '2000000' };
+
+  it('while off, shows the safety limits in force, not the saved values', () => {
+    render(<SettingsView {...baseProps(withBudgets({ ...saved, limitsEnabled: false, budgetDefaults: served }))} />);
+    expandAdvanced();
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(300);
+    expect(screen.getByLabelText('Max auto-continues')).toHaveValue(12);
+    expect(screen.getByLabelText('Max tokens per task')).toHaveValue(30);
+    expect(screen.getAllByText('safety limit')).toHaveLength(3);
+  });
+
+  it('turning it on shows the saved values, which the off state left untouched', async () => {
+    const props = baseProps(withBudgets({ ...saved, limitsEnabled: false, budgetDefaults: served }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(limitsSwitch());
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(40);
+    expect(screen.getByLabelText('Max auto-continues')).toHaveValue(2);
+    expect(screen.getByLabelText('Max tokens per task')).toHaveValue(2);
+    expect(screen.queryByText('safety limit')).not.toBeInTheDocument();
+
+    const patch = await savePatch(props);
+    expect(patch).toMatchObject({ limitsEnabled: true });
+    expect(patch).not.toHaveProperty('maxToolRounds');
+    expect(patch).not.toHaveProperty('maxTurnTokens');
+  });
+
+  it('while off against a server that sends no safety limits, shows the factory defaults', () => {
+    render(<SettingsView {...baseProps(withBudgets({ ...saved, limitsEnabled: false }))} />);
+    expandAdvanced();
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(BUDGET_FIELDS.maxToolRounds.fallback);
+  });
+
+  it('with it on, the budgets are editable', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: true }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+
+  it('is absent on a server without it, where the budgets apply and stay editable', () => {
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    expandAdvanced();
+    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+});
+
+describe('SettingsView — resetting a budget uses the server default', () => {
+  // An older sidecar defaults to 50 steps; saving this renderer's own 250 as a
+  // "reset" would raise the budget and, on a newer server, opt the user in.
+  it('clearing a field saves the served default, not the factory one', async () => {
+    const props = baseProps(withBudgets({ maxToolRounds: '40', budgetDefaults: { maxToolRounds: '50' } }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    const steps = screen.getByLabelText('Max steps per task');
+    fireEvent.change(steps, { target: { value: '' } });
+    fireEvent.blur(steps);
+
+    expect((await savePatch(props)).maxToolRounds).toBe('50');
+  });
+
+  it('shows the served default in the hint', () => {
+    render(<SettingsView {...baseProps(withBudgets({ budgetDefaults: { maxToolRounds: '50' } }))} />);
+    expandAdvanced();
+    expect(screen.getByText('default 50')).toBeInTheDocument();
+  });
+
+  it('unticking "No limit" with nothing remembered restores the served default', async () => {
+    const props = baseProps(withBudgets({
+      maxTurnTokens: '50000000', budgetDefaults: { maxTurnTokens: '1250000' },
+    }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(noLimitBox());
+    expect((await savePatch(props)).maxTurnTokens).toBe('1250000');
+  });
+});
+
 describe('SettingsView — Advanced Settings collapse', () => {
   it('starts collapsed, hiding the budget fields', () => {
     render(<SettingsView {...baseProps(withBudgets())} />);
