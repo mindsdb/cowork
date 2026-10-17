@@ -368,7 +368,7 @@ export function DataVaultForm({
           </div>
         </div>
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <Alert variant="info" icon="ℹ️">
+          <Alert variant="info">
             This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
           </Alert>
         )}
