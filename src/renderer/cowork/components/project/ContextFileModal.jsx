@@ -48,6 +48,7 @@ import {
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
+import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -239,6 +240,7 @@ export default function ContextFileModal({
   //              affordances instead of dumping bytes into the modal.
   const [mode, setMode] = useState('text');
   const [previewUrl, setPreviewUrl] = useState('');
+  const [previewHtml, setPreviewHtml] = useState('');
   const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
   /*
@@ -304,6 +306,7 @@ export default function ContextFileModal({
     setDraft('');
     setEditing(false);
     setPreviewUrl('');
+    setPreviewHtml('');
     setBinaryDetail('');
     setMode('text');
     /* What a read that finds no file says: an attachment is read by its raw
@@ -380,6 +383,35 @@ export default function ContextFileModal({
     // HTML branch: project-file preview-mount, iframe srcs the mount's `url`.
     if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
       setLoading(true);
+      // Web: an iframe `src` can't carry the Bearer token, so read the file
+      // with it, inline its relative assets and hand the markup over as
+      // `srcdoc`. See inlineHtmlAssets for what still can't load.
+      if (host.isWeb) {
+        readInlineText(projectFileDownloadUrl(projectName, filePath))
+          .then(async (text) => {
+            if (cancelled) return;
+            if (text == null) {
+              setMode('binary');
+              return;
+            }
+            const html = await inlineHtmlAssets(text, filePath, (path) =>
+              fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)));
+            if (cancelled) return;
+            setPreviewHtml(html);
+            setMode('html');
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            if (e?.status === 404) {
+              setLoadError(missing);
+            } else {
+              setMode('binary');
+              setBinaryDetail(e?.message || 'Could not load preview');
+            }
+          })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+      }
       mountProjectFilePreview(projectName, filePath)
         .then((res) => {
           if (cancelled) return;
@@ -587,11 +619,12 @@ export default function ContextFileModal({
           )}
           {/* HTML branch — render inside a sandboxed iframe with the
               preview-mount URL so relative assets resolve. */}
-          {!loading && mode === 'html' && previewUrl && (
+          {!loading && mode === 'html' && (previewUrl || previewHtml) && (
             <div className="flex-1 min-h-0 rounded-card-row overflow-hidden border border-solid border-line bg-surface-2">
               <iframe
                 title={headerTitle || 'Preview'}
-                src={previewUrl}
+                src={previewHtml ? undefined : previewUrl}
+                srcDoc={previewHtml || undefined}
                 sandbox="allow-scripts allow-popups allow-forms allow-modals"
                 className="w-full h-full border-0 bg-white"
               />

@@ -127,14 +127,55 @@ describe('ContextFileModal file actions on desktop', () => {
 });
 
 describe('ContextFileModal previewing a project HTML file', () => {
-  it.each(['report.html', 'report.htm'])('loads %s in the iframe from the mount url', async (filePath) => {
-    const url = `http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/${filePath}`;
-    mountProjectFilePreview.mockResolvedValueOnce({ url });
+  const renderHtml = async (filePath) => {
     await act(async () => {
       root.render(<ContextFileModal open projectName="acme" filePath={filePath} onClose={() => {}} />);
     });
-    expect(mountProjectFilePreview).toHaveBeenLastCalledWith('acme', filePath);
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(url);
+    return document.querySelector('iframe');
+  };
+
+  /* An iframe `src` can't carry the Bearer token, so on web the markup is read
+     with it and handed over as `srcdoc`. */
+  it('reads the file with auth on web, inlines its stylesheet and renders it as srcdoc', async () => {
+    const html = '<html><head><link rel="stylesheet" href="style.css"></head><body>report</body></html>';
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: async () => new Blob([html]),
+    });
+    mocks.fetchAuthenticatedBlob.mockResolvedValueOnce(new Blob(['p { color: green }']));
+    vi.mocked(mountProjectFilePreview).mockClear();
+
+    const iframe = await renderHtml('reports/report.html');
+
+    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/report.html');
+    expect(mocks.fetchAuthenticatedBlob).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/style.css');
+    expect(mountProjectFilePreview).not.toHaveBeenCalled();
+    expect(iframe?.getAttribute('srcdoc')).toContain('<style>p { color: green }</style>');
+    expect(iframe?.hasAttribute('src')).toBe(false);
+  });
+
+  it('says a missing file is no longer in the project on web', async () => {
+    mocks.fetchAuthenticatedResponse.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 404 }));
+
+    expect(await renderHtml('report.html')).toBeNull();
+    expect(document.body.textContent).toContain('report.html is no longer in this project.');
+  });
+
+  describe('on desktop', () => {
+    beforeEach(() => { mocks.host.isWeb = false; });
+    afterEach(() => { mocks.host.isWeb = true; });
+
+    it.each(['report.html', 'report.htm'])('loads %s in the iframe from the mount url', async (filePath) => {
+      const url = `http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/${filePath}`;
+      mountProjectFilePreview.mockResolvedValueOnce({ url });
+      await act(async () => {
+        root.render(<ContextFileModal open projectName="acme" filePath={filePath} onClose={() => {}} />);
+      });
+      expect(mountProjectFilePreview).toHaveBeenLastCalledWith('acme', filePath);
+      expect(document.querySelector('iframe')?.getAttribute('src')).toBe(url);
+    });
   });
 });
 
