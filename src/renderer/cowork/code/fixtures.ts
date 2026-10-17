@@ -11,6 +11,7 @@ import type {
   ProjectResource,
   SkillLibraryItem,
   WorkspaceInspection,
+  WorkspaceModeOptions,
 } from './api';
 import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
 
@@ -390,6 +391,35 @@ function fixtureState(name: string) {
       source_dirty: false,
       workspace_warning: 'This task edits the selected folder directly and has no Git-backed recovery.',
     });
+  } else if (name === 'local' || name === 'local-project') {
+    const folder = (folderId: string, folderName: string, path: string) => ({
+      folder_id: folderId, folder_name: folderName, source_path: path, workspace_path: path,
+      workspace_kind: 'direct_folder' as const, repository_root: path,
+      base_revision: '91ef52ea6f3ab14d', base_branch: null, task_branch: null, source_dirty: name === 'local',
+    });
+    const workspaces = name === 'local-project'
+      ? [folder('app', 'Atlas web', ROOT), folder('server', 'Atlas API', '/Users/developer/Projects/atlas-api')]
+      : [];
+    primary = session({
+      status: 'completed',
+      workspace_mode: 'in_place',
+      source_path: ROOT,
+      workspace_path: ROOT,
+      workspace_kind: 'direct_folder',
+      repository_root: ROOT,
+      source_dirty: name === 'local',
+      workspace_warning: name === 'local'
+        ? 'The folder already had uncommitted changes. They appear in this task\'s review alongside the agent\'s.'
+        : null,
+      ...(workspaces.length ? { project_id: 'project-atlas', project_name: 'Atlas', workspaces } : {}),
+    });
+    if (workspaces.length) {
+      files = FILES.map((file, index) => ({
+        ...file,
+        folder_id: index === FILES.length - 1 ? 'server' : 'app',
+        folder_name: index === FILES.length - 1 ? 'Atlas API' : 'Atlas web',
+      }));
+    }
   } else if (name === 'long') {
     events = [...BASE_EVENTS.slice(0, 9), event(12, 'agent_message', {
       title: 'Agent',
@@ -484,8 +514,8 @@ export function getCodeFixtureApi() {
   const git = (id: string): GitState => {
     const item = selected(id);
     return {
-      is_git: item.workspace_kind === 'git_worktree',
-      branch: item.workspace_kind === 'git_worktree' ? null : undefined,
+      is_git: item.workspace_kind === 'git_worktree' || item.workspace_mode === 'in_place',
+      branch: item.workspace_mode === 'in_place' ? 'main' : item.workspace_kind === 'git_worktree' ? null : undefined,
       revision: item.base_revision,
       detached: item.workspace_kind === 'git_worktree',
       dirty: (fileMap.get(id) || []).length > 0,
@@ -593,6 +623,7 @@ export function getCodeFixtureApi() {
 
   return {
     engines: async () => copy(engines),
+    workspaceModes: async (): Promise<WorkspaceModeOptions> => ({ supported: ['worktree', 'in_place'], default: 'worktree' }),
     models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,

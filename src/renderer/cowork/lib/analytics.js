@@ -764,6 +764,8 @@ export function trackCodeTaskStarted(session, { origin = 'new', attachmentCount 
     permission_mode: session.permission_mode || undefined,
     task_mode: session.task_mode || 'build',
     workspace_kind: session.workspace_kind || 'unknown',
+    // Absent before the server recorded modes; those tasks were all isolated.
+    workspace_mode: session.workspace_mode || 'worktree',
     in_project: Boolean(session.project_id),
     computer_is_local: session.computer_is_local !== false,
     attachment_count: typeof attachmentCount === 'number' ? attachmentCount : undefined,
