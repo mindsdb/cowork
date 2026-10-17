@@ -332,3 +332,37 @@ describe('bundled-version misconfiguration guard', () => {
     warn.mockRestore();
   });
 });
+
+describe('extractTarGz', () => {
+  function tarball(): Buffer {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'ota-src-'));
+    fs.writeFileSync(path.join(src, 'index.html'), '<html></html>');
+    const tgz = path.join(src, 'bundle.tar.gz');
+    execFileSync('tar', ['czf', tgz, '-C', src, 'index.html']);
+    const buf = fs.readFileSync(tgz);
+    fs.rmSync(src, { recursive: true, force: true });
+    return buf;
+  }
+
+  // A synchronous tar froze the main process, and with it every IPC call and
+  // repaint, for as long as extraction took.
+  it('lets the event loop run while tar works', async () => {
+    const ui = await loadUpdater();
+    fs.mkdirSync(cacheDir(), { recursive: true });
+    const target = path.join(h.userData, 'out');
+    let loopRan = false;
+    setImmediate(() => { loopRan = true; });
+
+    await ui.extractTarGz(tarball(), target);
+
+    expect(loopRan).toBe(true);
+    expect(fs.existsSync(path.join(target, 'index.html'))).toBe(true);
+  });
+
+  it('rejects when tar fails', async () => {
+    const ui = await loadUpdater();
+    fs.mkdirSync(cacheDir(), { recursive: true });
+    await expect(ui.extractTarGz(Buffer.from('not a tarball'), path.join(h.userData, 'out')))
+      .rejects.toThrow();
+  });
+});

@@ -49,3 +49,30 @@ describe('httpsGet bounding (ENG-749)', () => {
     ).rejects.toThrow(/absolute deadline/i);
   });
 });
+
+describe('httpsGet redirects', () => {
+  // GitHub release assets always redirect. The redirect's own request kept its
+  // inactivity timer armed, so a download that outlived it failed mid-transfer.
+  it('finishes a download that outlives the redirect request\'s inactivity timeout', async () => {
+    const port = await listen((req, res) => {
+      if (req.url === '/asset') {
+        res.writeHead(302, { Location: `http://127.0.0.1:${port}/bundle` });
+        res.end();
+        return;
+      }
+      res.writeHead(200);
+      let sent = 0;
+      const iv = setInterval(() => {
+        sent += 1;
+        res.write('a');
+        if (sent === 10) { clearInterval(iv); res.end(); }
+      }, 30);
+      req.on('close', () => clearInterval(iv));
+    });
+    // 10 chunks at 30ms is ~300ms, three times the 100ms inactivity timeout,
+    // but no gap between chunks reaches it.
+    const res = await httpsGet(`http://127.0.0.1:${port}/asset`, 100, 2000);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.toString()).toBe('a'.repeat(10));
+  });
+});

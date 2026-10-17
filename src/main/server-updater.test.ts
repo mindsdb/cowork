@@ -29,13 +29,14 @@ vi.mock('child_process');
 vi.mock('http');
 vi.mock('https');
 
-import { forgetServerCapability, startServer } from './server-process';
+import { forgetServerCapability, isServerRunning, startServer } from './server-process';
 import { buildKind } from './cowork-home';
 import {
   maybeUpdateServer,
   repairServerInstall,
   checkForServerUpdate,
   recreateVenvIfUnsupportedPython,
+  setUpdateNotifier,
 } from './server-updater';
 
 /** Mock https.get to return a canned PyPI JSON body chosen by URL (cowork vs
@@ -680,6 +681,84 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     // The rc wheel's exact anton pin is restated so the rollback resolves.
     expect(installs[1]).toContain('anton-agent==0.9.5rc1');
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+  });
+
+  describe('an install that fails partway', () => {
+    beforeEach(() => { vi.mocked(isServerRunning).mockReturnValue(true); });
+    afterEach(() => {
+      vi.mocked(isServerRunning).mockReturnValue(false);
+      setUpdateNotifier(() => {});
+    });
+
+    /** mockUv, with the first `failing` tool installs exiting non-zero. */
+    function mockUvFailingInstalls(installed: string, failing: number): string[][] {
+      const execCalls: string[][] = [];
+      let installs = 0;
+      vi.mocked(cp.execFile).mockImplementation(((
+        cmd: string,
+        args: string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        execCalls.push([cmd, ...args]);
+        if (args[0] === 'tool' && args[1] === 'install') {
+          installs += 1;
+          if (installs <= failing) cb(new Error('uv exited 2'), '', 'network unreachable');
+          else cb(null, '', '');
+        } else if (args[0] === 'tool' && args[1] === 'list') cb(null, `cowork-server v${installed}\n`, '');
+        else if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+        else cb(null, '', '');
+        return {} as never;
+      }) as never);
+      return execCalls;
+    }
+
+    it('just restarts the server when it still starts', async () => {
+      installOnPypiChannel(RC);
+      const execCalls = mockUvFailingInstalls(RC, 1);
+
+      const result = await maybeUpdateServer();
+
+      expect(result.updated).toBe(false);
+      expect(result.outcome).toBeUndefined();
+      expect(installCalls(execCalls)).toHaveLength(1);
+      expect(vi.mocked(startServer)).toHaveBeenCalledTimes(1);
+    });
+
+    // A half-built environment can't start. Restarting on it and moving on
+    // left the app with no backend and nothing on screen to say so.
+    it('reinstalls the running version when the server no longer starts', async () => {
+      installOnPypiChannel(RC);
+      const execCalls = mockUvFailingInstalls(RC, 1);
+      vi.mocked(startServer)
+        .mockResolvedValueOnce({ ok: false, reason: 'exited during startup' } as never)
+        .mockResolvedValueOnce({ ok: true, port: 26866 } as never);
+
+      const result = await maybeUpdateServer();
+
+      expect(result.updated).toBe(false);
+      // Recovered: still an install failure in the journal, not a rollback.
+      expect(result.outcome).toBeUndefined();
+      const installs = installCalls(execCalls);
+      expect(installs).toHaveLength(2);
+      expect(installs[1]).toContain(`cowork-server==${RC}`);
+      expect(installs[1]).toContain('anton-agent==0.9.5rc1');
+      expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+    });
+
+    it('tells the user when the reinstall fails too', async () => {
+      installOnPypiChannel(RC);
+      mockUvFailingInstalls(RC, 2);
+      vi.mocked(startServer).mockResolvedValueOnce({ ok: false, reason: 'exited during startup' } as never);
+      const notify = vi.fn();
+      setUpdateNotifier(notify);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const result = await maybeUpdateServer();
+
+      expect(result.outcome).toBe('rollback-failed');
+      expect(notify).toHaveBeenCalledWith(expect.objectContaining({ phase: 'error', critical: true }));
+    });
   });
 
   it('rollback does not depend on PyPI being reachable after the upgrade starts', async () => {
