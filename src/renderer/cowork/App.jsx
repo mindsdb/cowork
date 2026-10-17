@@ -2093,7 +2093,7 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
     reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
-    refreshSchedules();
+    refreshSchedules().catch(() => {});
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -3241,7 +3241,7 @@ function AppCore() {
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
-      refreshSchedules();
+      refreshSchedules().catch(() => {});
     }
   }, [refreshSchedules, reloadArtifacts]);
 
@@ -3995,6 +3995,10 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       releaseSlotClaim(id);
+      // Other tasks' messages were queued behind this reservation, so send
+      // the next one now. This task is skipped: retrying its failed upload
+      // straight away would fail again.
+      drainNextQueuedMessage(null, id);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4217,7 +4221,7 @@ function AppCore() {
   // but queues are per-task — so after a turn ends we must sweep every
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
-  const drainNextQueuedMessage = (preferredTaskId) => {
+  const drainNextQueuedMessage = (preferredTaskId, skipTaskId) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
@@ -4228,11 +4232,13 @@ function AppCore() {
      * stopped or having a turn deleted is skipped too: Stop drops what was
      * queued before the click, and Stop or the delete drains the rest itself.
      */
+    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
+    if (skipTaskId) skipped.add(skipTaskId);
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere)),
+      skipped,
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4533,6 +4539,18 @@ function AppCore() {
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
+        // Only a completed response clears the form's spinner, so a failed
+        // or stalled test would otherwise spin with no way to retry.
+        const failedForm = getDataVaultForm(resolvedId || id);
+        if (failedForm?._is_probing) {
+          patchDataVaultForm(resolvedId || id, {
+            form_id: failedForm.form_id,
+            _is_probing: false,
+            _is_success: false,
+            status_text: null,
+            form_error: message || 'Form submission failed.',
+          });
+        }
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -5331,12 +5349,17 @@ function AppCore() {
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
     async function tick() {
-      const list = await refreshSchedules();
-      const known = new Set(tasksRef.current.map((t) => t.id));
-      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
-      if (hasNewRun) await syncNewConversations();
+      // A failed fetch retries at the floor; letting it throw would end the
+      // poll for good, since only a later tick schedules the next one.
+      let list = null;
+      try {
+        list = await refreshSchedules();
+        const known = new Set(tasksRef.current.map((t) => t.id));
+        const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+        if (hasNewRun) await syncNewConversations();
+      } catch { /* retried below */ }
       if (cancelled) return;
-      timer = setTimeout(tick, nextPollDelay(list));
+      timer = setTimeout(tick, list ? nextPollDelay(list) : SCHEDULE_POLL_MIN_DELAY_MS);
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
