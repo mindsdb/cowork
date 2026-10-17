@@ -23,25 +23,23 @@ export const latestRun = (runs) => runs.reduce((max, r) =>
 runs[0]);
 
 // Lone tasks pass through as { kind: 'task' }; runs of one schedule roll into
-// a single { kind: 'group' } at the position of the first run. The index is a
-// fallback for older records saved before `scheduledId` was plumbed.
-export function groupScheduleRuns(tasks, scheduleRunsIndex = {}) {
+// a single { kind: 'group' } at the position of the first run.
+export function groupScheduleRuns(tasks) {
   const out = [];
   const groups = new Map();
   for (const t of tasks || []) {
-    const sid = t.scheduledId || scheduleRunsIndex[t.id] || null;
+    const sid = t.scheduledId || null;
     if (!sid) {
       out.push({ kind: 'task', task: t });
       continue;
     }
-    const task = t.scheduledId ? t : { ...t, scheduledId: sid };
     let g = groups.get(sid);
     if (!g) {
       g = { kind: 'group', scheduledId: sid, runs: [] };
       groups.set(sid, g);
       out.push(g);
     }
-    g.runs.push(task);
+    g.runs.push(t);
   }
   return out;
 }
@@ -135,13 +133,15 @@ export function chatTaskMenu(task, { onMoveToProject, onDelete }) {
 export function ScheduleGroupRow({ schedule, runs = [], projects, onOpenSchedule, onOpenTask, onOpenProject }) {
   const latest = latestRun(runs);
   const running = runs.some((r) => r.status === 'active');
+  // The schedule's whole history; only some of its runs are in the list.
+  const runCount = schedule?.runCount ?? runs.length;
   return (
     <TaskRow
       leading={Ico.schedule(16)}
       title={schedule?.title || latest?.title || 'Scheduled task'}
       badges={(
         <Badge variant="accent" size="sm" className="shrink-0 font-mono uppercase tracking-[0.06em]">
-          {runs.length} {runs.length === 1 ? 'run' : 'runs'}
+          {runCount} {runCount === 1 ? 'run' : 'runs'}
         </Badge>
       )}
       project={projects && chatProject(schedule?.project || latest?.projectName || latest?.project, projects, onOpenProject)}
