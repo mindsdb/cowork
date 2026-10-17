@@ -197,7 +197,7 @@ describe('UtilitiesView memory capability gates', () => {
   });
 });
 
-describe('UtilitiesView deployment-shared memory labels', () => {
+describe('UtilitiesView unnamed project memory labels', () => {
   const raw = {
     scope: 'project',
     project_id: 'project-1',
@@ -206,8 +206,8 @@ describe('UtilitiesView deployment-shared memory labels', () => {
     capabilities: { canEdit: true, canDelete: true },
   };
 
-  it('labels an unknown shared project in the list, selected entry and editor', async () => {
-    api.fetchMemory.mockResolvedValue(groupMemoryItems([{ ...raw, deployment_shared: true }], []));
+  it('labels a project tier with no visible name in the list, selected entry and editor', async () => {
+    api.fetchMemory.mockResolvedValue(groupMemoryItems([raw], []));
     render(<UtilitiesView kind="memory" />);
 
     expect(await screen.findByText('Project memory')).toBeInTheDocument();
@@ -216,31 +216,13 @@ describe('UtilitiesView deployment-shared memory labels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getAllByText('Project memory')).toHaveLength(2);
     expect(screen.getByRole('textbox')).toHaveValue(raw.content);
-    expect(screen.queryByText('Project · null')).toBeNull();
+    expect(document.body.textContent).not.toContain('null');
     expect(document.body.textContent).not.toContain(raw.project_id);
   });
 
-  it.each([undefined, false, null, 'true', 1])(
-    'preserves the unknown-project display without a true sharing marker (%s)',
-    async (marker) => {
-      const incoming = marker === undefined ? raw : { ...raw, deployment_shared: marker };
-      api.fetchMemory.mockResolvedValue(groupMemoryItems([incoming], []));
-      render(<UtilitiesView kind="memory" />);
-
-      expect(await screen.findByText('Project · null')).toBeInTheDocument();
-      expect(screen.queryByText('Project memory')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: /Rules/ }));
-      expect(screen.getByText('Project', { exact: true })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-      expect(screen.getByText('Project', { exact: true })).toBeInTheDocument();
-      expect(screen.queryByText('Project memory')).toBeNull();
-    },
-  );
-
-  it.each([undefined, true])('retains a known projects display name with marker %s', async (marker) => {
+  it('keeps a known project\'s display name', async () => {
     const projects = [{ id: raw.project_id, name: 'billing', display_name: 'Billing team' }];
-    const incoming = marker === undefined ? raw : { ...raw, deployment_shared: marker };
-    api.fetchMemory.mockResolvedValue(groupMemoryItems([incoming], projects));
+    api.fetchMemory.mockResolvedValue(groupMemoryItems([raw], projects));
     render(<UtilitiesView kind="memory" projects={projects} />);
 
     expect(await screen.findByText('Project · Billing team')).toBeInTheDocument();
@@ -251,10 +233,10 @@ describe('UtilitiesView deployment-shared memory labels', () => {
     expect(screen.queryByText('Project memory')).toBeNull();
   });
 
-  it('edits the selected tier when two shared projects have the same generic label', async () => {
+  it('edits the selected tier when two unnamed projects share the label', async () => {
     api.fetchMemory.mockResolvedValue(groupMemoryItems([
-      { ...raw, deployment_shared: true },
-      { ...raw, project_id: 'project-2', content: 'Answer in pallets.', deployment_shared: true },
+      raw,
+      { ...raw, project_id: 'project-2', content: 'Answer in pallets.' },
     ], []));
     render(<UtilitiesView kind="memory" />);
 

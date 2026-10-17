@@ -109,8 +109,11 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
   );
 }
 
-function projectMemoryHeading(memory, projects) {
-  if (memory.deploymentShared === true && !memory.projectName) return 'Project memory';
+/* A project tier whose project the caller can't see, such as another
+   person's project on a deployment that shares memory, has no name to show. */
+function memoryScopeLabel(memory, projects) {
+  if (memory.scope !== 'Project') return memory.scope;
+  if (!memory.projectName) return 'Project memory';
   return `Project · ${projectLabelByName(projects, memory.projectName)}`;
 }
 
@@ -244,7 +247,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={projectMemoryHeading(section, projects)}
+              heading={memoryScopeLabel(section, projects)}
               files={section.files || []}
               selected={selected}
               onSelect={selectEntry}
@@ -262,9 +265,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(selected.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {selected.scope === 'Project' && (selected.projectName || selected.deploymentShared === true)
-                      ? projectMemoryHeading(selected, projects)
-                      : selected.scope}
+                    {memoryScopeLabel(selected, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
                 </div>
@@ -285,9 +286,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(displayed.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {displayed.scope === 'Project' && (displayed.projectName || displayed.deploymentShared === true)
-                      ? projectMemoryHeading(displayed, projects)
-                      : displayed.scope}
+                    {memoryScopeLabel(displayed, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed} className="mt-1" />
                   {!canUseSharedResource(displayed, 'canEdit') && (
