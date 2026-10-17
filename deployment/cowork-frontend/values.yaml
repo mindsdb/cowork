@@ -6,11 +6,14 @@ deployment:
   replicaCount: 2
 
   image:
-    # ECR repo name is the GitHub repo slug (mindsdb-cowork), matching the
-    # build-push-ecr default. The cowork repo builds only the web SPA image to
+    # The dev-tier repository, which holds every pull request build
+    # (development-*) and every staging build (staging-*, staging). PR
+    # environments load only this file, and staging and dev add nothing to it.
+    # values-prod.yaml switches to the prod tier, mindsdb-cowork, which only a
+    # main build can write. The cowork repo builds only the web SPA image to
     # ECR (the all-in-one ./Dockerfile is never pushed), so no -frontend suffix
     # is needed and this stays consistent with the tags.cowork deploy key.
-    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork
+    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork-dev
     # No command/args: the image runs nginx via its own entrypoint. The SPA is
     # fully static; VITE_ vars are baked at build time (or derived same-origin at
     # runtime), so there is nothing to configure per environment here.
