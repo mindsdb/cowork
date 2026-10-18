@@ -14,7 +14,7 @@ export const BRAND_STYLESHEET_PATH = '/brand/brand.css';
 /** The global the brand's config sets. */
 export const BRAND_GLOBAL = 'COWORK_DEPLOYMENT_BRAND';
 
-/** The longest product name a brand may set, after trimming. */
+/** The longest product name in Unicode code points, after trimming. */
 export const PRODUCT_NAME_MAX_LENGTH = 64;
 
 /**
@@ -26,7 +26,7 @@ export const PRODUCT_NAME_MAX_LENGTH = 64;
 export const TITLE_SNIPPET =
   `(function(){var b=window.${BRAND_GLOBAL};` +
   `var n=b&&typeof b==='object'&&typeof b.productName==='string'?b.productName.trim():'';` +
-  `if(n&&n.length<=${PRODUCT_NAME_MAX_LENGTH})document.title=n;})();`;
+  `if(n&&Array.from(n).length<=${PRODUCT_NAME_MAX_LENGTH})document.title=n;})();`;
 
 const TITLE_END = '</title>';
 const HEAD_END = '</head>';
