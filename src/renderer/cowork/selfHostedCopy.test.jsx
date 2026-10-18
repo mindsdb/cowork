@@ -4,6 +4,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+vi.hoisted(() => {
+  window.COWORK_DEPLOYMENT_BRAND = { productName: 'Acme Cowork' };
+});
+
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -73,6 +77,7 @@ describe('platform build', () => {
   it('names the desktop app when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
     expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
   });
 
   it('points the empty artifacts list at the desktop app', () => {
