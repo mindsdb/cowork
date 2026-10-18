@@ -173,7 +173,7 @@ describe.each([
     ['250', '250', 'step'], ['250', '250', 'none'],
   ]],
   ['a restored reply after continuation narration and a tool call', restoredFigureEvents, RESTORED_LIVE_TEXT, [
-    ['250', '250', 'step'], ['99', '99', 'none'], ['250', '250', 'step'], ['12', '12', 'none'],
+    ['250', '250', 'step'], ['99', '99', 'none'], ['250', '250', 'step'], ['240', '240', 'earlier_answer'], ['12', '12', 'none'],
   ]],
 ])('%s', (_name, events, content, figures) => {
   beforeEach(() => {
