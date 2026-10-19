@@ -53,7 +53,7 @@ if SPA_DIR.exists():
             raise ValueError("The SPA shell needs one <head> and no provider-testing metadata.")
         meta = f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">'
         html = html.replace("<head>", f"<head>\n    {meta}", 1)
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+        return HTMLResponse(html, headers={"Cache-Control": "no-store", "X-Cowork-Spa-Shell": "1"})
 
     @app.get("/health")
     async def health_compat():

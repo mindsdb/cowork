@@ -269,11 +269,23 @@ Hosted web and desktop never load a brand: their HTML has no reference to it.
 | `/brand/brand.css` | A stylesheet, loaded after the app's own CSS |
 | `/brand/<file>` | Any image the config names |
 
-The build adds the script right after `<title>`, as a blocking script before
-the app's bundle, so the first render already has the brand. It must never be
+The build marks the stock title, favicon comment and icon links with
+`<!-- cowork-deployment-brand:start -->` and `<!-- cowork-deployment-brand:end -->`.
+A deployment server can replace that entire region with its escaped title and
+literal icon links before sending the page. The markers appear only in web
+builds with the platform UI off. Without a replacement, the stock content stays.
+
+The blocking brand script and title line follow this region, before the app's
+bundle, so the first render already has the brand. The script must never be
 `async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
 stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
 serves them, so a deployment that serves nothing of its own looks stock.
+
+The wrapper identifies its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
+including `/`, `/index-web.html` and deep client routes. Assets, API responses
+and redirects have no such header. A deployment proxy can use the header to
+distinguish the shell from other HTML. The build rejects missing, duplicate or
+reordered title and icon anchors, and markers already present in the source.
 
 Every field is optional. A field that breaks its rule is ignored, with one
 console warning, and the rest still apply. Unknown keys are ignored, so the

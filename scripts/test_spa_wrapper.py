@@ -25,6 +25,7 @@ class SpaWrapperTests(unittest.TestCase):
         # Use the renderer's real shell so its head and script placement stay covered.
         self.html = (ROOT / "src/renderer/index-web.html").read_text(encoding="utf-8")
         (self.spa / "index-web.html").write_text(self.html, encoding="utf-8")
+        (self.spa / "other.html").write_text("<html><title>A static page</title></html>", encoding="utf-8")
         (self.spa / "icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
         for folder in ("assets", "brand"):
             (self.spa / folder).mkdir()
@@ -58,6 +59,7 @@ class SpaWrapperTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8")
         self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers.get("x-cowork-spa-shell"), "1")
         self.assertEqual(int(response.headers["content-length"]), len(response.content))
         self.assertNotIn("etag", response.headers)
         self.assertNotIn("last-modified", response.headers)
@@ -93,27 +95,32 @@ class SpaWrapperTests(unittest.TestCase):
 
     def test_top_level_and_mounted_assets_keep_their_original_bytes(self):
         with self.client("false") as client:
-            for path in ("icon.png", "assets/main.js", "brand/brand.js"):
+            for path in ("icon.png", "other.html", "assets/main.js", "brand/brand.js"):
                 with self.subTest(path=path):
                     response = client.get(f"/{path}")
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.content, (self.spa / path).read_bytes())
                     self.assertNotIn(META_NAME, response.text)
+                    self.assertNotIn("x-cowork-spa-shell", response.headers)
             for path in ("/assets/missing.js", "/brand/missing.js"):
                 with self.subTest(path=path):
-                    self.assertEqual(client.get(path).status_code, 404)
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 404)
+                    self.assertNotIn("x-cowork-spa-shell", response.headers)
 
     def test_api_redirect_keeps_the_method_query_and_body(self):
         with self.client("false") as client:
             response = client.post("/api/v1/echo?first=one&second=two", content="the posted body")
             self.assertEqual(response.status_code, 307)
             self.assertEqual(response.headers["location"], "/api/v1/echo/?first=one&second=two")
+            self.assertNotIn("x-cowork-spa-shell", response.headers)
             response = client.post(
                 "/api/v1/echo?first=one&second=two", content="the posted body", follow_redirects=True
             )
             self.assertEqual(response.json(), {
                 "method": "POST", "body": "the posted body", "query": "first=one&second=two",
             })
+            self.assertNotIn("x-cowork-spa-shell", response.headers)
 
     def test_unknown_api_routes_never_receive_the_shell(self):
         with self.client("false") as client:
@@ -122,9 +129,11 @@ class SpaWrapperTests(unittest.TestCase):
                     response = client.request(method, "/api/v1/missing", follow_redirects=False)
                     self.assertEqual(response.status_code, 307)
                     self.assertEqual(response.headers["location"], "/api/v1/missing/")
+                    self.assertNotIn("x-cowork-spa-shell", response.headers)
                     response = client.request(method, "/api/v1/missing/")
                     self.assertEqual(response.status_code, 404)
                     self.assertNotIn(META_NAME, response.text)
+                    self.assertNotIn("x-cowork-spa-shell", response.headers)
 
     def test_changed_templates_cannot_silently_drop_or_duplicate_the_setting(self):
         for html in (
