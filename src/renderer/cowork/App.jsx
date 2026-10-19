@@ -1031,7 +1031,13 @@ function AppCore() {
                 // Only the most recent page — merge against what the task
                 // already has. The server never saved refused questions, so
                 // any the merge dropped go back after it.
-                const merged = mergeMessagePage(t.messages, reconciled, knownIds);
+                // With no stream of ours on it, a placeholder or live stub
+                // here is left over from opening the run while the server
+                // still listed it; the merge would carry it past the answer.
+                const local = hasLiveTurnHere(cid)
+                  ? t.messages
+                  : removeThinkingPlaceholder(stripStreaming(t.messages));
+                const merged = mergeMessagePage(local, reconciled, knownIds);
                 const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
                 return {
                   ...t,
@@ -1050,7 +1056,7 @@ function AppCore() {
       }
       return next;
     });
-  }, [abortStream]);
+  }, [abortStream, hasLiveTurnHere]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent

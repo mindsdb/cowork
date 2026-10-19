@@ -3066,3 +3066,33 @@ describe('Stop racing its own turn\'s end', () => {
     expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'alpha follow-up']);
   });
 });
+
+/* A scheduled run the poll lists as running gets a "Running task…" placeholder
+   when it is opened. If the run ends before the reconnect probe asks, no stream
+   attaches to clear it, so the refetch that brings the answer must drop it. */
+describe('a server-listed run that finishes before this window attaches to it', () => {
+  afterEach(() => fetchInFlightList.mockImplementation(async () => []));
+
+  it('drops the "Running task…" placeholder when the poll reports the run finished', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    render(<App />);
+    await waitFor(() => expect(fetchInFlightList).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
+
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { id: 'u-scheduled', role: 'user', content: 'scheduled prompt' },
+        { id: 'a-scheduled', role: 'assistant', content: 'The scheduled answer' },
+      ],
+    }));
+    fetchInFlightList.mockImplementation(async () => []);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+});
