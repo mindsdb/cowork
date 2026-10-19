@@ -27,9 +27,15 @@ const isRelative = (ref) => !!ref && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(ref.tri
 
 // `ref` resolved against `fromPath`, as a project-relative path. The base is
 // encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
+// A bare `%` (`growth_100%.png`) can't be decoded, so it stays literal.
 const resolvePath = (ref, fromPath) => {
   const base = `file:///${fromPath.split('/').map(encodeURIComponent).join('/')}`;
-  return decodeURIComponent(new URL(ref.trim(), base).pathname.slice(1));
+  const path = new URL(ref.trim(), base).pathname.slice(1);
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 };
 
 const toDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -46,7 +52,8 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
 /**
  * @param {string} html the file's markup
  * @param {string} filePath its project-relative path, to resolve refs against
- * @param {(path: string) => Promise<Blob>} fetchBlob reads a project file
+ * @param {(path: string) => Promise<Response>} fetchFile reads a project file,
+ *   its body unread
  * @param {{ baseUrl?: string, maxInlineChars?: number }} [options] `baseUrl`
  *   is the file's absolute URL, to base anything left un-inlined on its folder
  * @returns {Promise<string>} the markup with what could be inlined, inlined
@@ -54,7 +61,7 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
 export async function inlineHtmlAssets(
   html,
   filePath,
-  fetchBlob,
+  fetchFile,
   { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS } = {},
 ) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -85,8 +92,16 @@ export async function inlineHtmlAssets(
     if (!reads.has(path)) {
       reads.set(path, (async () => {
         if (!mayRead(path)) throw new Error(`${path} is outside the preview's folder`);
-        const blob = await fetchBlob(path);
-        if (blob.size > ASSET_MAX_BYTES) throw new Error(`${path} is too large to inline`);
+        if (budget <= 0) throw new Error('Inline budget spent');
+        const tooLarge = new Error(`${path} is too large to inline`);
+        const response = await fetchFile(path);
+        // Refuse on the header, before the body downloads, as readInlineText does.
+        if (Number(response.headers?.get('Content-Length')) > ASSET_MAX_BYTES) {
+          response.body?.cancel().catch(() => {});
+          throw tooLarge;
+        }
+        const blob = await response.blob();
+        if (blob.size > ASSET_MAX_BYTES) throw tooLarge;
         return blob;
       })());
     }

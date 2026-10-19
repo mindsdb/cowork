@@ -402,7 +402,7 @@ export default function ContextFileModal({
             const html = await inlineHtmlAssets(
               text,
               filePath,
-              (path) => fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)),
+              (path) => fetchAuthenticatedResponse(projectFileDownloadUrl(projectName, path)),
               { baseUrl: projectFileDownloadUrl(projectName, filePath) },
             );
             if (cancelled) return;
