@@ -180,6 +180,44 @@ describe('inlineHtmlAssets', () => {
     expect(own.querySelector('style').textContent).toBe('a {}');
   });
 
+  /* `%2F..` survives URL resolution and only collapses once the request URL is
+     fetched, which could reach another workspace or project. */
+  it('refuses a path that still holds a dot segment after decoding', async () => {
+    const fetchBlob = files({});
+
+    await inlineHtmlAssets(
+      '<img src="x%2F..%2F..%2F..%2F..%2F..%2FQ%2Ffiles-raw%2Fsecret.txt"><img src="x%2F.%2Fy.png">',
+      'conversations/a/report.html',
+      fetchBlob,
+    );
+
+    expect(fetchBlob).not.toHaveBeenCalled();
+  });
+
+  it('stops inlining once the total budget is spent, counting each copy', async () => {
+    const fetchBlob = files({ 'logo.png': 'PNG' });
+    const once = (await inlineHtmlAssets('<img src="logo.png">', 'page.html', fetchBlob)).match(/data:[^"]+/)[0];
+
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="logo.png"><img src="logo.png"><img src="logo.png">', 'page.html', fetchBlob,
+      { maxInlineChars: once.length * 2 },
+    ));
+
+    const srcs = [...doc.querySelectorAll('img')].map((img) => img.getAttribute('src'));
+    expect(srcs.filter((src) => src.startsWith('data:'))).toHaveLength(2);
+    expect(srcs).toContain('logo.png');
+  });
+
+  it('adds the base when the page has only a <base target>', async () => {
+    const doc = parse(await inlineHtmlAssets(
+      '<html><head><base target="_blank"></head></html>', 'page.html', files({}),
+      { baseUrl: 'https://cowork.test/api/v1/projects/acme/files-raw/page.html' },
+    ));
+
+    expect(doc.querySelector('base[href]')?.getAttribute('href'))
+      .toBe('https://cowork.test/api/v1/projects/acme/files-raw/');
+  });
+
   it('skips <noscript> content, which a scripted iframe never shows', async () => {
     const fetchBlob = files({ 'big.png': 'PNG' });
 

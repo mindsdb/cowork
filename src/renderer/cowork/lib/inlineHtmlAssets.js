@@ -5,7 +5,8 @@
  * Covers <link rel="stylesheet">, <script src>, <img src> and `url(...)` inside
  * the inlined CSS. Known limitations, which only an authenticated iframe `src`
  * would fix:
- *   - files the page loads at runtime (`fetch`, `import()`, CSS `@import`);
+ *   - files the page loads at runtime (`fetch`, `import()`, CSS `@import`),
+ *     and the `import`s of an inlined module script;
  *   - `srcset`, and `url(...)` in `style` attributes or <style> blocks;
  *   - external scripts and images the app's CSP blocks, since `srcdoc`
  *     inherits it.
@@ -15,6 +16,9 @@ import { DRAFT_FRAGMENT_GUARD_SCRIPT } from '../components/artifact/artifactPrev
 
 // Big enough for a report's images, small enough to keep `srcdoc` sane.
 const ASSET_MAX_BYTES = 5 * 1024 * 1024;
+// Everything inlined, counting each copy of a repeated asset; past it, the
+// rest stays un-inlined rather than freezing the tab.
+const INLINE_TOTAL_MAX_CHARS = 50 * 1024 * 1024;
 
 const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
@@ -43,11 +47,16 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
  * @param {string} html the file's markup
  * @param {string} filePath its project-relative path, to resolve refs against
  * @param {(path: string) => Promise<Blob>} fetchBlob reads a project file
- * @param {{ baseUrl?: string }} [options] the file's absolute URL, to base
- *   anything left un-inlined on its folder
+ * @param {{ baseUrl?: string, maxInlineChars?: number }} [options] `baseUrl`
+ *   is the file's absolute URL, to base anything left un-inlined on its folder
  * @returns {Promise<string>} the markup with what could be inlined, inlined
  */
-export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = {}) {
+export async function inlineHtmlAssets(
+  html,
+  filePath,
+  fetchBlob,
+  { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS } = {},
+) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // The iframe runs scripts, so <noscript> content never shows; don't fetch it.
   for (const el of doc.querySelectorAll('noscript')) el.remove();
@@ -55,9 +64,19 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = 
   // The page's author may not be the viewer, and whatever is inlined, its
   // scripts can read. So, like the desktop preview mount, read only under the
   // file's own folder, and no chat workspace but the one the file sits in.
+  // A `.` or `..` left after decoding (from `%2F..`) would only resolve once
+  // the URL is fetched, after this check, so it is refused outright.
   const dir = filePath.slice(0, filePath.lastIndexOf('/') + 1);
   const mayRead = (path) => path.startsWith(dir)
+    && !path.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')
     && (workspaceOf(path) === null || workspaceOf(path) === workspaceOf(filePath));
+
+  let budget = maxInlineChars;
+  const spend = (text) => {
+    if (text.length > budget) throw new Error('Inline budget spent');
+    budget -= text.length;
+    return text;
+  };
 
   // An asset that fails or is too big is left as it was; the page loses only it.
   // Each path is read once, however many tags use it.
@@ -104,7 +123,7 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = 
     if (!isRelative(href)) continue;
     jobs.push((async () => {
       const path = resolvePath(href, filePath);
-      const css = await inlineCssUrls(await (await read(path)).text(), path);
+      const css = spend(await inlineCssUrls(await (await read(path)).text(), path));
       const style = doc.createElement('style');
       if (link.media) style.media = link.media;
       // A literal `</style` would end the element early.
@@ -116,7 +135,7 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = 
     const src = script.getAttribute('src');
     if (!isRelative(src)) continue;
     jobs.push((async () => {
-      const js = await (await read(resolvePath(src, filePath))).text();
+      const js = spend(await (await read(resolvePath(src, filePath))).text());
       script.removeAttribute('src');
       // `</script` would end the element early, and `<!--` then `<script` would
       // stop the real end tag ending it. `\x21` is `!` in both strings and regexes.
@@ -127,7 +146,7 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = 
     const src = img.getAttribute('src');
     if (!isRelative(src)) continue;
     jobs.push((async () => {
-      img.setAttribute('src', await readDataUrl(resolvePath(src, filePath)));
+      img.setAttribute('src', spend(await readDataUrl(resolvePath(src, filePath))));
     })());
   }
   await Promise.allSettled(jobs);
@@ -136,7 +155,8 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = 
   // text inside an inlined file can't pass for a page's own <base>.
   let baseDir = '';
   try { baseDir = baseUrl ? new URL('.', baseUrl).href : ''; } catch { /* relative: no base */ }
-  if (baseDir && !doc.querySelector('base')) {
+  // Only a base with an href decides resolution; `<base target>` alone doesn't.
+  if (baseDir && !doc.querySelector('base[href]')) {
     const base = doc.createElement('base');
     base.setAttribute('href', baseDir);
     const guard = doc.createElement('script');
