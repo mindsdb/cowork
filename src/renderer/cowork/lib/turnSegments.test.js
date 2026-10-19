@@ -69,6 +69,41 @@ describe('splitTurnSegments', () => {
     expect(expired(splitTurnSegments(steps, { conversationLive: true }))).toEqual([false, true, false]);
     expect(expired(splitTurnSegments(steps, { conversationLive: false }))).toEqual([false, true, true]);
   });
+
+  describe('reopenable', () => {
+    const TIMEOUT = { status: 'timeout', values: [], text: '' };
+    const flags = (segments) => segments
+      .filter((s) => s.kind === 'question')
+      .map((s) => ({ reopened: s.reopened, expired: s.expired }));
+    const last = (steps, opts = { reopenable: true }) => flags(splitTurnSegments(steps, opts)).at(-1);
+
+    it('reopens the last ask: question when it timed out or was never retired', () => {
+      expect(last([question('ask:1', { answer: TIMEOUT })])).toEqual({ reopened: true, expired: false });
+      expect(last([question('ask:1')])).toEqual({ reopened: true, expired: false });
+    });
+
+    it('keeps write: and limit: cards closed', () => {
+      expect(last([question('write:1', { answer: TIMEOUT })])).toEqual({ reopened: false, expired: false });
+      expect(last([question('limit:1')])).toEqual({ reopened: false, expired: true });
+    });
+
+    it('keeps an answered or skipped question closed', () => {
+      expect(last([question('ask:1', { answer: ANSWER })]).reopened).toBe(false);
+      expect(last([question('ask:1', { answer: { status: 'cancelled', values: [], text: '' } })]).reopened).toBe(false);
+    });
+
+    it('reopens only the last question of the turn', () => {
+      const steps = [question('ask:1', { answer: TIMEOUT }), question('ask:2', { answer: TIMEOUT })];
+      expect(flags(splitTurnSegments(steps, { reopenable: true })).map((f) => f.reopened)).toEqual([false, true]);
+      // An earlier question that timed out is not reopened by a later answered one either.
+      expect(last([question('ask:1', { answer: TIMEOUT }), question('ask:2', { answer: ANSWER })]).reopened).toBe(false);
+    });
+
+    it('changes nothing without reopenable', () => {
+      expect(last([question('ask:1', { answer: TIMEOUT })], {})).toEqual({ reopened: false, expired: false });
+      expect(last([question('ask:1')], {})).toEqual({ reopened: false, expired: true });
+    });
+  });
 });
 
 describe('liveSegmentIndex', () => {
