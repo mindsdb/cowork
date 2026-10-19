@@ -49,7 +49,6 @@ import {
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
 import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
-import { injectDraftBaseHref } from '../artifact/artifactPreviewUtils';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -389,9 +388,9 @@ export default function ContextFileModal({
       setLoading(true);
       // Web: an iframe `src` can't carry the Bearer token, so read the file
       // with it, inline its relative assets and hand the markup over as
-      // `srcdoc`. See inlineHtmlAssets for what still can't load. The base
-      // and fragment guard artifact drafts use keep anything left un-inlined
-      // off the app's own origin, and `#` links scrolling in place.
+      // `srcdoc`. See inlineHtmlAssets for what still can't load. Anything
+      // left un-inlined resolves against the file's folder on the API rather
+      // than the app's pages, and `#` links scroll in place.
       if (host.isWeb) {
         readInlineText(projectFileDownloadUrl(projectName, filePath), HTML_PREVIEW_MAX_BYTES)
           .then(async (text) => {
@@ -400,10 +399,14 @@ export default function ContextFileModal({
               setMode('binary');
               return;
             }
-            const html = await inlineHtmlAssets(text, filePath, (path) =>
-              fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)));
+            const html = await inlineHtmlAssets(
+              text,
+              filePath,
+              (path) => fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)),
+              { baseUrl: projectFileDownloadUrl(projectName, filePath) },
+            );
             if (cancelled) return;
-            setPreviewHtml(injectDraftBaseHref(html, projectFileDownloadUrl(projectName, filePath)));
+            setPreviewHtml(html);
             setMode('html');
           })
           .catch((e) => {

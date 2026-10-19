@@ -11,6 +11,8 @@
  *     inherits it.
  */
 
+import { DRAFT_FRAGMENT_GUARD_SCRIPT } from '../components/artifact/artifactPreviewUtils';
+
 // Big enough for a report's images, small enough to keep `srcdoc` sane.
 const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -33,24 +35,41 @@ const toDataUrl = (blob) => new Promise((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 
+// The chat workspace a project path sits in, or null for a shared file; the
+// same split cowork-server's preview mount makes.
+const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/')[1] : null);
+
 /**
  * @param {string} html the file's markup
  * @param {string} filePath its project-relative path, to resolve refs against
  * @param {(path: string) => Promise<Blob>} fetchBlob reads a project file
+ * @param {{ baseUrl?: string }} [options] the file's absolute URL, to base
+ *   anything left un-inlined on its folder
  * @returns {Promise<string>} the markup with what could be inlined, inlined
  */
-export async function inlineHtmlAssets(html, filePath, fetchBlob) {
+export async function inlineHtmlAssets(html, filePath, fetchBlob, { baseUrl } = {}) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // The iframe runs scripts, so <noscript> content never shows; don't fetch it.
+  for (const el of doc.querySelectorAll('noscript')) el.remove();
+
+  // The page's author may not be the viewer, and whatever is inlined, its
+  // scripts can read. So, like the desktop preview mount, read only under the
+  // file's own folder, and no chat workspace but the one the file sits in.
+  const dir = filePath.slice(0, filePath.lastIndexOf('/') + 1);
+  const mayRead = (path) => path.startsWith(dir)
+    && (workspaceOf(path) === null || workspaceOf(path) === workspaceOf(filePath));
 
   // An asset that fails or is too big is left as it was; the page loses only it.
   // Each path is read once, however many tags use it.
   const reads = new Map();
   const read = (path) => {
     if (!reads.has(path)) {
-      reads.set(path, fetchBlob(path).then((blob) => {
+      reads.set(path, (async () => {
+        if (!mayRead(path)) throw new Error(`${path} is outside the preview's folder`);
+        const blob = await fetchBlob(path);
         if (blob.size > ASSET_MAX_BYTES) throw new Error(`${path} is too large to inline`);
         return blob;
-      }));
+      })());
     }
     return reads.get(path);
   };
@@ -112,6 +131,18 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob) {
     })());
   }
   await Promise.allSettled(jobs);
+
+  // The base and fragment guard artifact drafts use, added through the DOM so
+  // text inside an inlined file can't pass for a page's own <base>.
+  let baseDir = '';
+  try { baseDir = baseUrl ? new URL('.', baseUrl).href : ''; } catch { /* relative: no base */ }
+  if (baseDir && !doc.querySelector('base')) {
+    const base = doc.createElement('base');
+    base.setAttribute('href', baseDir);
+    const guard = doc.createElement('script');
+    guard.textContent = DRAFT_FRAGMENT_GUARD_SCRIPT;
+    doc.head.prepend(base, guard);
+  }
 
   // Keep the original doctype: a legacy one keeps the page in quirks mode.
   const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : '';

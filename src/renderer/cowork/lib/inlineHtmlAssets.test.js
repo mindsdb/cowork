@@ -14,10 +14,10 @@ describe('inlineHtmlAssets', () => {
     const fetchBlob = files({
       'reports/style.css': 'p { color: green }',
       'reports/js/app.js': 'window.ok = 1;',
-      'shared/logo.png': 'PNG',
+      'reports/img/logo.png': 'PNG',
     });
     const html = `<!doctype html><html><head><link rel="stylesheet" href="style.css">
-      <script src="./js/app.js"></script></head><body><img src="../shared/logo.png"></body></html>`;
+      <script src="./js/app.js"></script></head><body><img src="img/logo.png"></body></html>`;
 
     const doc = parse(await inlineHtmlAssets(html, 'reports/q3.html', fetchBlob));
 
@@ -148,6 +148,63 @@ describe('inlineHtmlAssets', () => {
     const out = await inlineHtmlAssets(`${legacy}<html><body>old</body></html>`, 'page.html', files({}));
 
     expect(out.startsWith(legacy)).toBe(true);
+  });
+
+  /* The page's author may not be the viewer, and its scripts can read whatever
+     is inlined, so reads stay where the desktop preview mount keeps them. */
+  it('never reads above the file folder', async () => {
+    const fetchBlob = files({ 'secrets.env': 'KEY=1', 'reports/ok.png': 'PNG' });
+
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="../secrets.env"><img src="ok.png">', 'reports/page.html', fetchBlob,
+    ));
+
+    expect(fetchBlob).toHaveBeenCalledTimes(1);
+    expect(fetchBlob).toHaveBeenCalledWith('reports/ok.png');
+    expect(doc.querySelector('img').getAttribute('src')).toBe('../secrets.env');
+  });
+
+  it('never reads into a chat workspace the file does not sit in', async () => {
+    const fetchBlob = files({
+      'conversations/theirs/notes.png': 'PNG',
+      'conversations/mine/style.css': 'a {}',
+    });
+
+    await inlineHtmlAssets('<img src="conversations/theirs/notes.png">', 'page.html', fetchBlob);
+    await inlineHtmlAssets('<img src="theirs/notes.png">', 'conversations/door.html', fetchBlob);
+    const own = parse(await inlineHtmlAssets(
+      '<link rel="stylesheet" href="style.css">', 'conversations/mine/page.html', fetchBlob,
+    ));
+
+    expect(fetchBlob).toHaveBeenCalledTimes(1);
+    expect(own.querySelector('style').textContent).toBe('a {}');
+  });
+
+  it('skips <noscript> content, which a scripted iframe never shows', async () => {
+    const fetchBlob = files({ 'big.png': 'PNG' });
+
+    const doc = parse(await inlineHtmlAssets('<noscript><img src="big.png"></noscript>', 'page.html', fetchBlob));
+
+    expect(fetchBlob).not.toHaveBeenCalled();
+    expect(doc.querySelector('noscript')).toBeNull();
+  });
+
+  it('adds a base on the file folder and a fragment guard, unless the page has its own base', async () => {
+    const fetchBlob = files({ 'lib.js': 'const tag = "<base href=x>";' });
+    const baseUrl = 'https://cowork.test/api/v1/projects/acme/files-raw/reports/q3.html';
+
+    const ours = parse(await inlineHtmlAssets(
+      '<html><head><script src="lib.js"></script></head></html>', 'reports/q3.html', fetchBlob, { baseUrl },
+    ));
+    const theirs = parse(await inlineHtmlAssets(
+      '<html><head><base href="https://elsewhere.test/"></head></html>', 'reports/q3.html', fetchBlob, { baseUrl },
+    ));
+
+    expect(ours.head.firstElementChild.getAttribute('href'))
+      .toBe('https://cowork.test/api/v1/projects/acme/files-raw/reports/');
+    expect(ours.head.children[1].textContent).toContain("addEventListener('click'");
+    expect(theirs.querySelectorAll('base')).toHaveLength(1);
+    expect(theirs.querySelector('base').getAttribute('href')).toBe('https://elsewhere.test/');
   });
 
   it('escapes a closing tag inside inlined script so it cannot end the element early', async () => {
