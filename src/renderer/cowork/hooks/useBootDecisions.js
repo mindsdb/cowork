@@ -13,6 +13,7 @@ import { createProject, fetchProjects } from '../api';
 export function useBootDecisions({
   serverOnline,
   health,
+  route,
   projects,
   selectedProject,
   setServerHelpOpen,
@@ -70,6 +71,10 @@ export function useBootDecisions({
   // upgrades from an older build that didn't have that.
   const generalDefaultRef = useRef(false);
   useEffect(() => {
+    /* On the projects route the URL picks the project. A link to a project the
+       caller can't open ends with no selection (enterRoute clears it), and
+       defaulting to general here would push general's URL over that route. */
+    if (route === 'projects') return;
     if (selectedProject) return;        // user has picked something — don't override
     if (!serverOnline) return;          // wait for server
     if (generalDefaultRef.current) return; // only run once per session
@@ -95,7 +100,7 @@ export function useBootDecisions({
         generalDefaultRef.current = false; // allow retry on next render
       }
     })();
-  }, [projects, selectedProject, serverOnline, setSelectedProject, setProjects]);
+  }, [route, projects, selectedProject, serverOnline, setSelectedProject, setProjects]);
 
   return bootIntroDone;
 }

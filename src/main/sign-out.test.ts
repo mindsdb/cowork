@@ -44,8 +44,14 @@ function makeDeps(overrides: Partial<SignOutDeps> = {}): SignOutDeps {
     getServerPort: () => 26866,
     httpRequest: vi.fn(async () => ({ status: 200, body: '{}' })),
     getAuthHeader: vi.fn(() => ({})),
+    captureSignOutStores: vi.fn(() => ({
+      accountRoot: '/home/user/.cowork',
+      stores: ['/home/user/.cowork', '/home/user/.cowork/orgs/org-1'],
+      activeStore: '/home/user/.cowork',
+    })),
+    markStoresForCredentialClear: vi.fn(),
     scrubEnvCredentials: vi.fn(async () => {}),
-    getAntonEnvPath: () => '/home/user/.cowork/.env',
+    getAntonEnvPath: (accountRoot: string) => `${accountRoot}/.env`,
     clearStoredProviderState: vi.fn(),
     startSidecarFlush: vi.fn(),
     reloadRenderer: vi.fn(),
@@ -245,12 +251,59 @@ describe('performSignOutCleanup', () => {
     expect(deps.reloadRenderer).toHaveBeenCalledTimes(1);
   });
 
-  it('skips the sidecar rows when no sidecar is up to hold them', async () => {
+  it('skips the sidecar rows when no sidecar is up to hold them, and marks every store instead', async () => {
     const deps = makeDeps({ isServerRunning: () => false, isServerStarting: () => false });
 
     await performSignOutCleanup(deps);
 
     expect(deps.httpRequest).not.toHaveBeenCalled();
+    expect(deps.markStoresForCredentialClear).toHaveBeenCalledWith(
+      ['/home/user/.cowork', '/home/user/.cowork/orgs/org-1'],
+      '/home/user/.cowork',
+    );
+    expect(deps.reloadRenderer).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * The token clear lifts the in-memory quarantine, after which the account
+   * record on disk can name somebody else. Reading the stores after it would
+   * mark, scrub and clear that account's files instead of this session's.
+   */
+  it('reads the stores and marks them before the token clear', async () => {
+    const order: string[] = [];
+    const deps = makeDeps({
+      captureSignOutStores: vi.fn(() => {
+        order.push('capture');
+        return { accountRoot: '/root-a', stores: ['/root-a'], activeStore: null };
+      }),
+      markStoresForCredentialClear: vi.fn(() => { order.push('mark'); }),
+      clearTokens: vi.fn(() => { order.push('clear-tokens'); }),
+    });
+
+    await performSignOutCleanup(deps);
+
+    expect(order).toEqual(['capture', 'mark', 'clear-tokens']);
+  });
+
+  it('scrubs the .env and clears provider state of the account captured at entry', async () => {
+    const deps = makeDeps({
+      captureSignOutStores: vi.fn(() => ({ accountRoot: '/root-a', stores: [], activeStore: null })),
+    });
+
+    await performSignOutCleanup(deps);
+
+    expect(deps.scrubEnvCredentials).toHaveBeenCalledWith('/root-a/.env');
+    expect(deps.clearStoredProviderState).toHaveBeenCalledWith('/root-a');
+  });
+
+  it('finishes the sequence when the stores cannot be marked', async () => {
+    const deps = makeDeps({
+      markStoresForCredentialClear: vi.fn(() => { throw new Error('EPERM'); }),
+    });
+
+    await expect(performSignOutCleanup(deps)).resolves.toBeUndefined();
+    expect(deps.clearTokens).toHaveBeenCalledTimes(1);
+    expect(deps.httpRequest).toHaveBeenCalled();
     expect(deps.reloadRenderer).toHaveBeenCalledTimes(1);
   });
 });

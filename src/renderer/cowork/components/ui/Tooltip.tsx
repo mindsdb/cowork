@@ -13,7 +13,7 @@
 //     <button>{icon}</button>
 //   </Tooltip>
 
-import type { ReactElement, ReactNode } from 'react';
+import type { CSSProperties, PointerEventHandler, ReactElement, ReactNode, RefObject } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
 
 // Used only until globals.css has loaded; the token sets the real delay.
@@ -32,7 +32,7 @@ export function parseTooltipDelay(raw: string): number | null {
 // unreadable one (stylesheet not loaded yet) is retried on the next render.
 let cachedDelay: number | null = null;
 
-function tokenDelay(): number {
+export function tokenDelay(): number {
   if (cachedDelay != null) return cachedDelay;
   if (typeof document === 'undefined') return DEFAULT_DELAY_MS;
   const parsed = parseTooltipDelay(
@@ -53,6 +53,62 @@ export interface TooltipProps {
   className?: string;
 }
 
+const POPUP_STYLE: CSSProperties = {
+  background: 'var(--ink)',
+  color: 'var(--surface)',
+  fontFamily: 'var(--font-body)',
+  fontSize: 11.5,
+  fontWeight: 500,
+  lineHeight: 1.3,
+  padding: '5px 9px',
+  borderRadius: 7,
+  /* The light shadow (sh-2, not sh-popup), so a hint bubble sits lower than
+     a dropdown or a modal. */
+  boxShadow: 'var(--sh-2)',
+  maxWidth: 240,
+  userSelect: 'none',
+};
+
+export interface TooltipBubbleProps {
+  children: ReactNode;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  sideOffset?: number;
+  className?: string;
+  // The element the bubble points at, when no Trigger of its Root does.
+  anchor?: RefObject<Element | null>;
+  onPointerEnter?: PointerEventHandler<HTMLDivElement>;
+  onPointerLeave?: PointerEventHandler<HTMLDivElement>;
+}
+
+/* The bubble itself: the portal, positioner and popup in this skin. Tooltip
+   renders it under its own Root and Trigger. A caller that opens the Root
+   itself, with no Trigger, passes `anchor` (FigureMark, which mounts the Root
+   only on first hover or focus). */
+export function TooltipBubble({
+  children,
+  side = 'bottom',
+  sideOffset = 8,
+  className,
+  anchor,
+  onPointerEnter,
+  onPointerLeave,
+}: TooltipBubbleProps) {
+  return (
+    <BaseTooltip.Portal>
+      <BaseTooltip.Positioner anchor={anchor} side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
+        <BaseTooltip.Popup
+          className={className}
+          style={POPUP_STYLE}
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
+        >
+          {children}
+        </BaseTooltip.Popup>
+      </BaseTooltip.Positioner>
+    </BaseTooltip.Portal>
+  );
+}
+
 export function Tooltip({
   content,
   children,
@@ -67,30 +123,9 @@ export function Tooltip({
   return (
     <BaseTooltip.Root>
       <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
-      <BaseTooltip.Portal>
-        <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
-          <BaseTooltip.Popup
-            className={className}
-            style={{
-              background: 'var(--ink)',
-              color: 'var(--surface)',
-              fontFamily: 'var(--font-body)',
-              fontSize: 11.5,
-              fontWeight: 500,
-              lineHeight: 1.3,
-              padding: '5px 9px',
-              borderRadius: 7,
-              // A small hint bubble carries less visual weight than a
-              // dropdown/modal (ENG-790) — sh-2, not sh-popup.
-              boxShadow: 'var(--sh-2)',
-              maxWidth: 240,
-              userSelect: 'none',
-            }}
-          >
-            {content}
-          </BaseTooltip.Popup>
-        </BaseTooltip.Positioner>
-      </BaseTooltip.Portal>
+      <TooltipBubble side={side} sideOffset={sideOffset} className={className}>
+        {content}
+      </TooltipBubble>
     </BaseTooltip.Root>
   );
 }

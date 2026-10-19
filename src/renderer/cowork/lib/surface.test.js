@@ -15,4 +15,8 @@ describe('surfaceCopy', () => {
     expect(copy.tasksNote).toBe('Tasks made in the web app stay there.');
     expect(copy.artifactsNote).toBe('Artifacts made in the web app stay there.');
   });
+
+  it('has no other app to point at on a web build without the platform UI', () => {
+    expect(surfaceCopy(true, false)).toEqual({ tasksNote: '', artifactsNote: '' });
+  });
 });

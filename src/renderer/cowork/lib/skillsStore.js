@@ -15,7 +15,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-import { fetchSkills, saveSkill, deleteSkill } from '../api';
+import { fetchSkills, saveSkill, deleteSkill, setSkillSharing } from '../api';
 
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
@@ -24,6 +24,10 @@ let _skills = null;
 let _skillNames = new Set(); // derived; rebuilt once per reload, not per-consumer
 let _inFlight = null; // de-dupe concurrent reloads
 let _catalogueStatus = 'idle'; // idle | loading | loaded | error
+/* The list's `canShare`: whether this caller may share their own skills, so
+   whether a create asks "Who can use it". False until a load succeeds, and a
+   failed refresh keeps the last answer, as it keeps the last list. */
+let _canShare = false;
 const _subscribers = new Set();
 
 function _emit() {
@@ -31,13 +35,18 @@ function _emit() {
 }
 
 function _getSnapshot() {
-  // Must return a stable reference between mutations or useSyncExternalStore
-  // loops. `_skills` is only reassigned inside reloadSkills, so it is stable.
+  /* Must return a stable reference between mutations or useSyncExternalStore
+     loops. `_skills` is reassigned only by a reload or the sharing patch in
+     setSkillSharingAndSync, and each emits, so it is stable between mutations. */
   return _skills;
 }
 
 function _getCatalogueStatusSnapshot() {
   return _catalogueStatus;
+}
+
+function _getCanShareSnapshot() {
+  return _canShare;
 }
 
 /** Re-fetch the canonical skills list and notify every subscriber. Concurrent
@@ -62,6 +71,7 @@ export async function reloadSkills({ afterCurrent = false } = {}) {
         throw new Error('The skills catalogue response was invalid.');
       }
       _skills = data.skills;
+      _canShare = data.canShare === true;
       _skillNames = new Set(_skills.map((s) => s.label).filter(Boolean));
       _catalogueStatus = 'loaded';
       return { ok: true, skills: _skills };
@@ -98,10 +108,12 @@ function _subscribe(notify) {
  * React hook: the shared skills list + a reload trigger.
  * @returns {{ skills: Array|null, catalogueStatus: 'idle'|'loading'|'loaded'|'error',
  *             reload: (options?: { afterCurrent?: boolean }) =>
- *               Promise<{ ok: boolean, skills: Array, error?: unknown }> }}
+ *               Promise<{ ok: boolean, skills: Array, error?: unknown }>,
+ *             canShare: boolean }}
  *          `catalogueStatus === 'loaded'` means the current absence/presence
  *          decision came from a valid server response. A refresh reports
- *          'loading' while the last settled list stays in place.
+ *          'loading' while the last settled list stays in place. `canShare`
+ *          is the list's own flag: whether creating a skill asks who can use it.
  */
 export function useSkills() {
   const skills = useSyncExternalStore(_subscribe, _getSnapshot, _getSnapshot);
@@ -110,7 +122,8 @@ export function useSkills() {
     _getCatalogueStatusSnapshot,
     _getCatalogueStatusSnapshot,
   );
-  return { skills, catalogueStatus, reload: reloadSkills };
+  const canShare = useSyncExternalStore(_subscribe, _getCanShareSnapshot, _getCanShareSnapshot);
+  return { skills, catalogueStatus, reload: reloadSkills, canShare };
 }
 
 /**
@@ -130,6 +143,23 @@ export function useSkillNames() {
 export async function saveSkillAndSync(payload, isEdit = false) {
   const saved = await saveSkill(payload, isEdit);
   await reloadSkills({ afterCurrent: true });
+  return saved;
+}
+
+/** Share the caller's own skill with everyone or stop sharing it, then refresh
+ *  the shared list so its `shared` flag and Shared badge follow. Re-throws so
+ *  the caller can revert the control and show the server's refusal. */
+export async function setSkillSharingAndSync(label, shared) {
+  const saved = await setSkillSharing(label, shared);
+  /* The PUT succeeded, so the row's `shared` is settled even when the reload
+     that would carry it can't run. Patch the cached row so the list badge, a
+     reopened detail and the control's equality guard all read the same value;
+     don't adopt `saved`, whose capabilities a mutation response may omit. */
+  const refreshed = await reloadSkills({ afterCurrent: true });
+  if (!refreshed.ok && Array.isArray(_skills)) {
+    _skills = _skills.map((s) => (s.label === label ? { ...s, shared } : s));
+    _emit();
+  }
   return saved;
 }
 
