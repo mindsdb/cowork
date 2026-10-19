@@ -26,9 +26,9 @@ const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
  * A `reopened` card belongs to a finished turn whose question timed out: no
  * broker waits on it, so a pick goes out as a normal message instead.
  */
-export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false }) {
+export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
   const q = step?.data || {};
-  const answer = q.answer || null;
+  const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
   const [picked, setPicked] = useState([]);
   const [gone, setGone] = useState(false);

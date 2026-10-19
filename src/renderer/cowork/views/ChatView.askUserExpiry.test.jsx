@@ -175,5 +175,22 @@ describe('ask_user card expiry is per question, not per conversation', () => {
       );
       expect(option('ask:old')).toBeDisabled();
     });
+
+    it('shows the pick that followed as its answer, not the timeout', () => {
+      render(
+        <ChatView
+          task={taskWith([
+            { role: 'user', content: 'hi' },
+            timedOutTurn('ask:old'),
+            { role: 'user', content: 'pg-ask:old' },
+          ])}
+          onSend={vi.fn()}
+          inFlightSet={new Set(['conv-a'])}
+        />,
+      );
+      expect(option('ask:old')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Answered:')).toBeInTheDocument();
+      expect(screen.queryByText(/timed out/)).toBeNull();
+    });
   });
 });

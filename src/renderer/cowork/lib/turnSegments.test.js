@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { splitTurnSegments, liveSegmentIndex } from './turnSegments';
 
 const work = (id, startedAt = 1) => ({ id, label: id, badge: 'ToolProgress', status: 'completed', startedAt });
-const question = (qid, { answer = null, completedAt = null } = {}) => ({
+const question = (qid, { answer = null, completedAt = null, options } = {}) => ({
   id: `question-${qid}`,
   label: `Prompt ${qid}`,
   badge: 'AskUser',
   status: answer ? 'completed' : 'in_progress',
   completedAt,
-  data: { question_id: qid, answer },
+  data: { question_id: qid, answer, options },
 });
 const ANSWER = { status: 'answered', values: ['accept'], text: '' };
 const shape = (segments) => segments.map((s) => {
@@ -97,6 +97,18 @@ describe('splitTurnSegments', () => {
       expect(flags(splitTurnSegments(steps, { reopenable: true })).map((f) => f.reopened)).toEqual([false, true]);
       // An earlier question that timed out is not reopened by a later answered one either.
       expect(last([question('ask:1', { answer: TIMEOUT }), question('ask:2', { answer: ANSWER })]).reopened).toBe(false);
+    });
+
+    it('shows the reply that followed as the late answer', () => {
+      const opts = [{ value: 'pg', label: 'Postgres' }, { value: 'my', label: 'MySQL' }];
+      const late = (reply) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Postgres, MySQL')).toEqual({ status: 'answered', values: ['pg', 'my'], text: '' });
+      expect(late('use sqlite')).toEqual({ status: 'answered', values: [], text: 'use sqlite' });
+      expect(late(null)).toBeNull();
+      const write = splitTurnSegments([question('write:1', { answer: TIMEOUT })], { reply: 'Approve' });
+      expect(write.find((s) => s.kind === 'question').lateAnswer).toBeNull();
     });
 
     it('changes nothing without reopenable', () => {

@@ -28,6 +28,11 @@
 // late Approve can't arrive as text the model reads as approval. A question
 // the user skipped stays closed too.
 //
+// `reply` is the user message that followed a finished turn. It answered that
+// turn's open question, so the card shows it as the answer rather than the
+// timeout: a pick from the card arrives as its option labels, anything else as
+// typed text.
+//
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
 // as an agent message between the work before and after it.
 
@@ -37,13 +42,13 @@ const isMessage = (step) => step?.badge === 'Message';
 /**
  * Returns, in event order:
  *   { kind: 'steps', key, steps, startedAt }
- *   { kind: 'question', key, step, expired, reopened }
+ *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
  * between any two boundaries (questions or messages), so callers can always
  * pick the live one.
  */
-export function splitTurnSegments(steps, { startedAt = null, conversationLive = false, reopenable = false } = {}) {
+export function splitTurnSegments(steps, { startedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
   const list = Array.isArray(steps) ? steps : [];
   let lastUnansweredId = null;
   let lastQuestion = null;
@@ -52,11 +57,12 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
     lastQuestion = step;
     if (!step.data?.answer) lastUnansweredId = step.id;
   }
-  const reopenedId = reopenable
-    && String(lastQuestion?.data?.question_id || '').startsWith('ask:')
+  const openId = String(lastQuestion?.data?.question_id || '').startsWith('ask:')
     && (!lastQuestion.data.answer || lastQuestion.data.answer.status === 'timeout')
     ? lastQuestion.id
     : null;
+  const reopenedId = reopenable ? openId : null;
+  const lateAnswer = openId && reply ? replyAsAnswer(lastQuestion.data.options, reply) : null;
 
   const segments = [];
   // Work after a question starts when the user answered it; without an
@@ -82,11 +88,20 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
         expired: step.id !== reopenedId
           && !step.data?.answer && !(conversationLive && step.id === lastUnansweredId),
         reopened: step.id === reopenedId,
+        lateAnswer: step.id === openId ? lateAnswer : null,
       });
     current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
   }
   pushSteps(current);
   return segments;
+}
+
+function replyAsAnswer(options, reply) {
+  const byLabel = new Map((options || []).map((o) => [o.label || o.value, o.value]));
+  const values = reply.split(', ').map((part) => byLabel.get(part));
+  return values.every((v) => v != null)
+    ? { status: 'answered', values, text: '' }
+    : { status: 'answered', values: [], text: reply };
 }
 
 /**
