@@ -170,6 +170,28 @@ describe('ContextFileModal previewing a project HTML file', () => {
     expect(iframe?.getAttribute('srcdoc')?.length).toBeGreaterThan(3 * 1024 * 1024);
   });
 
+  /* Anything left un-inlined must resolve against the file's folder on the API,
+     not the app's own origin, and a `#` link must scroll rather than navigate. */
+  it('bases the srcdoc on the file folder and guards fragment links on web', async () => {
+    const html = '<html><head></head><body><a href="#q3">Q3</a></body></html>';
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: async () => new Blob([html]),
+    });
+    const relative = mocks.projectFileDownloadUrl.getMockImplementation();
+    mocks.projectFileDownloadUrl.mockImplementation((project, path) => `https://cowork.test${relative(project, path)}`);
+    try {
+      const srcdoc = (await renderHtml('reports/q3.html'))?.getAttribute('srcdoc') || '';
+
+      expect(srcdoc).toContain('<base href="https://cowork.test/api/v1/projects/acme/files-raw/reports/">');
+      expect(srcdoc).toContain("addEventListener('click'");
+    } finally {
+      mocks.projectFileDownloadUrl.mockImplementation(relative);
+    }
+  });
+
   it('says a missing file is no longer in the project on web', async () => {
     mocks.fetchAuthenticatedResponse.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 404 }));
 

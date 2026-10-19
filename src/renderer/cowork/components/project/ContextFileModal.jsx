@@ -49,6 +49,7 @@ import {
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
 import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
+import { injectDraftBaseHref } from '../artifact/artifactPreviewUtils';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -388,7 +389,9 @@ export default function ContextFileModal({
       setLoading(true);
       // Web: an iframe `src` can't carry the Bearer token, so read the file
       // with it, inline its relative assets and hand the markup over as
-      // `srcdoc`. See inlineHtmlAssets for what still can't load.
+      // `srcdoc`. See inlineHtmlAssets for what still can't load. The base
+      // and fragment guard artifact drafts use keep anything left un-inlined
+      // off the app's own origin, and `#` links scrolling in place.
       if (host.isWeb) {
         readInlineText(projectFileDownloadUrl(projectName, filePath), HTML_PREVIEW_MAX_BYTES)
           .then(async (text) => {
@@ -400,7 +403,7 @@ export default function ContextFileModal({
             const html = await inlineHtmlAssets(text, filePath, (path) =>
               fetchAuthenticatedBlob(projectFileDownloadUrl(projectName, path)));
             if (cancelled) return;
-            setPreviewHtml(html);
+            setPreviewHtml(injectDraftBaseHref(html, projectFileDownloadUrl(projectName, filePath)));
             setMode('html');
           })
           .catch((e) => {

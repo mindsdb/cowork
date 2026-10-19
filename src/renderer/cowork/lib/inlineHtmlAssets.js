@@ -19,9 +19,12 @@ const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 // Anything with a scheme, protocol-relative, rooted, or a fragment is left alone.
 const isRelative = (ref) => !!ref && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(ref.trim());
 
-// `ref` resolved against `fromPath`, as a project-relative path.
-const resolvePath = (ref, fromPath) =>
-  decodeURIComponent(new URL(ref.trim(), `file:///${fromPath}`).pathname.slice(1));
+// `ref` resolved against `fromPath`, as a project-relative path. The base is
+// encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
+const resolvePath = (ref, fromPath) => {
+  const base = `file:///${fromPath.split('/').map(encodeURIComponent).join('/')}`;
+  return decodeURIComponent(new URL(ref.trim(), base).pathname.slice(1));
+};
 
 const toDataUrl = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -40,16 +43,27 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
   // An asset that fails or is too big is left as it was; the page loses only it.
-  const read = async (path) => {
-    const blob = await fetchBlob(path);
-    if (blob.size > ASSET_MAX_BYTES) throw new Error(`${path} is too large to inline`);
-    return blob;
+  // Each path is read once, however many tags use it.
+  const reads = new Map();
+  const read = (path) => {
+    if (!reads.has(path)) {
+      reads.set(path, fetchBlob(path).then((blob) => {
+        if (blob.size > ASSET_MAX_BYTES) throw new Error(`${path} is too large to inline`);
+        return blob;
+      }));
+    }
+    return reads.get(path);
+  };
+  const dataUrls = new Map();
+  const readDataUrl = (path) => {
+    if (!dataUrls.has(path)) dataUrls.set(path, read(path).then(toDataUrl));
+    return dataUrls.get(path);
   };
 
   const inlineCssUrls = async (css, cssPath) => {
     const refs = [...new Set([...css.matchAll(CSS_URL)].map((m) => m[2]).filter(isRelative))];
     const found = await Promise.allSettled(
-      refs.map(async (ref) => [ref, await toDataUrl(await read(resolvePath(ref, cssPath)))]),
+      refs.map(async (ref) => [ref, await readDataUrl(resolvePath(ref, cssPath))]),
     );
     const inlined = new Map(found.filter((r) => r.status === 'fulfilled').map((r) => r.value));
     // Replace inside each `url()` only, so `bg.png` can't rewrite `img/bg.png`.
@@ -85,17 +99,21 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob) {
     jobs.push((async () => {
       const js = await (await read(resolvePath(src, filePath))).text();
       script.removeAttribute('src');
-      script.textContent = js.replace(/<\/script/gi, '<\\/script');
+      // `</script` would end the element early, and `<!--` then `<script` would
+      // stop the real end tag ending it. `\x21` is `!` in both strings and regexes.
+      script.textContent = js.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\x21--');
     })());
   }
   for (const img of doc.querySelectorAll('img[src]')) {
     const src = img.getAttribute('src');
     if (!isRelative(src)) continue;
     jobs.push((async () => {
-      img.setAttribute('src', await toDataUrl(await read(resolvePath(src, filePath))));
+      img.setAttribute('src', await readDataUrl(resolvePath(src, filePath)));
     })());
   }
   await Promise.allSettled(jobs);
 
-  return `${doc.doctype ? '<!DOCTYPE html>' : ''}${doc.documentElement.outerHTML}`;
+  // Keep the original doctype: a legacy one keeps the page in quirks mode.
+  const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : '';
+  return `${doctype}${doc.documentElement.outerHTML}`;
 }

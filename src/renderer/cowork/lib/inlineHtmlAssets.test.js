@@ -108,6 +108,48 @@ describe('inlineHtmlAssets', () => {
     expect(fetchBlob).not.toHaveBeenCalledWith('dark.css');
   });
 
+  it('resolves refs in a folder whose name holds #, ? or %', async () => {
+    const fetchBlob = files({ 'Q3 #2/style.css': 'a {}', '50% off?/app.js': 'go();' });
+
+    const css = parse(await inlineHtmlAssets(
+      '<link rel="stylesheet" href="style.css">', 'Q3 #2/report.html', fetchBlob,
+    ));
+    const js = parse(await inlineHtmlAssets('<script src="app.js"></script>', '50% off?/x.html', fetchBlob));
+
+    expect(css.querySelector('style').textContent).toBe('a {}');
+    expect(js.querySelector('script').textContent).toBe('go();');
+  });
+
+  it('reads an asset once however many tags use it', async () => {
+    const fetchBlob = files({ 'ok.png': 'PNG' });
+
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="ok.png"><img src="ok.png"><img src="./ok.png">', 'page.html', fetchBlob,
+    ));
+
+    expect(fetchBlob).toHaveBeenCalledTimes(1);
+    expect([...doc.querySelectorAll('img')].every((img) => img.src.startsWith('data:image/png'))).toBe(true);
+  });
+
+  /* happy-dom's parser doesn't model the state `<!--` then `<script` puts a real
+     browser in, so this pins the escape itself. */
+  it('escapes <!-- in inlined script so a later <script cannot swallow the page', async () => {
+    const fetchBlob = files({ 'lib.js': 'const t = "<!--<script>";' });
+
+    const out = await inlineHtmlAssets('<script src="lib.js"></script>', 'page.html', fetchBlob);
+
+    expect(out).toContain('const t = "<\\x21--<script>";');
+    expect(out).not.toContain('<!--');
+  });
+
+  it('keeps a legacy doctype rather than switching the page to standards mode', async () => {
+    const legacy = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">';
+
+    const out = await inlineHtmlAssets(`${legacy}<html><body>old</body></html>`, 'page.html', files({}));
+
+    expect(out.startsWith(legacy)).toBe(true);
+  });
+
   it('escapes a closing tag inside inlined script so it cannot end the element early', async () => {
     const fetchBlob = files({ 'app.js': 'const s = "</script><b>x</b>";' });
 
