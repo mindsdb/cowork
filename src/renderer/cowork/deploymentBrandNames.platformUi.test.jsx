@@ -18,11 +18,27 @@ vi.mock('./lib/analytics', () => ({ resetDeviceIdentity: vi.fn() }));
 import { WelcomeLoading } from '../WelcomeLoading';
 import SearchModal from './components/SearchModal';
 import MobileShell from './components/MobileShell';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
 import { LOGOUT_CONFIRM_COPY } from './hooks/useLogout';
 
 const shellProps = { route: 'unknown', tasks: [], projects: [], scheduled: [], artifacts: [] };
 
 describe("a deployment brand's name", () => {
+  it('names the product when creating a scheduled task', () => {
+    render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton" />);
+    expect(screen.getByText("Acme & Co's Cowork runs this prompt on the cadence you set.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
+  });
+
+  it('keeps the product name when editing a scheduled task', () => {
+    render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton"
+      task={{ id: 's1', title: 'Digest', prompt: 'Summarize the report', cadence: 'daily', enabled: true }} />);
+    expect(screen.getByText("Update the cadence or prompt. Acme & Co's Cowork picks up changes on the next run.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
+  });
+
   it('welcomes the user', () => {
     render(<WelcomeLoading />);
     expect(screen.getByText("Welcome to Acme & Co's Cowork")).toBeInTheDocument();
