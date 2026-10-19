@@ -281,11 +281,43 @@ describe('inlineHtmlAssets', () => {
     expect(doc.querySelector('img').hasAttribute('srcset')).toBe(false);
   });
 
-  it('reads a file whose name holds a bare % by its literal name', async () => {
-    const fetchFile = files({ 'growth_100%.png': 'PNG' });
+  it('reads a file whose name holds a bare % by its literal name, at any depth', async () => {
+    const fetchFile = files({ 'growth_100%.png': 'PNG', 'my reports/growth_100%.png': 'PNG' });
 
-    const doc = parse(await inlineHtmlAssets('<img src="growth_100%.png">', 'page.html', fetchFile));
+    const root = parse(await inlineHtmlAssets('<img src="growth_100%.png">', 'page.html', fetchFile));
+    const nested = parse(await inlineHtmlAssets('<img src="growth_100%.png">', 'my reports/page.html', fetchFile));
 
+    expect(root.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
+    expect(nested.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
+  });
+
+  it('keeps a stylesheet, without its images, when the images do not fit the budget', async () => {
+    const fetchFile = files({ 'style.css': 'p { background: url(bg.png) }', 'bg.png': 'PNG'.repeat(100) });
+
+    const doc = parse(await inlineHtmlAssets(
+      '<link rel="stylesheet" href="style.css">', 'page.html', fetchFile, { maxInlineChars: 100 },
+    ));
+
+    expect(doc.querySelector('style').textContent).toBe('p { background: url(bg.png) }');
+  });
+
+  it('inlines scripts before images, so images cannot spend their budget', async () => {
+    const fetchFile = files({ 'app.js': 'go();', 'big.png': 'PNG'.repeat(100) });
+
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="big.png"><script src="app.js"></script>', 'page.html', fetchFile, { maxInlineChars: 10 },
+    ));
+
+    expect(doc.querySelector('script').textContent).toBe('go();');
+    expect(doc.querySelector('img').getAttribute('src')).toBe('big.png');
+  });
+
+  it('drops a <picture>\'s sources once its <img> is inlined', async () => {
+    const doc = parse(await inlineHtmlAssets(
+      '<picture><source srcset="hero.webp"><img src="hero.png"></picture>', 'page.html', files({ 'hero.png': 'PNG' }),
+    ));
+
+    expect(doc.querySelector('source')).toBeNull();
     expect(doc.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
   });
 

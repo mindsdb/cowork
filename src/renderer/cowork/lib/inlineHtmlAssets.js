@@ -29,15 +29,17 @@ const isRelative = (ref) => !!ref && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(ref.tri
 
 // `ref` resolved against `fromPath`, as a project-relative path. The base is
 // encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
-// A bare `%` (`growth_100%.png`) can't be decoded, so it stays literal.
+// A segment with a bare `%` (`growth_100%.png`) can't be decoded, so it alone
+// stays literal.
 const resolvePath = (ref, fromPath) => {
   const base = `file:///${fromPath.split('/').map(encodeURIComponent).join('/')}`;
-  const path = new URL(ref.trim(), base).pathname.slice(1);
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
+  return new URL(ref.trim(), base).pathname.slice(1).split('/').map((seg) => {
+    try {
+      return decodeURIComponent(seg);
+    } catch {
+      return seg;
+    }
+  }).join('/');
 };
 
 const toDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -154,6 +156,8 @@ export async function inlineHtmlAssets(
     doc.body.append(script);
   }
 
+  // Stylesheets and scripts first, so images can't spend the budget the page's
+  // styling and code need.
   const jobs = [];
   // Alternate stylesheets are off until the user picks one, so they stay links.
   for (const link of doc.querySelectorAll('link[rel~="stylesheet"][href]:not([rel~="alternate"])')) {
@@ -161,7 +165,14 @@ export async function inlineHtmlAssets(
     if (!isRelative(href)) continue;
     jobs.push((async () => {
       const path = resolvePath(href, filePath);
-      const css = spend(await inlineCssUrls(await (await read(path)).text(), path));
+      const raw = await (await read(path)).text();
+      // If its images don't fit the budget, the CSS still beats no styling.
+      let css = await inlineCssUrls(raw, path);
+      try {
+        spend(css);
+      } catch {
+        css = spend(raw);
+      }
       const style = doc.createElement('style');
       if (link.media) style.media = link.media;
       // A literal `</style` would end the element early.
@@ -180,16 +191,21 @@ export async function inlineHtmlAssets(
       script.textContent = js.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\x21--');
     })());
   }
+  await Promise.allSettled(jobs);
+
+  const imageJobs = [];
   for (const img of doc.querySelectorAll('img[src]')) {
     const src = img.getAttribute('src');
     if (!isRelative(src)) continue;
-    jobs.push((async () => {
+    imageJobs.push((async () => {
       img.setAttribute('src', spend(await readDataUrl(resolvePath(src, filePath))));
-      // A browser prefers `srcset`, whose relative entries would go un-authed.
+      // A browser prefers `srcset` and a <picture>'s sources, whose relative
+      // entries would go un-authed.
       img.removeAttribute('srcset');
+      for (const source of img.closest('picture')?.querySelectorAll('source') ?? []) source.remove();
     })());
   }
-  await Promise.allSettled(jobs);
+  await Promise.allSettled(imageJobs);
 
   // The base and fragment guard artifact drafts use, added through the DOM so
   // text inside an inlined file can't pass for a page's own <base>.
