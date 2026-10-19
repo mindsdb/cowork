@@ -217,7 +217,7 @@ describe('FigureMark in a table', () => {
 describe('FigureMark popover', () => {
   const openPopover = async (figure, props) => {
     render(<p>{mark(figure, props)}</p>);
-    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${figure.text.replace('$', '\\$')},`) }));
+    await userEvent.click(screen.getByRole('button', { name: (name) => name.startsWith(`${figure.text}, `) }));
     return screen.findByRole('dialog');
   };
 
