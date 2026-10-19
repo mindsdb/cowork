@@ -80,6 +80,26 @@ describe('parseDeploymentBrand', () => {
     expect(brand.productName).toHaveLength(64);
     expect(brand.skin).toEqual({ id: 'a'.repeat(32), label: 'y'.repeat(32) });
   });
+
+  it.each([
+    ['A'.repeat(32) + '🚀'.repeat(17), true],
+    ['🚀'.repeat(64), true],
+    ['A'.repeat(32) + '🚀'.repeat(33), false],
+  ] as const)('counts product name %j in Unicode code points', (name, valid) => {
+    const { brand, dropped } = parseDeploymentBrand({ productName: name });
+    expect(brand.productName).toBe(valid ? name : null);
+    expect(dropped).toEqual(valid ? [] : ['productName']);
+  });
+
+  it.each([
+    ['🚀'.repeat(17), true],
+    ['🚀'.repeat(32), true],
+    ['🚀'.repeat(33), false],
+  ] as const)('counts style label %j in Unicode code points', (label, valid) => {
+    const { brand, dropped } = parseDeploymentBrand({ skin: { id: 'ada', label } });
+    expect(brand.skin).toEqual(valid ? { id: 'ada', label } : null);
+    expect(dropped).toEqual(valid ? [] : ['skin']);
+  });
 });
 
 describe('resolveBrandLoad', () => {
@@ -144,6 +164,16 @@ describe('the page-load brand', () => {
 // The tab title is set by an inline line in the page, before the bundle loads,
 // and by nothing else. It must accept exactly the names the parser accepts.
 describe('the inline tab-title line agrees with the parser', () => {
+  it.each([
+    ['A'.repeat(32) + '🚀'.repeat(17), true],
+    ['🚀'.repeat(64), true],
+    ['A'.repeat(32) + '🚀'.repeat(33), false],
+  ] as const)('uses the code-point limit for the title %j', (name, valid) => {
+    const fakeDocument = { title: 'MindsHub Cowork' };
+    new Function('window', 'document', TITLE_SNIPPET)({ COWORK_DEPLOYMENT_BRAND: { productName: name } }, fakeDocument);
+    expect(fakeDocument.title).toBe(valid ? name : 'MindsHub Cowork');
+  });
+
   it.each([
     "Acme & Co's Cowork",
     '  Acme Cowork  ',

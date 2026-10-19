@@ -53,18 +53,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function trimmedText(value: unknown, maxLength: number): string | null {
+function trimmedText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const text = value.trim();
-  return text && text.length <= maxLength ? text : null;
+  return value.trim() || null;
+}
+
+/** Length in Unicode code points, not UTF-16 units, the way the pack loader and Anton count it. */
+function codePointLength(text: string): number {
+  return Array.from(text).length;
 }
 
 function parseSkin(value: unknown): BrandSkin | null {
   if (!isRecord(value)) return null;
   const { id, label } = value;
   if (typeof id !== 'string' || id.length > SKIN_ID_MAX_LENGTH || !SKIN_ID.test(id)) return null;
-  const text = trimmedText(label, SKIN_LABEL_MAX_LENGTH);
-  return text ? { id, label: text } : null;
+  const text = trimmedText(label);
+  return text && codePointLength(text) <= SKIN_LABEL_MAX_LENGTH ? { id, label: text } : null;
 }
 
 function parseTheme(value: unknown): BrandTheme | null {
@@ -81,8 +85,9 @@ function parseFlag(value: unknown): boolean | null {
 
 /** Checks each field of a brand's config on its own; unknown keys are ignored. */
 export function parseDeploymentBrand(raw: Record<string, unknown>): { brand: DeploymentBrand; dropped: string[] } {
+  const name = trimmedText(raw.productName);
   const brand: DeploymentBrand = {
-    productName: trimmedText(raw.productName, PRODUCT_NAME_MAX_LENGTH),
+    productName: name && codePointLength(name) <= PRODUCT_NAME_MAX_LENGTH ? name : null,
     skin: parseSkin(raw.skin),
     theme: parseTheme(raw.theme),
     logoUrl: parseAssetUrl(raw.logoUrl),

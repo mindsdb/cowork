@@ -74,6 +74,7 @@ describe('web build without the platform UI', () => {
   it('describes the cadence without a desktop requirement when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
     expect(screen.getByText('Anton runs this prompt on the cadence you set.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/desktop app/);
   });
 
@@ -81,6 +82,7 @@ describe('web build without the platform UI', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton"
       task={{ id: 's1', title: 'Digest', prompt: 'p', cadence: 'daily', enabled: true }} />);
     expect(screen.getByText('Update the cadence or prompt. Anton picks up changes on the next run.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
   });
 
   it('shows no other-app note in the empty artifacts list', () => {
