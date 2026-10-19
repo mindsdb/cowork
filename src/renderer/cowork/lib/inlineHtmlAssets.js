@@ -22,10 +22,12 @@ const INLINE_TOTAL_MAX_CHARS = 50 * 1024 * 1024;
 // Fetches in flight at once, so the budget is seen before most downloads start.
 const MAX_PARALLEL_READS = 6;
 
-const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+// Not `@import url(...)`: the inherited CSP blocks a `data:` stylesheet anyway.
+const CSS_URL = /(?<!@import\s*)url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
-// Anything with a scheme, protocol-relative, rooted, or a fragment is left alone.
-const isRelative = (ref) => !!ref && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(ref.trim());
+// Anything with a scheme, protocol-relative, rooted, a fragment or only a
+// query is left alone; empty and query-only refs would name the page itself.
+const isRelative = (ref) => !!ref?.trim() && !/^([a-z][a-z0-9+.-]*:|\/|#|\?)/i.test(ref.trim());
 
 // `ref` resolved against `fromPath`, as a project-relative path. The base is
 // encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
@@ -176,7 +178,7 @@ export async function inlineHtmlAssets(
       const style = doc.createElement('style');
       if (link.media) style.media = link.media;
       // A literal `</style` would end the element early.
-      style.textContent = css.replace(/<\/style/gi, '<\\/style');
+      style.textContent = css.replace(/<\/(style)/gi, '<\\/$1');
       link.replaceWith(style);
     })());
   }
@@ -188,7 +190,7 @@ export async function inlineHtmlAssets(
       script.removeAttribute('src');
       // `</script` would end the element early, and `<!--` then `<script` would
       // stop the real end tag ending it. `\x21` is `!` in both strings and regexes.
-      script.textContent = js.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\x21--');
+      script.textContent = js.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\x21--');
     })());
   }
   await Promise.allSettled(jobs);

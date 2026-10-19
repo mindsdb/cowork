@@ -348,6 +348,35 @@ describe('inlineHtmlAssets', () => {
     expect(theirs.querySelector('base').getAttribute('href')).toBe('https://elsewhere.test/');
   });
 
+  it('keeps the case of an escaped closing tag, so a string keeps its value', async () => {
+    const out = await inlineHtmlAssets(
+      '<script src="app.js"></script>', 'page.html', files({ 'app.js': 'const t = "</SCRIPT>";' }),
+    );
+
+    expect(out).toContain('const t = "<\\/SCRIPT>";');
+  });
+
+  it('never fetches the page itself for an empty or query-only ref', async () => {
+    const fetchFile = files({});
+
+    await inlineHtmlAssets(
+      '<script src="  "></script><link rel="stylesheet" href="?v=2"><img src="?x">', 'page.html', fetchFile,
+    );
+
+    expect(fetchFile).not.toHaveBeenCalled();
+  });
+
+  it('leaves @import url() alone, since the CSP would block a data: stylesheet', async () => {
+    const fetchFile = files({ 'site.css': '@import url(theme.css); p { background: url(bg.png) }', 'bg.png': 'PNG' });
+
+    const css = parse(await inlineHtmlAssets('<link rel="stylesheet" href="site.css">', 'page.html', fetchFile))
+      .querySelector('style').textContent;
+
+    expect(fetchFile).not.toHaveBeenCalledWith('theme.css');
+    expect(css).toContain('@import url(theme.css)');
+    expect(css).toContain('url(data:image/png');
+  });
+
   it('escapes a closing tag inside inlined script so it cannot end the element early', async () => {
     const fetchFile = files({ 'app.js': 'const s = "</script><b>x</b>";' });
 
