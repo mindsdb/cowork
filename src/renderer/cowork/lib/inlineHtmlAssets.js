@@ -92,14 +92,17 @@ export async function inlineHtmlAssets(
   // overshoot it by up to MAX_PARALLEL_READS assets.
   let active = 0;
   const waiting = [];
+  // A finished read hands its slot straight to the next waiting one, so a new
+  // caller can't take it in between.
   const withSlot = async (task) => {
-    if (active >= MAX_PARALLEL_READS) await new Promise((resolve) => waiting.push(resolve));
-    active += 1;
+    if (active < MAX_PARALLEL_READS) active += 1;
+    else await new Promise((resolve) => waiting.push(resolve));
     try {
       return await task();
     } finally {
-      active -= 1;
-      waiting.shift()?.();
+      const next = waiting.shift();
+      if (next) next();
+      else active -= 1;
     }
   };
 
