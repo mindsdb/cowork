@@ -245,6 +245,42 @@ describe('inlineHtmlAssets', () => {
     expect(fetchFile).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps at most six reads in flight, so the budget is seen before most start', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const fetchFile = vi.fn(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return response(new Blob(['PNG'], { type: 'image/png' }));
+    });
+    const html = Array.from({ length: 20 }, (_, i) => `<img src="${i}.png">`).join('');
+
+    await inlineHtmlAssets(html, 'page.html', fetchFile);
+
+    expect(fetchFile).toHaveBeenCalledTimes(20);
+    expect(peak).toBe(6);
+  });
+
+  it('starts no reads once its signal is aborted', async () => {
+    const fetchFile = files({ 'a.png': 'PNG' });
+    const closed = new AbortController();
+    closed.abort();
+
+    await inlineHtmlAssets('<img src="a.png">', 'page.html', fetchFile, { signal: closed.signal });
+
+    expect(fetchFile).not.toHaveBeenCalled();
+  });
+
+  it('drops srcset once src is inlined, since a browser would prefer it', async () => {
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="chart.png" srcset="chart@2x.png 2x">', 'page.html', files({ 'chart.png': 'PNG' }),
+    ));
+
+    expect(doc.querySelector('img').hasAttribute('srcset')).toBe(false);
+  });
+
   it('reads a file whose name holds a bare % by its literal name', async () => {
     const fetchFile = files({ 'growth_100%.png': 'PNG' });
 

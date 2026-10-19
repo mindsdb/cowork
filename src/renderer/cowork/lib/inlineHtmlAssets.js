@@ -19,6 +19,8 @@ const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 // Everything inlined, counting each copy of a repeated asset; past it, the
 // rest stays un-inlined rather than freezing the tab.
 const INLINE_TOTAL_MAX_CHARS = 50 * 1024 * 1024;
+// Fetches in flight at once, so the budget is seen before most downloads start.
+const MAX_PARALLEL_READS = 6;
 
 const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
@@ -54,15 +56,16 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
  * @param {string} filePath its project-relative path, to resolve refs against
  * @param {(path: string) => Promise<Response>} fetchFile reads a project file,
  *   its body unread
- * @param {{ baseUrl?: string, maxInlineChars?: number }} [options] `baseUrl`
- *   is the file's absolute URL, to base anything left un-inlined on its folder
+ * @param {{ baseUrl?: string, maxInlineChars?: number, signal?: AbortSignal }} [options]
+ *   `baseUrl` is the file's absolute URL, to base anything left un-inlined on
+ *   its folder; `signal` stops reads that haven't started
  * @returns {Promise<string>} the markup with what could be inlined, inlined
  */
 export async function inlineHtmlAssets(
   html,
   filePath,
   fetchFile,
-  { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS } = {},
+  { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS, signal } = {},
 ) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // The iframe runs scripts, so <noscript> content never shows; don't fetch it.
@@ -85,25 +88,42 @@ export async function inlineHtmlAssets(
     return text;
   };
 
+  // The budget is charged once an asset is inlined, so the reads in flight can
+  // overshoot it by up to MAX_PARALLEL_READS assets.
+  let active = 0;
+  const waiting = [];
+  const withSlot = async (task) => {
+    if (active >= MAX_PARALLEL_READS) await new Promise((resolve) => waiting.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      waiting.shift()?.();
+    }
+  };
+
   // An asset that fails or is too big is left as it was; the page loses only it.
   // Each path is read once, however many tags use it.
   const reads = new Map();
   const read = (path) => {
     if (!reads.has(path)) {
-      reads.set(path, (async () => {
+      reads.set(path, withSlot(async () => {
         if (!mayRead(path)) throw new Error(`${path} is outside the preview's folder`);
+        if (signal?.aborted) throw new Error('Preview closed');
         if (budget <= 0) throw new Error('Inline budget spent');
         const tooLarge = new Error(`${path} is too large to inline`);
         const response = await fetchFile(path);
         // Refuse on the header, before the body downloads, as readInlineText does.
-        if (Number(response.headers?.get('Content-Length')) > ASSET_MAX_BYTES) {
+        const length = Number(response.headers?.get('Content-Length'));
+        if (length > ASSET_MAX_BYTES || length > budget) {
           response.body?.cancel().catch(() => {});
           throw tooLarge;
         }
         const blob = await response.blob();
         if (blob.size > ASSET_MAX_BYTES) throw tooLarge;
         return blob;
-      })());
+      }));
     }
     return reads.get(path);
   };
@@ -162,6 +182,8 @@ export async function inlineHtmlAssets(
     if (!isRelative(src)) continue;
     jobs.push((async () => {
       img.setAttribute('src', spend(await readDataUrl(resolvePath(src, filePath))));
+      // A browser prefers `srcset`, whose relative entries would go un-authed.
+      img.removeAttribute('srcset');
     })());
   }
   await Promise.allSettled(jobs);

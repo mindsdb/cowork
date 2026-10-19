@@ -392,6 +392,7 @@ export default function ContextFileModal({
       // left un-inlined resolves against the file's folder on the API rather
       // than the app's pages, and `#` links scroll in place.
       if (host.isWeb) {
+        const reading = new AbortController();
         readInlineText(projectFileDownloadUrl(projectName, filePath), HTML_PREVIEW_MAX_BYTES)
           .then(async (text) => {
             if (cancelled) return;
@@ -403,7 +404,7 @@ export default function ContextFileModal({
               text,
               filePath,
               (path) => fetchAuthenticatedResponse(projectFileDownloadUrl(projectName, path)),
-              { baseUrl: projectFileDownloadUrl(projectName, filePath) },
+              { baseUrl: projectFileDownloadUrl(projectName, filePath), signal: reading.signal },
             );
             if (cancelled) return;
             setPreviewHtml(html);
@@ -419,7 +420,7 @@ export default function ContextFileModal({
             }
           })
           .finally(() => { if (!cancelled) setLoading(false); });
-        return () => { cancelled = true; };
+        return () => { cancelled = true; reading.abort(); };
       }
       mountProjectFilePreview(projectName, filePath)
         .then((res) => {
