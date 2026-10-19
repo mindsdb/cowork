@@ -91,10 +91,14 @@ describe('parseDeploymentBrand', () => {
     expect(dropped).toEqual(valid ? [] : ['productName']);
   });
 
-  it('keeps the existing style-label length rule', () => {
-    const { brand, dropped } = parseDeploymentBrand({ skin: { id: 'ada', label: '🚀'.repeat(17) } });
-    expect(brand.skin).toBeNull();
-    expect(dropped).toEqual(['skin']);
+  it.each([
+    ['🚀'.repeat(17), true],
+    ['🚀'.repeat(32), true],
+    ['🚀'.repeat(33), false],
+  ] as const)('counts style label %j in Unicode code points', (label, valid) => {
+    const { brand, dropped } = parseDeploymentBrand({ skin: { id: 'ada', label } });
+    expect(brand.skin).toEqual(valid ? { id: 'ada', label } : null);
+    expect(dropped).toEqual(valid ? [] : ['skin']);
   });
 });
 
