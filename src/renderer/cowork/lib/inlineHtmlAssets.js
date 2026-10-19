@@ -14,6 +14,8 @@
 // Big enough for a report's images, small enough to keep `srcdoc` sane.
 const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
+const CSS_URL = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+
 // Anything with a scheme, protocol-relative, rooted, or a fragment is left alone.
 const isRelative = (ref) => !!ref && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(ref.trim());
 
@@ -45,24 +47,33 @@ export async function inlineHtmlAssets(html, filePath, fetchBlob) {
   };
 
   const inlineCssUrls = async (css, cssPath) => {
-    const refs = [...new Set([...css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)]
-      .map((m) => m[2]).filter(isRelative))];
+    const refs = [...new Set([...css.matchAll(CSS_URL)].map((m) => m[2]).filter(isRelative))];
     const found = await Promise.allSettled(
       refs.map(async (ref) => [ref, await toDataUrl(await read(resolvePath(ref, cssPath)))]),
     );
-    return found.reduce((out, r) => (r.status === 'fulfilled'
-      ? out.split(r.value[0]).join(r.value[1])
-      : out), css);
+    const inlined = new Map(found.filter((r) => r.status === 'fulfilled').map((r) => r.value));
+    // Replace inside each `url()` only, so `bg.png` can't rewrite `img/bg.png`.
+    return css.replace(CSS_URL, (whole, quote, ref) => (
+      inlined.has(ref) ? `url(${quote}${inlined.get(ref)}${quote})` : whole));
   };
 
+  // An inline script ignores `defer`: run deferred classic scripts after the
+  // body, in order, as defer would.
+  for (const script of doc.querySelectorAll('script[src][defer]:not([type="module"])')) {
+    script.removeAttribute('defer');
+    doc.body.append(script);
+  }
+
   const jobs = [];
-  for (const link of doc.querySelectorAll('link[rel~="stylesheet"][href]')) {
+  // Alternate stylesheets are off until the user picks one, so they stay links.
+  for (const link of doc.querySelectorAll('link[rel~="stylesheet"][href]:not([rel~="alternate"])')) {
     const href = link.getAttribute('href');
     if (!isRelative(href)) continue;
     jobs.push((async () => {
       const path = resolvePath(href, filePath);
       const css = await inlineCssUrls(await (await read(path)).text(), path);
       const style = doc.createElement('style');
+      if (link.media) style.media = link.media;
       // A literal `</style` would end the element early.
       style.textContent = css.replace(/<\/style/gi, '<\\/style');
       link.replaceWith(style);

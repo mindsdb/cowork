@@ -156,6 +156,20 @@ describe('ContextFileModal previewing a project HTML file', () => {
     expect(iframe?.hasAttribute('src')).toBe(false);
   });
 
+  it('previews an HTML file past the 2 MB text cap on web', async () => {
+    const html = `<html><body>${'x'.repeat(3 * 1024 * 1024)}</body></html>`;
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Length': String(html.length) }),
+      blob: async () => new Blob([html]),
+    });
+
+    const iframe = await renderHtml('dashboard.html');
+
+    expect(iframe?.getAttribute('srcdoc')?.length).toBeGreaterThan(3 * 1024 * 1024);
+  });
+
   it('says a missing file is no longer in the project on web', async () => {
     mocks.fetchAuthenticatedResponse.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 404 }));
 

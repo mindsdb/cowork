@@ -65,17 +65,20 @@ function joinAbs(root, rel) {
    through its raw URL keeps the same cap. */
 const INLINE_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 
+// The HTML preview renders in an iframe, not the text view, so it reads more.
+const HTML_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
+
 /* The file at `url` as text, or null when it is too large to show inline or
    is not UTF-8 text. A Content-Length past the cap refuses the file before
    its body downloads; without one, the size is checked once it has. */
-async function readInlineText(url) {
+async function readInlineText(url, maxBytes = INLINE_TEXT_MAX_BYTES) {
   const response = await fetchAuthenticatedResponse(url);
-  if (Number(response.headers.get('Content-Length')) > INLINE_TEXT_MAX_BYTES) {
+  if (Number(response.headers.get('Content-Length')) > maxBytes) {
     response.body?.cancel().catch(() => {});
     return null;
   }
   const blob = await response.blob();
-  if (blob.size > INLINE_TEXT_MAX_BYTES) return null;
+  if (blob.size > maxBytes) return null;
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
   } catch {
@@ -387,7 +390,7 @@ export default function ContextFileModal({
       // with it, inline its relative assets and hand the markup over as
       // `srcdoc`. See inlineHtmlAssets for what still can't load.
       if (host.isWeb) {
-        readInlineText(projectFileDownloadUrl(projectName, filePath))
+        readInlineText(projectFileDownloadUrl(projectName, filePath), HTML_PREVIEW_MAX_BYTES)
           .then(async (text) => {
             if (cancelled) return;
             if (text == null) {
