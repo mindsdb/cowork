@@ -13,6 +13,8 @@ const publishMock = vi.hoisted(() => ({ key: '' }));
 const bodyMock = vi.hoisted(() => ({ urls: [] }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(async () => ({ kind: 'static', url: 'http://localhost/preview' })),
   previewArtifact: vi.fn(),
@@ -21,6 +23,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn() }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText: vi.fn(),
   loadArtifactDraftDocument: vi.fn(),
 }));

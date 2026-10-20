@@ -142,6 +142,13 @@ export default defineConfig({
             'src/renderer/cowork/code/CodeView.test.tsx',
             'src/renderer/cowork/code/NewTaskPanel.test.tsx',
             'src/renderer/cowork/code/ProjectSettingsModal.test.tsx',
+            // The artifact viewer's Stats panel, its hook and the side-panel
+            // switching that the panel added to the viewer.
+            'src/renderer/cowork/components/artifact/stats/useArtifactStats.test.jsx',
+            'src/renderer/cowork/components/artifact/stats/StatsChart.test.jsx',
+            'src/renderer/cowork/components/artifact/stats/StatsPanel.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewerHeader.stats.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewer.sidePanel.test.jsx',
           ],
           setupFiles: ['tests/setup-env.ts', 'tests/setup-renderer.ts'],
         },
