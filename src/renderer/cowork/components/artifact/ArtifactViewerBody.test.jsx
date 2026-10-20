@@ -20,12 +20,14 @@ vi.mock('./stats/StatsPanel', () => ({
   },
 }));
 vi.mock('./workspace/TextSelectionComment', () => ({
-  TextSelectionComment: () => null,
+  TextSelectionComment: () => <div data-testid="text-selection-comment" />,
 }));
 
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 
-function renderBody(mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined) {
+function renderBody(
+  mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined, reviewOverrides = {},
+) {
   const workspace = {
     mode,
     source: {
@@ -91,6 +93,7 @@ function renderBody(mode, previewOverrides = {}, workspaceOverrides = {}, stats 
     onCreate: vi.fn(),
     textSelection: null,
     setTextSelection: vi.fn(),
+    ...reviewOverrides,
   };
 
   return <ArtifactViewerBody
@@ -279,5 +282,16 @@ describe('ArtifactViewerBody stats panel', () => {
     }));
 
     expect(screen.queryByTestId('stats-panel')).toBeNull();
+  });
+
+  it('keeps the text selection composer away from the Stats panel', () => {
+    const selection = { quote: 'Deck', start: 0, end: 4 };
+    const stats = { open: false, controller, accessMode: 'public', accessLoaded: true, onClose: vi.fn() };
+    const { rerender } = render(renderBody('review', {}, {}, stats, { textSelection: selection }));
+    expect(screen.getByTestId('text-selection-comment')).toBeInTheDocument();
+
+    rerender(renderBody('review', {}, {}, { ...stats, open: true }, { textSelection: selection }));
+    expect(screen.getByTestId('stats-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('text-selection-comment')).toBeNull();
   });
 });

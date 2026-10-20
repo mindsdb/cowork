@@ -87,6 +87,9 @@ vi.mock('./ArtifactViewerBody', () => ({
         data-stats={String(!!stats?.open)}
       />
       <button type="button" onClick={() => review.setInboxOpen(true)}>Open inbox</button>
+      {/* The same calls CommentsToolbar and CommentsPanel make. */}
+      <button type="button" onClick={() => review.setInboxOpen((v) => !v)}>Toggle inbox</button>
+      <button type="button" onClick={() => review.setInboxOpen(false)}>Close inbox</button>
     </>
   ),
 }));
@@ -108,6 +111,7 @@ const CARD = {
 };
 
 const CARD_ID = 'cccccccccccccccccccccccccccccccc';
+const OTHER = { ...CARD, id: 'dddddddddddddddddddddddddddddddd', path: '/artifacts/d/index.html' };
 
 const settle = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
 const panels = () => screen.getByTestId('panels').dataset;
@@ -223,6 +227,36 @@ describe('ArtifactViewer side panel', () => {
     expect(panels().stats).toBe('false');
   });
 
+  it('toggles the inbox through an updater without touching Stats', async () => {
+    renderViewer();
+    await settle();
+    click('Comments');
+
+    click('Toggle inbox');
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
+    click('Toggle inbox');
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'false', stats: 'false' });
+
+    click('Stats');
+    click('Close inbox');
+    expect(panels()).toMatchObject({ comments: 'false', inbox: 'false', stats: 'true' });
+  });
+
+  it('keeps the comments inbox open across a viewer close', async () => {
+    const props = { onClose: vi.fn(), onChange: vi.fn(), artifact: CARD };
+    const view = render(<ArtifactViewer {...props} open />);
+    await settle();
+    click('Comments');
+    click('Open inbox');
+
+    view.rerender(<ArtifactViewer {...props} open={false} />);
+    await settle();
+    view.rerender(<ArtifactViewer {...props} open />);
+    await settle();
+
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true' });
+  });
+
   it('closes Stats when the artifact stops being published', async () => {
     const rerender = renderViewer();
     await settle();
@@ -275,6 +309,27 @@ describe('ArtifactViewer stats analytics', () => {
     });
   });
 
+  // The hosts keep the viewer mounted and only flip `open`.
+  it('does not reopen Stats or report it for the next artifact after a close', async () => {
+    const props = { onClose: vi.fn(), onChange: vi.fn() };
+    const view = render(<ArtifactViewer {...props} open artifact={CARD} />);
+    await settle();
+    click('Stats');
+    statsMock.value = { ...statsMock.value, data: { total_views: 3 } };
+    view.rerender(<ArtifactViewer {...props} open artifact={CARD} />);
+    await settle();
+    expect(track()).toHaveBeenCalledTimes(1);
+
+    view.rerender(<ArtifactViewer {...props} open={false} artifact={CARD} />);
+    await settle();
+    view.rerender(<ArtifactViewer {...props} open artifact={OTHER} />);
+    await settle();
+
+    expect(panels().stats).toBe('false');
+    expect(statsMock.enabled.at(-1)).toBe(false);
+    expect(track()).toHaveBeenCalledTimes(1);
+  });
+
   // usePublish reports 'public' until the real access mode loads.
   it('sends a null access mode until access has loaded', async () => {
     publishMock.accessMode = 'public';
@@ -292,7 +347,6 @@ describe('ArtifactViewer stats analytics', () => {
 
   // The viewer stays mounted when the host swaps the artifact on screen.
   it('reports again for another artifact opened with the panel still open', async () => {
-    const OTHER = { ...CARD, id: 'dddddddddddddddddddddddddddddddd', path: '/artifacts/d/index.html' };
     const props = { open: true, onClose: vi.fn(), onChange: vi.fn() };
     const view = render(<ArtifactViewer {...props} artifact={CARD} />);
     await settle();

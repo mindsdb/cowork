@@ -10,6 +10,9 @@ import { StatsChart } from './StatsChart';
 
 const RECONNECT = 'Reconnect MindsHub to see stats.';
 
+// Stable fallback: StatsChart rebuilds the chart whenever `daily` changes identity.
+const NO_DAYS = [];
+
 // Refusals with a known cause. Only a transient outage is worth a Retry.
 const CODED_ERRORS = {
   stats_owned_by_other_account: { message: 'Stats are not available for this account.', retry: false },
@@ -88,7 +91,7 @@ function ViewersTable({ viewers }) {
         <thead>
           <tr className="text-left text-ink-3">
             <th scope="col" className="py-1 pr-2 font-medium">Email</th>
-            <th scope="col" className="whitespace-nowrap py-1 pr-2 font-medium">Visits (all time)</th>
+            <th scope="col" className="py-1 pr-2 font-medium">Visits (all time)</th>
             <th scope="col" className="whitespace-nowrap py-1 pr-2 font-medium">Last seen</th>
             <th scope="col" className="py-1 font-medium">Device</th>
           </tr>
@@ -100,7 +103,7 @@ function ViewersTable({ viewers }) {
               className="text-ink-2"
               style={{ borderTop: '1px solid var(--line)' }}
             >
-              <td className="max-w-[120px] truncate py-1 pr-2" title={viewer.email}>{viewer.email}</td>
+              <td className="max-w-[100px] truncate py-1 pr-2" title={viewer.email}>{viewer.email}</td>
               <td className="py-1 pr-2">{viewer.visits}</td>
               <td className="whitespace-nowrap py-1 pr-2">
                 <Tooltip content={exactTime(viewer.last_seen)}>
@@ -109,7 +112,7 @@ function ViewersTable({ viewers }) {
                   </span>
                 </Tooltip>
               </td>
-              <td className="whitespace-nowrap py-1">{viewer.device || '—'}</td>
+              <td className="py-1">{viewer.device || '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -120,7 +123,7 @@ function ViewersTable({ viewers }) {
 
 function StatsContent({ data, trackingBusy, accessMode, accessLoaded, onToggleTracking }) {
   const viewers = Array.isArray(data.viewers) ? data.viewers : [];
-  const daily = Array.isArray(data.daily) ? data.daily : [];
+  const daily = Array.isArray(data.daily) ? data.daily : NO_DAYS;
   const tracking = data.tracking === true;
   const restricted = accessMode === 'restricted';
   const hasViews = (data.total_views || 0) > 0 || (data.views_in_period || 0) > 0;

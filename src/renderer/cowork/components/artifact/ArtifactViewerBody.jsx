@@ -258,7 +258,8 @@ export function ArtifactViewerBody({
               onClose={toggleComments}
             />
           )}
-          {textSelection && workspace.mode === 'review' && (
+          {/* Stats replaces the comments chrome, so no composer opens beside it. */}
+          {textSelection && workspace.mode === 'review' && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}
