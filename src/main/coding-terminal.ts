@@ -15,6 +15,7 @@ import * as path from 'path';
 import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
@@ -151,7 +152,8 @@ export async function startCodingTerminal(
   if (!authToken) {
     return { ok: false, reason: 'No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.' };
   }
-  const inferenceBaseUrl = (await revealMindsBaseUrl()) || MINDSHUB_INFERENCE_FALLBACK_URL;
+  // Claude Code appends /v1/messages itself, so the stored URL goes in as the API root.
+  const inferenceBaseUrl = mindsApiRoot(await revealMindsBaseUrl()) || MINDSHUB_INFERENCE_FALLBACK_URL;
 
   // Each task runs in its own git worktree so concurrent Claude Code tasks
   // in the same project can never step on each other's uncommitted edits.
