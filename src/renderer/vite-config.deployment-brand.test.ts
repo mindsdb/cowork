@@ -19,9 +19,10 @@ beforeAll(async () => {
   server = await createServer({
     configFile: path.resolve(__dirname, 'vite.config.ts'),
     logLevel: 'silent',
-    // The dependency optimizer would start in the background and race close().
+    // Background work the test does not need: the dependency optimizer, and the
+    // page script warmup that compiles the whole app graph and slows a loaded run.
     optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true, ws: false },
+    server: { middlewareMode: true, ws: false, preTransformRequests: false },
   });
 }, 30_000);
 
