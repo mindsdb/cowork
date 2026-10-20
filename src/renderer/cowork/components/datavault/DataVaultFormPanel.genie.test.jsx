@@ -1,7 +1,7 @@
 // The Databricks Genie method id is not in HOSTED_OAUTH_METHOD_IDS, so it
 // must render as a plain credential form and never as a browser sign-in.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, setForm } from './formStore';
@@ -37,10 +37,6 @@ describe('DataVaultFormPanel — Databricks Genie method', () => {
     setForm(CID, DATABRICKS_SPEC);
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('renders the four credential fields and no browser sign-in button', () => {
     render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} />);
 
@@ -51,10 +47,9 @@ describe('DataVaultFormPanel — Databricks Genie method', () => {
     expect(screen.queryByRole('button', { name: /authorize|sign in/i })).not.toBeInTheDocument();
   });
 
-  it('posts method genie-mcp with the four values to the submissions endpoint', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-    render(<DataVaultFormPanel conversationId={CID} />);
+  it('hands method genie-mcp and the four values to the host on submit', async () => {
+    const onSubmit = vi.fn();
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/workspace url/i), WORKSPACE_URL);
@@ -63,16 +58,15 @@ describe('DataVaultFormPanel — Databricks Genie method', () => {
     await user.type(screen.getByLabelText(/genie space id/i), SPACE_ID);
     await user.click(screen.getByRole('button', { name: /submit/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toMatch(/\/connectors\/submissions$/);
-    const body = JSON.parse(init.body);
-    expect(body.method).toBe('genie-mcp');
-    expect(body.values).toEqual(expect.objectContaining({
-      workspace_url: WORKSPACE_URL,
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      genie_space_id: SPACE_ID,
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'genie-mcp',
+      formSpec: expect.objectContaining({ selected_method: 'genie-mcp' }),
+      values: expect.objectContaining({
+        workspace_url: WORKSPACE_URL,
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        genie_space_id: SPACE_ID,
+      }),
     }));
   });
 });
