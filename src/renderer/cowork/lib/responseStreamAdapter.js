@@ -19,9 +19,9 @@ import { parseFigureSources } from './figureSources';
 //                                 replacing; carries the set-aside answer
 //   response.first_take.delta   — the instant first take: a short
 //                                 placeholder reply on a fast model, shown
-//                                 until Anton writes its own text, asks the
-//                                 user, or the turn ends. `.done` ends it,
-//                                 `.cleared` takes it off screen. Never
+//                                 until the final answer starts, Anton asks
+//                                 the user, or the turn ends. `.done` ends
+//                                 it, `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
@@ -68,23 +68,27 @@ export function initialStreamState() {
     /** Live "train of thought" text that isn't part of the final answer
      *  (extended-thinking / reasoning deltas). A single ephemeral burst —
      *  NOT a step, so it never accumulates into the persisted steps list.
-     *  `{ text, startedAt, _isPreamble?, kind? } | null`. `_isPreamble` marks
-     *  reclassified narration so the next real reasoning delta replaces
-     *  it instead of appending. `kind: 'model_wait'` marks the server's
+     *  `{ text, startedAt, kind? } | null`. `kind: 'model_wait'` marks the server's
      *  still-working status while a model call is silent; any other
      *  event clears it, an ask_user question included. Cleared whenever
      *  body text starts streaming or the turn finishes. */
     currentThought: null,
-    /** Streaming/finished body text (markdown). */
+    /** Streaming/finished body text (markdown): the current round's text.
+     *  Shown as the answer only once `bodyIsAnswer` (see `answerBody`);
+     *  until then it is the live Note step (ENG-3554). */
     bodyText: '',
+    /** Whether `bodyText` is the final answer rather than narration. Set
+     *  once it looks like an answer, the gate wrote it, or the turn
+     *  completed; a tool starting after it turns it back into a Note. */
+    bodyIsAnswer: false,
     /** Retained ranges into the server's answer, including text hidden at
      *  tool starts in sourceLength. Reset replaces that source; restore
      *  prepends to it. This keeps the live offsets exact even when its body
      *  is no longer a suffix of the saved answer.
      *  @type {import('./figureSources').BodyTextMap} */
     bodyTextMap: { sourceLength: 0, ranges: [] },
-    /** The instant first take: what the user reads until Anton's own words,
-     *  a question, or the turn's end take its place.
+    /** The instant first take: what the user reads until the final answer,
+     *  a question, or the turn's end takes its place.
      *  `{ text, done } | null`. Never part of the answer. */
     firstTake: null,
     /** Harness/agent ID from `response.created` (e.g. 'anton'). */
@@ -238,34 +242,108 @@ export function truncateLabel(text) {
   return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
 }
 
-/** A tool call is starting mid-turn — compute the currentThought/bodyText
- *  patch for it.
+// ── Narration vs answer (ENG-3554) ─────────────────────────────────
+// Anton writes text in every round: a line before a tool call ("Let me
+// check X first…") and, in the last round, the answer. While a round's text
+// streams we can't yet know which it is, so it starts as a live Note step and
+// becomes the answer once it plainly is one. That way the answer area changes
+// once, from the first take to the answer, instead of filling with narration,
+// emptying at the tool call, and filling again.
+
+/** Past this, a round's text reads as an answer, not a one-line note. */
+const ANSWER_MIN_CHARS = 280;
+/** Structure narration never has: a paragraph break, a list, a heading, a
+ *  table, a quote or a code fence. */
+const ANSWER_SHAPE = /\n\s*\n|(^|\n)\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|\||>|```)/;
+
+/** Whether a round's text so far is plainly the answer. */
+export function looksLikeAnswer(text) {
+  const t = (text || '').trim();
+  return t.length >= ANSWER_MIN_CHARS || ANSWER_SHAPE.test(t);
+}
+
+/** The text to show as the answer: none while it is still narration. */
+export function answerBody(state) {
+  return state?.bodyIsAnswer ? state.bodyText : '';
+}
+
+const NOTE_BADGE = 'Note';
+const isLiveNote = (step) => step?.badge === NOTE_BADGE && step.status === 'in_progress';
+
+/** Steps with the round's narration as the trailing live Note. */
+function withLiveNote(steps, text, eventTs) {
+  const last = steps.at(-1);
+  if (isLiveNote(last)) return [...steps.slice(0, -1), { ...last, label: text.trim() }];
+  return [...steps, {
+    id: `note-${steps.length + 1}`,
+    label: text.trim(),
+    badge: NOTE_BADGE,
+    icon: 'note',
+    status: 'in_progress',
+    startedAt: eventTs,
+    completedAt: null,
+  }];
+}
+
+/** Steps without the round's live Note (its text became the answer). */
+function withoutLiveNote(steps) {
+  return isLiveNote(steps.at(-1)) ? steps.slice(0, -1) : steps;
+}
+
+/** The round's text becomes the answer: its Note goes, the first take
+ *  steps aside. The one switch the answer area makes. */
+function promoteToAnswer(state) {
+  if (state.bodyIsAnswer || !state.bodyText.trim()) return state;
+  return { ...state, bodyIsAnswer: true, steps: withoutLiveNote(state.steps), firstTake: CLEARED_TAKE };
+}
+
+/** The round's text while it is still a Note, for the live row to carry: if
+ *  the stream is cut off there, it becomes the turn's partial answer. */
+export function roundText(state) {
+  return state?.bodyIsAnswer ? '' : (state?.bodyText || '');
+}
+
+/** A live row whose stream ended without the reducer seeing the end (a
+ *  dropped connection): the text it was still writing is the partial answer,
+ *  not a Note. Drops the carried `_roundText` either way. */
+export function settleStreamingRow(row) {
+  const { _roundText: text, ...rest } = row;
+  if (rest.content || !text?.trim()) return rest;
+  return { ...rest, content: text, steps: withoutLiveNote(rest.steps || []) };
+}
+
+/** The turn is over, however it ended (completed, failed, or the stream cut
+ *  off): text still being written is all the answer there is, so it shows as
+ *  the answer rather than staying a Note. */
+export function settleRound(state) {
+  return promoteToAnswer(state);
+}
+
+/** A tool call is starting mid-turn — compute the steps/bodyText patch for it.
  *
- *  Any answer text that streamed before this tool call was
- *  preamble/narration ("let me check X first…"), NOT the final answer —
- *  the turn isn't over, the model is about to act on a tool result and
- *  keep going (see anton's tool loop). Move that text into the ephemeral
- *  currentThought so it reads as inner dialogue, and reset bodyText so
- *  only the FINAL round's text (the one with no tool call after it) ends
- *  up as the persisted answer. Preserves live streaming: the preamble
- *  still streamed token-by-token into the answer area first; this just
- *  relocates it once we learn it was preamble.
+ *  Any text that streamed before this tool call was narration ("let me check
+ *  X first…"), NOT the final answer: the model is about to act on a tool
+ *  result and keep going (see anton's tool loop). It stays in the steps as a
+ *  finished Note, in order before the tool's own step, and bodyText resets so
+ *  only the FINAL round's text (the one with no tool call after it) ends up as
+ *  the answer. Text that had already been taken for the answer (a long
+ *  narration) goes back to being a Note the same way.
  *
- *  When there's no un-committed answer text, the tool call instead seals
- *  the current burst: currentThought is reset to null so a reasoning
- *  burst that resumes after the tool starts fresh rather than appending
- *  to the pre-tool one (bursts separated by a tool call are distinct).
- *  (ENG-1108) */
-function reclassifyPreambleOnToolStart(state, eventTs) {
-  const preamble = (state.bodyText || '').trim();
-  if (!preamble) return { currentThought: null };
+ *  The tool call also seals the current reasoning burst: currentThought is
+ *  reset to null so a burst that resumes after the tool starts fresh rather
+ *  than appending to the pre-tool one (ENG-1108). */
+function sealRoundOnToolStart(state, eventTs) {
+  const narration = (state.bodyText || '').trim();
+  if (!narration) return { currentThought: null, bodyIsAnswer: false };
+  const live = state.steps.at(-1);
+  const note = isLiveNote(live)
+    ? { ...live, label: narration, status: 'completed', completedAt: eventTs }
+    : { id: `note-${state.steps.length + 1}`, label: narration, badge: NOTE_BADGE, icon: 'note', status: 'completed', startedAt: eventTs, completedAt: eventTs };
   return {
-    currentThought: {
-      text: preamble,
-      startedAt: state.currentThought?.startedAt || eventTs,
-      _isPreamble: true,
-    },
+    steps: [...withoutLiveNote(state.steps), note],
+    currentThought: null,
     bodyText: '',
+    bodyIsAnswer: false,
     bodyTextMap: { ...state.bodyTextMap, ranges: [] },
   };
 }
@@ -363,6 +441,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.completed') {
+    // The last round's text is the answer, however short.
+    state = promoteToAnswer(state);
     return {
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
@@ -408,6 +488,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
+    // A failed turn keeps the text it got as its (partial) answer.
+    state = promoteToAnswer(state);
     if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted' || event.code === 'model_access_denied')) {
       try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
@@ -440,14 +522,19 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const nextRanges = last?.[1] === sourceLength
       ? [...ranges.slice(0, -1), [last[0], end]]
       : [...ranges, [sourceLength, end]];
-    // The model has moved from thinking to producing the visible
-    // response — end the current thought burst. Anton is speaking, so the
-    // first take hands over to it: one sentence on screen, never two.
-    return {
+    // The model has moved from thinking to writing — end the current
+    // thought burst. Until the text is plainly the answer it is a live Note
+    // step and the first take stays; the gate's own reply is always the
+    // answer (ENG-3554).
+    const next = {
       ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
       bodyTextMap: { sourceLength: end, ranges: nextRanges },
-      firstTake: delta.trim() ? CLEARED_TAKE : state.firstTake,
     };
+    if (next.bodyIsAnswer || state.harness === 'cowork-direct' || looksLikeAnswer(next.bodyText)) {
+      return promoteToAnswer(next);
+    }
+    if (!next.bodyText.trim()) return next;
+    return { ...next, steps: withLiveNote(state.steps, next.bodyText, eventTs) };
   }
 
   // The instant first take. Once Anton has spoken, asked the user, or the
@@ -474,7 +561,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // immediately before the replacement text, so the bubble is never left
   // empty, and a continuation that never speaks sends nothing at all.
   if (type === 'response.answer_reset') {
-    return { ...state, bodyText: '', bodyTextMap: { sourceLength: 0, ranges: [] }, currentThought: null };
+    // The replacement is an answer too: it streams straight into the answer.
+    return { ...state, bodyText: '', bodyIsAnswer: true, bodyTextMap: { sourceLength: 0, ranges: [] }, currentThought: null };
   }
 
   // The continuation never delivered the replacement the boundary promised —
@@ -488,10 +576,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const restoredRanges = ranges.map(([start, end]) => [start + text.length, end + text.length]);
     if (restoredRanges[0]?.[0] === text.length) restoredRanges[0][0] = 0;
     else restoredRanges.unshift([0, text.length]);
-    return {
-      ...state, bodyText: text + state.bodyText,
+    // The set-aside answer is back, so it is the answer, not narration.
+    return promoteToAnswer({
+      ...state, bodyText: text + state.bodyText, bodyIsAnswer: false,
       bodyTextMap: { sourceLength: sourceLength + text.length, ranges: restoredRanges },
-    };
+    });
   }
 
   // Inline artifact card. The harness emits one of these at turn end for
@@ -750,13 +839,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
-    // Any answer text before this tool call was preamble → move it to
-    // the thought line; only the final round's text stays as the answer.
-    return {
-      ...state,
-      steps: [...state.steps, step],
-      ...reclassifyPreambleOnToolStart(state, eventTs),
-    };
+    // Any text before this tool call was narration → a Note step before
+    // the tool's; only the final round's text becomes the answer.
+    const sealed = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    return { ...sealed, steps: [...sealed.steps, step] };
   }
 
   // Scratchpad input — the JSON contains action, name, code,
@@ -851,13 +937,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: event.tool_use_id || null,
       _toolUseId: event.tool_use_id || null,
     };
-    // Any answer text before this tool call was preamble → move it to
-    // the thought line; only the final round's text stays as the answer.
-    return {
-      ...state,
-      steps: [...state.steps, step],
-      ...reclassifyPreambleOnToolStart(state, eventTs),
-    };
+    // Any text before this tool call was narration → a Note step before
+    // the tool's; only the final round's text becomes the answer.
+    const sealed = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    return { ...sealed, steps: [...sealed.steps, step] };
   }
 
   if (role === 'thought.tool_call.end') {
@@ -962,12 +1045,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (role === 'thought.progress' && (event.subtype === 'reasoning' || event.subtype === 'thinking')) {
     const text = event.content || '';
     if (!text) return state;
-    // Reclassified pre-tool narration is its own display burst. The next
-    // genuine reasoning delta starts a new burst even if the tool protocol
-    // has not emitted its completion marker yet.
-    const resumesAfterPreamble = state.currentThought?._isPreamble === true;
-    const prevText = resumesAfterPreamble ? '' : (state.currentThought?.text || '');
-    const startedAt = resumesAfterPreamble ? eventTs : (state.currentThought?.startedAt || eventTs);
+    const prevText = state.currentThought?.text || '';
+    const startedAt = state.currentThought?.startedAt || eventTs;
     return { ...state, currentThought: { text: prevText + text, startedAt } };
   }
 

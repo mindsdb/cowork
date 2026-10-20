@@ -74,7 +74,10 @@ export function ThinkingStep({
         <div className="flex min-w-0 items-center gap-1.5 px-1">
           <span
             className={clsx(
-              'truncate text-[12.5px]',
+              // A Note is Anton's own sentence between steps (ENG-3554):
+              // show all of it rather than cutting it off mid-thought.
+              step.badge === 'Note' ? 'whitespace-pre-wrap break-words' : 'truncate',
+              'text-[12.5px]',
               isInProgress ? 'text-ink' : 'text-ink-3'
             )}
             title={step.label}

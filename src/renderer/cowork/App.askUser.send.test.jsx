@@ -783,7 +783,15 @@ describe('interrupted stream recovery', () => {
       });
     });
 
-    const answer = (await screen.findByText('Partial answer kept')).closest('.answer-turn');
+    // The settled turn that offers Delete. While recovery runs, the live turn
+    // can show the same words as its in-progress step (ENG-3554).
+    const answer = await waitFor(() => {
+      const turn = screen.getAllByText('Partial answer kept')
+        .map((el) => el.closest('.answer-turn'))
+        .find((t) => t && within(t).queryByRole('button', { name: 'Delete' }));
+      expect(turn).toBeTruthy();
+      return turn;
+    });
     // The resync after the delete has no transcript here and warns via alert().
     const originalAlert = window.alert;
     window.alert = vi.fn();

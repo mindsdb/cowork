@@ -82,7 +82,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
-import { initialStreamState, reduceStream, visibleFirstTake } from './lib/responseStreamAdapter';
+import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import {
   stripStreaming,
@@ -1597,10 +1597,12 @@ function AppCore() {
       // The adjacent error trailer identifies this assistant row as partial.
       const msgs = markActivityDone(removeThinkingPlaceholder(t.messages.flatMap((m) => {
         if (m.role !== '_streaming') return [m];
-        if (!m.content && !m.steps?.length) return [];
+        // Text still being written when the stream broke is its partial answer.
+        const row = settleStreamingRow(m);
+        if (!row.content && !row.steps?.length) return [];
         // A server-declared failure names the row it persisted; without that
         // id neither row of this turn would offer Delete.
-        return [{ ...m, id: m.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
+        return [{ ...row, id: row.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
@@ -2329,7 +2331,8 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, status: 'active', messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
           firstTake: visibleFirstTake(streamState.firstTake),
@@ -2366,7 +2369,9 @@ function AppCore() {
         releaseSlotClaim(taskId);
         markInFlightDone(taskId);
         releaseLiveSteps([taskId]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3582,7 +3587,8 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
           firstTake: visibleFirstTake(streamState.firstTake),
@@ -3680,7 +3686,9 @@ function AppCore() {
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -4080,7 +4088,8 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
           firstTake: visibleFirstTake(streamState.firstTake),
@@ -4140,7 +4149,9 @@ function AppCore() {
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -4372,7 +4383,8 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
           firstTake: visibleFirstTake(streamState.firstTake),
@@ -4476,7 +4488,9 @@ function AppCore() {
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
         clearOptimisticConversation(resolvedId);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;

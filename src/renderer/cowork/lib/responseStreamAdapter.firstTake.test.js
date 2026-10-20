@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reduceAll, visibleFirstTake } from './responseStreamAdapter';
+import { answerBody, reduceAll, visibleFirstTake } from './responseStreamAdapter';
 
 const created = { type: 'response.created', response: { id: 'r' } };
 const take = (delta) => ({ type: 'response.first_take.delta', delta });
@@ -14,10 +14,15 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(state.bodyText).toBe('');
   });
 
-  it('never becomes part of the answer, and hands over once Anton speaks', () => {
-    const state = reduceAll([created, take('Checking.'), text('Revenue rose 4%.')]);
-    expect(visibleFirstTake(state.firstTake)).toBeNull();
-    expect(state.bodyText).toBe('Revenue rose 4%.');
+  it('never becomes part of the answer, and stays until the answer starts (ENG-3554)', () => {
+    // A one-line round is narration until the turn says otherwise.
+    const narrating = reduceAll([created, take('Checking.'), text('Revenue rose 4%.')]);
+    expect(visibleFirstTake(narrating.firstTake)?.text).toBe('Checking.');
+    expect(answerBody(narrating)).toBe('');
+    // An answer takes its place.
+    const answering = reduceAll([created, take('Checking.'), text('Revenue rose 4%.\n\nMostly in Q3.')]);
+    expect(visibleFirstTake(answering.firstTake)).toBeNull();
+    expect(answerBody(answering)).toBe('Revenue rose 4%.\n\nMostly in Q3.');
   });
 
   it('a blank delta is not Anton speaking', () => {
@@ -30,14 +35,19 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(visibleFirstTake(state.firstTake)).toBeNull();
   });
 
-  it("keeps Anton's narration, and a late take can't reappear beside it", () => {
+  it("stays through Anton's narration, which becomes a step (ENG-3554)", () => {
     const state = reduceAll([
       created, take('Checking.'), text('Let me look.'),
       { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 't1' },
-      take(' late'),
+      take(' more'),
     ]);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking. more');
+    expect(state.steps[0]).toEqual(expect.objectContaining({ badge: 'Note', label: 'Let me look.' }));
+  });
+
+  it("a late take can't reappear once the answer has replaced it", () => {
+    const state = reduceAll([created, take('Checking.'), text('# Results\n'), take(' late')]);
     expect(visibleFirstTake(state.firstTake)).toBeNull();
-    expect(state.currentThought?.text).toBe('Let me look.');
   });
 
   it('a question for the user takes its place', () => {
