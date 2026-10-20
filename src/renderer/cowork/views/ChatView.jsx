@@ -659,10 +659,10 @@ const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) 
   );
 });
 
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '' }) {
   const segments = useMemo(
-    () => splitTurnSegments(steps, { startedAt, conversationLive }),
-    [steps, startedAt, conversationLive],
+    () => splitTurnSegments(steps, { startedAt, conversationLive, reopenable, reply }),
+    [steps, startedAt, conversationLive, reopenable, reply],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
   // The live segment sits right before a pending question, if there is one.
@@ -698,7 +698,10 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
             step={seg.step}
             conversationId={conversationId}
             expired={seg.expired}
+            reopened={seg.reopened}
+            lateAnswer={seg.lateAnswer}
             onAnswered={onAnswered}
+            onAnswerAsMessage={onAnswerAsMessage}
           />
         </div>,
       );
@@ -3124,7 +3127,16 @@ export default function ChatView({
                     // here belongs to the live turn, whatever else is in flight
                     // on this conversation.
                     conversationLive={false}
+                    // Only the latest turn, with nothing in flight, can still
+                    // take an answer to a question that timed out: once a newer
+                    // message is sent, the conversation has moved past it.
+                    reopenable={i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
+                      ? visibleMessages[i + 1].content
+                      : null}
                     onAnswered={onQuestionAnswered}
+                    // [] so a pick does not take the composer's staged files.
+                    onAnswerAsMessage={(text) => onSend?.(text, [])}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
                   />
