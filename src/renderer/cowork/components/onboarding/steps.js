@@ -40,7 +40,7 @@ export const ONBOARDING_STEPS = [
     // at the path that actually works end to end.
     description: 'Link Google Drive, let Cowork act on your files.',
     prompt:
-      'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, do something useful with a file and show me what you found.',
+      'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, help me pick a file with "Add files from Google Drive", do something useful with it, and show me what you found.',
     desktopOnly: true,
   },
   // The 'point-at-folder' step ("give you access to a folder on my
