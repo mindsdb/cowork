@@ -19,6 +19,8 @@ beforeAll(async () => {
   server = await createServer({
     configFile: path.resolve(__dirname, 'vite.config.ts'),
     logLevel: 'silent',
+    // The dependency optimizer would start in the background and race close().
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true, ws: false },
   });
 }, 30_000);
