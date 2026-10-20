@@ -3,6 +3,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+This repository is public: PR titles, descriptions, branch names, commit messages, comments and code must not name customers, partners or users, or disclose private repository identities, links or release details. Describe roles and public component contracts; generic deployment terminology is allowed.
+
 ## Stack
 
 Electron 39 + Vite + React 19 + Tailwind desktop app with a FastAPI Python sidecar (`cowork-server`) managed via `uv`.
@@ -85,7 +87,9 @@ npm run check:cowork-purity  # no direct window.antontron outside platform/host.
   build); `document-preview.yml` runs the document preview Playwright suite
   (web harness in Chromium, Electron under xvfb) on every PR and on pushes to
   `main` and `staging`; `pack-smoke.yml` and `tests-e2e.yml` run nightly,
-  non-blocking.
+  non-blocking. `public-text.yml` checks PR text, commit messages and added
+  lines against a private pattern; `public-text-audit.yml` checks issues,
+  comments and reviews.
 - The IPC channel map is snapshot-locked
   (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
   change** (an OTA renderer is routinely newer than the shell it runs on —

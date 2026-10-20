@@ -1,3 +1,5 @@
+<!-- Public repository: use neutral roles and public component contracts. Do not disclose customer, partner or user names, or private repository identities, links or release details. Generic deployment terminology is allowed. -->
+
 ## Description
 
 Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change.
