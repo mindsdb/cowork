@@ -29,6 +29,7 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
+  ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
@@ -608,6 +609,17 @@ export function trackArtifactPublished(artifactId, visibility) {
   capture(EVENTS.ARTIFACT_PUBLISHED, {
     artifact_id: artifactId || '',
     visibility: visibility || 'public',
+  });
+}
+
+// Fires after the first successful load of each Stats panel open. access_mode
+// is null until the viewer knows the real mode, because usePublish reports
+// 'public' as its default before that.
+export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasViews = false } = {}) {
+  capture(EVENTS.ARTIFACT_STATS_OPENED, {
+    artifact_id: artifactId || '',
+    access_mode: accessMode || null,
+    has_views: !!hasViews,
   });
 }
 
