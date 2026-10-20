@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { splitTurnSegments, liveSegmentIndex } from './turnSegments';
 
 const work = (id, startedAt = 1) => ({ id, label: id, badge: 'ToolProgress', status: 'completed', startedAt });
-const question = (qid, { answer = null, completedAt = null, options } = {}) => ({
+const question = (qid, { answer = null, completedAt = null, options, select } = {}) => ({
   id: `question-${qid}`,
   label: `Prompt ${qid}`,
   badge: 'AskUser',
   status: answer ? 'completed' : 'in_progress',
   completedAt,
-  data: { question_id: qid, answer, options },
+  data: { question_id: qid, answer, options, select },
 });
 const ANSWER = { status: 'answered', values: ['accept'], text: '' };
 const shape = (segments) => segments.map((s) => {
@@ -101,14 +101,39 @@ describe('splitTurnSegments', () => {
 
     it('shows the reply that followed as the late answer', () => {
       const opts = [{ value: 'pg', label: 'Postgres' }, { value: 'my', label: 'MySQL' }];
-      const late = (reply) => splitTurnSegments(
-        [question('ask:1', { answer: TIMEOUT, options: opts })], { reply },
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
       ).find((s) => s.kind === 'question').lateAnswer;
-      expect(late('Postgres, MySQL')).toEqual({ status: 'answered', values: ['pg', 'my'], text: '' });
+      expect(late('Postgres')).toEqual({ status: 'answered', values: ['pg'], text: '' });
+      expect(late('Postgres, MySQL', 'many')).toEqual({ status: 'answered', values: ['pg', 'my'], text: '' });
       expect(late('use sqlite')).toEqual({ status: 'answered', values: [], text: 'use sqlite' });
       expect(late(null)).toBeNull();
       const write = splitTurnSegments([question('write:1', { answer: TIMEOUT })], { reply: 'Approve' });
       expect(write.find((s) => s.kind === 'question').lateAnswer).toBeNull();
+    });
+
+    it('reads a comma-joined reply as several picks only on a multi-select question', () => {
+      const opts = [{ value: 'pg', label: 'Postgres' }, { value: 'my', label: 'MySQL' }];
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Postgres, MySQL')).toEqual({ status: 'answered', values: [], text: 'Postgres, MySQL' });
+    });
+
+    it('does not split a label that contains a comma', () => {
+      const opts = [
+        { value: 'both', label: 'Marketing, Sales' },
+        { value: 'marketing', label: 'Marketing' },
+        { value: 'sales', label: 'Sales' },
+      ];
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Marketing, Sales')).toEqual({ status: 'answered', values: ['both'], text: '' });
+      // On a multi-select question the same reply reads two ways, so it shows as typed.
+      expect(late('Marketing, Sales', 'many')).toEqual({ status: 'answered', values: [], text: 'Marketing, Sales' });
+      expect(late('Marketing, Sales, Marketing', 'many'))
+        .toEqual({ status: 'answered', values: [], text: 'Marketing, Sales, Marketing' });
     });
 
     it('changes nothing without reopenable', () => {

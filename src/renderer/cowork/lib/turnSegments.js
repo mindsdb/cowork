@@ -31,7 +31,10 @@
 // `reply` is the user message that followed a finished turn. It answered that
 // turn's open question, so the card shows it as the answer rather than the
 // timeout: a pick from the card arrives as its option labels, anything else as
-// typed text.
+// typed text. The reply is only text, so the picks are read back from it: a
+// single-select reply must be one whole label, and a multi-select reply must
+// split into labels exactly one way. Anything ambiguous shows as typed text
+// rather than highlighting options the user may not have picked.
 //
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
 // as an agent message between the work before and after it.
@@ -62,7 +65,7 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
     ? lastQuestion.id
     : null;
   const reopenedId = reopenable ? openId : null;
-  const lateAnswer = openId && reply ? replyAsAnswer(lastQuestion.data.options, reply) : null;
+  const lateAnswer = openId && reply ? replyAsAnswer(lastQuestion.data, reply) : null;
 
   const segments = [];
   // Work after a question starts when the user answered it; without an
@@ -96,12 +99,27 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
   return segments;
 }
 
-function replyAsAnswer(options, reply) {
+function replyAsAnswer({ options, select }, reply) {
   const byLabel = new Map((options || []).map((o) => [o.label || o.value, o.value]));
-  const values = reply.split(', ').map((part) => byLabel.get(part));
-  return values.every((v) => v != null)
+  const values = select === 'many' ? onlySplit(reply, byLabel) : byLabel.has(reply) && [byLabel.get(reply)];
+  return values
     ? { status: 'answered', values, text: '' }
     : { status: 'answered', values: [], text: reply };
+}
+
+// The values `reply` names when it splits into ", "-joined labels exactly one
+// way, else null. Labels may themselves contain ", ".
+function onlySplit(reply, byLabel) {
+  const found = [];
+  const walk = (rest, values) => {
+    if (found.length > 1) return;
+    for (const [label, value] of byLabel) {
+      if (rest === label) found.push([...values, value]);
+      else if (rest.startsWith(`${label}, `)) walk(rest.slice(label.length + 2), [...values, value]);
+    }
+  };
+  walk(reply, []);
+  return found.length === 1 ? found[0] : null;
 }
 
 /**
