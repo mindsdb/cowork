@@ -5,8 +5,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 
 // Loads the real renderer config as a web dev server with the platform UI off,
-// the setup in which the deployment brand plugin runs. A request without
-// `Accept: text/html`, such as a readiness probe, is served `index.html`.
+// the setup in which the deployment brand plugin runs.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENV_KEYS = ['BUILD_TARGET', 'VITE_PLATFORM_UI'] as const;
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
