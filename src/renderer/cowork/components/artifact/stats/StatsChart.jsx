@@ -9,7 +9,10 @@ function themeColor(element, name, fallback) {
   return value || fallback;
 }
 
-export function StatsChart({ daily = [] }) {
+// Stable default: the chart rebuilds whenever `daily` changes identity.
+const NO_DAYS = [];
+
+export function StatsChart({ daily = NO_DAYS }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
