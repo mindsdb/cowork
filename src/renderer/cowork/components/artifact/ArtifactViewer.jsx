@@ -455,14 +455,12 @@ export function ArtifactViewer({
   const statsAvailable = !!pub.publishedUrl && canManage;
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
+  // Stats closes when it stops being available and with the viewer, so the
+  // next artifact does not open and report it unasked. The comments inbox
+  // keeps its state across closes.
   useEffect(() => {
-    if (sidePanel === 'stats' && !statsAvailable) setSidePanel(null);
-  }, [sidePanel, statsAvailable]);
-  // Stats closes with the viewer, so the next artifact does not open and
-  // report it unasked. The comments inbox keeps its state across closes.
-  useEffect(() => {
-    if (!open) setSidePanel((current) => (current === 'stats' ? null : current));
-  }, [open]);
+    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
+  }, [open, sidePanel, statsAvailable]);
   // One event per open and artifact, after its first successful load. The
   // viewer outlives an artifact switch, so the ref holds which artifact was
   // reported rather than a flag. The hook returns no data for an artifact it
