@@ -3,7 +3,23 @@
 // the "Design your own" CustomTheme recipe (customTheme.ts, local-only,
 // tied to the Custom skin), branding applies regardless of skin/theme.
 
+import { STOCK_WORDMARK } from '../../shared/product-name';
+import { brandLogoUrl, productName } from './deploymentBrand';
 import type { DeploymentBrand } from './deploymentBrand';
+
+/**
+ * The sidebar wordmark and logo. A title or logo set in Settings wins, then
+ * the deployment brand's, then the stock wordmark (and no logo).
+ */
+export function navBrand(
+  navTitle: string | null | undefined,
+  navLogo: string | null | undefined,
+): { wordmark: string; logo: string | null } {
+  return {
+    wordmark: navTitle || productName(STOCK_WORDMARK),
+    logo: navLogo || brandLogoUrl() || null,
+  };
+}
 
 /**
  * Apply (or with null/empty, clear) the sidebar wordmark color as an inline

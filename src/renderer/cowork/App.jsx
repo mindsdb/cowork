@@ -48,9 +48,7 @@ import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
-import { brandLogoUrl, productName } from '../lib/deploymentBrand';
-import { STOCK_WORDMARK } from '../../shared/product-name';
+import { applyFavicon, applyNavTitleColor, navBrand } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canUseSharedResource } from './lib/sharedResourceAccess';
@@ -5407,8 +5405,7 @@ function AppCore() {
   // One brand, shown in the sidebar's head row or, while the sidebar is
   // hidden, compact in the titlebar.
   const titlebarBrand = {
-    wordmark: appearanceSettings.navTitle || productName(STOCK_WORDMARK),
-    logo: appearanceSettings.navLogo || brandLogoUrl() || null,
+    ...navBrand(appearanceSettings.navTitle, appearanceSettings.navLogo),
     mode: effectiveWorkspaceMode,
     showSwitch: !host.isWeb && codeModeEnabled,
     onChange: changeWorkspace,
