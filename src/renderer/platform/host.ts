@@ -45,6 +45,13 @@ export const isWeb: boolean = !isElectron;
 export const codeModeAvailable: boolean =
   isElectron && bridge.codeModeAvailable === true;
 
+/* Whether this shell may mount the sandboxed document preview frame. Web
+   always may. A desktop shell may only when its preload reports exactly true,
+   so an older shell, or one whose bridge omits the flag, keeps opening those
+   files in the default app. */
+export const supportsDocumentPreview: boolean =
+  isWeb || bridge.supportsDocumentPreview === true;
+
 // ---- Platform identity --------------------------------------------------
 
 export type PlatformId = 'darwin' | 'win32' | 'linux' | 'web';
@@ -1672,6 +1679,7 @@ export const host = {
   isWeb,
   isElectron,
   codeModeAvailable,
+  supportsDocumentPreview,
   getPlatform,
   isMac,
   getApiOrigin,

@@ -264,6 +264,12 @@ describe('web mode (no bridge)', () => {
     expect(host.codeModeAvailable).toBe(false);
   });
 
+  it('supportsDocumentPreview is true on web, where no bridge decides it', async () => {
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -369,6 +375,29 @@ describe('electron mode (bridge present)', () => {
     host = await importHost();
     expect(host.codeModeAvailable).toBe(false);
   });
+
+  it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: true };
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
+  it('supportsDocumentPreview is false on a shell whose bridge omits the flag', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(false);
+    expect(host.host.supportsDocumentPreview).toBe(false);
+  });
+
+  it.each([false, 'true', 1, {}])(
+    'supportsDocumentPreview is false when the bridge reports %j',
+    async (value) => {
+      (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: value };
+      const host = await importHost();
+      expect(host.supportsDocumentPreview).toBe(false);
+    },
+  );
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
     (window as unknown as Record<string, unknown>).antontron = { serverPort: 12345 };
