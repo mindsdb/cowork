@@ -13,7 +13,18 @@
  * spec code. When a fixture sets `units`, its spec asserts that summary.units
  * equals it. When it sets `minUnits`, its spec asserts that summary.units is at
  * least that. RenderSummary in contract.ts says what `units` counts for each
- * type.
+ * type. When it sets `paintedRegion`, its spec asserts that the region holds
+ * pixels other than the page background on that page's canvas.
+ *
+ * openPreview leaves the preview frame mounted until the next openPreview or
+ * the end of the test, except that a `timeout` unmounts it the way the parent's
+ * watchdog does. A spec reaches the frame with
+ * page.frame({ name: PREVIEW_FRAME_NAME }), importing the name from
+ * src/shared/document-preview.ts. Checks that PreviewRun doesn't carry, such
+ * as counting canvases, reading pixels and canvas sizes, finding a nested
+ * iframe, or searching attributes and styles across the whole DOM, are spec
+ * code over that frame. The data they compare against, such as
+ * `paintedRegion`, stays in fixtures.yaml.
  *
  * Every spec asserts three things: clean fixtures reach only the harness host,
  * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
@@ -33,9 +44,13 @@ import type {
 
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
 
+/* A rectangle on one page's canvas, as fractions from 0 to 1 of that canvas's
+   width and height, measured from its top-left corner. `page` counts from 1. */
+export interface CanvasRegion { page: number; left: number; top: number; width: number; height: number }
+
 export interface FixtureExpectation {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; units?: number; minUnits?: number;
-  truncated?: boolean; textIncludes?: string[]; textExcludes?: string[];
+  truncated?: boolean; textIncludes?: string[]; textExcludes?: string[]; paintedRegion?: CanvasRegion;
 }
 export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; expect: FixtureExpectation }
 /* What openPreview saw for one fixture. It loads the fixture into the preview

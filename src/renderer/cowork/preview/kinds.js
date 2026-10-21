@@ -16,6 +16,8 @@ import { isBackendArtifact } from '../lib/artifactKinds';
 import { artifactExtension } from '../components/artifact/artifactPreviewUtils';
 
 /** @typedef {import('./contract').DocumentPreviewType} DocumentPreviewType */
+/** @typedef {import('../components/artifact').ArtifactViewerArtifact} ArtifactViewerArtifact */
+/** @typedef {Pick<typeof import('../../platform/host').host, 'supportsDocumentPreview'>} DocumentPreviewHost */
 
 /** @type {ReadonlyMap<string, DocumentPreviewType>} */
 const PREVIEW_TYPE_BY_EXTENSION = new Map([
@@ -41,6 +43,7 @@ export function documentPreviewKinds(rendererKeys) {
    * The preview type for an artifact's file, or null when the file isn't one
    * of the document types or the build has no renderer for it.
    *
+   * @param {ArtifactViewerArtifact | null | undefined} a
    * @returns {DocumentPreviewType | null}
    */
   function documentPreviewType(a) {
@@ -53,7 +56,9 @@ export function documentPreviewKinds(rendererKeys) {
   /**
    * The one gate every click surface asks before it opens a document preview.
    *
-   * @param {{ supportsDocumentPreview: boolean }} host
+   * @param {ArtifactViewerArtifact | null | undefined} a
+   * @param {DocumentPreviewHost} host
+   * @returns {boolean}
    */
   function canPreviewDocument(a, host) {
     return !!a?.draftUrl && !isBackendArtifact(a) && documentPreviewType(a) !== null && host.supportsDocumentPreview;

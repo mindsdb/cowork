@@ -24,7 +24,23 @@ export interface PreviewLimits {
      units never counts pages drawn.
    - docx: always 1, the one rendered document. */
 export interface RenderSummary { type: DocumentPreviewType; units: number; truncated: boolean }
+
+/* Who raises each code:
+   - too-large: the parent, when the streamed fetch passes maxBytes.
+   - timeout: the parent, when the frame misses readyTimeoutMs or
+     progressTimeoutMs.
+   - zip-limit: the runtime's archive guard, past maxInflatedBytes,
+     maxZipEntryInflatedBytes or maxZipEntries.
+   - parse-failed: a renderer, for a file it can't read. The runtime also
+     raises it for a file that starts with PK\x03\x04 but doesn't open as an
+     archive.
+   - unsupported: a renderer, for a valid file it can't show.
+   - internal: the runtime, for any other throw. */
 export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'unsupported' | 'timeout' | 'internal';
+
+/* render() fails with a code by rejecting with a PreviewError. The runtime
+   reports any other rejection as internal. */
+export interface PreviewError extends Error { code: PreviewErrorCode }
 
 export interface GuardedZip {
   names(): readonly string[];
@@ -41,6 +57,13 @@ export interface RendererContext {
   requestAsset(name: string): Promise<Uint8Array | null>;
 }
 
+/* Before render(), the runtime runs its archive guard on every file that
+   starts with PK\x03\x04 and on every other file JSZip opens as an archive,
+   because JSZip also opens an archive with bytes prepended to it. A file past
+   the caps ends with zip-limit and never reaches render(). So render()
+   receives only bytes that passed the guard, a library that unzips them
+   itself reads only checked entries, and ctx.openZip(bytes) returns that
+   checked archive. */
 export interface DocumentRenderer {
   type: DocumentPreviewType;
   render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderSummary>;
