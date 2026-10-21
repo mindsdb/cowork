@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // The MindsHub credential the sidecar runs on, held in this process and pushed
 // over loopback instead of written to disk.
 //
@@ -68,7 +69,7 @@ async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredentia
     // session credential too. keychain-service already falls back to its
     // encrypted file when keytar throws, so reaching here means both stores
     // failed — fall through and present the token rather than nothing.
-    console.warn('[minds-credential] could not read the stored key', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_could_not_read_the_stored_key", '[minds-credential] could not read the stored key', error);
   }
   const accessToken = getAccessToken();
   return {
@@ -163,9 +164,9 @@ async function pushMindsCredentialNow(
       // connect a provider. The next start after the sidecar updates re-pushes,
       // because `setServerStartedHook` in index.ts runs this on every start.
       if (res.status === 404) {
-        console.warn('[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
+        diagnostic("main.minds-credential", "WARNING", "minds_credential_the_running_sidecar_has_no_hand_over_route_it_predates_this_build_retrying_after_it", '[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
       } else {
-        console.warn('[minds-credential] hand-over returned', res.status);
+        diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_returned", '[minds-credential] hand-over returned', res.status);
       }
       return false;
     }
@@ -183,7 +184,7 @@ async function pushMindsCredentialNow(
     }
     return true;
   } catch (error) {
-    console.warn('[minds-credential] hand-over failed', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_failed", '[minds-credential] hand-over failed', error);
     return false;
   }
 }
@@ -294,7 +295,7 @@ async function forgetStoredKey(): Promise<void> {
   try {
     await deleteMindsApiKey(mindsKeyScope());
   } catch (error) {
-    console.warn('[minds-credential] could not delete the stored key', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_could_not_delete_the_stored_key", '[minds-credential] could not delete the stored key', error);
   }
 }
 

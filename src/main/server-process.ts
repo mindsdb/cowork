@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Spawns the cowork-server FastAPI backend and waits for /health to come up.
 //
 // In dev: `uv run cowork-server` from the sibling cowork-server directory
@@ -268,7 +269,7 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   if (!isServerRunning() && !isServerStarting()) return false;
   if (isServerStarting()) return false; // a start in flight will use the current root
   if (sidecarIsOnCurrentStores()) return true;
-  console.log('[server] running on another account data root — restarting');
+  diagnostic("main.server-process", "INFO", "server_running_on_another_account_data_root_restarting", '[server] running on another account data root — restarting');
   try {
     await stopServer();
     // The bearer token lives in the account's own dotenv, so a cached one from
@@ -277,7 +278,7 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
     const result = await startServer();
     return result.ok && sidecarIsOnCurrentStores();
   } catch (err) {
-    console.warn('[server] could not move the sidecar onto this account root', err);
+    diagnostic("main.server-process", "WARNING", "server_could_not_move_the_sidecar_onto_this_account_root", '[server] could not move the sidecar onto this account root', err);
     return false;
   }
 }
@@ -637,7 +638,7 @@ export async function resolveServerPort(): Promise<number> {
       // with EADDRINUSE. Move to a free port we can own.
       const free = await findFreePort();
       if (free) serverPort = free;
-      console.log(`[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
+      diagnostic("main.server-process", "INFO", "server_port_held_by_a_foreign_server_using_instead", `[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
     } else if (probe.state === 'compatible' && probe.owner) {
       _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
     }
@@ -648,7 +649,7 @@ export async function resolveServerPort(): Promise<number> {
     // OS user → EPERM), so the worst case there is a safe bind failure, never
     // adopting a foreign server.
   } catch (err) {
-    console.warn('[server] resolveServerPort failed; falling back to preferred port', err);
+    diagnostic("main.server-process", "WARNING", "server_resolveserverport_failed_falling_back_to_preferred_port", '[server] resolveServerPort failed; falling back to preferred port', err);
   } finally {
     _portResolved = true;
   }
@@ -701,7 +702,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       await _startedHook();
     } catch (error) {
       // A start that worked is still a start. The hook reports its own failures.
-      console.warn('[server] post-start hook failed', error);
+      diagnostic("main.server-process", "WARNING", "server_post_start_hook_failed", '[server] post-start hook failed', error);
     }
   }
   return result;
@@ -718,7 +719,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
       return { ok: true, port: serverPort };
     }
-    console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
+    diagnostic("main.server-process", "WARNING", "server_adopted_instance_on_port_is_no_longer_healthy_starting_a_replacement", `[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
     await stopServerUnlocked();
   }
   // If a start is already in progress (e.g. from app boot), reuse it
@@ -749,7 +750,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // keep serving keys a sign-out marked for clearing. Replace it instead.
     if (ours && hasPendingCredentialClear(currentOrgStoreRoot())) {
       refusedAdoption = true;
-      console.log('[server] not adopting the running instance: its store has a pending credential clear');
+      diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_its_store_has_a_pending_credential_clear", '[server] not adopting the running instance: its store has a pending credential clear');
     } else if (ours) {
       serverStarted = true;
       _adoptedExternal = true;
@@ -761,7 +762,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
-      console.log(`[server] adopted our own existing instance on port ${serverPort}`);
+      diagnostic("main.server-process", "INFO", "server_adopted_our_own_existing_instance_on_port", `[server] adopted our own existing instance on port ${serverPort}`);
       return { ok: true, port: serverPort };
     }
   }
@@ -773,7 +774,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // actually free), then give the OS a moment to release the socket.
   const reaped = await killProcessOnPort(serverPort);
   if (reaped.length > 0) {
-    console.log(`[server] reaped an orphan holding port ${serverPort} before spawn (pid ${reaped.join(', ')})`);
+    diagnostic("main.server-process", "INFO", "server_reaped_an_orphan_holding_port_before_spawn_pid", `[server] reaped an orphan holding port ${serverPort} before spawn (pid ${reaped.join(', ')})`);
     await sleep(500);
   }
   // The reap ignores its own failures, and a spawn that then loses the bind
@@ -784,7 +785,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       lastStartError = `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`;
       lastStartErrorKind = 'credential-clear';
       lastPortHolderPid = holders[0];
-      console.error(`[server] ${lastStartError} (pid ${holders.join(', ')})`);
+      diagnostic("main.server-process", "ERROR", "server_pid", `[server] ${lastStartError} (pid ${holders.join(', ')})`);
       return { ok: false, reason: lastStartError, port: serverPort };
     }
   }
@@ -873,7 +874,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     _startingOrgStoreRoot = orgStoreRootAtSpawn;
     const orgSegmentAtSpawn = currentOrgSegment();
     const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
-    console.log(
+    diagnostic("main.server-process", "INFO", "server_build_kind_data_home",
       `[server] build kind "${kind}" → data home ${dataHome}` +
         (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
         (orgEnv.DATABASE_URI ? ` → organization stores ${orgStoreRootAtSpawn}` : ''),
@@ -957,13 +958,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // so the help modal has the complete picture.
       appendStderr(text);
       writeLog(text);
-      process.stdout.write(`[cowork-server] ${text}`);
+      process.stdout.write(text);
     });
     child.stderr.on('data', (d) => {
       const text = d.toString();
       appendStderr(text);
       writeLog(text);
-      process.stderr.write(`[cowork-server] ${text}`);
+      process.stderr.write(text);
     });
     // Whether this attempt's child is done, and why. Local to the attempt so a
     // late event from a previous child can't decide this one's outcome.
@@ -982,8 +983,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // Put it where the diagnostics tail and the on-disk log will show it, so
       // "no log captured" stops being the only evidence of a launch failure.
       appendStderr(`spawn failed: ${spawnError}\n`);
-      writeLog(`[cowork-server] spawn failed: ${spawnError}\n`);
-      console.error(`[cowork-server] spawn failed: ${spawnError}`);
+      writeLog(JSON.stringify({ logged_at: new Date().toISOString(), logger: "main.server-process", log_level: "ERROR", event: "backend_spawn_failed", message: "Backend process could not start", error_type: err instanceof Error ? err.name : "Error" }) + "\n");
+      diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
     child.on('exit', (code) => {
       childExited = true;
@@ -998,11 +999,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // panel instead of a calm "you stopped it" message.
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
-      logStream?.write(`\n[cowork-server] process exited with code ${code}\n`);
+      if (code !== 0 && code !== null) writeLog(JSON.stringify({ logged_at: new Date().toISOString(), logger: "main.server-process", log_level: "ERROR", event: "backend_exited", message: "Backend process exited", exit_code: code }) + "\n");
       logStream?.end();
       logStream = null;
       if (code !== 0 && code !== null) {
-        console.error(`[cowork-server] exited with code ${code}`);
+        diagnostic("main.server-process", "ERROR", "cowork_server_exited_with_code", `[cowork-server] exited with code ${code}`);
       }
     });
 
@@ -1043,7 +1044,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
         spawnError,
         elapsedMs,
       });
-      console.error(`[server] start failed on port ${serverPort}: ${lastStartError}`);
+      diagnostic("main.server-process", "ERROR", "server_start_failed_on_port", `[server] start failed on port ${serverPort}: ${lastStartError}`);
       // Reap the spawned child instead of leaving it as a zombie
       // pinning the port. If we don't, every failed restart leaks a
       // python that still owns the port, so subsequent restart attempts
@@ -1104,7 +1105,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // which meant a slow-but-successful boot — the case this budget exists for
     // — left no trace at all, and a support log could not distinguish "came up
     // in 2s" from "came up in 80s and nearly missed the cap".
-    console.log(`[server] healthy on port ${serverPort} after ${Date.now() - waitStartedAt}ms`);
+    diagnostic("main.server-process", "INFO", "server_healthy_on_port_after_ms", `[server] healthy on port ${serverPort} after ${Date.now() - waitStartedAt}ms`);
     // Successful start — clear the previous failure note but keep
     // the rolling stderr in case downstream code wants to inspect.
     lastStartError = null;
@@ -1150,12 +1151,12 @@ async function prepareCodingTasksForShutdown(): Promise<void> {
       signal: AbortSignal.timeout(PREPARE_SHUTDOWN_TIMEOUT_MS),
     });
     if (!response.ok) {
-      console.warn(`[coding] shutdown checkpoint returned HTTP ${response.status}`);
+      diagnostic("main.server-process", "WARNING", "coding_shutdown_checkpoint_returned_http", `[coding] shutdown checkpoint returned HTTP ${response.status}`);
     }
   } catch (error) {
     // The sidecar may already be unhealthy. Continue with the bounded process
     // teardown; its startup reconciliation remains the crash-safety fallback.
-    console.warn('[coding] could not checkpoint active tasks before shutdown', error);
+    diagnostic("main.server-process", "WARNING", "coding_could_not_checkpoint_active_tasks_before_shutdown", '[coding] could not checkpoint active tasks before shutdown', error);
   }
 }
 

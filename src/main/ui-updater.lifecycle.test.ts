@@ -315,7 +315,7 @@ describe('bundled-version misconfiguration guard', () => {
     await ui.checkForUIUpdate();
     await ui.applyUIUpdate(); // second entry point — must not warn again (one-shot)
 
-    const hits = warn.mock.calls.filter((c) => String(c[0]).includes('not CalVer'));
+    const hits = warn.mock.calls.filter((c) => JSON.parse(String(c[0])).event.includes('not_calver'));
     expect(hits).toHaveLength(1);
     warn.mockRestore();
   });
@@ -328,7 +328,7 @@ describe('bundled-version misconfiguration guard', () => {
 
     await ui.checkForUIUpdate();
 
-    expect(warn.mock.calls.filter((c) => String(c[0]).includes('not CalVer'))).toHaveLength(0);
+    expect(warn.mock.calls.filter((c) => JSON.parse(String(c[0])).event.includes('not_calver'))).toHaveLength(0);
     warn.mockRestore();
   });
 });

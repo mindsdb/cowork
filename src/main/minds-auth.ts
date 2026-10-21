@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
 import { resetServerAuthTokenCache } from './server-auth';
@@ -207,7 +208,7 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
       // Nothing in the body should reject today, but an armed barrier with no
       // settle path blocks every later turn for the life of the process, and
       // `void` would swallow the rejection with it.
-      console.warn('[minds-auth] resume refresh failed before it could settle the gate:', err);
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_resume_refresh_failed_before_it_could_settle_the_gate", '[minds-auth] resume refresh failed before it could settle the gate:', err);
       settleMindsResumeCredentialGate(false);
     },
   );
@@ -256,7 +257,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         return { status: 'superseded' };
       }
       if ((res.status === 400 || res.status === 401) && oauthError === 'invalid_grant') {
-        console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
+        diagnostic("main.minds-auth", "WARNING", "minds_auth_refresh_token_rejected_invalid_grant_clearing_session", '[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
         cancelScheduledRefresh();
         // The session JWT is definitively dead, so replace it in the sidecar.
@@ -267,7 +268,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential(true);
         return { status: 'invalid_grant' };
       }
-      console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_token_refresh_failed_transiently_http_keeping_tokens", `[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
       if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
     }
@@ -285,7 +286,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'superseded' };
     }
     if (typeof data.access_token !== 'string' || !data.access_token) {
-      console.warn('[minds-auth] token refresh returned no access token — keeping session');
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_token_refresh_returned_no_access_token_keeping_session", '[minds-auth] token refresh returned no access token — keeping session');
       if (cancelledMidExchange) return { status: 'superseded' };
       if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
@@ -368,7 +369,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       // failures it exists to surface. `setServerStartedHook` pushes as soon as
       // the sidecar comes up, so a timer would only race that push.
       if (isMindsCredentialSidecarReachable()) {
-        console.warn('[minds-auth] fresh credential was not handed to the sidecar — retrying hand-over');
+        diagnostic("main.minds-auth", "WARNING", "minds_auth_fresh_credential_was_not_handed_to_the_sidecar_retrying_hand_over", '[minds-auth] fresh credential was not handed to the sidecar — retrying hand-over');
         scheduleCredentialHandoffRetry();
       }
       return { status: 'handoff_pending', token: data.access_token };
@@ -388,7 +389,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'superseded' };
     }
     // Network failure / timeout — the token itself is fine. Retry later.
-    console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', describeFetchError(e));
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_token_refresh_unreachable_keeping_tokens_will_retry", '[minds-auth] token refresh unreachable — keeping tokens, will retry:', describeFetchError(e));
     if (!suppressCredentialHandoff) scheduleRefreshRetry();
     return { status: 'transient' };
   }
@@ -422,7 +423,7 @@ export async function endKeycloakSession(refreshToken: string | null = getRefres
       signal: controller.signal,
     });
   } catch (error) {
-    console.warn('[logout] Keycloak end-session failed or timed out', error);
+    diagnostic("main.minds-auth", "WARNING", "logout_keycloak_end_session_failed_or_timed_out", '[logout] Keycloak end-session failed or timed out', error);
   } finally {
     clearTimeout(timer);
   }
@@ -623,7 +624,7 @@ function storeOrgPreference(userId: string, orgId: string, chosenByUser: boolean
     const next = writeOrgPreference(readCoworkState(), userId, orgId, chosenByUser);
     fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[minds-auth] failed to store the organization pick', error);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_failed_to_store_the_organization_pick", '[minds-auth] failed to store the organization pick', error);
   }
 }
 
@@ -832,7 +833,7 @@ async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<v
     // a silent failure here is exactly what let the renewal-rollback bug
     // hide, so at least make it diagnosable. `prefix` is the public
     // display prefix, not a secret.
-    if (!res.ok) console.warn('[minds-auth] key delete returned', res.status, 'for prefix', prefix);
+    if (!res.ok) diagnostic("main.minds-auth", "WARNING", "minds_auth_key_delete_returned", '[minds-auth] key delete returned', res.status, 'for prefix', prefix);
   } catch {
     // best-effort cleanup — proceed with the new key creation regardless
   }
@@ -864,9 +865,9 @@ async function revokeAntonApiKeys(accessToken: string): Promise<void> {
     }
   }
   if (revoked === 0) {
-    console.warn('[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org', keyName);
+    diagnostic("main.minds-auth", "WARNING", "logout_no_per_device_key_found_to_revoke_name_s_list_failed_key_already_gone_or_key_lives_in_another", '[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org', { device_key_id: keyName });
   } else {
-    console.log('[logout] revoked %d device key(s)', revoked);
+    diagnostic("main.minds-auth", "INFO", "logout_revoked_d_device_key_s", { count: revoked });
   }
 }
 
@@ -903,7 +904,7 @@ export async function revokeDeviceKeyAndEndSession(
       }
     }
   } catch (err) {
-    console.warn('[logout] device key revoke failed:', err instanceof Error ? err.message : err);
+    diagnostic("main.minds-auth", "WARNING", "logout_device_key_revoke_failed", '[logout] device key revoke failed:', err instanceof Error ? err.message : err);
   } finally {
     await endKeycloakSession(refreshToken);
   }
@@ -968,7 +969,7 @@ async function fetchAuthContext(accessToken: string): Promise<{
     // returned. This is what the upgrade gate keys off — log it so a
     // failing machine tells us "no subscription" vs "wrong product/org"
     // instead of surfacing a generic error.
-    console.log(
+    diagnostic("main.minds-auth", "INFO", "minds_auth_authenticate_status_s_agents_use_s_api_keys_create_s_deploy_agents_s",
       '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
       res.status,
       ent?.permissions?.agents?.use ? 'true' : 'false',
@@ -1175,7 +1176,7 @@ async function doSelectEntitledOrg(
   // raises the top-up card on the first turn, which is exactly what an
   // unentitled user meets today when they have nowhere else to be moved to.
   if (activeWasChosen) {
-    console.warn(
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_the_chosen_organization_has_no_hub_entitlement_honouring_the_choice_and_leaving_the_quota",
       '[minds-auth] the chosen organization has no HUB entitlement; honouring the '
       + 'choice and leaving the quota to the gateway: org=%s',
       startedInOrgId ?? 'unknown',
@@ -1215,7 +1216,7 @@ async function doSelectEntitledOrg(
     ? await restoreActiveOrg(getAccessToken() ?? accessToken, startedInOrgId)
     : true;
   const norm = normalizeHubEntitlements(ctx.entitlements);
-  console.warn(
+  diagnostic("main.minds-auth", "WARNING", "minds_auth_signed_in_without_a_hub_entitlement_in_any_organization_quota_enforced_at_the_gateway_age",
     '[minds-auth] signed in without a HUB entitlement in any organization '
     + '(quota enforced at the gateway): agents.use=%s deploy_agents=%s',
     norm.permissions.agents.use ? 'true' : 'false',
@@ -1450,7 +1451,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
   } catch (err) {
     envWriteError = err;
-    console.warn('[minds-auth] .env write failed', err);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_env_write_failed", '[minds-auth] .env write failed', err);
   }
 
   // Ensure state.json has minds-cloud as the active provider so the server
@@ -1471,7 +1472,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     ensureAccountDataRoot();
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[minds-auth] failed to set provider state', error);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_failed_to_set_provider_state", '[minds-auth] failed to set provider state', error);
   }
 
   // Whether this sign-in moved the session onto a different data root. The
@@ -1494,7 +1495,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     // Nothing else has stored this sign-in yet, so a failed write here leaves
     // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
-    console.log('[minds-auth] server not installed yet — setup will sync after install');
+    diagnostic("main.minds-auth", "INFO", "minds_auth_server_not_installed_yet_setup_will_sync_after_install", '[minds-auth] server not installed yet — setup will sync after install');
     return { dataRootChanged };
   }
 
@@ -1507,7 +1508,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // previous one's tasks. Safe here specifically because the credential push
   // below runs after it, and `setServerStartedHook` re-pushes on every start.
   if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentStores()) {
-    console.log('[minds-auth] account data root changed — restarting the sidecar');
+    diagnostic("main.minds-auth", "INFO", "minds_auth_account_data_root_changed_restarting_the_sidecar", '[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();
     // The bearer token lives in the account's own dotenv, so a cached one from
@@ -1519,7 +1520,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     await startServer();
   }
   if (!isServerRunning() && !isServerStarting()) {
-    console.warn('[minds-auth] sidecar unavailable — sign-in will sync on its next start');
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_sidecar_unavailable_sign_in_will_sync_on_its_next_start", '[minds-auth] sidecar unavailable — sign-in will sync on its next start');
     return { dataRootChanged };
   }
 
@@ -1530,7 +1531,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // prior configuration intact; the boot path re-pushes on the next start and
   // the next sign-in retries the whole sequence.
   if (!(await syncUsableMindsCredential({ invalidateCatalog: true }))) {
-    console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_credential_hand_over_failed_at_sign_in_leaving_the_prior_provider_config_intact", '[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
     return { dataRootChanged };
   }
   settleMindsResumeCredentialGate(true);
@@ -1551,10 +1552,10 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
         body: JSON.stringify({ value }),
       });
       if (!res.ok) {
-        console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
+        diagnostic("main.minds-auth", "WARNING", "minds_auth_settings_put_returned", `[minds-auth] settings PUT ${key} returned`, res.status);
       }
     } catch (error) {
-      console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_failed_to_write_to_server_db", `[minds-auth] failed to write ${key} to server DB`, error);
     }
   }
 
@@ -1566,12 +1567,12 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     if (healthRes.ok) {
       const health = await healthRes.json() as Record<string, unknown>;
       if (!health.config_ready) {
-        console.warn('[minds-auth] config_ready is false after sign-in — re-pushing the credential');
+        diagnostic("main.minds-auth", "WARNING", "minds_auth_config_ready_is_false_after_sign_in_re_pushing_the_credential", '[minds-auth] config_ready is false after sign-in — re-pushing the credential');
         await syncMindsCredential();
       }
     }
   } catch (error) {
-    console.warn('[minds-auth] health check after sign-in failed:', error);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_health_check_after_sign_in_failed", '[minds-auth] health check after sign-in failed:', error);
   }
 
   return { dataRootChanged };
@@ -1763,7 +1764,7 @@ async function restoreActiveOrg(token: string, orgId: string | null): Promise<bo
       }
     }
   }
-  console.warn('[minds-auth] could not put the active organization back to %s', orgId);
+  diagnostic("main.minds-auth", "WARNING", "minds_auth_could_not_put_the_active_organization_back_to_s", '[minds-auth] could not put the active organization back to %s', orgId);
   return false;
 }
 
@@ -1832,7 +1833,7 @@ function rollbackActiveOrg(orgId: string | null): boolean {
     writeActiveOrgSync(accountDataRoot(), orgId);
     return true;
   } catch (err) {
-    console.warn('[minds-auth] could not put the active organization record back', err);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_could_not_put_the_active_organization_record_back", '[minds-auth] could not put the active organization record back', err);
     return false;
   }
 }
@@ -1864,7 +1865,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     try {
       writeActiveOrgSync(accountDataRoot(), target.id);
     } catch (err) {
-      console.warn('[minds-auth] could not record the active organization', err);
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_could_not_record_the_active_organization", '[minds-auth] could not record the active organization', err);
       return {
         ok: false,
         activeOrgId: sourceOrgId,
@@ -1928,7 +1929,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   try {
     writeActiveOrgSync(accountDataRoot(), target.id);
   } catch (err) {
-    console.warn('[minds-auth] could not record the active organization', err);
+    diagnostic("main.minds-auth", "WARNING", "minds_auth_could_not_record_the_active_organization", '[minds-auth] could not record the active organization', err);
     const restored = await restoreActiveOrg(switched, sourceOrgId);
     return {
       ok: false,
