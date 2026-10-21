@@ -5,8 +5,7 @@ describe('liveApps store', () => {
   beforeEach(() => setLiveApps(false));
 
   it('defaults to false before anything is resolved', () => {
-    // Every deployment but one that runs live apps never sets it, so false
-    // has to be the resting value: it hides every live-app control.
+    /* Every deployment but one that runs live apps never sets it, so false has to be the resting value: it hides every live-app control. */
     expect(getLiveApps()).toBe(false);
   });
 

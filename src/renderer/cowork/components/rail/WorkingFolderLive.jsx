@@ -27,11 +27,10 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useLiveApps } from '../../../lib/liveApps';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { SHARE_LIVE_APP_LABEL, canShareLiveApp, receivedFromLine } from '../../lib/liveAppSharing';
-import { liveAppKey, liveAppStateLine } from '../../lib/liveAppState';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp } from '../../lib/liveAppSharing';
+import { liveAppLines } from '../../lib/liveAppState';
 import { useLiveAppStates } from '../../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
-import { SharedLiveApps } from './SharedLiveApps';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
@@ -73,10 +72,22 @@ function iconForRow(row) {
 }
 
 
-export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
+export function WorkingFolderLive({
+  project,
+  isStreaming,
+  conversationId = null,
+  onAddressWithAgent,
+  /*
+   * Live apps: the parent hears which project the rail resolved, and hands
+   * back, once, a copy duplicated into it from "Shared with you".
+   */
+  onProjectResolved,
+  receivedCopy = null,
+  onReceivedCopyShown,
+}) {
   const orgMode = useOrgMode();
   const liveApps = useLiveApps();
-  // Re-read when a turn ends: that is when the agent launches an app.
+  // Re-read when a turn starts or ends; the end is when the agent launches an app.
   const liveAppStates = useLiveAppStates(liveApps, isStreaming);
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
@@ -100,6 +111,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   }, [project]);
 
   const effectiveProject = project || resolvedProject;
+  const effectiveProjectId = effectiveProject?.id || null;
+  useEffect(() => {
+    onProjectResolved?.(effectiveProjectId);
+  }, [effectiveProjectId]);
 
   // Full server response; rows are derived so a chat switch inside the same
   // project regroups without a refetch.
@@ -155,6 +170,29 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       .then((list) => applyArtifacts(list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setArtifacts([]); });
   }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
+
+  /*
+   * A copy duplicated from "Shared with you" into this project shows at once,
+   * and its row scrolls into view: the card's body scrolls, and the copy may
+   * land out of sight above or below where the person was looking.
+   */
+  const listRef = useRef(null);
+  const [revealPath, setRevealPath] = useState(null);
+  useEffect(() => {
+    if (!receivedCopy?.path) return;
+    onReceivedCopyShown?.();
+    if (receivedCopy.projectId && receivedCopy.projectId !== effectiveProjectId) return;
+    setArtifacts((prev) => [receivedCopy, ...prev.filter((r) => r.path !== receivedCopy.path)]);
+    setRevealPath(receivedCopy.path);
+  }, [receivedCopy]);
+  useEffect(() => {
+    if (!revealPath) return;
+    const row = Array.from(listRef.current?.querySelectorAll('[data-artifact-path]') || [])
+      .find((el) => el.dataset.artifactPath === revealPath);
+    if (!row) return;
+    row.scrollIntoView?.({ block: 'nearest' });
+    setRevealPath(null);
+  }, [revealPath, rows]);
 
   // Streaming poll — every 3s while live, plus once shortly after
   // streaming ends (catches artifacts written near the very end of
@@ -406,16 +444,15 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           datasets here as it produces them.
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div ref={listRef} className="flex flex-col gap-0.5">
           {rows.map((a, i) => {
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
             const authorship = authorships[i];
             const title = a.title || (a.path?.split('/').pop() || '');
             // A live app's state, then whom a copy came from, under the title.
-            const sublines = liveApps && isBackendArtifact(a)
-              ? [liveAppStateLine(liveAppStates.get(liveAppKey(a.projectId, a.slug))), receivedFromLine(a)].filter(Boolean)
-              : [];
+            const lines = liveAppLines(a, { liveApps, states: liveAppStates });
+            const sublines = lines ? [lines.state, lines.received].filter(Boolean) : [];
             return (
               <Fragment key={a.path}>
                 {i > 0 && i === currentCount && (
@@ -428,6 +465,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                 <div
                   role="button"
                   tabIndex={0}
+                  data-artifact-path={a.path}
                   onClick={() => onOpenArtifact(a)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -524,14 +562,6 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
             );
           })}
         </div>
-      )}
-
-      {/* A copy lands in the rail's project, so the list needs one. */}
-      {liveApps && effectiveProject?.id && (
-        <SharedLiveApps
-          projectId={effectiveProject.id}
-          onDuplicated={(card) => setArtifacts((prev) => [card, ...prev.filter((r) => r.path !== card?.path)])}
-        />
       )}
 
       {shareTarget && (

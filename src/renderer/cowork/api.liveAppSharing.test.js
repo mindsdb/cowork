@@ -4,7 +4,14 @@ vi.mock('../platform/host', () => ({
   host: { getApiOrigin: () => 'http://127.0.0.1:26866', getAccessToken: vi.fn(async () => null), isWeb: false },
 }));
 
-import { duplicateLiveApp, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from './api';
+import {
+  duplicateLiveApp,
+  fetchLiveAppShares,
+  fetchMyLiveApps,
+  fetchSharedLiveApps,
+  shareLiveApp,
+  withdrawLiveAppShare,
+} from './api';
 
 const jsonRes = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -41,6 +48,39 @@ describe('shareLiveApp', () => {
 
     await expect(shareLiveApp({ projectId: 'p1', slug: 'a', email: 'me@example.com' }))
       .rejects.toMatchObject({ message: "That's your own address.", status: 400 });
+  });
+});
+
+describe('fetchLiveAppShares', () => {
+  it("GETs the owner's shares of one app, by project and slug", async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes([
+      { shareId: 's2', slug: 'table counts', email: null, everyone: true, sharedAt: 't2' },
+      { shareId: 's1', slug: 'table counts', email: 'ben@example.com', everyone: false, sharedAt: 't1' },
+    ]));
+
+    await expect(fetchLiveAppShares({ projectId: 'p1', slug: 'table counts' })).resolves.toEqual([
+      { shareId: 's2', slug: 'table counts', email: null, everyone: true, sharedAt: 't2' },
+      { shareId: 's1', slug: 'table counts', email: 'ben@example.com', everyone: false, sharedAt: 't1' },
+    ]);
+    expect(fetch.mock.calls[0][0])
+      .toBe('http://127.0.0.1:26866/api/v1/artifacts/live-app-shares?projectId=p1&slug=table%20counts');
+  });
+});
+
+describe('withdrawLiveAppShare', () => {
+  it('DELETEs the one share', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(withdrawLiveAppShare('s1')).resolves.toEqual({ ok: true });
+
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:26866/api/v1/artifacts/live-app-share/s1');
+    expect(options.method).toBe('DELETE');
+  });
+
+  it("throws the server's sentence for a share that is gone", async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ detail: 'This share no longer exists.' }, 404));
+    await expect(withdrawLiveAppShare('s1')).rejects.toMatchObject({ message: 'This share no longer exists.', status: 404 });
   });
 });
 

@@ -16,7 +16,7 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
-import { sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { getOrgMode } from '../lib/orgMode';
 import {
@@ -2276,19 +2276,27 @@ export function publishTargetPath(artifact) {
 }
 
 // ─── Live-app sharing ───────────────────────────────────────────────────────
-// Only a deployment that runs live apps has these routes; elsewhere they 404,
-// and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
-// A refusal's sentence comes back as the thrown error's message.
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
 
-// The caller's own live apps and whether each is running, for the cards'
-// state line. Shared by every card on screen through one in-flight request.
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
 export async function fetchMyLiveApps() {
   return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
 }
 
-// The owner shares a full-stack app with one colleague, named by email, or
-// with everyone on the stack. The body carries exactly one of the two. Sharing
-// the same app with the same audience again returns the same share.
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
 export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
   const audience = everyone ? { everyone: true } : { email };
   return req('/artifacts/live-app-share', {
@@ -2297,15 +2305,39 @@ export async function shareLiveApp({ projectId, slug, email, everyone = false })
   });
 }
 
-// What other people shared with the caller, newest first. Throws, so a caller
-// can tell "nothing shared" from "could not ask".
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
 export async function fetchSharedLiveApps() {
   return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
 }
 
-// Copies a shared app into one of the caller's own projects and returns the
-// new artifact card. `confirmed` is the disclaimer's answer: the server
-// refuses the copy without it, so only the dialog's confirm button calls this.
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
 export async function duplicateLiveApp({ shareId, projectId }) {
   return req('/artifacts/live-app-duplicate', {
     method: 'POST',

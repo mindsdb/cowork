@@ -34,6 +34,7 @@ import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useLiveApps } from '../../../lib/liveApps';
 import { usePublish } from './publish/usePublish';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
@@ -83,6 +84,7 @@ export function ArtifactViewer({
   resolveRepairConversation = null,
 }) {
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
@@ -410,7 +412,13 @@ export function ArtifactViewer({
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
-  const publishable = isPublishableArtifact(artifact);
+  /*
+   * With live apps on, a full-stack app shares through "Share with…" on its
+   * card, and cowork-server refuses to publish one as a page, so the header
+   * offers no page Share until it is published (it never is, unless that
+   * happened before live apps were turned on).
+   */
+  const publishable = isPublishableArtifact(artifact) && !(liveApps && isBackendArtifact && !pub.publishedUrl);
   const canManage = workspace.capabilities
     ? workspace.capabilities.canEdit !== false
     : artifact?.capabilities

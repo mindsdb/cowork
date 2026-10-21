@@ -1,19 +1,41 @@
-// "Share with…" for a live app: the owner names one colleague by email, or
-// shares it with everyone on the stack, and they can then duplicate it from
-// "Shared with you". Nobody opens the owner's running app; each copy runs with
-// its new owner's own connections. Used by the artifacts view and the rail's
-// Artifacts card.
+/*
+ * "Share with…" for a live app: the owner names one colleague by email, or
+ * shares it with everyone on the stack, and they can then duplicate it from
+ * "Shared with you". The dialog also lists the app's current shares, each with
+ * "Stop sharing". Nobody opens the owner's running app: the edge serves it
+ * only to the person cowork-server's access check names as its launcher. Each
+ * copy runs with its new owner's own connections. Used by the artifacts view
+ * and the rail's Artifacts card.
+ */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Input, RadioGroup, Radio } from '../ui';
-import { shareLiveApp } from '../../api';
+import { fetchLiveAppShares, shareLiveApp, withdrawLiveAppShare } from '../../api';
+import { isEmailShaped } from '../../lib/emailAddress';
 import {
   SHARED_WITH_YOU_LABEL,
   SHARE_WITH_EVERYONE,
+  SHARE_WITH_EVERYONE_LABEL,
   SHARE_WITH_ONE,
-  isEmailLike,
+  shareAudienceLabel,
 } from '../../lib/liveAppSharing';
+
+/*
+ * What the owner agrees to, by audience: recipients see the owner's email, a
+ * copy is the app as it is when they duplicate it, later edits included, and
+ * stopping a share leaves the copies already made.
+ */
+const AUDIENCE_NOTE = {
+  [SHARE_WITH_ONE]: 'They see your email beside the app, and can duplicate it until you stop sharing.',
+  [SHARE_WITH_EVERYONE]: 'Everyone on this stack, including people who join later, sees your email beside the app, '
+    + 'and can duplicate it until you stop sharing.',
+};
+const COPY_NOTE = 'Each copy is the app as it is when they duplicate it, including changes you make after sharing, '
+  + 'and runs with its new owner\'s connections. Stopping a share keeps the copies already made. '
+  + 'Nobody else opens your running app.';
+
+const DONE_MESSAGE_ID = 'live-app-share-done';
 
 export function LiveAppShareDialog({ artifact, onClose }) {
   const [audience, setAudience] = useState(SHARE_WITH_ONE);
@@ -22,12 +44,60 @@ export function LiveAppShareDialog({ artifact, onClose }) {
   const [error, setError] = useState('');
   // Who the server shared it with, once it has: an address, or everyone.
   const [sharedWith, setSharedWith] = useState('');
+  // The app's current shares, and the one "Stop sharing" is withdrawing.
+  const [shares, setShares] = useState([]);
+  const [sharesError, setSharesError] = useState('');
+  const [withdrawing, setWithdrawing] = useState('');
+  // Read out after a share stops, from a region that is always mounted.
+  const [announcement, setAnnouncement] = useState('');
+
+  /*
+   * The Share button that had focus is gone once the share succeeds, so focus
+   * moves to Done, and the message it describes is read out with it. A ref,
+   * not autoFocus: the Modal's focus handling has already run by then.
+   */
+  const doneRef = useRef(null);
+  useEffect(() => {
+    if (sharedWith) doneRef.current?.focus();
+  }, [sharedWith]);
+
+  /*
+   * A stopped share's row, and the button that had focus with it, unmount;
+   * focus moves to the next row's "Stop sharing", else to the email field, or
+   * the chosen audience when there is none. It waits for the withdraw to
+   * finish, so the controls are enabled again.
+   */
+  const formRef = useRef(null);
+  const [focusAfterStop, setFocusAfterStop] = useState(null);
+  useEffect(() => {
+    if (!focusAfterStop || withdrawing) return;
+    const form = formRef.current;
+    const next = Array.from(form?.querySelectorAll('[data-share-id]') || [])
+      .find((el) => el.dataset.shareId === focusAfterStop.shareId);
+    (next || form?.querySelector('input[type="email"]') || form?.querySelector('[role="radio"][aria-checked="true"]'))?.focus();
+    setFocusAfterStop(null);
+  }, [focusAfterStop, withdrawing]);
+
+  const projectId = artifact?.projectId;
+  const slug = artifact?.slug;
+  useEffect(() => {
+    if (!projectId || !slug) return undefined;
+    let cancelled = false;
+    fetchLiveAppShares({ projectId, slug })
+      .then((list) => { if (!cancelled) { setShares(list); setSharesError(''); } })
+      .catch(() => {
+        if (!cancelled) setSharesError("Couldn't load who this app is shared with. Close and reopen this dialog to try again.");
+      });
+    return () => { cancelled = true; };
+  }, [projectId, slug]);
+
   if (!artifact) return null;
 
   const everyone = audience === SHARE_WITH_EVERYONE;
   const title = artifact.title || artifact.slug;
-  const canShare = !busy && (everyone || isEmailLike(email));
-  const close = () => { if (!busy) onClose?.(); };
+  const locked = busy || Boolean(withdrawing);
+  const canShare = !locked && (everyone || isEmailShaped(email));
+  const close = () => { if (!locked) onClose?.(); };
 
   const submit = async () => {
     if (!canShare) return;
@@ -35,15 +105,40 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     setError('');
     try {
       const share = await shareLiveApp({
-        projectId: artifact.projectId,
-        slug: artifact.slug,
+        projectId,
+        slug,
         ...(everyone ? { everyone: true } : { email: email.trim() }),
       });
-      setSharedWith(everyone ? 'everyone on this stack' : (share?.email || email.trim()));
+      setSharedWith(everyone ? SHARE_WITH_EVERYONE_LABEL.toLowerCase() : (share?.email || email.trim()));
     } catch (e) {
       setError(e?.message || "Couldn't share this app.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const stopSharing = async (share) => {
+    if (locked) return;
+    const who = shareAudienceLabel(share);
+    const at = shares.findIndex((s) => s.shareId === share.shareId);
+    const next = shares[at + 1] || shares[at - 1] || null;
+    const drop = () => {
+      setShares((prev) => prev.filter((s) => s.shareId !== share.shareId));
+      setAnnouncement(`Stopped sharing with ${who}.`);
+      setFocusAfterStop({ shareId: next?.shareId || '' });
+    };
+    setWithdrawing(share.shareId);
+    setError('');
+    setAnnouncement('');
+    try {
+      await withdrawLiveAppShare(share.shareId);
+      drop();
+    } catch (e) {
+      // A 404 means the share is already gone, which is what the owner asked for.
+      if (e?.status === 404) drop();
+      else setError(e?.message || "Couldn't stop this share.");
+    } finally {
+      setWithdrawing('');
     }
   };
 
@@ -54,24 +149,26 @@ export function LiveAppShareDialog({ artifact, onClose }) {
       size="sm"
       width="min(440px, 94vw)"
       labelledBy="live-app-share-title"
-      closeOnBackdrop={!busy}
-      closeOnEsc={!busy}
+      closeOnBackdrop={!locked}
+      closeOnEsc={!locked}
     >
       <ModalHeader id="live-app-share-title" title="Share this app" subtitle={title} onClose={close} />
       <ModalBody>
+        <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
         {sharedWith ? (
-          <div className="s-body">
-            {`Shared with ${sharedWith}. It shows under "${SHARED_WITH_YOU_LABEL}", where they can duplicate it into their own project.`}
+          <div id={DONE_MESSAGE_ID} className="s-body">
+            {`Shared with ${sharedWith}. It shows under "${SHARED_WITH_YOU_LABEL}" with your email, where they can duplicate it into their own project.`}
           </div>
         ) : (
           <form
+            ref={formRef}
             className="grid gap-3"
             onSubmit={(e) => { e.preventDefault(); submit(); }}
           >
             <RadioGroup
               value={audience}
               onValueChange={(next) => { setAudience(next); setError(''); }}
-              disabled={busy}
+              disabled={locked}
               aria-label="Who can duplicate it"
               className="grid gap-2"
             >
@@ -79,7 +176,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
                 <span className="text-sm text-ink">One colleague</span>
               </Radio>
               <Radio value={SHARE_WITH_EVERYONE} variant="card" size="sm">
-                <span className="text-sm text-ink">Everyone on this stack</span>
+                <span className="text-sm text-ink">{SHARE_WITH_EVERYONE_LABEL}</span>
               </Radio>
             </RadioGroup>
             {!everyone && (
@@ -90,23 +187,50 @@ export function LiveAppShareDialog({ artifact, onClose }) {
                   onChange={(next) => { setEmail(next); setError(''); }}
                   placeholder="name@example.com"
                   autoFocus
-                  disabled={busy}
+                  disabled={locked}
                 />
               </Field>
             )}
-            <div className="s-body" style={{ color: 'var(--ink-3)' }}>
-              Each person who duplicates it gets their own copy, which runs with their own connections. Nobody else opens your running app.
-            </div>
             {error && <Alert variant="danger">{error}</Alert>}
+            {sharesError && <p className="m-0 text-xs text-ink-3">{sharesError}</p>}
+            {shares.length > 0 && (
+              <section aria-label="Shared with" className="grid gap-1">
+                <h3 className="m-0 text-[11px] font-semibold text-ink-4">Shared with</h3>
+                <ul className="m-0 p-0 list-none grid gap-1">
+                  {shares.map((share) => {
+                    const who = shareAudienceLabel(share);
+                    return (
+                      <li key={share.shareId} className="flex items-center gap-2 min-w-0">
+                        <span className="min-w-0 flex-1 truncate text-sm text-ink">{who}</span>
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          className="shrink-0"
+                          data-share-id={share.shareId}
+                          aria-label={`Stop sharing with ${who}`}
+                          disabled={locked}
+                          onClick={() => stopSharing(share)}
+                        >
+                          {withdrawing === share.shareId ? 'Stopping…' : 'Stop sharing'}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+            <div className="s-body" style={{ color: 'var(--ink-3)' }}>
+              {`${AUDIENCE_NOTE[audience]} ${COPY_NOTE}`}
+            </div>
           </form>
         )}
       </ModalBody>
       <ModalFooter>
         {sharedWith ? (
-          <Button variant="primary" onClick={close}>Done</Button>
+          <Button ref={doneRef} variant="primary" onClick={close} aria-describedby={DONE_MESSAGE_ID}>Done</Button>
         ) : (
           <>
-            <Button variant="subtle" onClick={close} disabled={busy}>Cancel</Button>
+            <Button variant="subtle" onClick={close} disabled={locked}>Cancel</Button>
             <Button variant="primary" onClick={submit} disabled={!canShare}>
               {busy ? 'Sharing…' : 'Share'}
             </Button>

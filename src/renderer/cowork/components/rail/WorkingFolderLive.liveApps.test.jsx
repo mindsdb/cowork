@@ -1,12 +1,13 @@
 /*
- * Live-app sharing in the rail's Artifacts card: "Share with…" on an owned
- * full-stack app, the "Shared with you" list with Duplicate behind its
+ * Live-app sharing in the rail: "Share with…" on an owned full-stack app in the
+ * Artifacts card, the "Shared with you" card under it with Duplicate behind its
  * disclaimer, and the copy's "received from" line. All of it appears only when
  * /health reports live apps; every other deployment renders the rail it did.
+ * Rendered through WorkingFolderBox, which holds both cards.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 vi.mock('../../api', () => ({
   fetchActiveProject: vi.fn(() => Promise.resolve(null)),
@@ -14,6 +15,8 @@ vi.mock('../../api', () => ({
   fetchProjects: vi.fn(() => Promise.resolve([])),
   unpublishArtifact: vi.fn(),
   shareLiveApp: vi.fn(),
+  fetchLiveAppShares: vi.fn(() => Promise.resolve([])),
+  withdrawLiveAppShare: vi.fn(),
   fetchSharedLiveApps: vi.fn(() => Promise.resolve([])),
   duplicateLiveApp: vi.fn(),
   fetchMyLiveApps: vi.fn(() => Promise.resolve(new Map())),
@@ -32,7 +35,8 @@ vi.mock('../artifact', () => ({ ArtifactViewer: () => null }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn(), noteArtifactCreated: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 
-import { WorkingFolderLive } from './WorkingFolderLive';
+import { WorkingFolderBox } from './WorkingFolderBox';
+import { SharedLiveApps } from './SharedLiveApps';
 import { duplicateLiveApp, fetchArtifacts, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from '../../api';
 import { liveAppStatesFrom } from '../../lib/liveAppState';
 import { noteArtifactCreated } from '../../lib/artifactsStore';
@@ -65,13 +69,18 @@ const copy = app({
 });
 const shared = {
   shareId: 's1', slug: 'pipeline-health', name: 'Pipeline Health', description: '',
-  ownerEmail: 'ana@example.com', sharedAt: '2026-10-21T03:00:00Z',
+  ownerEmail: 'ana@example.com', everyone: false, sharedAt: '2026-10-21T03:00:00Z',
 };
+// A stop earlier today, so the line carries no date whatever day the suite runs.
+const todayAt = (hhmm) => `${new Date().toISOString().slice(0, 10)}T${hhmm}:00Z`;
+const refusal = (message, status) => Object.assign(new Error(message), { status });
 
-const renderRail = async (artifacts, project = PROJECT) => {
+const renderRail = async (artifacts, { project = PROJECT, isStreaming = false } = {}) => {
   fetchArtifacts.mockResolvedValue(artifacts);
-  render(<WorkingFolderLive project={project} isStreaming={false} />);
-  await screen.findByText(artifacts[0].title);
+  const view = render(<WorkingFolderBox project={project} isStreaming={isStreaming} />);
+  if (artifacts.length) await screen.findByText(artifacts[0].title);
+  else await screen.findByText(/No artifacts yet/);
+  return view;
 };
 
 // Rows render in the server's order; the menu opens from that row's kebab.
@@ -150,13 +159,13 @@ describe('with live apps on', () => {
       { projectId: 'proj-1', slug: 'table-counts', slot: 1, state: 'running', address: 'http://app1.view.localhost:8080/' },
       {
         projectId: 'proj-1', slug: 'pipeline-health-2', slot: 2, state: 'stopped', address: 'http://app2.view.localhost:8080/',
-        stoppedAt: '2026-10-21T12:04:00Z', stopReason: 'idle', stopReasonText: 'no requests for 2 h',
+        stoppedAt: todayAt('12:04'), stopReason: 'idle', stopReasonText: 'no requests for 2 h',
       },
     ]));
     await renderRail([app(), copy]);
 
-    expect(await screen.findByText('Live at app1.view.localhost')).toBeInTheDocument();
-    expect(screen.getByText('Stopped 12:04, no requests for 2 h. Ask your agent to relaunch it.')).toBeInTheDocument();
+    expect(await screen.findByText('Live at app1.view.localhost:8080')).toBeInTheDocument();
+    expect(screen.getByText('Stopped 12:04 UTC, no requests for 2 h. Ask your agent to relaunch it.')).toBeInTheDocument();
     expect(screen.getByText('Received from ana@example.com')).toBeInTheDocument();
   });
 
@@ -165,13 +174,49 @@ describe('with live apps on', () => {
     expect(screen.getByText('Received from ana@example.com')).toBeInTheDocument();
   });
 
-  it('lists what others shared, with who shared it', async () => {
-    fetchSharedLiveApps.mockResolvedValue([shared]);
+  it('lists what others shared, with who shared it and whether it went to everyone', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared, { ...shared, shareId: 's2', slug: 'orders', name: 'Orders', everyone: true }]);
     await renderRail([app()]);
 
     const list = await screen.findByRole('region', { name: 'Shared with you' });
     expect(within(list).getByText('Pipeline Health')).toBeInTheDocument();
     expect(within(list).getByText('From ana@example.com')).toBeInTheDocument();
+    expect(within(list).getByText('From ana@example.com · shared with everyone')).toBeInTheDocument();
+  });
+
+  it('puts "Shared with you" in a card of its own, so the artifact list never scrolls it away', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    await renderRail([app()]);
+
+    const list = await screen.findByRole('region', { name: 'Shared with you' });
+    const artifactsCard = screen.getByRole('button', { name: 'Artifacts' }).closest('.rounded-card');
+    expect(artifactsCard).not.toContainElement(list);
+    expect(within(list.closest('.rounded-card')).getByRole('button', { name: 'Shared with you' })).toBeInTheDocument();
+  });
+
+  it('lists a share and duplicates it in a project with no artifacts yet', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    duplicateLiveApp.mockResolvedValue(copy);
+    await renderRail([]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Duplicate' }));
+
+    expect(await screen.findByText('Received from ana@example.com')).toBeInTheDocument();
+    expect(screen.queryByText(/No artifacts yet/)).toBeNull();
+    expect(duplicateLiveApp).toHaveBeenCalledWith({ shareId: 's1', projectId: 'proj-1' });
+  });
+
+  it('reads the list again when a turn starts or ends, so a later share shows up', async () => {
+    const { rerender } = await renderRail([app()], { isStreaming: true });
+    await waitFor(() => expect(fetchSharedLiveApps).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('region', { name: 'Shared with you' })).toBeNull();
+
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    rerender(<WorkingFolderBox project={PROJECT} isStreaming={false} />);
+
+    expect(await screen.findByRole('region', { name: 'Shared with you' })).toBeInTheDocument();
+    expect(fetchSharedLiveApps).toHaveBeenCalledTimes(2);
   });
 
   it('copies nothing until the disclaimer is confirmed', async () => {
@@ -181,7 +226,7 @@ describe('with live apps on', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Duplicate "Pipeline Health"?')).toBeInTheDocument();
-    expect(within(dialog).getByText(/ana@example.com built this app\. Your copy runs with your own connections/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/ana@example.com shared this app\. Your copy runs with your own connections/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -204,7 +249,20 @@ describe('with live apps on', () => {
 
   it("keeps the disclaimer open with the server's refusal", async () => {
     fetchSharedLiveApps.mockResolvedValue([shared]);
-    duplicateLiveApp.mockRejectedValue(new Error('This app is no longer shared with you.'));
+    duplicateLiveApp.mockRejectedValue(refusal('Live apps need an email address on your account. Ask the operator to add one.', 403));
+    await renderRail([app()]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Duplicate' }));
+
+    expect(await within(dialog).findByText(/Live apps need an email address/)).toBeInTheDocument();
+    expect(noteArtifactCreated).not.toHaveBeenCalled();
+  });
+
+  it('drops an app that is no longer shared, and still shows why', async () => {
+    fetchSharedLiveApps.mockResolvedValueOnce([shared]).mockResolvedValue([]);
+    duplicateLiveApp.mockRejectedValue(refusal('This app is no longer shared with you.', 404));
     await renderRail([app()]);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
@@ -212,15 +270,20 @@ describe('with live apps on', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Duplicate' }));
 
     expect(await within(dialog).findByText('This app is no longer shared with you.')).toBeInTheDocument();
-    expect(noteArtifactCreated).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Shared with you' })).toBeNull());
+    expect(fetchSharedLiveApps).toHaveBeenCalledTimes(2);
   });
 
-  it('lists nothing when the server has no shared-apps route', async () => {
-    fetchSharedLiveApps.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+  it.each([
+    ['the server has no shared-apps route', 404],
+    ['the sign-in is refused', 401],
+  ])('lists nothing, with no error, when %s', async (_label, status) => {
+    fetchSharedLiveApps.mockRejectedValue(refusal('refused', status));
     await renderRail([app()]);
 
     await waitFor(() => expect(fetchSharedLiveApps).toHaveBeenCalled());
     expect(screen.queryByText('Shared with you')).toBeNull();
+    expect(screen.queryByText("Couldn't load the apps shared with you.")).toBeNull();
   });
 
   it('says so when the shared list could not be loaded', async () => {
@@ -232,9 +295,103 @@ describe('with live apps on', () => {
 
   it('shows no shared list without a project to copy into', async () => {
     fetchSharedLiveApps.mockResolvedValue([shared]);
-    await renderRail([app()], { name: 'demo', path: '/proj' });
+    await renderRail([app()], { project: { name: 'demo', path: '/proj' } });
 
     expect(screen.queryByText('Shared with you')).toBeNull();
     expect(fetchSharedLiveApps).not.toHaveBeenCalled();
+  });
+});
+
+describe('with live apps on: where a copy lands and shows', () => {
+  beforeEach(() => setLiveApps(true));
+
+  const duplicateShared = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Duplicate' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  };
+  const artifactsCard = () => screen.getByRole('button', { name: 'Artifacts' }).closest('.rounded-card');
+
+  it('copies into the project on screen, even after a switch with Artifacts collapsed', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    duplicateLiveApp.mockResolvedValue({ ...copy, projectId: 'proj-2' });
+    const { rerender } = await renderRail([app()]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Artifacts' }));
+    rerender(<WorkingFolderBox project={{ id: 'proj-2', name: 'other', path: '/other' }} isStreaming={false} />);
+    await duplicateShared();
+
+    expect(duplicateLiveApp).toHaveBeenCalledWith({ shareId: 's1', projectId: 'proj-2' });
+  });
+
+  it('scrolls the copy into view once, not again each time Artifacts opens', async () => {
+    const scroll = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      fetchSharedLiveApps.mockResolvedValue([shared]);
+      duplicateLiveApp.mockResolvedValue(copy);
+      await renderRail([app()]);
+      await duplicateShared();
+
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+      expect(scroll.mock.contexts[0].dataset.artifactPath).toBe(copy.path);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Artifacts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Artifacts' }));
+      await screen.findByText('Table Row Counts');
+      expect(scroll).toHaveBeenCalledTimes(1);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("keeps a copy made for another project out of this project's list", async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    duplicateLiveApp.mockResolvedValue({ ...copy, projectId: 'proj-9' });
+    await renderRail([app()]);
+    await duplicateShared();
+
+    expect(within(artifactsCard()).queryByText('Pipeline Health')).toBeNull();
+  });
+});
+
+describe('"Shared with you" over time', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const tick = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  const list = () => screen.queryByRole('region', { name: 'Shared with you' });
+
+  it('re-reads each minute, so a later share shows up', async () => {
+    render(<SharedLiveApps projectId="proj-1" />);
+    await tick(0);
+    expect(list()).toBeNull();
+
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    await tick(60_000);
+    expect(list()).toBeInTheDocument();
+  });
+
+  it('keeps the list when a later read fails', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    render(<SharedLiveApps projectId="proj-1" />);
+    await tick(0);
+
+    fetchSharedLiveApps.mockRejectedValue(refusal('Bad Gateway', 502));
+    await tick(60_000);
+    expect(screen.getByRole('button', { name: 'Duplicate Pipeline Health' })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load the apps shared with you.")).toBeNull();
+  });
+
+  it('empties the list and stops asking once the server runs no live apps', async () => {
+    fetchSharedLiveApps.mockResolvedValue([shared]);
+    render(<SharedLiveApps projectId="proj-1" />);
+    await tick(0);
+
+    fetchSharedLiveApps.mockRejectedValue(refusal('Not Found', 404));
+    await tick(60_000);
+    expect(list()).toBeNull();
+    await tick(180_000);
+    expect(fetchSharedLiveApps).toHaveBeenCalledTimes(2);
   });
 });
