@@ -1,13 +1,24 @@
 /*
  * The document preview harness that every e2e/document-preview spec drives.
  *
- * Each type's fixtures live in e2e/document-preview/fixtures/<type>/fixtures.yaml,
+ * Each fixture set lives in e2e/document-preview/fixtures/<set>/fixtures.yaml,
  * a YAML list of PreviewFixture entries whose `file` names a file in that same
- * folder. Specs read fixtures only through loadFixtures, which parses that file
- * with js-yaml, so expectations stay in YAML rather than in spec code.
+ * folder. A renderer spec uses its own DocumentPreviewType as the set.
+ * `navigation` is the frame's own set: a harness-only test renderer under
+ * e2e/document-preview/ runs it and never ships in the app. That renderer still
+ * declares one of the four DocumentPreviewType values, because
+ * DocumentRenderer.type and ParentToFrame.previewType stay closed. Every spec,
+ * the navigation spec too, reads fixtures only through loadFixtures, which
+ * parses that file with js-yaml, so expectations stay in YAML rather than in
+ * spec code.
  *
  * Every spec asserts three things: clean fixtures reach only the harness host,
  * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
+ * Specs compare `new URL(request).origin` with the origin of baseURL, never
+ * hostnames, because 127.0.0.1 on another port is a hostile target too. The
+ * harness origin stands in for the Cowork origin, so for hostile fixtures a
+ * spec also requires every harness-origin request to be the fixture's own URL
+ * or one of the harness's own module paths.
  */
 import type { Page } from '@playwright/test';
 
@@ -17,20 +28,30 @@ import type {
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
 
+export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
+
 export interface FixtureExpectation {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; minUnits?: number;
   truncated?: boolean; textIncludes?: string[]; textExcludes?: string[];
 }
 export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; expect: FixtureExpectation }
+/* What openPreview saw for one fixture. It loads the fixture into the preview
+   and waits for `rendered` or `error`; `text` is the frame body's innerText at
+   that point. It then clicks each a, area, [href] and [xlink:href] element in
+   the frame, and for a hostile fixture every element in the frame body, so
+   linked cells and shapes with no anchor get clicked too. After those clicks it
+   reads the frame's URL into frameUrlAfterClicks. Specs do no clicking of their
+   own. `requests` holds the absolute URL of every request the page or any frame
+   made from the moment openPreview started, the fixture fetch included. */
 export interface PreviewRun {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; summary?: RenderSummary;
   text: string; requests: string[]; frameUrlAfterClicks: string;
 }
 
-export function loadFixtures(type: DocumentPreviewType): PreviewFixture[] {
-  throw new Error(`loadFixtures is not implemented yet (fixtures/${type}/fixtures.yaml)`);
+export function loadFixtures(set: PreviewFixtureSet): PreviewFixture[] {
+  throw new Error(`loadFixtures is not implemented yet (fixtures/${set}/fixtures.yaml)`);
 }
 
-export async function openPreview(page: Page, type: DocumentPreviewType, fixture: PreviewFixture): Promise<PreviewRun> {
-  throw new Error(`openPreview is not implemented yet (${type}: ${fixture.name})`);
+export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
+  throw new Error(`openPreview is not implemented yet (${set}: ${fixture.name})`);
 }

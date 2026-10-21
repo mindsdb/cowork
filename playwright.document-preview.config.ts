@@ -26,6 +26,9 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
+  // These specs check isolation, so a test that fails its first attempt fails the run.
+  failOnFlakyTests: !!process.env.CI,
+  forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   use: {
     trace: 'retain-on-failure',

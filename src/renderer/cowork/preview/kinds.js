@@ -2,11 +2,12 @@
  * Which artifacts the viewer previews in the sandboxed document frame.
  *
  * A type is previewable once its renderer exists at renderers/<type>/render.ts,
- * so adding that one file is all a new type needs. The glob below only learns
- * which renderer files exist: each match imports as raw text, never as a
- * module, and only the keys are read, so the build keeps the file names and no
- * renderer code or library reaches the app bundle. The frame build bundles the
- * renderers on its own.
+ * so adding that one file is all a new type needs. Vite replaces a glob read
+ * directly through Object.keys with an object of its file names, so nothing
+ * under renderers/ is imported into the app bundle. The eager '?raw' options
+ * keep that true if the glob is ever read another way: each match then inlines
+ * as source text, never as a module with its libraries. The frame build
+ * bundles the renderers on its own.
  *
  * The extension resolves the way the viewer resolves it for text previews: the
  * declared `ext` wins, then the canonical path.

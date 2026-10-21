@@ -8,12 +8,23 @@ export interface PreviewDevice {
   touch: boolean;
 }
 
-/* The caps every document preview reads from RendererContext.limits. A touch
-   device gets a quarter of the per-canvas pixel budget; every other cap is the
-   same on every device. */
+/* The caps the parent enforces: the streamed byte cap and the two watchdogs.
+   They are the same on every device, so the parent reads them without a
+   device. */
+export type PreviewParentLimits = Pick<PreviewLimits, 'maxBytes' | 'readyTimeoutMs' | 'progressTimeoutMs'>;
+
+export const PREVIEW_PARENT_LIMITS: PreviewParentLimits = {
+  maxBytes: 32 * MIB,
+  readyTimeoutMs: 10_000,
+  progressTimeoutMs: 20_000,
+};
+
+/* The caps every document preview reads from RendererContext.limits. The frame
+   runtime calls this with its own touch reading. A touch device gets a quarter
+   of the per-canvas pixel budget; every other cap is the same on every device. */
 export function previewLimits(device: PreviewDevice): PreviewLimits {
   return {
-    maxBytes: 32 * MIB,
+    ...PREVIEW_PARENT_LIMITS,
     maxInflatedBytes: 256 * MIB,
     maxZipEntryInflatedBytes: 64 * MIB,
     maxZipEntries: 10_000,
@@ -23,7 +34,5 @@ export function previewLimits(device: PreviewDevice): PreviewLimits {
     maxPdfCanvasPixels: device.touch ? 4_194_304 : 16_777_216,
     maxPdfCanvasesAlive: 6,
     maxSlides: 300,
-    readyTimeoutMs: 10_000,
-    progressTimeoutMs: 20_000,
   };
 }

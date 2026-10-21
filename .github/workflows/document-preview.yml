@@ -4,14 +4,14 @@ name: Document preview
 #   web       Chromium against the preview harness, one spec per document type.
 #   electron  The desktop isolation spec against the built app, under xvfb.
 #
-# Both run with --pass-with-no-tests, so a job stays green while its specs
-# have not landed yet and starts gating them the moment they do.
+# Each job allows zero specs only until the code its specs cover exists (the
+# preview runtime for web, the preload flag for electron). After that, a run
+# that finds no specs fails.
 
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
@@ -41,7 +41,13 @@ jobs:
       - name: Build web
         run: npm run build:web
       - name: Run the web project
-        run: npx playwright test --config playwright.document-preview.config.ts --project web --pass-with-no-tests
+        run: |
+          if [ -d src/renderer/cowork/preview/runtime ] || [ -e e2e/document-preview/vite.config.ts ]; then
+            allow_no_tests=
+          else
+            allow_no_tests=--pass-with-no-tests
+          fi
+          npx playwright test --config playwright.document-preview.config.ts --project web $allow_no_tests
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -66,7 +72,13 @@ jobs:
       - name: Install Electron Linux runtime deps
         run: sudo apt-get update && sudo apt-get install -y libsecret-1-0
       - name: Run the electron project (headless via xvfb)
-        run: xvfb-run --auto-servernum -- npx playwright test --config playwright.document-preview.config.ts --project electron --pass-with-no-tests
+        run: |
+          if grep -q supportsDocumentPreview src/main/preload.ts; then
+            allow_no_tests=
+          else
+            allow_no_tests=--pass-with-no-tests
+          fi
+          xvfb-run --auto-servernum -- npx playwright test --config playwright.document-preview.config.ts --project electron $allow_no_tests
         env:
           # Surface the Electron main process stdout/stderr in the CI log; a
           # main-process crash otherwise reads as a bare firstWindow timeout.

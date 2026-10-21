@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { previewLimits } from './limits';
+import { PREVIEW_PARENT_LIMITS, previewLimits } from './limits';
 
 describe('previewLimits', () => {
   it('pins every cap on a device without touch', () => {
@@ -25,5 +25,12 @@ describe('previewLimits', () => {
       ...previewLimits({ touch: false }),
       maxPdfCanvasPixels: 4_194_304,
     });
+  });
+
+  it('gives the parent the same byte cap and watchdogs on every device', () => {
+    for (const touch of [false, true]) {
+      const { maxBytes, readyTimeoutMs, progressTimeoutMs } = previewLimits({ touch });
+      expect(PREVIEW_PARENT_LIMITS).toEqual({ maxBytes, readyTimeoutMs, progressTimeoutMs });
+    }
   });
 });

@@ -81,7 +81,10 @@ npm run check:cowork-purity  # no direct window.antontron outside platform/host.
 - Test files never ship: production tsconfigs exclude `**/*.test.*`; keep it
   that way.
 - CI: `tests-unit.yml` gates PRs (typecheck + purity + coverage + renderer
-  build); `pack-smoke.yml` and `tests-e2e.yml` run nightly, non-blocking.
+  build); `document-preview.yml` runs the document preview Playwright suite
+  (web harness in Chromium, Electron under xvfb) on every PR and on pushes to
+  `main` and `staging`; `pack-smoke.yml` and `tests-e2e.yml` run nightly,
+  non-blocking.
 - The IPC channel map is snapshot-locked
   (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
   change** (an OTA renderer is routinely newer than the shell it runs on —
