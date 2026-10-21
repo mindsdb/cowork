@@ -457,7 +457,7 @@ const ACCENT_VARS = {
   stone: { '--primary-700': '#3A464B', '--primary-600': '#55666D', '--primary-500': '#64777E', '--primary-400': '#7D95A1', '--primary-300': '#A0BECA', '--primary-50': '#EBF2F5' },
 };
 
-// Open the data-vault side panel for a form the agent just streamed.
+// Open the data-vault form modal for a form the agent just streamed.
 // Called from the stream `onDone` handlers — the deterministic, fires-
 // exactly-once-per-turn place to do this. We can't rely on the
 // in-markdown MarkdownCode path: by the time the streamed block is
@@ -2407,7 +2407,7 @@ function AppCore() {
         }));
         if (finalContent && !configErrorInBody) {
           persistTurnState(taskId, finalAssistantMessageId, finalSteps, finalStartedAt);
-          // Open the side panel if the agent streamed a connect form.
+          // Open the form modal if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
         reloadArtifacts();
@@ -3731,7 +3731,7 @@ function AppCore() {
         // sidecar in localStorage.
         if (finalContent && !configErrorInBody) {
           persistTurnState(finalId, finalAssistantMessageId, finalSteps, finalStartedAt);
-          // If the agent streamed a connect form, open the side panel
+          // If the agent streamed a connect form, open the form modal
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
