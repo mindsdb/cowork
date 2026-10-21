@@ -1103,3 +1103,25 @@ describe('answerText', () => {
     expect(fold([{ type: 'response.completed', response: { output: [{ content: [{ text: 7 }] }] } }]).answerText).toBeNull();
   });
 });
+
+describe('startedAt', () => {
+  const now = () => 9_000_000;
+
+  it('takes the server stamp on response.created, not the replay clock', () => {
+    // Reopening a chat replays its saved events. The answer footer shows this
+    // time, so reading the clock here made the last turn show "now".
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1_000 },
+    ], initialStreamState(), now);
+
+    expect(state.startedAt).toBe(1_000);
+  });
+
+  it('falls back to the clock when the event has no stamp', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+    ], initialStreamState(), now);
+
+    expect(state.startedAt).toBe(9_000_000);
+  });
+});
