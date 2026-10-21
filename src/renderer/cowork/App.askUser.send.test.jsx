@@ -161,6 +161,8 @@ import {
   SHORT_REQUEST_TIMEOUT_MS,
   deleteConversationTurn,
   fetchInFlightList,
+  fetchSchedules,
+  runScheduleNow,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -3144,6 +3146,56 @@ describe('a server-listed run whose messages load after its stream finished', ()
     await act(async () => { release(await stalePage('conv-a')); });
 
     expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+});
+
+/* "Run now" answers with the run's conversation before the server starts the
+   run, so the probe the open makes finds nothing to attach to. The window must
+   keep asking until the run starts, or the answer never shows until the
+   conversation is opened again. */
+describe('"Run now" before the server has started the run', () => {
+  afterEach(() => {
+    fetchSchedules.mockImplementation(async () => []);
+    runScheduleNow.mockImplementation(async () => ({}));
+  });
+
+  it('attaches to the run once the server starts it', async () => {
+    const user = userEvent.setup();
+    fetchSchedules.mockImplementation(async () => ({
+      schedules: [{
+        id: 'sched-1', title: 'Morning digest', prompt: 'Summarize my inbox',
+        enabled: true, cadence: 'daily', nextRunAt: '2099-01-01T09:00:00Z',
+      }],
+    }));
+    runScheduleNow.mockImplementation(async () => ({ conversation_id: 'conv-run' }));
+    spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-run'
+      ? { status: 'ok', task: { id: 'conv-run', title: 'Morning digest', status: 'idle', projectName: 'general', messages: [] } }
+      : { status: 'unavailable', code: 0 }));
+    let started = false;
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: started && cid === 'conv-run' }));
+
+    render(<App />);
+    await user.click((await screen.findAllByText('Scheduled Tasks'))[0]);
+    await user.click(await screen.findByRole('button', { name: /^Run$/ }));
+
+    // The open's own probe comes before the server has started the run.
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+
+    started = true;
+    const tail = await waitFor(() => {
+      const handle = streams.find((s) => s.kind === 'tail');
+      if (!handle) throw new Error('not attached yet');
+      return handle;
+    }, { timeout: 4000 });
+    await emitOn(tail, { type: 'response.created', conversation_id: 'conv-run', user_message_id: 'u-run' });
+    await emitOn(tail, { type: 'response.output_text.delta', delta: 'Three emails need a reply' });
+    await emitOn(tail, { type: 'response.completed', assistant_message_id: 'a-run' });
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    await act(async () => { tail.opts.onDone(); });
+
+    expect(await screen.findByText('Three emails need a reply')).toBeInTheDocument();
     expect(screen.queryByText(/Running task/)).toBeNull();
   });
 });
