@@ -8,9 +8,9 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 // Codex echoes the user's own message back as an item. It is not work.
 const IGNORED_ITEM_TYPES = new Set(['userMessage']);
 
-type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'compact' | 'retry';
+type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'compact' | 'retry' | 'error';
 
-const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'compact', 'retry'];
+const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'compact', 'retry', 'error'];
 
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
@@ -22,6 +22,7 @@ const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   plan: () => 'updated the plan',
   compact: () => 'compacted context',
   retry: (count) => (count === 1 ? 'retried once' : `retried ${count} times`),
+  error: (count) => (count === 1 ? 'hit an error' : `hit ${count} errors`),
 };
 
 interface CommandAction {
@@ -48,6 +49,18 @@ function commandActions(event: CodingEvent): CommandAction[] {
     path: text(action.path),
     query: text(action.query),
   }));
+}
+
+
+// Codex reports each reconnect attempt as an `error` notification with
+// `willRetry` set and a message such as "Reconnecting... 1/5". The server
+// forwards only the message, so the message is what tells a retry apart.
+// Every other error, from Codex or from the server, ended some work.
+const RETRY_NOTICE = /\breconnecting(?:\.{3}|…)/i;
+
+
+export function isRetryNotice(event: CodingEvent): boolean {
+  return event.type === 'error' && RETRY_NOTICE.test(event.text.trim());
 }
 
 
@@ -80,7 +93,7 @@ function actionKinds(event: CodingEvent): ActionKind[] {
   }
   if (isCompaction(event)) return ['compact'];
   if (event.type === 'tool') return ['tool'];
-  if (event.type === 'error') return ['retry'];
+  if (event.type === 'error') return [isRetryNotice(event) ? 'retry' : 'error'];
   if (isPlanUpdate(event)) return ['plan'];
   if (event.type !== 'command') return [];
   const actions = commandActions(event);
@@ -117,7 +130,7 @@ export function activityHeadline(events: CodingEvent[]): string {
     for (const kind of actionKinds(event)) counts.set(kind, (counts.get(kind) || 0) + 1);
   }
   // One action reads better by name than as a count, e.g. "Read api.ts".
-  if (finished.length === 1 && actionKinds(finished[0]).length === 1 && finished[0].type !== 'error') {
+  if (finished.length === 1 && actionKinds(finished[0]).length === 1 && !isRetryNotice(finished[0])) {
     const step = stepLabel(finished[0]);
     return [step.verb, step.target].filter(Boolean).join(' ');
   }
@@ -135,6 +148,12 @@ function isLive(event: CodingEvent): boolean {
 
 
 const STATUS_MAX_LENGTH = 80;
+
+
+function firstSentence(value: string): string {
+  const sentence = value.trim().split(/(?<=[.!?])\s|\n/)[0]?.trim() || '';
+  return sentence.length > STATUS_MAX_LENGTH ? `${sentence.slice(0, STATUS_MAX_LENGTH - 1).trimEnd()}…` : sentence;
+}
 
 
 // A summary streams in as text deltas, or arrives whole on the finished
@@ -156,8 +175,7 @@ export function reasoningHeading(event: CodingEvent): string {
   const summary = reasoningSummary(event).trim();
   const heading = summary.match(/\*\*([^*\n]+)\*\*/);
   if (heading) return heading[1].trim();
-  const sentence = summary.split(/(?<=[.!?])\s|\n/)[0]?.trim() || '';
-  return sentence.length > STATUS_MAX_LENGTH ? `${sentence.slice(0, STATUS_MAX_LENGTH - 1).trimEnd()}…` : sentence;
+  return firstSentence(summary);
 }
 
 
@@ -179,9 +197,10 @@ function presentTense(event: CodingEvent): string {
 
 
 export function liveStatusLabel(events: CodingEvent[]): string {
-  // Codex reports each reconnect attempt, e.g. "Reconnecting... 1/2".
+  // Codex reports each reconnect attempt, e.g. "Reconnecting... 1/2". Any
+  // other error is a finished step, so the line names what is still running.
   const latest = events.at(-1);
-  if (latest?.type === 'error') return latest.text.replace(/\.\.\./g, '…') || 'Reconnecting…';
+  if (latest && isRetryNotice(latest)) return latest.text.trim().replace(/\.\.\./g, '…');
   const current = latestPerItem(events);
   for (let index = current.length - 1; index >= 0; index -= 1) {
     const event = current[index];
@@ -201,7 +220,7 @@ function basename(path: string): string {
 }
 
 
-export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'compact' | 'retry' | 'approval';
+export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'compact' | 'retry' | 'error' | 'approval';
 
 export interface StepLabel {
   icon: StepIcon;
@@ -224,10 +243,11 @@ export function stepLabel(event: CodingEvent): StepLabel {
     return { icon: 'plan', verb: 'Updated the plan', target: steps.length ? `· ${done} of ${steps.length} done` : '' };
   }
   if (event.type === 'reasoning') return { icon: 'thought', verb: '', target: reasoningHeading(event) || 'Thought it through' };
-  if (event.type === 'error') {
+  if (isRetryNotice(event)) {
     const attempt = event.text.match(/\d+\/\d+/)?.[0];
     return { icon: 'retry', verb: 'Retried', target: `after the connection dropped${attempt ? ` (${attempt})` : ''}` };
   }
+  if (event.type === 'error') return { icon: 'error', verb: errorTitle(event), target: '' };
   if (event.type === 'approval') return { icon: 'approval', verb: 'Asked to run', target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
   if (isCompaction(event)) return { icon: 'compact', verb: 'Compacted context', target: '' };
   if (event.type === 'tool') {
@@ -246,6 +266,18 @@ export function stepLabel(event: CodingEvent): StepLabel {
 }
 
 
+// Server errors carry a specific title, such as "Task did not start". Codex
+// errors all arrive as "Agent error", so their message says more.
+const GENERIC_ERROR_TITLE = 'Agent error';
+
+
+export function errorTitle(event: CodingEvent): string {
+  const title = event.title.trim();
+  const label = (title && title !== GENERIC_ERROR_TITLE ? title : firstSentence(event.text)) || title || 'Something went wrong';
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+
 export function commandOutput(event: CodingEvent): string {
   return (text(event.data.aggregatedOutput) || event.text).replace(/\n+$/, '');
 }
@@ -257,7 +289,7 @@ export function exitCode(event: CodingEvent): number | null {
 
 
 export function stepFailed(event: CodingEvent): boolean {
-  if (event.type === 'error') return false;
+  if (event.type === 'error') return !isRetryNotice(event);
   const code = exitCode(event);
   return event.phase === 'failed' || (code !== null && code !== 0);
 }
