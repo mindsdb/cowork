@@ -281,7 +281,7 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   diagnostic("main.ui-updater", "INFO", "ui_updater_downloading_ui", `[ui-updater] downloading UI ${manifest.version}...`);
   const res = await httpsGet(manifest.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
   if (res.statusCode !== 200) {
-    diagnostic("main.ui-updater", "ERROR", "ui_updater_download_failed_http", `[ui-updater] download failed: HTTP ${res.statusCode}`);
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_download_failed_http", { status: res.statusCode });
     return false;
   }
 

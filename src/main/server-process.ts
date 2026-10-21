@@ -986,7 +986,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       writeLog(JSON.stringify({ logged_at: new Date().toISOString(), logger: "main.server-process", log_level: "ERROR", event: "backend_spawn_failed", message: "Backend process could not start", error_type: err instanceof Error ? err.name : "Error" }) + "\n");
       diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
       childExited = true;
       childExitCode = code;
       serverStarted = false;
@@ -999,12 +999,19 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // panel instead of a calm "you stopped it" message.
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
-      if (code !== 0 && code !== null) writeLog(JSON.stringify({ logged_at: new Date().toISOString(), logger: "main.server-process", log_level: "ERROR", event: "backend_exited", message: "Backend process exited", exit_code: code }) + "\n");
+      if (!lastStopIntentional && code !== 0) {
+        // A signal death has no numeric exit code. Keep its terminal evidence
+        // even when the backend could not write a diagnostic before it died.
+        const exitSignal = signal && Object.hasOwn(os.constants.signals, signal) ? signal : undefined;
+        const fields = {
+          ...(code !== null ? { exit_code: code } : {}),
+          ...(exitSignal ? { exit_signal: exitSignal } : {}),
+        };
+        writeLog(JSON.stringify({ logged_at: new Date().toISOString(), logger: "main.server-process", log_level: "ERROR", event: "backend_exited", message: "Backend process exited", ...fields }) + "\n");
+        diagnostic("main.server-process", "ERROR", "backend_exited", fields);
+      }
       logStream?.end();
       logStream = null;
-      if (code !== 0 && code !== null) {
-        diagnostic("main.server-process", "ERROR", "cowork_server_exited_with_code", `[cowork-server] exited with code ${code}`);
-      }
     });
 
     serverProcess = child;
@@ -1151,7 +1158,7 @@ async function prepareCodingTasksForShutdown(): Promise<void> {
       signal: AbortSignal.timeout(PREPARE_SHUTDOWN_TIMEOUT_MS),
     });
     if (!response.ok) {
-      diagnostic("main.server-process", "WARNING", "coding_shutdown_checkpoint_returned_http", `[coding] shutdown checkpoint returned HTTP ${response.status}`);
+      diagnostic("main.server-process", "WARNING", "coding_shutdown_checkpoint_returned_http", { status: response.status });
     }
   } catch (error) {
     // The sidecar may already be unhealthy. Continue with the bounded process

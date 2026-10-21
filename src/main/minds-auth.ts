@@ -268,7 +268,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential(true);
         return { status: 'invalid_grant' };
       }
-      diagnostic("main.minds-auth", "WARNING", "minds_auth_token_refresh_failed_transiently_http_keeping_tokens", `[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
+      diagnostic("main.minds-auth", "WARNING", "minds_auth_token_refresh_failed_transiently_http_keeping_tokens", { status: res.status });
       if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
     }
@@ -833,7 +833,7 @@ async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<v
     // a silent failure here is exactly what let the renewal-rollback bug
     // hide, so at least make it diagnosable. `prefix` is the public
     // display prefix, not a secret.
-    if (!res.ok) diagnostic("main.minds-auth", "WARNING", "minds_auth_key_delete_returned", '[minds-auth] key delete returned', res.status, 'for prefix', prefix);
+    if (!res.ok) diagnostic("main.minds-auth", "WARNING", "minds_auth_key_delete_returned", { status: res.status });
   } catch {
     // best-effort cleanup — proceed with the new key creation regardless
   }
@@ -1552,7 +1552,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
         body: JSON.stringify({ value }),
       });
       if (!res.ok) {
-        diagnostic("main.minds-auth", "WARNING", "minds_auth_settings_put_returned", `[minds-auth] settings PUT ${key} returned`, res.status);
+        diagnostic("main.minds-auth", "WARNING", "minds_auth_settings_put_returned", { status: res.status });
       }
     } catch (error) {
       diagnostic("main.minds-auth", "WARNING", "minds_auth_failed_to_write_to_server_db", `[minds-auth] failed to write ${key} to server DB`, error);

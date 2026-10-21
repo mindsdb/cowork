@@ -26,7 +26,10 @@ mode after a temporary INFO/DEBUG or `all` override.
 
 Electron uses the same adapter with the process `LOG_LEVEL` override. Server
 stdout/stderr lines are forwarded without adding a text prefix, preserving JSON.
-Existing UI debug tails remain available. Safe updater version/channel decisions
+Unexpected backend exits retain their exit code or signal in the persisted log
+and console; intentional shutdown stays quiet. HTTP failure events retain their
+status without copying provider responses. Existing UI debug tails remain
+available. Safe updater version/channel decisions
 remain available at INFO, while normal successful startup is quiet. Backend logs
 require an installed server release with its own privacy implementation; older
 servers still produce their original output. The combined web image requires the

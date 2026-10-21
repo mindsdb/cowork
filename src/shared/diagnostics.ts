@@ -94,12 +94,16 @@ export function diagnostic(
           "outcome",
           "device_key_id",
           "count",
+          "exit_code",
+          "exit_signal",
           "config_field",
           "config_source",
           "setting_key",
         ]) {
           const entry = Object.getOwnPropertyDescriptor(value, field)?.value;
           if (field === "count" && Number.isSafeInteger(entry) && entry >= 0)
+            payload[field] = entry;
+          else if (field === "exit_code" && Number.isSafeInteger(entry))
             payload[field] = entry;
           else if (
             typeof entry === "string" &&
@@ -116,6 +120,7 @@ export function diagnostic(
                   "no-latest-version",
                   "latest-not-stable",
                 ].includes(entry)) ||
+              (field === "exit_signal" && /^SIG[A-Z0-9]{1,12}$/.test(entry)) ||
               (field === "config_source" && entry === "/brand/brand.js") ||
               (field === "config_field" &&
                 [

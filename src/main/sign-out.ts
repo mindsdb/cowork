@@ -187,7 +187,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
         ),
       ]);
       dbCleared = res.status >= 200 && res.status < 300;
-      if (!dbCleared) diagnostic("main.sign-out", "WARNING", "logout_post_settings_logout_returned", '[logout] POST /settings/logout returned', res.status);
+      if (!dbCleared) diagnostic("main.sign-out", "WARNING", "logout_post_settings_logout_returned", { status: res.status });
     } catch (err) {
       diagnostic("main.sign-out", "WARNING", "logout_post_settings_logout_failed", '[logout] POST /settings/logout failed:', err);
     }

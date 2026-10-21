@@ -192,7 +192,7 @@ async function serverConfigured(): Promise<{
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) {
-      diagnostic("main.app", "WARNING", "checkconfigured_health_returned_http_falling_back_to_env", `[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
+      diagnostic("main.app", "WARNING", "checkconfigured_health_returned_http_falling_back_to_env", { status: res.status });
       return null;
     }
     const data = await res.json() as {

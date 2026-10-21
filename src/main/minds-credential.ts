@@ -166,7 +166,7 @@ async function pushMindsCredentialNow(
       if (res.status === 404) {
         diagnostic("main.minds-credential", "WARNING", "minds_credential_the_running_sidecar_has_no_hand_over_route_it_predates_this_build_retrying_after_it", '[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
       } else {
-        diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_returned", '[minds-credential] hand-over returned', res.status);
+        diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_returned", { status: res.status });
       }
       return false;
     }

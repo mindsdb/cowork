@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
+  downloadStatus: 200,
   // Set to make fs.renameSync throw EPERM whenever the predicate returns true
   // for a rename's SOURCE path (fake a Windows lock on a chosen swap step).
   // Null = real rename, so every other test is unaffected.
@@ -60,7 +61,7 @@ vi.mock('https', () => ({
   get: (url: string, _opts: unknown, cb: (res: unknown) => void) => {
     const body = url.includes('latest.json') ? Buffer.from(JSON.stringify(h.manifest)) : h.tarball;
     const res = {
-      statusCode: 200,
+      statusCode: url.includes('latest.json') ? 200 : h.downloadStatus,
       headers: {},
       on(ev: string, fn: (chunk?: Buffer) => void) {
         if (ev === 'data') fn(body);
@@ -100,6 +101,7 @@ beforeEach(() => {
   h.server = null;
   h.manifest = null;
   h.tarball = Buffer.from('');
+  h.downloadStatus = 200;
   h.shouldFailRename = null;
   delete process.env.OTA_UI;
 });
@@ -256,6 +258,23 @@ describe('applyUIUpdate (apply-time gate)', () => {
     h.manifest = null;
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
     expect(ui.lastUiApplyAttempt()).toBeNull();
+  });
+
+  it('retains the HTTP status of a refused download without its response body', async () => {
+    stageManifest('2.26.7.13.1');
+    h.downloadStatus = 403;
+    h.tarball = Buffer.from('private-provider-response');
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const ui = await loadUpdater();
+      await expect(ui.applyUIUpdate()).resolves.toBe(false);
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({
+        event: 'ui_updater_download_failed_http', status_code: 403,
+      });
+      expect(String(output.mock.calls[0][0])).not.toContain('private-provider-response');
+    } finally {
+      output.mockRestore();
+    }
   });
 
   it('does not re-activate the version already installed as the bundled renderer', async () => {
