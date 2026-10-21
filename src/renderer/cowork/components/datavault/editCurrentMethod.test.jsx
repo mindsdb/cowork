@@ -105,6 +105,11 @@ describe('findSavedSpecMethod', () => {
     expect(findSavedSpecMethod(saved, DATABRICKS_METHODS)?.id).toBe('genie-mcp');
   });
 
+  it('does not match a non-Genie method from the detail API', () => {
+    expect(findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS)).toBeNull();
+    expect(findSavedSpecMethod(PAT_SAVED, DATABRICKS_METHODS)).toBeNull();
+  });
+
   it('returns null when the saved method is gone from the spec', () => {
     expect(findSavedSpecMethod({ method: 'retired', fields: {} }, DATABRICKS_METHODS)).toBeNull();
   });
@@ -147,6 +152,46 @@ describe('editCurrentFields', () => {
       secretField('access_token', 'Access Token'),
       textField('http_path', 'Http Path', '/sql/1.0/warehouses/abc'),
     ]);
+  });
+});
+
+function editFormFor(saved, methods, cid) {
+  clearForm(cid);
+  const matched = findSavedSpecMethod(saved, methods);
+  setForm(cid, {
+    form_id: 'edit',
+    _connector_id: saved.engine,
+    title: 'Connect',
+    selected_method: '__edit_current__',
+    _existing_name: saved.name,
+    _secure_keys: saved.secureKeys,
+    _modify: true,
+    methods: [
+      {
+        id: '__edit_current__',
+        label: 'Currently saved values',
+        fields: editCurrentFields(saved, matched),
+        _underlying_method: matched?.id || null,
+      },
+      ...methods,
+    ],
+  });
+}
+
+describe.each([
+  ['HubSpot', HUBSPOT_SAVED, HUBSPOT_METHODS],
+  ['Databricks personal access token', PAT_SAVED, DATABRICKS_METHODS],
+])('editing a saved %s connection', (_label, saved, methods) => {
+  it('keeps the edit method without an underlying method id', async () => {
+    const cid = 'conv-datavault-nongenie-edit';
+    editFormFor(saved, methods, cid);
+    const onSubmit = vi.fn();
+    render(<DataVaultFormPanel conversationId={cid} onSubmit={onSubmit} />);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /save changes/i }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].method).toBe('__edit_current__');
   });
 });
 
