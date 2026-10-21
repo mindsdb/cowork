@@ -64,18 +64,29 @@ COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-COPY scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
+COPY scripts/install-cowork-server.sh scripts/install_locked_server.py /tmp/
+COPY server-lock/ /tmp/server-lock/
 ARG COWORK_SERVER_VERSION
 ARG COWORK_SERVER_REF=
+# Opt in to server-lock/requirements.lock and sources.json supplied in the build context.
+ARG COWORK_SERVER_LOCK=false
 ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION} \
     COWORK_SERVER_REF=${COWORK_SERVER_REF}
-RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
+RUN chmod +x /tmp/install-cowork-server.sh && \
+    case "$COWORK_SERVER_LOCK" in \
+        true) COWORK_SERVER_LOCK=/tmp/server-lock /tmp/install-cowork-server.sh ;; \
+        false) COWORK_SERVER_LOCK= /tmp/install-cowork-server.sh ;; \
+        *) echo 'COWORK_SERVER_LOCK must be true or false' >&2; exit 1 ;; \
+    esac
 
 # Security floor for transitive Python deps. PyJWT < 2.13.0 (pulled in
 # by the cowork-server closure) accepts forged JWTs (CVE-2026-48526,
 # HIGH). Re-check on every version bump and drop the floor once the
 # closure's own pins move past it.
-RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
+# The locked installer checks this floor without resolving or replacing its selected version.
+RUN if [ "$COWORK_SERVER_LOCK" = false ]; then \
+        uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"; \
+    fi
 
 # Staging builds override anton-agent with a git ref instead of the PyPI
 # release that cowork-server pins. Declared *after* the cowork-server and
@@ -87,7 +98,7 @@ RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
 # PyPI anton regardless of resolver order; a broken-pin warning from uv is
 # harmless.
 ARG ANTON_REF=
-RUN if [ -n "$ANTON_REF" ]; then \
+RUN if [ "$COWORK_SERVER_LOCK" = false ] && [ -n "$ANTON_REF" ]; then \
         echo "→ Overriding anton-agent with git ref '$ANTON_REF'" >&2; \
         uv pip install --python /opt/venv/bin/python \
             "anton-agent @ git+https://github.com/mindsdb/anton.git@${ANTON_REF}" && \

@@ -11,11 +11,19 @@
 # COWORK_SERVER_VERSION: PyPI version to install when COWORK_SERVER_REF is empty.
 #   When empty (the default), installs the latest release from PyPI.
 # COWORK_SERVER_REF: git ref of mindsdb/cowork-server to install instead of PyPI.
+# COWORK_SERVER_LOCK: directory with requirements.lock and sources.json. When set,
+# this complete contract selects both Git projects and replaces version/ref resolution.
 
 set -euo pipefail
 
 VERSION="${COWORK_SERVER_VERSION:-}"
 REF="${COWORK_SERVER_REF:-}"
+
+if [ -n "${COWORK_SERVER_LOCK:-}" ]; then
+  exec python3 "$(dirname "$0")/install_locked_server.py" install \
+    --lock "$COWORK_SERVER_LOCK/requirements.lock" \
+    --sources "$COWORK_SERVER_LOCK/sources.json"
+fi
 
 # Create the target venv and install into it.
 uv venv /opt/venv

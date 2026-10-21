@@ -19,6 +19,21 @@ permissions:
   contents: read
 
 jobs:
+  locked-server-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the Docker installer's uv version
+        run: python -m pip install uv==0.7.22
+      - name: Verify supplied locks, install ordering and real wheel enforcement
+        run: |
+          uv --version
+          python -m unittest discover -s scripts -p 'test_install_locked_server*.py' -v
+
   nginx-logging:
     runs-on: ubuntu-latest
     timeout-minutes: 5

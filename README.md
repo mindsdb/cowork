@@ -28,6 +28,25 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 
 ---
 
+### Docker builds with a supplied dependency lock
+
+For an exact server environment, put a hashed `requirements.lock` and Git source
+identities in [`server-lock/`](server-lock/README.md), then run:
+
+```bash
+docker build --build-arg COWORK_SERVER_LOCK=true -t cowork:locked .
+```
+
+The contract selects both server and anton, replacing the ordinary version/ref
+arguments. Registry packages install from exact hashed wheels before either app
+is imported. The installer checks the complete environment, source commits,
+dependency compatibility, and the PyJWT security floor. A missing artifact or a
+mismatch fails the build; it does not select a newer package. Change the supplied
+contract explicitly when updating dependencies.
+
+Builds without `COWORK_SERVER_LOCK=true` retain the existing version/ref behavior.
+Git build backends, apt packages, and the frontend have separate build inputs.
+
 ## Build Channels
 
 The *Environments* table above covers **how** you run the app. A build **channel** (or "kind") covers **which env it targets and where it stores its data**. Every launch resolves to one of four kinds. [`src/main/channels.ts`](src/main/channels.ts) is the source of truth: its `CHANNELS` table maps each kind to a data home, API host, and default sidecar branch, and every other layer derives from it.
