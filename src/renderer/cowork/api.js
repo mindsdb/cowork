@@ -2657,17 +2657,6 @@ export const MOCK_DATA = {
         {
           role: 'assistant',
           content: "I pulled the latest from your Operational ops project — the RIF announcement v3 doc and last week's all-hands transcript. Here's a draft. I kept it to three short sections, with the practical info up top.",
-          artifact: {
-            title: 'RIF — message to remaining team',
-            kind: 'Document', icon: 'doc',
-            progress: 72,
-            preview: [
-              { heading: "What's changed" },
-              { text: "Last Thursday we said goodbye to 14 colleagues across infra and ops. The decision was based on where we're investing for the next 18 months — primarily AI Fab and the Minds platform." },
-              { heading: 'What this means for you' },
-              { text: 'Reporting lines stay the same this quarter. New squad assignments will be shared by Monday.' },
-            ],
-          },
         },
       ],
     },
