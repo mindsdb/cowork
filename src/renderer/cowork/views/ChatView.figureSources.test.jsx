@@ -205,6 +205,24 @@ describe('figure marks in a finished answer', () => {
     expect(within(popup).queryByRole('button', { name: /View file/ })).toBeNull();
   });
 
+  it('open a step with the latest opener after a re-render hands in a fresh one', async () => {
+    const steps = [
+      cell('step-1', 'Read the stock chart', 'stock', 'toolu_01'),
+      cell('step-2', 'Read the supplier price list', 'rates', 'toolu_02'),
+    ];
+    const first = vi.fn();
+    const latest = vi.fn();
+    const block = (onOpenStep) => (
+      <TextBlock text={ANSWER} figureSources={FIGURE_SOURCES} steps={steps} onOpenStep={onOpenStep} />
+    );
+    const { rerender } = render(block(first));
+    rerender(block(latest));
+    const popup = await openPopover('$42, from a file');
+    await userEvent.click(within(popup).getByRole('button', { name: 'Open step' }));
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
+
   it('offer no "View file" for a project file in a chat with no project to read it from', async () => {
     renderTurn({ figureSources: FIGURE_SOURCES });
     const popup = await openPopover('250, from a file');
