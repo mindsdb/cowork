@@ -1549,7 +1549,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
     expect(reply.abort).toHaveBeenCalled();
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(vault.abort).toHaveBeenCalled());
   });
 
