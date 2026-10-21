@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render as rtlRender, screen } from '@testing-library/react';
 import { ToastProvider } from './ui/Toast';
 
-// A deployment brand's name and logo in the sidebar, on a web build with the
-// platform UI off. Sidebar.test.jsx keeps the stock wordmark.
+// A deployment brand's name and logo in the sidebar's head row, on a web
+// build with the platform UI off. Sidebar.test.jsx keeps the stock wordmark.
 vi.hoisted(() => {
   window.COWORK_DEPLOYMENT_BRAND = { productName: 'Acme Cowork', logoUrl: '/brand/logo.svg?v=1' };
 });
@@ -54,17 +54,18 @@ vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';
+import { navBrand } from '../../lib/navBranding';
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
 describe('Sidebar — deployment brand', () => {
   it("shows the brand's name and logo", () => {
-    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    render(<Sidebar {...baseProps} tasksStatus="ready" brand={navBrand(null, null)} />);
     expect(document.querySelector('.anton-sidebar__wordmark')?.textContent).toBe('Acme Cowork');
     expect(document.querySelector('.anton-sidebar__logo')?.getAttribute('src')).toBe('/brand/logo.svg?v=1');
   });
 
   it('lets a sidebar title and logo set in Settings win', () => {
-    render(<Sidebar {...baseProps} tasksStatus="ready" navTitle="Team space" navLogo="data:image/png;base64,aWNvbg==" />);
+    render(<Sidebar {...baseProps} tasksStatus="ready" brand={navBrand('Team space', 'data:image/png;base64,aWNvbg==')} />);
     expect(document.querySelector('.anton-sidebar__wordmark')?.textContent).toBe('Team space');
     expect(document.querySelector('.anton-sidebar__logo')?.getAttribute('src')).toBe('data:image/png;base64,aWNvbg==');
   });
