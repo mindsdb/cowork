@@ -135,6 +135,19 @@ describe('CodeTasksView', () => {
     expect(props.onNewTask).not.toHaveBeenCalled();
   });
 
+  it('restores an archived task from the Archived filter', async () => {
+    const onSetArchived = vi.fn().mockResolvedValue(undefined);
+    const { user } = setup({ taskActions: {
+      onSetPinned: vi.fn(), onRename: vi.fn(), onSetArchived, onDelete: vi.fn(),
+    } });
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Archived' }));
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Actions for Archived task' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Restore' }));
+    expect(onSetArchived).toHaveBeenCalledWith('Archived task', false);
+  });
+
   it('retains history for an unavailable project without creating tasks in it', async () => {
     const { user, props } = setup({ projectId: 'p1', projects: [] });
     expect(screen.getByRole('button', { name: 'New task' })).toBeDisabled();

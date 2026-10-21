@@ -9,8 +9,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches } from '../lib/projectLabel';
 import Ico from '../components/Icons';
+import { AppHeader } from '../components/appHeader';
 import Composer from '../components/Composer';
-import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
+import { WorkingFolderBox, ContextBox, ScheduledBox, RAIL_DOCKED_CLASS, RailToggle } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard, ProjectRow } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
@@ -320,38 +321,18 @@ function ProjectDetail({
   return (
     <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_var(--dur-layout)_var(--ease-out)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
       <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
-        {/* Floating expand-rail button (mirrors ChatView). */}
-        {!showMobileContext && (
-          <Tooltip content="Expand panel">
-            <button
-              type="button"
-              onClick={() => setRailOpen(true)}
-              aria-label="Expand panel"
-              style={{
-                // Dynamic: the resting/hover-mirroring transition delay differs
-                // by railOpen (none vs three/two stagger steps) — not a clean binary class swap.
-                transition:
-                  `opacity var(--dur-layout) var(--ease-out) ${railOpen ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
-                  `transform var(--dur-layout) var(--ease-out) ${railOpen ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
-              }}
-              className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
-            >
-              {Ico.panelExpandLeft(16)}
-            </button>
-          </Tooltip>
-        )}
-
-        {/* Header — Projects › [project] crumb. Top padding honours the
-            shell's --titlebar-safe-top so the crumb drops below the traffic
-            lights when the sidebar isn't docked (0 → normal 14px), staying
-            left-aligned with the detail below. */}
-        <div className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-[14px] pr-7 pl-7 border-b border-t-0 border-x-0 border-solid border-line bg-transparent shrink-0 min-w-0 overflow-hidden">
+        {/* Header — Projects › [project] crumb, rendered into the app
+            titlebar row, with the panel toggle on the right (same spot as
+            in a chat task). */}
+        <AppHeader>
           <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
+            {/* no-drag: the header sits in the titlebar's drag region, where
+                Electron swallows the hover that reveals the kebab. */}
             <div
               {...hoverProps}
-              className="flex items-center gap-1 min-w-0 flex-[1_1_0]"
+              className="flex items-center gap-1 min-w-0 flex-[1_1_0] [-webkit-app-region:no-drag]"
             >
               {editing ? (
                 <input
@@ -374,7 +355,7 @@ function ProjectDetail({
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="flex-[1_1_0] min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
+                  className="flex-[1_1_0] min-w-0 font-sans font-medium text-[13px] tracking-normal text-ink-2 bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <CrumbCurrent
@@ -409,7 +390,14 @@ function ProjectDetail({
               )}
             </div>
           </div>
-        </div>
+          {!showMobileContext && (
+            <RailToggle
+              open={railOpen}
+              onToggle={() => setRailOpen((open) => !open)}
+              className="project-detail-rail-toggle"
+            />
+          )}
+        </AppHeader>
 
         <ProjectMenu
           open={!!menuRect}
@@ -425,7 +413,7 @@ function ProjectDetail({
           onDelete={() => onDelete?.(project)}
         />
 
-        <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
+        <div data-scroll="true" className="titlebar-fade row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
             <div className="flex flex-col gap-2">
               <SharedResourceAttribution resource={project} />
@@ -487,19 +475,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-          <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
-            <Tooltip content="Collapse panel">
-              <button
-                type="button"
-                onClick={() => setRailOpen(false)}
-                aria-label="Collapse panel"
-                className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
-              >
-                {Ico.panelCollapseRight(16)}
-              </button>
-            </Tooltip>
-          </div>
+        <aside className={`project-detail-rail ${RAIL_DOCKED_CLASS} [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <WorkingFolderBox project={project} />
           <ContextBox
             projects={projects}
@@ -802,7 +778,7 @@ export default function ProjectsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through. Earlier this was
     // `background: 'var(--bg)'`, which masked the field on this view.
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
+    <div className="scroll-clean titlebar-fade titlebar-fade--page flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Projects"
         subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}

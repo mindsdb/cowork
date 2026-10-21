@@ -26,7 +26,7 @@
 // on the panel) via Tailwind variants — no JS style mutation, no extra CSS.
 
 import { Collapsible as BaseCollapsible } from '@base-ui/react/collapsible';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Icon } from './Icon';
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ReactNode } from 'react';
@@ -63,12 +63,17 @@ const metaVariants = cva('flex-none tabular-nums text-ink-4', {
 });
 
 // Lucide directly (like Menu/Select) so the primitive stays free of the product icon set.
-function Chevron() {
+// `down` flips to point up when open; `right` is the disclosure-triangle
+// style, turning to point down at its content.
+function Chevron({ direction }: { direction: 'down' | 'right' }) {
   return (
     <Icon
-      of={ChevronDown}
+      of={direction === 'right' ? ChevronRight : ChevronDown}
       size={12}
-      className="flex-none text-ink-4 transition-transform duration-layout group-data-[panel-open]:rotate-180"
+      className={cn(
+        'flex-none text-ink-4 transition-transform duration-layout',
+        direction === 'right' ? 'group-data-[panel-open]:rotate-90' : 'group-data-[panel-open]:rotate-180',
+      )}
     />
   );
 }
@@ -88,6 +93,12 @@ export interface CollapsibleProps extends VariantProps<typeof triggerVariants> {
   disabled?: boolean;
   // Hide the default chevron (e.g. when the header supplies its own affordance).
   hideChevron?: boolean;
+  // Which way the closed chevron points: down (flips up when open) or right
+  // (turns down when open).
+  chevron?: 'down' | 'right';
+  // Keep the body mounted (hidden) while closed, so content that loads its
+  // own data is already there when the panel reopens.
+  keepMounted?: boolean;
   // Layout-only escape hatches (appended via cn) — never a style treatment.
   className?: string; // Root
   triggerClassName?: string; // header button
@@ -104,6 +115,8 @@ export function Collapsible({
   onOpenChange,
   disabled,
   hideChevron = false,
+  chevron = 'down',
+  keepMounted = false,
   className,
   triggerClassName,
   panelClassName,
@@ -121,7 +134,7 @@ export function Collapsible({
       >
         <span className="min-w-0 flex-1">{title}</span>
         {meta != null && meta !== '' && <span className={metaVariants({ variant })}>{meta}</span>}
-        {!hideChevron && <Chevron />}
+        {!hideChevron && <Chevron direction={chevron} />}
       </BaseCollapsible.Trigger>
       {/* Base UI publishes the measured height as `--collapsible-panel-height`
           and flags enter/exit with data-starting/ending-style, so height
@@ -129,6 +142,7 @@ export function Collapsible({
           Note: `overflow-hidden` is a permanent clip box — an adopter nesting a
           non-portaled popover/tooltip inside the panel should portal it out. */}
       <BaseCollapsible.Panel
+        keepMounted={keepMounted}
         className={cn(
           'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-layout ease-out',
           'data-[starting-style]:h-0 data-[ending-style]:h-0',

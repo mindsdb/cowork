@@ -331,7 +331,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   }];
 
   return (
-    <main className="code-skills-view">
+    <main className="code-skills-view titlebar-fade titlebar-fade--page">
       <PageHeader
         title="Skills"
         subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."

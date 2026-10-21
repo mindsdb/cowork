@@ -14,13 +14,12 @@ export function ContextBox({
   refreshKey,
   defaultOpen = true,
   maxBodyHeight = 360,
-  slim = true,
   onAddGoogleDriveFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
 }) {
   return (
-    <RailCard title="Context" defaultOpen={defaultOpen} slim={slim} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Context" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
       <ContextCard
         projects={projects}
         project={project}

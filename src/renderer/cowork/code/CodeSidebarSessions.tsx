@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import { Collapsible } from '../components/ui/Collapsible';
-import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
@@ -44,13 +42,6 @@ function projectLabel(session: CodingSession): string {
   return session.project_name?.trim() || 'No project';
 }
 
-function matchesSession(session: CodingSession, normalizedQuery: string): boolean {
-  if (!normalizedQuery) return true;
-  return `${session.title} ${repositoryLabel(session)} ${projectLabel(session)}`
-    .toLowerCase()
-    .includes(normalizedQuery);
-}
-
 export function CodeSidebarSessions({
   sessions,
   selectedId,
@@ -72,7 +63,6 @@ export function CodeSidebarSessions({
   const isUnread = useTaskSeen(sessions, selectedId);
   const [organization, setOrganization] = useState<Organization>(preferences.organization);
   const [sortOrder, setSortOrder] = useState<SortOrder>(preferences.sortOrder);
-  const [query, setQuery] = useState('');
   const [pinOverrides, setPinOverrides] = useState<Record<string, boolean>>({});
   const [pinBusy, setPinBusy] = useState<Set<string>>(() => new Set());
   const [rowError, setRowError] = useState<string | null>(null);
@@ -104,24 +94,15 @@ export function CodeSidebarSessions({
     }
   };
 
-  const normalizedQuery = query.trim().toLowerCase();
   const visibleSessions = useMemo(() => sessions.map((session) => (
     session.id in pinOverrides ? { ...session, pinned: pinOverrides[session.id] } : session
   )), [pinOverrides, sessions]);
+  // Archived tasks live behind All tasks' Archived filter, not in the sidebar.
   const ordered = useMemo(() => visibleSessions
-    .filter((session) => !session.archived && matchesSession(session, normalizedQuery))
-    .sort((left, right) => compareSessions(left, right, sortOrder)), [normalizedQuery, sortOrder, visibleSessions]);
+    .filter((session) => !session.archived)
+    .sort((left, right) => compareSessions(left, right, sortOrder)), [sortOrder, visibleSessions]);
   const pinned = ordered.filter((session) => session.pinned);
   const unpinned = ordered.filter((session) => !session.pinned);
-  const archived = useMemo(() => visibleSessions
-    .filter((session) => session.archived && matchesSession(session, normalizedQuery))
-    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at)), [normalizedQuery, visibleSessions]);
-  // Archived stays folded until you open it, or until the selected task is one of them.
-  const selectedArchived = archived.some((session) => session.id === selectedId);
-  const [archivedOpen, setArchivedOpen] = useState(selectedArchived);
-  useEffect(() => {
-    if (selectedArchived) setArchivedOpen(true);
-  }, [selectedArchived]);
 
   const projectGroups = new Map<string, CodingSession[]>();
   unpinned.forEach((session) => {
@@ -254,11 +235,14 @@ export function CodeSidebarSessions({
       <div className="section-label code-sidebar-sessions__label">
         <span>Code tasks</span>
         <Menu
+          // Icon-only, like the heading's peers: a labelled button made the
+          // heading read as a toolbar.
           trigger={(
-            <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
-              {Ico.slider(12)}<span>Organize</span>
+            <Button icon size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
+              {Ico.slider(12)}
             </Button>
           )}
+          tooltip="Organize"
           items={menuItems}
           side="bottom"
           align="end"
@@ -266,23 +250,11 @@ export function CodeSidebarSessions({
           ariaLabel="Organize coding tasks"
         />
       </div>
-      {sessions.length >= 5 && (
-        <Input
-          type="search"
-          value={query}
-          onChange={setQuery}
-          size="sm"
-          leading={Ico.search(12)}
-          wrapperClassName="code-sidebar-session-search"
-          placeholder="Find a task"
-          aria-label="Find a coding task"
-        />
-      )}
       {rowError && <div className="code-sidebar-sessions__error" role="status">{rowError}</div>}
-      <div className="scroll-clean code-sidebar-sessions__list">
-        {ordered.length === 0 && archived.length === 0 && (
+      <div className="code-sidebar-sessions__list">
+        {ordered.length === 0 && (
           <div className="code-sidebar-sessions__empty">
-            {normalizedQuery ? 'No coding tasks match your search.' : 'Start a coding task to keep its conversation and changes here.'}
+            Start a coding task to keep its conversation and changes here.
           </div>
         )}
         {sessionGroup('Pinned', pinned)}
@@ -291,20 +263,6 @@ export function CodeSidebarSessions({
           // One list either way: priority order already puts what needs you
           // first and work in motion next, and each row's status shows why.
           : unpinned.map(sessionRow)}
-        {archived.length > 0 && (
-          <Collapsible
-            open={archivedOpen}
-            onOpenChange={setArchivedOpen}
-            variant="compact"
-            className="code-sidebar-archived"
-            triggerClassName="px-2.5"
-            panelClassName="code-sidebar-archived__panel"
-            title="Archived"
-            meta={archived.length}
-          >
-            {archived.map(sessionRow)}
-          </Collapsible>
-        )}
       </div>
       {taskMenu.dialogs}
     </div>

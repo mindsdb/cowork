@@ -259,7 +259,7 @@ export function CodeConnectorsView({
   };
 
   return (
-    <main className="code-connectors-view">
+    <main className="code-connectors-view titlebar-fade titlebar-fade--page">
       <PageHeader
         title="Connectors"
         subtitle="Connect developer tools once, then add them to any Code Project."
