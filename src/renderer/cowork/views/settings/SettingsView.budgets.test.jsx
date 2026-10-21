@@ -236,6 +236,21 @@ describe('SettingsView — limits switch', () => {
     expect(patch.maxToolRounds).toBe('40');
   });
 
+  it('switching on, editing a budget and switching off again saves the switch off', async () => {
+    const fetched = withBudgets({ limitsEnabled: false });
+    const props = baseProps(fetched);
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    const user = userEvent.setup();
+    await user.click(limitsSwitch());
+    fireEvent.change(screen.getByLabelText('Max steps per task'), { target: { value: '80' } });
+    await user.click(limitsSwitch());
+
+    const writes = diffSettingsForWrite(await savePatch(props), fetched);
+    expect(writes.limits_enabled).toBe('false');
+  });
+
   const served = { maxToolRounds: '300', maxContinuations: '12', maxTurnTokens: '30000000' };
   const saved = { maxToolRounds: '40', maxContinuations: '2', maxTurnTokens: '2000000' };
 

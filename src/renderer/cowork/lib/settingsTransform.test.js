@@ -708,6 +708,15 @@ describe('the limits switch (limits_enabled)', () => {
       .toEqual({ limits_enabled: 'true' });
   });
 
+  it('rides along with any budget write, so an unchanged "off" stays off', () => {
+    expect(diffSettingsForWrite({ maxToolRounds: '80' }, { maxToolRounds: '50', limitsEnabled: false }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'false' });
+    expect(diffSettingsForWrite({ maxToolRounds: '80', limitsEnabled: true }, { maxToolRounds: '50', limitsEnabled: true }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'true' });
+    expect(diffSettingsForWrite({ tone: 'spicy' }, { tone: 'balanced', limitsEnabled: false }))
+      .toEqual({ tone: 'spicy' });
+  });
+
   it('is not written to a server that did not send it', () => {
     // An older server 400s the unknown key and fails the whole save with it.
     expect(diffSettingsForWrite({ limitsEnabled: true, maxToolRounds: '80' }, { maxToolRounds: '50' }))
