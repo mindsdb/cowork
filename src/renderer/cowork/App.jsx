@@ -42,7 +42,7 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { editCurrentFields, findSavedSpecMethod } from './components/datavault/editCurrentMethod';
+import { buildEditCurrentMethod, editCurrentFields, findSavedSpecMethod } from './components/datavault/editCurrentMethod';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
@@ -2741,25 +2741,7 @@ function AppCore() {
         // null and the submit falls through the agent's custom
         // save path, which doesn't validate against the spec's
         // method list.
-        const synthMethod = {
-          id: '__edit_current__',
-          label: 'Currently saved values',
-          description: 'Edit the values stored for this connection.',
-          fields: syntheticFields,
-          // No `submit_action` / `oauth` / `actions` inherited from
-          // any spec method — the synthetic stands on its own. The
-          // submit goes through the regular agent path; if the user
-          // wants to re-run OAuth (or any other launch flow), they
-          // click "Back to options" and pick the original method,
-          // which still has those affordances.
-          //
-          // Hidden marker — server-side validation rejects unknown
-          // method ids, so on submit the form panel sends the saved
-          // method's real id (resolved through `_underlying_method`)
-          // as the `method` / `auth_method`. Synthetic id stays
-          // local, used only for picker selection + state keying.
-          _underlying_method: matchedSpecMethod?.id || null,
-        };
+        const synthMethod = buildEditCurrentMethod(syntheticFields, matchedSpecMethod);
         nextSpec = {
           ...full.form,
           // ADD, don't replace. Synthetic at the front so the picker

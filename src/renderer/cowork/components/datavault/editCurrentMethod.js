@@ -1,6 +1,8 @@
 // Field synthesis for the modify flow's "Currently saved values" method.
 // Pure: reads the saved record and the matched spec method only.
 
+import { isBrowserSignInMethod } from './methodHero';
+
 const niceLabel = (name) => String(name || '')
   .replace(/_/g, ' ')
   .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -10,13 +12,32 @@ const niceLabel = (name) => String(name || '')
  *
  * @param {{ method?: string, fields?: object }} saved - the saved record from fetchSavedConnection
  * @param {Array<{ id: string }>} methods - the connector spec's form methods
- * @returns {object | null} the matching method, or null when none matches
+ * @returns {object | null} the matching method, or null when none matches or
+ *   it signs in through the browser (those edit as on a plain saved record)
  */
 export function findSavedSpecMethod(saved, methods) {
   // The detail API lifts `_method` out of `fields`; older records still carry it there.
   const savedMethodId = saved?.method || (saved?.fields || {})._method || null;
   if (!Array.isArray(methods)) return null;
-  return methods.find((m) => m && m.id === savedMethodId) || null;
+  const match = methods.find((m) => m && m.id === savedMethodId) || null;
+  return isBrowserSignInMethod(match) ? null : match;
+}
+
+/**
+ * Build the synthetic "Currently saved values" method for the modify flow.
+ *
+ * @param {object[]} fields - the fields from editCurrentFields
+ * @param {object | null} specMethod - the matched spec method, or null
+ * @returns {object} a method whose `_underlying_method` is the id sent on submit
+ */
+export function buildEditCurrentMethod(fields, specMethod) {
+  return {
+    id: '__edit_current__',
+    label: 'Currently saved values',
+    description: 'Edit the values stored for this connection.',
+    fields,
+    _underlying_method: specMethod?.id || null,
+  };
 }
 
 /**

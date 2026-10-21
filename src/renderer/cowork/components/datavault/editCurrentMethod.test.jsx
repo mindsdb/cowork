@@ -5,7 +5,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, setForm } from './formStore';
-import { editCurrentFields, findSavedSpecMethod } from './editCurrentMethod';
+import { buildEditCurrentMethod, editCurrentFields, findSavedSpecMethod } from './editCurrentMethod';
 import { CONNECTIONS_VAULT_KEEP } from '../../api';
 
 const WORKSPACE_URL = 'https://dbc-1.cloud.databricks.com';
@@ -90,11 +90,25 @@ const HUBSPOT_SAVED = {
   method: 'mcp',
   fields: {
     access_token: CONNECTIONS_VAULT_KEEP,
-    refresh_token: CONNECTIONS_VAULT_KEEP,
-    _access_mode: 'read',
-    _picked_files: '[]',
+    expires_at: '2030-01-01T00:00:00.000Z',
+    account_email: 'user@example.com',
+    account_name: 'Example User',
+    token_url: 'https://api.hubapi.com/oauth/v1/token',
+    scope: 'crm.objects.contacts.read',
+    auth_type: 'oauth',
   },
-  secureKeys: ['access_token', 'refresh_token'],
+  secureKeys: ['access_token'],
+};
+
+const GMAIL_METHODS = [
+  { id: 'browser_oauth_builtin', label: 'In-Browser Connect', fields: [] },
+];
+
+const GMAIL_SAVED = {
+  ...HUBSPOT_SAVED,
+  engine: 'gmail',
+  name: 'mail-one',
+  method: 'browser_oauth_builtin',
 };
 
 const PAT_SAVED = {
@@ -126,9 +140,15 @@ describe('findSavedSpecMethod', () => {
     expect(findSavedSpecMethod(saved, DATABRICKS_METHODS)?.id).toBe('genie-mcp');
   });
 
-  it('matches a non-Genie method from the detail API', () => {
-    expect(findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS)?.id).toBe('mcp');
+  it('matches a credential-form method from the detail API', () => {
     expect(findSavedSpecMethod(PAT_SAVED, DATABRICKS_METHODS)?.id).toBe('personal-access-token');
+  });
+
+  it('skips browser sign-in methods', () => {
+    expect(findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS)).toBeNull();
+    expect(findSavedSpecMethod(GMAIL_SAVED, GMAIL_METHODS)).toBeNull();
+    const byoClient = [{ id: 'custom-oauth', submit_action: 'oauth_launch', fields: [] }];
+    expect(findSavedSpecMethod({ method: 'custom-oauth', fields: {} }, byoClient)).toBeNull();
   });
 
   it('returns null when the saved method is gone from the spec', () => {
@@ -162,7 +182,12 @@ describe('editCurrentFields', () => {
     const fields = editCurrentFields(HUBSPOT_SAVED, findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS));
     expect(fields).toEqual([
       secretField('access_token', 'Access Token'),
-      secretField('refresh_token', 'Refresh Token'),
+      textField('expires_at', 'Expires At', '2030-01-01T00:00:00.000Z'),
+      textField('account_email', 'Account Email', 'user@example.com'),
+      textField('account_name', 'Account Name', 'Example User'),
+      textField('token_url', 'Token Url', 'https://api.hubapi.com/oauth/v1/token'),
+      textField('scope', 'Scope', 'crm.objects.contacts.read'),
+      textField('auth_type', 'Auth Type', 'oauth'),
     ]);
   });
 
@@ -187,22 +212,19 @@ function editFormFor(saved, methods, cid) {
     _existing_name: saved.name,
     _secure_keys: saved.secureKeys,
     _modify: true,
-    methods: [
-      {
-        id: '__edit_current__',
-        label: 'Currently saved values',
-        fields: editCurrentFields(saved, matched),
-        _underlying_method: matched?.id || null,
-      },
-      ...methods,
-    ],
+    methods: [buildEditCurrentMethod(editCurrentFields(saved, matched), matched), ...methods],
   });
 }
 
 describe.each([
-  ['HubSpot', HUBSPOT_SAVED, HUBSPOT_METHODS, 'mcp', {
+  ['HubSpot', HUBSPOT_SAVED, HUBSPOT_METHODS, '__edit_current__', {
     access_token: 'ANTON_VAULT_KEEP',
-    refresh_token: 'ANTON_VAULT_KEEP',
+    account_email: 'user@example.com',
+    auth_type: 'oauth',
+  }],
+  ['Gmail', GMAIL_SAVED, GMAIL_METHODS, '__edit_current__', {
+    access_token: 'ANTON_VAULT_KEEP',
+    account_email: 'user@example.com',
   }],
   ['Databricks personal access token', PAT_SAVED, DATABRICKS_METHODS, 'personal-access-token', {
     workspace_url: WORKSPACE_URL,
@@ -210,7 +232,7 @@ describe.each([
     http_path: '/sql/1.0/warehouses/abc',
   }],
 ])('editing a saved %s connection', (_label, saved, methods, methodId, values) => {
-  it('sends the saved method, keep markers for secrets and saved plain values', async () => {
+  it('sends the expected method, keep markers for secrets and saved plain values', async () => {
     const cid = 'conv-datavault-nongenie-edit';
     editFormFor(saved, methods, cid);
     const onSubmit = vi.fn();
@@ -242,12 +264,7 @@ describe('editing a saved Genie connection', () => {
       _secure_keys: GENIE_SAVED.secureKeys,
       _modify: true,
       methods: [
-        {
-          id: '__edit_current__',
-          label: 'Currently saved values',
-          fields: editCurrentFields(GENIE_SAVED, matched),
-          _underlying_method: matched.id,
-        },
+        buildEditCurrentMethod(editCurrentFields(GENIE_SAVED, matched), matched),
         ...DATABRICKS_METHODS,
       ],
     });

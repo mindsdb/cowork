@@ -15,6 +15,17 @@ const OAUTH_BUILTIN_ID = 'browser_oauth_builtin';
 // two-click flow despite its own copy promising one click.
 const HOSTED_OAUTH_METHOD_IDS = new Set([OAUTH_BUILTIN_ID, 'mcp']);
 
+/**
+ * Whether a spec method signs in through the browser (hosted or bring-your-own-client OAuth).
+ *
+ * @param {{ id?: string, submit_action?: string } | null | undefined} method
+ * @returns {boolean}
+ */
+export function isBrowserSignInMethod(method) {
+  if (!method) return false;
+  return HOSTED_OAUTH_METHOD_IDS.has(method.id) || method.submit_action === 'oauth_launch';
+}
+
 // Exact display casing for the connector ids that ship the in-browser
 // OAuth method — used as a fallback when neither `label` nor `title`
 // carries the name, so we never fall all the way to a generic word for
