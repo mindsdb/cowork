@@ -34,6 +34,24 @@ jobs:
           uv --version
           python -m unittest discover -s scripts -p 'test_install_locked_server*.py' -v
 
+  release-server-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the supported resolver and fixture packaging library
+        run: python -m pip install uv==0.7.22 packaging==26.0
+      - name: Verify release installs, rollback and controlled-index failures
+        run: python -m unittest discover -s scripts -p test_install_release_server.py -v
+
   nginx-logging:
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -25,19 +25,22 @@ if [ -n "${COWORK_SERVER_LOCK:-}" ]; then
     --sources "$COWORK_SERVER_LOCK/sources.json"
 fi
 
-# Create the target venv and install into it.
-uv venv /opt/venv
 if [ -n "${REF}" ]; then
-  echo "→ Installing cowork-server from git ref '${REF}'" >&2
-  uv pip install --python /opt/venv/bin/python \
-    "cowork-server @ git+https://github.com/mindsdb/cowork-server.git@${REF}"
+  SOURCE="git+https://github.com/mindsdb/cowork-server.git@${REF}"
 elif [ -n "${VERSION}" ]; then
-  echo "→ Installing cowork-server==${VERSION} from PyPI" >&2
-  uv pip install --python /opt/venv/bin/python "cowork-server==${VERSION}"
+  SOURCE="cowork-server==${VERSION}"
 else
-  echo "→ Installing latest cowork-server from PyPI" >&2
-  uv pip install --python /opt/venv/bin/python "cowork-server"
+  SOURCE="cowork-server"
 fi
+if [ -n "${ANTON_REF:-}" ]; then
+  override_file=$(mktemp)
+  trap 'rm -f "$override_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  printf 'anton-agent @ git+https://github.com/mindsdb/anton.git@%s\n' "$ANTON_REF" > "$override_file"
+  export UV_OVERRIDE="$override_file"
+fi
+python3 "$(dirname "$0")/install_release_server.py" --venv-python /opt/venv/bin/python -- tool install "$SOURCE"
 
 # Sanity-check: confirm the cowork server app can be imported.
 /opt/venv/bin/python -c "from cowork.server import app; print('✓ cowork-server installed.')"
