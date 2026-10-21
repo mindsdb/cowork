@@ -1,0 +1,191 @@
+# What render.test.ts renders and expects. Each case renders one file: a
+# committed `file` from e2e/document-preview/fixtures/pptx, a `deck` that
+# deck.ts builds at test time, or raw `bytes` in base64. `limits` replaces caps
+# from previewLimits.
+#
+# expect:
+#   error          the PreviewErrorCode render() rejects with
+#   units          summary.units, and the number of slides drawn
+#   truncated      summary.truncated
+#   text           text the preview holds anywhere
+#   slides         text each drawn slide holds, from the first slide on
+#   lastSlide      text the last drawn slide holds
+#   placeholders   the placeholder kinds drawn, in drawing order
+#   images         how many pictures are drawn, each from a data: URL
+#   rtl            the text of each right-to-left paragraph, in order
+#   overlaps       lists of shape texts: each list's shapes are drawn in that
+#                  order, and each one's box overlaps the next one's
+#   markupExcludes text that appears nowhere in the rendered markup
+#   unread         archive entries the renderer never reads
+
+label: Preview may differ from PowerPoint
+
+# A 16 by 9 PNG, and an SVG with a script that is not one of the picture types.
+images:
+  png: &png iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAGElEQVR42mNwKTqCFb2tNcSKGEY1DAoNANCv3elsETTYAAAAAElFTkSuQmCC
+  svg: &svg PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIG9ubG9hZD0icGFyZW50LnBvc3RNZXNzYWdlKCdwcHR4LXN2Zy1zY3JpcHQnLCcqJykiPjwvc3ZnPg==
+
+cases:
+  - name: three slides in sldIdLst order, not part order
+    file: three-slides.pptx
+    expect:
+      units: 3
+      truncated: false
+      slides: ['First slide: a quarterly review', 'Second slide: a picture and a table', 'Third slide: a chart']
+      placeholders: [chart]
+      images: 1
+      unread: [ppt/charts/chart1.xml]
+
+  - name: overlapping shapes and a group
+    file: overlapping-shapes.pptx
+    expect:
+      units: 1
+      truncated: false
+      overlaps:
+        - [Back shape, Middle shape, Front shape]
+        - [Group back, Group front]
+
+  - name: right-to-left text
+    file: rtl-text.pptx
+    expect:
+      units: 1
+      truncated: false
+      slides: [Right-to-left text]
+      rtl: [مرحبا بالعالم, שלום עולם]
+
+  - name: video and audio inside the package
+    file: media.pptx
+    expect:
+      units: 1
+      truncated: false
+      placeholders: [video, audio]
+      unread: [ppt/media/clip.mp4, ppt/media/sound.m4a]
+
+  - name: a presentation part cut off mid-element
+    file: corrupt.pptx
+    expect:
+      error: parse-failed
+
+  # The header of an OLE compound file, which is what a password-protected
+  # .pptx and an old .ppt are.
+  - name: a password-protected deck or an old .ppt
+    bytes: 0M8R4KGxGuEAAAAAAAAAAA==
+    expect:
+      error: unsupported
+
+  - name: pictures, video, audio and links that point outside the package
+    file: linked-media.pptx
+    expect:
+      units: 1
+      truncated: false
+      placeholders: [picture, picture, picture, picture, video, audio]
+      images: 0
+      markupExcludes:
+        - pptx-linked
+        - pptx-external-embed
+        - pptx-internal-url
+        - pptx-outside-package
+        - pptx-hyperlink
+        - pptx-javascript-link
+        - pptx-origin-link
+        - example.com
+        - google.com
+        - localhost
+        - 127.0.0.1
+        - 'javascript:'
+
+  - name: a hostile chart color, fill, run color and typeface
+    file: chart-color.pptx
+    expect:
+      units: 1
+      truncated: false
+      slides: [A shape with hostile colors]
+      placeholders: [chart]
+      markupExcludes: [pptx-chart-color, pptx-fill-color, pptx-run-color, pptx-font, example.com, onerror, 'url(']
+      unread: [ppt/charts/chart1.xml]
+
+  # r:link and an External r:embed whose targets are real parts of the package:
+  # a renderer that followed either would read and draw them.
+  - name: r:link and External relationships to parts that exist
+    deck:
+      images: { shown.png: *png, linked.png: *png, external.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
+            - { kind: picture, box: [3048000, 0, 3048000, 1714500], internalLink: linked.png }
+            - { kind: picture, box: [6096000, 0, 3048000, 1714500], externalEmbed: ../media/external.png }
+            - { kind: picture, box: [9144000, 0, 3048000, 1714500], embedTarget: ../media/missing.png }
+    expect:
+      units: 1
+      placeholders: [picture, picture, picture]
+      images: 1
+      unread: [ppt/media/linked.png, ppt/media/external.png]
+
+  - name: a picture part whose bytes are not a picture type
+    deck:
+      images: { drawing.png: *svg }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: drawing.png }
+    expect:
+      units: 1
+      placeholders: [picture]
+      images: 0
+      markupExcludes: [svg, onload, pptx-svg-script]
+
+  - name: markup in slide text
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [0, 0, 12192000, 1714500]
+              paragraphs:
+                - text: &markup '<img src="https://example.com/pptx-markup.png" onerror="parent.postMessage(''pptx-markup'',''*'')">'
+    expect:
+      units: 1
+      slides: [*markup]
+      images: 0
+
+  - name: a deck past maxSlides
+    deck: { numberedSlides: 301 }
+    expect:
+      units: 300
+      truncated: true
+      slides: [Slide 1, Slide 2]
+      lastSlide: Slide 300
+
+  - name: the slide cap from ctx.limits
+    file: three-slides.pptx
+    limits: { maxSlides: 2 }
+    expect:
+      units: 2
+      truncated: true
+      slides: ['First slide: a quarterly review', 'Second slide: a picture and a table']
+
+  - name: a deck with no slides
+    deck: { slides: [] }
+    expect:
+      units: 0
+      truncated: false
+      text: [This presentation has no slides.]
+
+  - name: a sldId that names no slide
+    deck:
+      numberedSlides: 1
+      presentationXml: >-
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId99"/></p:sldIdLst>
+        <p:sldSz cx="12192000" cy="6858000"/></p:presentation>
+    expect:
+      units: 2
+      truncated: false
+      slides: [Slide 1, "This slide couldn't be shown."]
+
+  - name: a presentation part with another root element
+    deck:
+      numberedSlides: 1
+      presentationXml: <?xml version="1.0" encoding="UTF-8"?><workbook/>
+    expect:
+      error: parse-failed

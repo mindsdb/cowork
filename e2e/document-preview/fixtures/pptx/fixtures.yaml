@@ -1,0 +1,99 @@
+# The pptx preview fixtures, read only through loadFixtures in harness.ts.
+# make-fixtures.mjs writes every file listed here from its deck in decks.yaml.
+# units counts the slides drawn.
+#
+# pptx.spec.ts reads two fields more strictly than the harness does:
+#   textIncludes  lists text in the order the preview shows it, since slides
+#                 stack in sldIdLst order and shapes in drawing order.
+#   textExcludes  appears nowhere in the frame's markup, attributes and styles
+#                 included, not only in its visible text.
+
+- name: three slides with a title, a picture, a table and a chart
+  file: three-slides.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 3
+    truncated: false
+    textIncludes:
+      - Preview may differ from PowerPoint
+      - 'First slide: a quarterly review'
+      - 'Second slide: a picture and a table'
+      - Revenue
+      - North
+      - 'Third slide: a chart'
+      - Chart not shown in preview
+
+- name: overlapping shapes and a group
+  file: overlapping-shapes.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Preview may differ from PowerPoint, Back shape, Middle shape, Front shape, Group back, Group front]
+
+- name: right-to-left text
+  file: rtl-text.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Preview may differ from PowerPoint, Right-to-left text, مرحبا بالعالم, שלום עולם, A left-to-right line]
+
+- name: video and audio inside the package
+  file: media.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Preview may differ from PowerPoint, Video and audio, Video not shown in preview, Audio not shown in preview]
+
+- name: a presentation part cut off mid-element
+  file: corrupt.pptx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+- name: pictures, video, audio and links that point outside the package
+  file: linked-media.pptx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Preview may differ from PowerPoint
+      - Linked media
+      - Picture not shown in preview
+      - Video not shown in preview
+      - Audio not shown in preview
+      - A link to a document
+    textExcludes:
+      - pptx-linked-picture
+      - pptx-external-embed
+      - pptx-internal-url
+      - pptx-outside-package
+      - pptx-linked-video
+      - pptx-linked-audio
+      - pptx-hyperlink
+      - pptx-javascript-link
+      - pptx-origin-link
+      - example.com
+      - google.com
+      - localhost
+      - 127.0.0.1
+      - 'javascript:'
+
+- name: a chart color, a fill, a run color and a typeface that carry markup and CSS
+  file: chart-color.pptx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Preview may differ from PowerPoint, Chart color, Chart not shown in preview, A shape with hostile colors]
+    textExcludes: [pptx-chart-color, pptx-fill-color, pptx-run-color, pptx-font, example.com, onerror, 'url(']
