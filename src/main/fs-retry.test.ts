@@ -24,6 +24,17 @@ describe('isTransientLockError', () => {
 });
 
 describe('retryOnTransientLock', () => {
+  it('retries an async op whose promise rejects with a transient lock', async () => {
+    let calls = 0;
+    const result = await retryOnTransientLock(async () => {
+      calls += 1;
+      if (calls === 1) throw lockError('EBUSY');
+      return 'recovered';
+    }, { baseDelayMs: 0 });
+    expect(result).toBe('recovered');
+    expect(calls).toBe(2);
+  });
+
   it('returns the op result on first success without retrying', async () => {
     let calls = 0;
     const result = await retryOnTransientLock(() => { calls += 1; return 'ok'; });
