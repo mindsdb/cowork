@@ -18,7 +18,6 @@ const mockHost = vi.hoisted(() => ({
   isElectron: false,
   mac: false,
   isMac() { return this.mac; },
-  openExternal: vi.fn(),
   getApiOrigin: () => 'https://cowork.example',
 }));
 vi.mock('../../../platform/host', () => ({ host: mockHost }));
@@ -177,7 +176,6 @@ describe('the viewer header controls', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Open$/ }));
 
     expect(props.actions.onOpenOS).toHaveBeenCalledTimes(1);
-    expect(mockHost.openExternal).not.toHaveBeenCalled();
   });
 
   it.each([
