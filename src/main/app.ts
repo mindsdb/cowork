@@ -77,6 +77,8 @@ import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
+import { guardDocumentPreviewFrames } from './document-preview-guard';
+import { mainWindowWebPreferences } from './main-window-preferences';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -411,24 +413,13 @@ function createWindow() {
     trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 24 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // ENG-439: hand the resolved (per-OS-user) server port to the renderer
-      // synchronously, so getApiOrigin() addresses our own sidecar instead of
-      // a hardcoded 26866 that could belong to another OS user.
-      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false,
-      // Disable Chromium's same-origin/mixed-content checks so the renderer
-      // (loaded from file://) can fetch http://127.0.0.1:<antonPort>/v1/*.
-      // Safe in this context: app is local, network calls only target the
-      // loopback python server we spawn ourselves. CSP in index.html still
-      // allowlists the exact origins for defense in depth.
-      // codeql[js/electron-disable-websecurity]
-      webSecurity: false,
-    },
+    webPreferences: mainWindowWebPreferences(getServerPort()),
   });
+
+  /* Marks the document preview frame and holds srcdoc subframes in place.
+     Registered before the window loads anything, so no frame is created
+     unseen. */
+  const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
   // Inject the server's bearer token into every request the renderer makes to
   // the loopback API — including browser-initiated loads (images, iframes and
@@ -441,8 +432,15 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
+      /* The document preview frame, any frame inside it and a request with no
+         frame get no token (document-preview-guard.ts). The rule lives here
+         because Electron keeps only the last listener per webRequest event.
+         It is read before the Minds gate can defer forward(): Electron
+         resolves `details.frame` when it is read, and a later read can find
+         the frame gone. */
+      const tokenAllowed = previewGuard.mayCarryServerToken(details.frame);
       const forward = () => {
-        const token = getServerAuthToken();
+        const token = tokenAllowed ? getServerAuthToken() : null;
         if (token) {
           try {
             const url = new URL(details.url);

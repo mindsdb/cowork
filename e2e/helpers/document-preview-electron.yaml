@@ -1,0 +1,31 @@
+# Frames the token checks in e2e/document-preview-electron.spec.ts mount in the
+# host window. Each frame requests image.png and fetches data.txt from its own
+# folder on the loopback test server (/f/<id>/), and `token` says whether both
+# requests must arrive with the server's Authorization header. The server
+# answers image.png only to requests that carry the token, so `token` also says
+# whether the image loads.
+#
+#   previewName  the frame carries PREVIEW_FRAME_NAME and no content policy, so
+#                the check exercises the main process's rule alone.
+#   load         src: the frame navigates to the folder's index.html, the way
+#                the HTML viewer loads an artifact on desktop.
+#                srcdoc: the frame's document is written in. Its image and
+#                fetch come first in the document, ahead of any other script.
+#   base         the srcdoc document carries a <base> at the folder and asks
+#                for relative URLs, the way the Edit-mode visual editor does.
+#   sandbox      the frame's sandbox attribute, as each surface sets it.
+tokenFrames:
+  - id: preview
+    previewName: true
+    sandbox: allow-scripts
+    load: srcdoc
+    token: false
+  - id: html-viewer
+    sandbox: allow-scripts allow-popups allow-forms allow-modals
+    load: src
+    token: true
+  - id: visual-editor
+    sandbox: allow-scripts
+    load: srcdoc
+    base: true
+    token: true
