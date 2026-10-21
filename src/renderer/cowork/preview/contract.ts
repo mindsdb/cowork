@@ -15,6 +15,14 @@ export interface PreviewLimits {
   progressTimeoutMs: number;        // 20,000
 }
 
+/* What `units` counts for each type:
+   - xlsx: the sheets shown as tabs.
+   - pptx: the slides drawn, at most maxSlides. A larger deck draws the first
+     maxSlides slides and reports truncated: true.
+   - pdf: the pages laid out, min(numPages, maxPdfPages). Pages draw as they
+     scroll into view, with at most maxPdfCanvasesAlive canvases alive, so
+     units never counts pages drawn.
+   - docx: always 1, the one rendered document. */
 export interface RenderSummary { type: DocumentPreviewType; units: number; truncated: boolean }
 export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'unsupported' | 'timeout' | 'internal';
 

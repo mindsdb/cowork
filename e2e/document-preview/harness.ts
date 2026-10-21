@@ -10,7 +10,10 @@
  * DocumentRenderer.type and ParentToFrame.previewType stay closed. Every spec,
  * the navigation spec too, reads fixtures only through loadFixtures, which
  * parses that file with js-yaml, so expectations stay in YAML rather than in
- * spec code.
+ * spec code. When a fixture sets `units`, its spec asserts that summary.units
+ * equals it. When it sets `minUnits`, its spec asserts that summary.units is at
+ * least that. RenderSummary in contract.ts says what `units` counts for each
+ * type.
  *
  * Every spec asserts three things: clean fixtures reach only the harness host,
  * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
@@ -31,7 +34,7 @@ import type {
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
 
 export interface FixtureExpectation {
-  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; minUnits?: number;
+  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; units?: number; minUnits?: number;
   truncated?: boolean; textIncludes?: string[]; textExcludes?: string[];
 }
 export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; expect: FixtureExpectation }
