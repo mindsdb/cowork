@@ -71,10 +71,12 @@ function mockAuthProbe(statusCode: number) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("LOG_LEVEL", "INFO");
   mockAuthProbe(200);
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
   delete process.env.UV_TOOL_DIR; // not covered by the setup-env scrub patterns
 });
@@ -729,11 +731,11 @@ describe('stream repair — prod install stranded on a pre-release', () => {
 
     // The check runs on every boot, so its log alone must answer: which
     // stream, which versions, what the repair is about to do.
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('build=prod');
-    expect(line).toContain(`cowork-server=${RC}`);
-    expect(line).toContain('anton-agent=0.9.5');
-    expect(line).toContain(`repairing to ${STABLE}`);
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.build_channel).toBe('prod');
+    expect(line.server_version).toBe(RC);
+    expect(line.agent_version).toBe('0.9.5');
+    expect(line).toMatchObject({ outcome: 'repair', target_version: STABLE });
   });
 
   it('checkForServerUpdate logs the deferred verdict when PyPI is unreachable on an off-stream install', async () => {
@@ -746,9 +748,9 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const result = await checkForServerUpdate();
 
     expect(result.updateAvailable).toBe(false);
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain(`cowork-server=${RC}`);
-    expect(line).toContain('PyPI was unreachable');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.server_version).toBe(RC);
+    expect(line.outcome).toBe('no-latest-version');
   });
 
   it('reads the anton version for the log via the uv-resolved tools dir, not the platform guess', async () => {
@@ -765,8 +767,8 @@ describe('stream repair — prod install stranded on a pre-release', () => {
 
     await checkForServerUpdate();
 
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('anton-agent=0.9.5');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.agent_version).toBe('0.9.5');
   });
 
   it('checkForServerUpdate logs the on-stream verdict on a healthy prod install', async () => {
@@ -777,9 +779,9 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const result = await checkForServerUpdate();
 
     expect(result.updateAvailable).toBe(false);
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('build=prod');
-    expect(line).toContain('on stream, nothing to repair');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.build_channel).toBe('prod');
+    expect(line.outcome).toBe('on-stream');
   });
 
   it('never reinstalls a prod build already on a stable version, even with PyPI unreachable', async () => {

@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { spawn, execFile } from 'child_process';
 import { BrowserWindow, app } from 'electron';
 import * as path from 'path';
@@ -241,12 +242,12 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
   // the installer which does --force --reinstall.
   const version = await getInstalledVersion();
   if (!version) {
-    console.log('[installer] cowork-server version could not be determined, reinstall needed');
+    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", '[installer] cowork-server version could not be determined, reinstall needed');
     return { installed: false, reason: 'version-unknown', binary };
   }
   const minVersion = getMinServerVersion();
   if (!meetsMinVersion(version, minVersion)) {
-    console.log(
+    diagnostic("main.installer", "INFO", "installer_cowork_server_is_below_minimum_needs_upgrade",
       `[installer] cowork-server ${version} is below minimum ${minVersion}, needs upgrade`,
     );
     return { installed: false, reason: 'below-minimum', binary, version, minVersion };

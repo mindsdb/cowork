@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Provider onboarding ("POWER UP"), arcade edition.
 //
 // The logic is a 1:1 port of the previous Onboarding page — same phase
@@ -81,7 +82,7 @@ export async function persistOnboarding(
     try {
       await deps.syncModels(lines);
     } catch (e) {
-      console.error('[onboarding] best-effort model sync failed', e);
+      diagnostic("renderer.pages.arcade.OnboardingScreen", "ERROR", "onboarding_best_effort_model_sync_failed", '[onboarding] best-effort model sync failed', e);
     }
     return { ok: true };
   } catch (e) {

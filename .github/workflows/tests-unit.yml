@@ -19,6 +19,16 @@ permissions:
   contents: read
 
 jobs:
+  nginx-logging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native nginx test dependencies
+        run: sudo apt-get update && sudo apt-get install -y nginx gettext-base
+      - name: Verify access, failure, privacy and shutdown behavior
+        run: python3 scripts/test-nginx-logging.py
+
   spa-wrapper:
     runs-on: ubuntu-latest
     timeout-minutes: 5

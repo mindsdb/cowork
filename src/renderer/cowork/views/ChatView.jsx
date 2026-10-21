@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
    Editorial, document-like. Inter body, Inter headings, mono for operator
@@ -924,7 +925,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-open] failed', e);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_open_failed", '[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
       revalidateAfterFailure();
     }
@@ -951,7 +952,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-reveal] failed', e || bridgeError);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_reveal_failed", '[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
       revalidateAfterFailure();
     }

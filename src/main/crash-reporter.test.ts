@@ -13,10 +13,10 @@ afterEach(() => {
 });
 
 describe('startCrashReporter', () => {
-  it('collects locally only and logs where dumps go', () => {
+  it('collects locally and keeps successful startup quiet', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     startCrashReporter();
     expect(startMock).toHaveBeenCalledExactlyOnceWith({ uploadToServer: false });
-    expect(log).toHaveBeenCalledWith('[crash-reporter] minidumps → /mock/crashDumps');
+    expect(log).not.toHaveBeenCalled();
   });
 });

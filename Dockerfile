@@ -124,6 +124,9 @@ WORKDIR /app
 # App payload — SPA bundle from the builder + the SPA wrapper entrypoint.
 COPY --chown=anton:anton --from=spa-builder /build/dist/renderer-web/ /app/dist/renderer-web/
 COPY --chown=anton:anton scripts/spa_wrapper.py /app/spa_wrapper.py
+# Require the paired server release at build time: its config protects Uvicorn
+# diagnostics before importing the SPA or API application.
+RUN python -c "from importlib.resources import files; import shutil; shutil.copyfile(files('cowork') / 'logging.json', '/app/logging.json')"
 
 # Persistent state lives under /home/anton/.cowork — operators bind-mount
 # this to keep database/vault/settings across container restarts.
@@ -179,7 +182,10 @@ USER anton
 ENV COWORK_SPA_DIR=/app/dist/renderer-web \
     COWORK_SERVER_HOST=0.0.0.0 \
     COWORK_SERVER_PORT=26866 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    LOG_LEVEL=WARNING \
+    LOG_FORMAT=json \
+    ACCESS_LOG_MODE=errors
 
 EXPOSE 26866
 
@@ -192,4 +198,4 @@ sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:26866/api/v1/health/',tim
 # Bound active-response draining so cowork.server.lifespan can cancel and
 # persist interrupted turns within its five-second budget before Docker's
 # default ten-second stop deadline. Leave the remaining time for teardown.
-CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866", "--timeout-graceful-shutdown", "2"]
+CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866", "--timeout-graceful-shutdown", "2", "--log-config", "/app/logging.json"]
