@@ -3096,3 +3096,46 @@ describe('a server-listed run that finishes before this window attaches to it', 
     expect(screen.queryByText(/Running task/)).toBeNull();
   });
 });
+
+/* The reopen's load can resolve after the attached stream finished, carrying a
+   page read before the answer was saved. It must not bring the placeholder back. */
+describe('a server-listed run whose messages load after its stream finished', () => {
+  afterEach(() => fetchInFlightList.mockImplementation(async () => []));
+
+  it('keeps the "Running task…" placeholder away', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+    await waitFor(() => expect(fetchInFlightList).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
+    const tail = await waitForStream();
+    expect(tail.kind).toBe('tail');
+
+    // Leave and come back with the reopen's load held, so it resolves only
+    // after the stream has finished and carries the page read before the
+    // answer was saved.
+    await openByTitle(user, 'Beta task');
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const stalePage = spies.fetchSessionResult.getMockImplementation();
+    spies.fetchSessionResult.mockImplementation((cid) => (cid === 'conv-a' ? held : stalePage(cid)));
+    await user.click(await screen.findByText('Alpha task'));
+    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenLastCalledWith('conv-a'));
+
+    await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-scheduled' });
+    await emitOn(tail, { type: 'response.output_text.delta', delta: 'The scheduled answer' });
+    await emitOn(tail, { type: 'response.completed', assistant_message_id: 'a-scheduled' });
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    await act(async () => { tail.opts.onDone(); });
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+
+    await act(async () => { release(await stalePage('conv-a')); });
+
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+});
