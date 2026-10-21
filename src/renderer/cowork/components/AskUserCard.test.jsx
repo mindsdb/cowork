@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import AskUserCard from './AskUserCard';
+import AskUserCard, { askUserCardState } from './AskUserCard';
 
 const submitAnswer = vi.fn(async () => ({ accepted: true }));
 vi.mock('../api', async (importOriginal) => {
@@ -420,5 +420,39 @@ describe('AskUserCard', () => {
       expect(screen.queryByRole('button', { name: /skip/i })).toBeNull();
       expect(screen.getByText(/type your own answer below/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe('askUserCardState', () => {
+  it.each([
+    [{}, 'pending'],
+    [{ answer: { status: 'answered', values: ['pg'] } }, 'answered'],
+    [{ answer: { status: 'cancelled' } }, 'denied'],
+    [{ answer: { status: 'timeout' } }, 'expired'],
+    [{ expired: true }, 'expired'],
+    [{ gone: true }, 'expired'],
+    // The server's record wins: a replayed card answered elsewhere is answered.
+    [{ answer: { status: 'answered', values: ['pg'] }, expired: true }, 'answered'],
+    [{ answer: { status: 'cancelled' }, expired: true }, 'denied'],
+  ])('maps %o to %s', (input, state) => {
+    expect(askUserCardState(input)).toBe(state);
+  });
+});
+
+describe('AskUserCard receipts', () => {
+  it('ends a timed-out question in one receipt line', () => {
+    const { container } = renderCard({ answer: { status: 'timeout', values: [], text: '' } });
+    const receipts = container.querySelectorAll('.chat-card-shell__receipt');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toHaveTextContent('No answer — timed out.');
+    expect(container.querySelector('.chat-card-shell')).toHaveAttribute('data-state', 'expired');
+  });
+
+  it('says Skipped once, even when the run is also gone', () => {
+    // A skipped card replayed with no live run used to say both "Skipped." and
+    // "This question is no longer active.".
+    renderCard({ answer: { status: 'cancelled', values: [], text: '' } }, { expired: true });
+    expect(screen.getByText('Skipped.')).toBeInTheDocument();
+    expect(screen.queryByText(/no longer active/i)).toBeNull();
   });
 });

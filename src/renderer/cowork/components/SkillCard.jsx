@@ -9,20 +9,22 @@
 //     and the "/" menu update live).
 // Clicking the card body opens the SKILL.md in a read-only modal.
 //
-// Composes the existing primitives (Card / Button / Modal / Ico / Markdown) —
-// no new UI is invented here.
+// Drawn as the artifact card's compact object row (Card + ActionBar + the
+// `chat-artifact-card` grid), so the two things an agent makes this turn look
+// like one family. No new UI is invented here.
 
 import { useState } from 'react';
 
 import Ico from './Icons';
-import Button from './ui/Button';
+import ActionBar from './ui/ActionBar';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
-import { Select, Tooltip } from './ui';
+import { Select } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
 import { downloadBlob } from '../lib/browserDownload';
 import { deleteSkillDraft } from '../api';
+import { cn } from '../lib/cn';
 import {
   canUseSharedResource,
   isReservedProjectName,
@@ -114,15 +116,16 @@ export default function SkillCard({ skill, projectName }) {
     (s) => s.label === slug && (s.declarative || '').trim() === (skill.instructions || '').trim()
   ));
 
-  const handleDownload = (e) => {
-    e.stopPropagation();
-    const filename = `${skill.slug || skill.label || 'skill'}.md`;
+  const filename = `${skill.slug || skill.label || 'skill'}.md`;
+  // The rail's text at rest: what the skill does, else the file it would save.
+  const locText = skill.description || filename;
+
+  const handleDownload = () => {
     downloadText(filename, skill.skill_md || skill.instructions || '');
     setStatus({ kind: 'ok', text: 'Downloaded' });
   };
 
-  const handleSave = async (e) => {
-    e.stopPropagation();
+  const handleSave = async () => {
     if (saving || saved || !canSave) return;
     setSaving(true);
     setStatus(null);
@@ -205,87 +208,91 @@ export default function SkillCard({ skill, projectName }) {
     }
   };
 
+  // Actions and the overflow menu React bubbles through its portal must not
+  // also open the preview. Only Enter and Space stop: other keys must still
+  // reach the window-level shortcut listeners. Same guard as ArtifactCard.
+  const keepInside = {
+    onClick: (e) => e.stopPropagation(),
+    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); },
+  };
+  const readOnlyReason = 'You do not have permission to replace this shared skill.';
+  // A saved draft has nothing left to do in the head; the meta line says so.
+  const saveAction = saved ? null : {
+    label: saving ? 'Saving…' : !canSave ? 'Read only' : 'Save skill',
+    onClick: handleSave,
+    disabled: saving || !canSave,
+    busy: saving,
+  };
+
+  /*
+   * The compact object row the artifact card uses (`railed chat-artifact-card`):
+   * tile, title and kind, one primary action, and a footer rail that holds the
+   * skill's description at rest and an action's result after one. Download
+   * sits at the rail's end, where the artifact card keeps its own Download.
+   */
   return (
     <>
       <Card
-        padding="compact"
+        as="div"
         interactive
+        flat
+        padding="none"
         onActivate={() => setOpen(true)}
-        style={{ marginTop: 4 }}
+        aria-label={`Preview skill: ${name}`}
+        className="railed chat-artifact-card chat-skill-card"
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14 }}>
-          {/* Icon — `cube` distinguishes a skill from the artifact card's doc/sparkle. */}
-          <div
-            aria-hidden="true"
-            style={{
-              width: 56, height: 56, borderRadius: 'var(--r-lg)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--accent)', background: 'var(--surface-2)', border: '1px solid var(--line)',
-            }}
-          >
-            {Ico.cube(20)}
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <div className="s-h3" style={{
-              color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {name}
-            </div>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>
-              {status ? (
-                <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
-                  {status.text}
-                </span>
-              ) : isSaved ? 'Saved' : 'Draft · not saved'}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Tooltip content="Download skill">
-              <Button
-                icon
-                size="sm"
-                variant="subtle"
-                onClick={handleDownload}
-                aria-label="Download skill"
-              >
-                {Ico.download(16)}
-              </Button>
-            </Tooltip>
-            {asksSharing && (
-              /* The card body opens the SKILL.md, so a click or key on the
-                 choice (its options render in a portal, whose events still
-                 bubble through React) must not reach it. */
-              <span
-                className="inline-flex"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <Select
-                  size="sm"
-                  ariaLabel={SKILL_SHARING_LABEL}
-                  title={SKILL_SHARING_LABEL}
-                  options={SKILL_SHARING_OPTIONS}
-                  value={sharing}
-                  onValueChange={setSharing}
-                  disabled={saving}
-                  width={176}
-                  menuMinWidth={300}
-                />
-              </span>
-            )}
-            <Button
+        {/* `cube` tells a skill apart from the artifact card's doc/sparkle. */}
+        <div className="chat-artifact-card__tile grid size-8 shrink-0 place-items-center rounded-lg bg-accent-bg text-accent">
+          {Ico.cube(16)}
+        </div>
+        <div className="chat-artifact-card__text flex min-w-0 flex-col gap-0.5">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+            title={`Preview skill: ${name}`}
+            className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] hover:underline"
+          >{name}</button>
+          <span className="font-body text-xs text-ink-3">
+            {isSaved ? 'Skill · saved' : 'Skill draft · not saved'}
+          </span>
+          {/* A disabled button takes no hover, so the reason is said here. */}
+          {!canSave && !saved && (
+            <span className="font-body text-xs text-ink-4">{readOnlyReason}</span>
+          )}
+        </div>
+        <div className="chat-artifact-card__actions flex flex-wrap items-center gap-2" {...keepInside}>
+          {/* Its options render in a portal, whose events still bubble through
+              React, so keepInside also keeps them from opening the preview. */}
+          {asksSharing && (
+            <Select
               size="sm"
-              variant={saved ? 'subtle' : 'primary'}
-              disabled={saving || saved || !canSave}
-              title={!canSave ? 'You do not have permission to replace this shared skill.' : undefined}
-              onClick={handleSave}
-            >
-              {saved ? 'Saved' : saving ? 'Saving…' : !canSave ? 'Read only' : 'Save skill'}
-            </Button>
-          </div>
+              ariaLabel={SKILL_SHARING_LABEL}
+              title={SKILL_SHARING_LABEL}
+              options={SKILL_SHARING_OPTIONS}
+              value={sharing}
+              onValueChange={setSharing}
+              disabled={saving}
+              width={176}
+              menuMinWidth={300}
+            />
+          )}
+          <ActionBar size="sm" align="start" className="flex-wrap" primary={saveAction} />
+        </div>
+        {status ? (
+          <span className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}>
+            {status.text}
+          </span>
+        ) : (
+          <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={locText}>
+            {Ico.doc(12)}
+            <span className="min-w-0 truncate">{locText}</span>
+          </span>
+        )}
+        <div className="card__rail chat-artifact-card__tools" {...keepInside}>
+          <ActionBar
+            size="xs"
+            secondary={{ label: 'Download', onClick: handleDownload, tooltip: `Download ${filename}` }}
+          />
         </div>
       </Card>
 

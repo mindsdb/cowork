@@ -17,6 +17,20 @@ const OPTION_IDLE = 'bg-transparent text-ink enabled:hover:bg-surface-3 disabled
 const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
 
 /**
+ * Where a question is in its life, in ChatCardShell's state vocabulary. The
+ * server's recorded answer wins over the local `expired` / `gone` flags: a
+ * question answered in another tab and then replayed is answered, not expired.
+ * A skip is the user turning the question down, so it is `denied`.
+ */
+export function askUserCardState({ answer, expired = false, gone = false }) {
+  if (answer?.status === 'cancelled') return 'denied';
+  if (answer?.status === 'timeout') return 'expired';
+  if (answer) return 'answered';
+  if (expired || gone) return 'expired';
+  return 'pending';
+}
+
+/**
  * An inline question card: the agent is blocked until this is answered.
  *
  * The answered state is driven by `step.data.answer`, which arrives on the
@@ -35,7 +49,10 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   const [busy, setBusy] = useState(false);
   const promptId = useId();
 
-  const settled = !reopened && (Boolean(answer) || expired || gone);
+  // A reopened card takes a pick whatever its recorded answer, so it stays
+  // pending until the message it sends starts a new turn.
+  const state = reopened ? 'pending' : askUserCardState({ answer, expired, gone });
+  const settled = state !== 'pending';
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
@@ -136,28 +153,28 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       : null,
   };
 
+  // The receipt a settled card ends with. The answer is body text, not a
+  // status caption: a composer-typed answer is not echoed as a user message
+  // anywhere else. The bold prefix (styled like markdown bold) sets it apart
+  // from the prompt, which uses the same prose style.
+  const receipt = {
+    denied: 'Skipped.',
+    expired: answer?.status === 'timeout' ? 'No answer — timed out.' : 'This question is no longer active.',
+    answered: answerText ? (
+      <MarkdownPlainText>
+        <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+      </MarkdownPlainText>
+    ) : undefined,
+  }[state];
+
   return (
     // No kind row: the turn's "Question for you" step already names the card.
     <ChatCardShell
       tone="question"
       kind={false}
       actions={actions}
-      footer={settled ? (
-        <>
-          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
-          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
-          {/* Body text, not a status caption: a composer-typed answer is not
-              echoed as a user message anywhere else. The bold prefix (styled
-              like markdown bold) sets it apart from the prompt, which uses the
-              same prose style. */}
-          {answerText ? (
-            <MarkdownPlainText>
-              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
-            </MarkdownPlainText>
-          ) : null}
-          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
-        </>
-      ) : null}
+      state={state}
+      receipt={receipt}
     >
       {/* Only paragraphs reset their outer margins in the markdown sizes;
           drop them for a leading heading or trailing list in the card. */}
