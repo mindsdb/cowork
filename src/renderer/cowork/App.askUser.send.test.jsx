@@ -3152,8 +3152,8 @@ describe('"Run now" before the server has started the run', () => {
     runScheduleNow.mockImplementation(async () => ({}));
   });
 
-  it('attaches to the run once the server starts it', async () => {
-    const user = userEvent.setup();
+  /** Opens the Scheduled page and presses Run on its one schedule, whose run is conv-run. */
+  async function runNow(user) {
     fetchSchedules.mockImplementation(async () => ({
       schedules: [{
         id: 'sched-1', title: 'Morning digest', prompt: 'Summarize my inbox',
@@ -3164,15 +3164,39 @@ describe('"Run now" before the server has started the run', () => {
     spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-run'
       ? { status: 'ok', task: { id: 'conv-run', title: 'Morning digest', status: 'idle', projectName: 'general', messages: [] } }
       : { status: 'unavailable', code: 0 }));
-    let started = false;
-    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: started && cid === 'conv-run' }));
-
     render(<App />);
     await user.click((await screen.findAllByText('Scheduled Tasks'))[0]);
     await user.click(await screen.findByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
+  }
+
+  it('loads the answer of a run that started and ended between asks', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+
+    // The next ask finds the run already over: no producer, but its buffer.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));
+    spies.fetchSession.mockImplementation(async (cid) => ({
+      messages: cid === 'conv-run' ? [
+        { id: 'u-run', role: 'user', content: 'Summarize my inbox' },
+        { id: 'a-run', role: 'assistant', content: 'Nothing urgent today' },
+      ] : [],
+    }));
+
+    // Well inside the 30-second start grace, which would otherwise hide it.
+    expect(await screen.findByText('Nothing urgent today', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  });
+
+  it('attaches to the run once the server starts it', async () => {
+    const user = userEvent.setup();
+    let started = false;
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: started && cid === 'conv-run' }));
 
     // The open's own probe comes before the server has started the run.
-    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
+    await runNow(user);
     expect(streams.some((s) => s.kind === 'tail')).toBe(false);
 
     started = true;

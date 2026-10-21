@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids,
-  runsAwaitingTheirStart, UNLISTED_RUN_GRACE_MS, RUN_START_PROBE_DELAYS_MS,
+  runsAwaitingTheirStart, runStartProbeOutcome, UNLISTED_RUN_GRACE_MS, RUN_START_PROBE_DELAYS_MS,
 } from './messageQueue';
 
 const item = (id) => ({ id, text: id, attachments: [], disabledConnections: [] });
@@ -249,6 +249,22 @@ describe('finishedCids', () => {
 
   it('still flags other dropped cids while one is excluded', () => {
     expect(finishedCids(['a', 'b', 'c'], [], 'b')).toEqual(['a', 'c']);
+  });
+});
+
+describe('runStartProbeOutcome', () => {
+  it('reports a run the server is running', () => {
+    expect(runStartProbeOutcome({ in_flight: true, has_buffer: true })).toBe('running');
+  });
+
+  it('reports a run that started and ended between probes by the buffer it left', () => {
+    expect(runStartProbeOutcome({ in_flight: false, has_buffer: true })).toBe('ended');
+  });
+
+  it('reports a run with no producer and no buffer as not started', () => {
+    expect(runStartProbeOutcome({ in_flight: false, has_buffer: false })).toBe('not-started');
+    expect(runStartProbeOutcome({ in_flight: false })).toBe('not-started');
+    expect(runStartProbeOutcome(undefined)).toBe('not-started');
   });
 });
 

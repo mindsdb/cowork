@@ -50,7 +50,7 @@ import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canUseSharedResource } from './lib/sharedResourceAccess';
 import {
   selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids,
-  runsAwaitingTheirStart, RUN_START_PROBE_DELAYS_MS,
+  runsAwaitingTheirStart, runStartProbeOutcome, RUN_START_PROBE_DELAYS_MS,
 } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
@@ -5382,12 +5382,23 @@ function AppCore() {
 
   // The server starts the run only after run-now answers, so the probe the
   // open makes usually finds nothing to attach to. Ask again while the run is
-  // on screen and still counted in flight, until the stream attaches.
+  // counted in flight: attach once it runs, if it's on screen, and if it ended
+  // between asks, end its start grace so the poll loads the answer now.
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (activeTaskIdRef.current !== cid || !inFlightSetRef.current.has(cid)) return;
-      if (await reconnectInFlight(cid).catch(() => false)) return;
+      if (!inFlightSetRef.current.has(cid)) return;
+      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (outcome === 'ended') {
+        runsAwaitingStartRef.current.delete(cid);
+        refreshInFlightSet();
+        return;
+      }
+      if (outcome === 'running') {
+        // Off screen, the poll follows the run from here.
+        if (activeTaskIdRef.current !== cid) return;
+        if (await reconnectInFlight(cid).catch(() => false)) return;
+      }
     }
   };
 

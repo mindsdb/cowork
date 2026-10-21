@@ -124,6 +124,15 @@ export const RUN_START_PROBE_DELAYS_MS = [500, 1000, 1500, 2000, 3000, 3000, 400
 // `awaiting` maps each run started here to when it was started. Returns the
 // runs a poll that didn't list them should still count as in flight: those the
 // server has never listed, within the grace period.
+// What one in-flight probe says about a run started with "Run now": 'running',
+// 'ended' (it started and finished between probes, so it left a buffer), or
+// 'not-started'. The run's conversation is new, so any buffer is this run's.
+export function runStartProbeOutcome(status) {
+  if (status?.in_flight) return 'running';
+  if (status?.has_buffer) return 'ended';
+  return 'not-started';
+}
+
 export function runsAwaitingTheirStart(awaiting, listedIds, now, graceMs = UNLISTED_RUN_GRACE_MS) {
   const listed = new Set(listedIds);
   return [...awaiting]
