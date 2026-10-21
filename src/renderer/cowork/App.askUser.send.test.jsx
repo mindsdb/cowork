@@ -3066,3 +3066,76 @@ describe('Stop racing its own turn\'s end', () => {
     expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'alpha follow-up']);
   });
 });
+
+/* A scheduled run the poll lists as running gets a "Running task…" placeholder
+   when it is opened. If the run ends before the reconnect probe asks, no stream
+   attaches to clear it, so the refetch that brings the answer must drop it. */
+describe('a server-listed run that finishes before this window attaches to it', () => {
+  afterEach(() => fetchInFlightList.mockImplementation(async () => []));
+
+  it('drops the "Running task…" placeholder when the poll reports the run finished', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    render(<App />);
+    await waitFor(() => expect(fetchInFlightList).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
+
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { id: 'u-scheduled', role: 'user', content: 'scheduled prompt' },
+        { id: 'a-scheduled', role: 'assistant', content: 'The scheduled answer' },
+      ],
+    }));
+    fetchInFlightList.mockImplementation(async () => []);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+});
+
+/* The reopen's load can resolve after the attached stream finished, carrying a
+   page read before the answer was saved. It must not bring the placeholder back. */
+describe('a server-listed run whose messages load after its stream finished', () => {
+  afterEach(() => fetchInFlightList.mockImplementation(async () => []));
+
+  it('keeps the "Running task…" placeholder away', async () => {
+    const user = userEvent.setup();
+    listAlphaAsServerRun();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+    await waitFor(() => expect(fetchInFlightList).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
+    const tail = await waitForStream();
+    expect(tail.kind).toBe('tail');
+
+    // Leave and come back with the reopen's load held, so it resolves only
+    // after the stream has finished and carries the page read before the
+    // answer was saved.
+    await openByTitle(user, 'Beta task');
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const stalePage = spies.fetchSessionResult.getMockImplementation();
+    spies.fetchSessionResult.mockImplementation((cid) => (cid === 'conv-a' ? held : stalePage(cid)));
+    await user.click(await screen.findByText('Alpha task'));
+    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenLastCalledWith('conv-a'));
+
+    await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-scheduled' });
+    await emitOn(tail, { type: 'response.output_text.delta', delta: 'The scheduled answer' });
+    await emitOn(tail, { type: 'response.completed', assistant_message_id: 'a-scheduled' });
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    await act(async () => { tail.opts.onDone(); });
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+
+    await act(async () => { release(await stalePage('conv-a')); });
+
+    expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+});
