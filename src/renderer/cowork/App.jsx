@@ -42,6 +42,7 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
+import { editCurrentFields, findSavedSpecMethod } from './components/datavault/editCurrentMethod';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
@@ -2651,7 +2652,6 @@ function AppCore() {
       }),
     ]);
     const saved = savedRaw || { fields: {}, secureKeys: [] };
-    const savedFields = saved.fields || {};
 
     const label = full?.label || connection.engine;
     const tempId = 'tmp-modify-' + Date.now();
@@ -2707,16 +2707,6 @@ function AppCore() {
 
 
     if (hasLiteralForm) {
-      // Underscore-prefixed keys in the vault record are metadata
-      // stamps from previous saves (e.g. `_method`, `_connector_id`)
-      // — not user-typed inputs. Read what we need before filtering.
-      const savedMethodId = savedFields._method || null;
-      // Build the value map for actual user fields. Strip the meta
-      // stamps so they never render as form inputs.
-      const valueByName = Object.fromEntries(
-        Object.entries(savedFields).filter(([k]) => !k.startsWith('_'))
-      );
-
       // Pure synthesis — the synthetic method's fields come from
       // the saved record alone, with NO attribute borrowing from
       // any spec method. The user's intent: "append a new option,
@@ -2724,28 +2714,13 @@ function AppCore() {
       // build each field from scratch using only what we know
       // about the saved key — the key name (titlecased into a
       // human label) and whether it was classified secret on save.
-      // The rendered form is exactly what's in the vault: same
-      // keys, no spec leakage, no surprise fields.
-      const niceLabel = (name) => String(name || '')
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-
-      const syntheticFields = Object.keys(valueByName).map((k) => {
-        const isSecret = (saved.secureKeys || []).includes(k);
-        return {
-          name: k,
-          label: niceLabel(k),
-          type: isSecret ? 'password' : 'text',
-          secret: isSecret,
-          required: false,
-          default: valueByName[k],
-        };
-      });
-
+      // The matched spec method is consulted only to name a secret
+      // saved under a hidden `_` key (editCurrentFields).
       const isMultiMethod = Array.isArray(full.form.methods) && full.form.methods.length > 0;
       const matchedSpecMethod = isMultiMethod
-        ? (full.form.methods.find((m) => m && m.id === savedMethodId) || null)
+        ? findSavedSpecMethod(saved, full.form.methods)
         : null;
+      const syntheticFields = editCurrentFields(saved, matchedSpecMethod);
 
       let nextSpec;
       if (isMultiMethod) {
