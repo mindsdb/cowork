@@ -1,0 +1,60 @@
+# Text the xlsx preview must never hold. Each `pattern` is a JavaScript regular
+# expression source, and `flags` its optional flags.
+#
+# bundle: matched against the whole built IIFE, by bundle.test.ts.
+# source: matched against render.ts, by render.test.ts.
+
+bundle:
+  # Nothing in the frame may reach the network, start a thread or run strings as code.
+  - name: a fetch call
+    pattern: '\bfetch\b'
+  - name: XMLHttpRequest
+    pattern: '\bXMLHttpRequest\b'
+  - name: a Worker
+    pattern: 'Worker\b'
+  - name: an eval call
+    pattern: '\beval\s*\('
+  - name: the Function constructor
+    pattern: '\bFunction\s*\('
+  # The bundle generator's own bans: the frame runs one inline script by hash.
+  - name: a dynamic import
+    pattern: '\bimport\s*\('
+  - name: import.meta
+    pattern: '\bimport\.meta\b'
+  - name: an opening script tag
+    pattern: '<script'
+    flags: i
+  - name: a closing script tag
+    pattern: '</script'
+    flags: i
+  - name: a NUL character
+    pattern: '\x00'
+  - name: a process reference
+    pattern: '\bprocess\.'
+  # The grid never builds HTML from a sheet.
+  - name: SheetJS's HTML writer
+    pattern: 'sheet_to_html'
+
+source:
+  # The grid puts cells in through textContent only.
+  - name: an innerHTML write
+    pattern: '\binnerHTML\b'
+  - name: an outerHTML write
+    pattern: '\bouterHTML\b'
+  - name: insertAdjacentHTML
+    pattern: '\binsertAdjacentHTML\b'
+  - name: document.write
+    pattern: '\bdocument\.write'
+  - name: SheetJS's HTML writer
+    pattern: 'sheet_to_html'
+  - name: a read of a cell's HTML (cell.h)
+    pattern: '\.h\b'
+  # Nothing in the grid is a link.
+  - name: a read of a cell's hyperlink (cell.l)
+    pattern: '\.l\b'
+  # Covers document.createElement('a') and the renderer's own element('a').
+  - name: an anchor or area element
+    pattern: "\\(\\s*['\"](?:a|area)['\"]"
+  - name: an href
+    pattern: '\bhref\b'
+    flags: i

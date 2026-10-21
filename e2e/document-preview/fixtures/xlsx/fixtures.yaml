@@ -1,0 +1,50 @@
+# The xlsx preview fixtures, read only through loadFixtures in harness.ts.
+# make-fixtures.mjs in this folder writes every file listed here. units counts
+# the sheets shown as tabs.
+
+- name: a workbook with two sheets
+  file: two-sheets.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Regions, Products, Region, Revenue, North, '120']
+
+# Row 1 names the columns c1 to c201 and column A names the rows r2 to r2001,
+# so the text shows the grid stops at row 2,000 and column 200.
+- name: a sheet past 2,000 rows and 200 columns
+  file: past-caps.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: true
+    textIncludes: [c200, r2000]
+    textExcludes: [c201, r2001]
+
+- name: a workbook whose workbook part is cut off
+  file: corrupt.xlsx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+# Hyperlinks aimed at example.com, docs.google.com, drive.google.com, the
+# harness origin, localhost, 127.0.0.1 and javascript:, HYPERLINK and
+# WEBSERVICE formulas, an externalLink to a remote workbook, and cells holding
+# markup. Cells show as text, cached values only.
+- name: hyperlinks, an externalLink and markup in cells
+  file: hostile.xlsx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes:
+      - example.com link
+      - formula link
+      - external value
+      - '<img src="https://example.com/xlsx-img.png" onerror="parent.postMessage(1,''*'')">'
+      - '<a href="https://example.com/xlsx-anchor">anchor markup</a>'
+    textExcludes: ['HYPERLINK(', 'WEBSERVICE(', 'xlsx-external']
