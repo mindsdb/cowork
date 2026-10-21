@@ -1,8 +1,6 @@
 // Field synthesis for the modify flow's "Currently saved values" method.
 // Pure: reads the saved record and the matched spec method only.
 
-const GENIE_METHOD_ID = 'genie-mcp';
-
 const niceLabel = (name) => String(name || '')
   .replace(/_/g, ' ')
   .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -15,10 +13,8 @@ const niceLabel = (name) => String(name || '')
  * @returns {object | null} the matching method, or null when none matches
  */
 export function findSavedSpecMethod(saved, methods) {
-  // The detail API lifts `_method` out of `fields`; only Genie reads it from there, others keep the `fields` lookup.
-  const savedMethodId = saved?.method === GENIE_METHOD_ID
-    ? GENIE_METHOD_ID
-    : (saved?.fields || {})._method || null;
+  // The detail API lifts `_method` out of `fields`; older records still carry it there.
+  const savedMethodId = saved?.method || (saved?.fields || {})._method || null;
   if (!Array.isArray(methods)) return null;
   return methods.find((m) => m && m.id === savedMethodId) || null;
 }

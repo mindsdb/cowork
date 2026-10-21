@@ -12,23 +12,42 @@ const WORKSPACE_URL = 'https://dbc-1.cloud.databricks.com';
 const SPACE_ID = '0123456789abcdef0123456789abcdef';
 const NEW_SPACE_ID = 'fedcba9876543210fedcba9876543210';
 
+const WORKSPACE_FIELD = { name: 'workspace_url', label: 'Workspace URL', type: 'url', required: true };
+const HTTP_PATH_FIELD = { name: 'http_path', label: 'SQL Warehouse HTTP Path', type: 'text', required: true };
+const CATALOG_FIELD = { name: 'catalog', label: 'Default Catalog', type: 'text', required: false };
+const SCHEMA_FIELD = { name: 'schema', label: 'Default Schema', type: 'text', required: false };
+
 const DATABRICKS_METHODS = [
   {
     id: 'personal-access-token',
-    label: 'Personal access token',
+    label: 'Personal Access Token',
     fields: [
-      { name: 'workspace_url', label: 'Workspace URL', type: 'url', required: true },
-      { name: 'access_token', label: 'Access token', type: 'password', required: true, secret: true },
-      { name: 'http_path', label: 'HTTP path', type: 'text', required: true },
+      WORKSPACE_FIELD,
+      { name: 'access_token', label: 'Personal Access Token', type: 'password', required: true, secret: true },
+      HTTP_PATH_FIELD,
+      CATALOG_FIELD,
+      SCHEMA_FIELD,
+    ],
+  },
+  {
+    id: 'service-principal-oauth',
+    label: 'Service Principal (OAuth M2M)',
+    fields: [
+      WORKSPACE_FIELD,
+      { name: 'client_id', label: 'Service Principal Client ID', type: 'text', required: true },
+      { name: 'client_secret', label: 'Service Principal Secret', type: 'password', required: true, secret: true },
+      HTTP_PATH_FIELD,
+      CATALOG_FIELD,
+      SCHEMA_FIELD,
     ],
   },
   {
     id: 'genie-mcp',
-    label: 'Genie space',
+    label: 'Databricks Genie',
     fields: [
-      { name: 'workspace_url', label: 'Workspace URL', type: 'url', required: true },
-      { name: 'client_id', label: 'Client ID', type: 'text', required: true },
-      { name: 'client_secret', label: 'Client secret', type: 'password', required: true, secret: true },
+      WORKSPACE_FIELD,
+      { name: 'client_id', label: 'Service Principal Client ID', type: 'text', required: true },
+      { name: 'client_secret', label: 'Service Principal Secret', type: 'password', required: true, secret: true },
       { name: 'genie_space_id', label: 'Genie space ID', type: 'text', required: false },
     ],
   },
@@ -37,13 +56,16 @@ const DATABRICKS_METHODS = [
 const HUBSPOT_METHODS = [
   {
     id: 'mcp',
-    label: 'Sign in with HubSpot',
-    fields: [{ name: 'access_token', label: 'Access token', type: 'password', secret: true }],
+    label: 'In-Browser Connect',
+    fields: [],
+    oauth: { service_id: 'hubspot', supports_refresh: true },
   },
   {
     id: 'private-app',
     label: 'Private app token',
-    fields: [{ name: 'access_token', label: 'Access token', type: 'password', secret: true }],
+    fields: [
+      { name: 'access_token', label: 'Private app access token', type: 'password', required: true, secret: true },
+    ],
   },
 ];
 
@@ -104,9 +126,9 @@ describe('findSavedSpecMethod', () => {
     expect(findSavedSpecMethod(saved, DATABRICKS_METHODS)?.id).toBe('genie-mcp');
   });
 
-  it('does not match a non-Genie method from the detail API', () => {
-    expect(findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS)).toBeNull();
-    expect(findSavedSpecMethod(PAT_SAVED, DATABRICKS_METHODS)).toBeNull();
+  it('matches a non-Genie method from the detail API', () => {
+    expect(findSavedSpecMethod(HUBSPOT_SAVED, HUBSPOT_METHODS)?.id).toBe('mcp');
+    expect(findSavedSpecMethod(PAT_SAVED, DATABRICKS_METHODS)?.id).toBe('personal-access-token');
   });
 
   it('returns null when the saved method is gone from the spec', () => {
@@ -178,10 +200,17 @@ function editFormFor(saved, methods, cid) {
 }
 
 describe.each([
-  ['HubSpot', HUBSPOT_SAVED, HUBSPOT_METHODS],
-  ['Databricks personal access token', PAT_SAVED, DATABRICKS_METHODS],
-])('editing a saved %s connection', (_label, saved, methods) => {
-  it('keeps the edit method without an underlying method id', async () => {
+  ['HubSpot', HUBSPOT_SAVED, HUBSPOT_METHODS, 'mcp', {
+    access_token: 'ANTON_VAULT_KEEP',
+    refresh_token: 'ANTON_VAULT_KEEP',
+  }],
+  ['Databricks personal access token', PAT_SAVED, DATABRICKS_METHODS, 'personal-access-token', {
+    workspace_url: WORKSPACE_URL,
+    access_token: 'ANTON_VAULT_KEEP',
+    http_path: '/sql/1.0/warehouses/abc',
+  }],
+])('editing a saved %s connection', (_label, saved, methods, methodId, values) => {
+  it('sends the saved method, keep markers for secrets and saved plain values', async () => {
     const cid = 'conv-datavault-nongenie-edit';
     editFormFor(saved, methods, cid);
     const onSubmit = vi.fn();
@@ -190,7 +219,11 @@ describe.each([
     await userEvent.setup().click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0][0].method).toBe('__edit_current__');
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.method).toBe(methodId);
+    expect(payload.name).toBe(saved.name);
+    expect(payload.values).toEqual(expect.objectContaining(values));
+    expect(payload.values).not.toHaveProperty('_access_token');
   });
 });
 
