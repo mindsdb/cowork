@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './messageQueue';
+import {
+  selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids,
+  runsAwaitingTheirStart, UNLISTED_RUN_GRACE_MS, RUN_START_PROBE_DELAYS_MS,
+} from './messageQueue';
 
 const item = (id) => ({ id, text: id, attachments: [], disabledConnections: [] });
 
@@ -246,6 +249,39 @@ describe('finishedCids', () => {
 
   it('still flags other dropped cids while one is excluded', () => {
     expect(finishedCids(['a', 'b', 'c'], [], 'b')).toEqual(['a', 'c']);
+  });
+});
+
+describe('runsAwaitingTheirStart', () => {
+  const started = (entries) => new Map(entries);
+
+  it('keeps a run the server has not listed yet within the grace period', () => {
+    expect(runsAwaitingTheirStart(started([['run', 1_000]]), [], 1_000 + 5_000)).toEqual(['run']);
+  });
+
+  it('stops waiting for a run once the server lists it', () => {
+    expect(runsAwaitingTheirStart(started([['run', 1_000]]), ['run'], 1_000 + 5_000)).toEqual([]);
+  });
+
+  it('stops waiting once the grace period runs out', () => {
+    expect(runsAwaitingTheirStart(started([['run', 1_000]]), [], 1_000 + UNLISTED_RUN_GRACE_MS)).toEqual([]);
+  });
+
+  it('decides each run on its own', () => {
+    const awaiting = started([['listed', 0], ['new', 20_000], ['old', 0]]);
+    expect(runsAwaitingTheirStart(awaiting, ['listed'], 31_000)).toEqual(['new']);
+  });
+
+  it('keeps a run that drops out of finishedCids', () => {
+    // The poll's view of a run started here: in flight, though the server
+    // doesn't list it, so the diff doesn't call it finished.
+    const awaiting = runsAwaitingTheirStart(started([['run', 0]]), [], 1_000);
+    expect(finishedCids(['run'], [...awaiting], null)).toEqual([]);
+  });
+
+  it('asks whether the run has started for no longer than the grace period', () => {
+    const total = RUN_START_PROBE_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+    expect(total).toBeLessThanOrEqual(UNLISTED_RUN_GRACE_MS);
   });
 });
 
