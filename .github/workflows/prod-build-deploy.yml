@@ -29,6 +29,9 @@ jobs:
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
+  document-preview:
+    uses: ./.github/workflows/document-preview.yml
+
   build-deploy:
     # A production-<sha> image so the argocd-envs parent chart's
     # `tags.cowork: production` fallback resolves, and for static prod rollout.
@@ -102,7 +105,8 @@ jobs:
 
   notify:
     # Alert the eng channel if ANY job in the prod pipeline fails — the tag, the
-    # image, the installers, the public-download smoke, or the UI publish. A
+    # image, the installers, the public-download smoke, the UI publish, or the
+    # document preview suite. A
     # called workflow reports failure when any job inside it failed, so the
     # entries below cover the whole graph.
     # One job covers both outcomes: a `uses:` job cannot branch on status, so
@@ -112,7 +116,7 @@ jobs:
     # It cannot cover a run that never started (`startup_failure`, zero jobs) —
     # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
     needs:
-      [run-unit-tests, build-deploy, auto-release, build-installers, release-smoke, publish-ui]
+      [run-unit-tests, document-preview, build-deploy, auto-release, build-installers, release-smoke, publish-ui]
     if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: read

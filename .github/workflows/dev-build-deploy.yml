@@ -82,6 +82,10 @@ jobs:
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
+  document-preview:
+    # Ungated for the same reason as the unit tests; it needs no secrets.
+    uses: ./.github/workflows/document-preview.yml
+
   workflow-lint:
     # actionlint, the caller/callee permission check, and a zizmor audit, shared
     # with every other service repo. Ungated for the same reason as the tests.

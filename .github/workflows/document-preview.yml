@@ -7,18 +7,16 @@ name: Document preview
 # Each job allows zero specs only until the code its specs cover exists (the
 # preview runtime for web, the preload flag for electron). After that, a run
 # that finds no specs fails.
+#
+# `workflow_call` only, like tests-unit.yml: the pull-request, staging and prod
+# pipelines each call it, so every event lands in one run tree. Concurrency
+# belongs to the callers.
 
 on:
-  pull_request:
-  push:
-    branches: [main, staging]
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   web:
