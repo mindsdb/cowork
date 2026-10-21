@@ -146,6 +146,8 @@ export function ArtifactViewer({
   // instead of stating a fact the user cannot act on.
   const [blockedBy, setBlockedBy] = useState(null);
   const [pendingDiscard, setPendingDiscard] = useState(null);
+  // Whether the "Discard changes?" prompt for unsaved Edit text is showing.
+  const [confirmCloseUnsaved, setConfirmCloseUnsaved] = useState(false);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -186,6 +188,11 @@ export function ArtifactViewer({
     setRepairNoticeError('');
     setBlockedBy(null);
   }, [workspace.repair?.id, artifact?.id]);
+  /* Hides the unsaved-edit prompt when the host closes the viewer or switches
+     the artifact, since the workspace resets that draft on the same change. */
+  useEffect(() => {
+    setConfirmCloseUnsaved(false);
+  }, [open, artifact?.id]);
 
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
@@ -835,6 +842,16 @@ export function ArtifactViewer({
     }
   };
 
+  /* Closing resets the workspace, which drops Edit text that was never saved,
+     so the Close button, Esc and the backdrop ask first while there is some. */
+  const requestClose = () => {
+    if (workspace.dirty) {
+      setConfirmCloseUnsaved(true);
+      return;
+    }
+    onClose?.();
+  };
+
   const headerReview = {
     enabled: commentsEnabled,
     open: commentsOpen,
@@ -913,7 +930,7 @@ export function ArtifactViewer({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       size="lg"
       width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
@@ -927,7 +944,7 @@ export function ArtifactViewer({
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
-        onClose={onClose}
+        onClose={requestClose}
       />
 
       {workspace.currentRevision && (
@@ -1063,6 +1080,20 @@ export function ArtifactViewer({
           } finally {
             setRepairBusy(false);
           }
+        }}
+      />
+
+      <ConfirmModal
+        open={confirmCloseUnsaved}
+        title="Discard changes?"
+        message="Your unsaved edits to this artifact will be lost."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        destructive
+        onClose={() => setConfirmCloseUnsaved(false)}
+        onConfirm={() => {
+          setConfirmCloseUnsaved(false);
+          onClose?.();
         }}
       />
 
