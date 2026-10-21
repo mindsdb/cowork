@@ -25,7 +25,13 @@ import { OverflowMenu } from '../OverflowMenu';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useLiveApps } from '../../../lib/liveApps';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp, receivedFromLine } from '../../lib/liveAppSharing';
+import { liveAppKey, liveAppStateLine } from '../../lib/liveAppState';
+import { useLiveAppStates } from '../../hooks/useLiveAppStates';
+import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
+import { SharedLiveApps } from './SharedLiveApps';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
@@ -69,6 +75,9 @@ function iconForRow(row) {
 
 export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
+  // Re-read when a turn ends: that is when the agent launches an app.
+  const liveAppStates = useLiveAppStates(liveApps, isStreaming);
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
     if (project) return;
@@ -200,6 +209,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
   const [pendingDeleteArtifact, setPendingDeleteArtifact] = useState(null);
+  // The live app whose "Share with…" dialog is open.
+  const [shareTarget, setShareTarget] = useState(null);
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
@@ -249,6 +260,12 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         onClick: async () => {
           if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
         },
+      },
+      canShareLiveApp(a, liveApps) && {
+        label: SHARE_LIVE_APP_LABEL,
+        icon: Ico.userPlus(14),
+        disabled: busy,
+        onClick: () => setShareTarget(a),
       },
       // Confirm first, like the project-file, upload, task and project deletes.
       a.capabilities?.canEdit !== false && { divider: true },
@@ -394,6 +411,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
             const authorship = authorships[i];
+            const title = a.title || (a.path?.split('/').pop() || '');
+            // A live app's state, then whom a copy came from, under the title.
+            const sublines = liveApps && isBackendArtifact(a)
+              ? [liveAppStateLine(liveAppStates.get(liveAppKey(a.projectId, a.slug))), receivedFromLine(a)].filter(Boolean)
+              : [];
             return (
               <Fragment key={a.path}>
                 {i > 0 && i === currentCount && (
@@ -445,9 +467,16 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                   ) : (
                     <span aria-hidden="true" />
                   ))}
-                  <span className="text-sm text-ink truncate">
-                    {a.title || (a.path?.split('/').pop() || '')}
-                  </span>
+                  {sublines.length > 0 ? (
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-sm text-ink truncate">{title}</span>
+                      {sublines.map((line) => (
+                        <span key={line} className="text-[11px] leading-[1.35] text-ink-4 [overflow-wrap:anywhere]">{line}</span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-ink truncate">{title}</span>
+                  )}
                   {/* Trailing slot: timestamp normally, kebab on hover
                       or while THIS row's menu is open. Shared-slot
                       trick keeps row width stable. */}
@@ -495,6 +524,18 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
             );
           })}
         </div>
+      )}
+
+      {/* A copy lands in the rail's project, so the list needs one. */}
+      {liveApps && effectiveProject?.id && (
+        <SharedLiveApps
+          projectId={effectiveProject.id}
+          onDuplicated={(card) => setArtifacts((prev) => [card, ...prev.filter((r) => r.path !== card?.path)])}
+        />
+      )}
+
+      {shareTarget && (
+        <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
       )}
 
       <ConfirmModal

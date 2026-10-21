@@ -935,6 +935,34 @@ describe('electron mode (bridge present)', () => {
   });
 });
 
+describe('checkConfigured() on web reads the deployment flags from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => body }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  it('reports live apps only when /health says true', async () => {
+    const fetch = stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: false, live_apps: true });
+    const host = await importHost();
+
+    await expect(host.checkConfigured()).resolves.toEqual({
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true,
+    });
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { live_apps: false }],
+    ['a string', { live_apps: 'true' }],
+  ])('reports no live apps when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ liveApps: false });
+  });
+});
+
 describe('web settings access — loopback-gated /raw (ENG-817)', () => {
   // In the console-hosted web build the browser reaches cowork-server from the
   // docker bridge, not loopback, so /settings/raw 403s. The .env is legacy and

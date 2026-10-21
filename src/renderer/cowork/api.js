@@ -16,6 +16,8 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -2271,6 +2273,44 @@ export async function activateArtifactVersion(path, md5) {
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+// Only a deployment that runs live apps has these routes; elsewhere they 404,
+// and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+// A refusal's sentence comes back as the thrown error's message.
+
+// The caller's own live apps and whether each is running, for the cards'
+// state line. Shared by every card on screen through one in-flight request.
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+// The owner shares a full-stack app with one colleague, named by email, or
+// with everyone on the stack. The body carries exactly one of the two. Sharing
+// the same app with the same audience again returns the same share.
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+// What other people shared with the caller, newest first. Throws, so a caller
+// can tell "nothing shared" from "could not ask".
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+// Copies a shared app into one of the caller's own projects and returns the
+// new artifact card. `confirmed` is the disclaimer's answer: the server
+// refuses the copy without it, so only the dialog's confirm button calls this.
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
 }
 
 export async function fetchBrowseStatus() {
