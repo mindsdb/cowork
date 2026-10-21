@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({ authFetch: vi.fn(), BASE: '/api/v1' }));
@@ -7,9 +10,12 @@ import {
   canUseArtifactWorkspace,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  requestArtifactExport,
   setArtifactAccess,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
+
+const exportCases = load(readFileSync(resolve(__dirname, 'artifactWorkspaceApi.test.yaml'), 'utf8'));
 
 // The workspace API addresses an artifact by its one identity. A card built
 // before ids were widened cannot address it at all, so the viewer has to fall
@@ -245,5 +251,67 @@ describe('workspace request errors', () => {
       code: null,
       message: 'Bad access',
     });
+  });
+});
+
+/*
+ * The export route is addressed by the project and artifact segments of the
+ * card's draft URL, and its body names the format alone: the route always
+ * exports the primary file and answers 422 to a path or any other field.
+ */
+describe('requestArtifactExport', () => {
+  const ARTIFACT_ID = '7db94eb8f0a54c7e9c1d2b3a4f5e6d70';
+  const RESULT = {
+    filename: 'report.docx',
+    draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.docx`,
+    serveUrl: '',
+    omittedCount: 0,
+    scriptsDropped: false,
+  };
+
+  it('posts only the format to the route named by the draft URL', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    const result = await requestArtifactExport(`/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/docs/report.md`, 'docx');
+
+    expect(result).toEqual(RESULT);
+    const [url, options] = authFetch.mock.calls[0];
+    expect(url).toBe(`/api/v1/artifacts/workspace/proj-1/${ARTIFACT_ID}/export`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toStrictEqual({ format: 'docx' });
+  });
+
+  it('addresses a local-tenancy artifact through the local project ref', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    await requestArtifactExport(`/api/v1/artifacts/drafts/local/${ARTIFACT_ID}/report.md`, 'html');
+
+    expect(authFetch.mock.calls[0][0]).toBe(`/api/v1/artifacts/workspace/local/${ARTIFACT_ID}/export`);
+  });
+
+  it('keeps an encoded segment one segment', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    await requestArtifactExport(`/api/v1/artifacts/drafts/a%2Fb/${ARTIFACT_ID}/report.md`, 'html');
+
+    expect(authFetch.mock.calls[0][0]).toBe(`/api/v1/artifacts/workspace/a%2Fb/${ARTIFACT_ID}/export`);
+  });
+
+  it('carries the status of a refusal on the error', async () => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({ detail: 'busy' }) });
+
+    await expect(requestArtifactExport(`/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`, 'docx'))
+      .rejects.toMatchObject({ status: 429 });
+  });
+
+  it.each(exportCases.unaddressableDraftUrls)('sends nothing for $label', async ({ draftUrl }) => {
+    authFetch.mockClear();
+
+    await expect(requestArtifactExport(draftUrl, 'docx')).rejects.toThrow();
+
+    expect(authFetch).not.toHaveBeenCalled();
   });
 });
