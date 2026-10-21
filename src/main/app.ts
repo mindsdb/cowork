@@ -1,5 +1,9 @@
+// MUST be first: a packaged build scrubs inherited channel-scoping env vars
+// before any module reads them; app-identity below caches buildKind() at load,
+// so the scrub has to run ahead of it.
+import './sanitize-packaged-env';
 import { diagnostic } from '../shared/diagnostics';
-// MUST be first: sets the per-channel Electron app name (→ userData dir) before
+// MUST be second: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store),
 // then starts the crash reporter so a native crash while the rest loads leaves
 // a minidump.
