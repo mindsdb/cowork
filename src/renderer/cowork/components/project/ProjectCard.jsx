@@ -16,6 +16,7 @@ import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
 import SharedResourceAttribution from '../SharedResourceAttribution';
+import SharedProjectReference from './SharedProjectReference';
 import { isReservedProjectName } from '../../lib/sharedResourceAccess';
 
 function tasksFor(project, tasks) {
@@ -242,7 +243,10 @@ function useProjectSlots({
       : project.shared ? 'Shared with you · Read only'
       : summary ? summary.text
       : <span className="italic text-ink-4">No activity yet</span>,
-    children: <SharedResourceAttribution resource={project} />,
+    children: <>
+      <SharedProjectReference project={project} />
+      <SharedResourceAttribution resource={project} />
+    </>,
     meta: (
       <>
         {active ? <StatusDot tone="success">{when}</StatusDot> : <span className="whitespace-nowrap">{when}</span>}

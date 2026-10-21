@@ -3,6 +3,7 @@ import { downloadSharedProjectFile, listSharedProjectFiles, readSharedProjectFil
 import { projectLabel } from '../../lib/projectLabel';
 import { Button } from '../ui';
 import { Crumb, CrumbCurrent, CrumbSep } from '../ui/Crumb';
+import SharedProjectReference from './SharedProjectReference';
 
 /** A recipient never mounts the owner workspace, instructions, or HTML preview. */
 export default function SharedProjectFiles({ project, onShowAll }) {
@@ -89,6 +90,7 @@ export default function SharedProjectFiles({ project, onShowAll }) {
         <div>
           <p className="text-xs font-semibold text-accent">Shared with you · Read only</p>
           <h1 className="font-display text-2xl text-ink mt-2">{projectLabel(project)}</h1>
+          <SharedProjectReference project={project} />
           <p className="text-sm mt-2 text-ink-3">Browse and download files. Only the owner can edit this project or run tasks here.</p>
         </div>
         {error ? <p role="alert">{error}</p> : loading ? <p role="status">Loading files…</p> : (

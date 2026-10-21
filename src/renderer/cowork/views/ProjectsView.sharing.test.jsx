@@ -60,6 +60,26 @@ it('keeps the same-name owned project executable', () => {
   expect(api.listSharedProjectFiles).not.toHaveBeenCalled();
 });
 
+it('distinguishes same-named shares in the list and detail without exposing owner identities', async () => {
+  const first = { ...shared, id: 'aaaaaaaa-aaaa-4aaa-8aaa-00001111aaaa', attribution: { createdBy: { userId: 'private-owner-a' } } };
+  const second = { ...shared, id: 'bbbbbbbb-bbbb-4bbb-8bbb-00002222bbbb', attribution: { createdBy: { userId: 'private-owner-b' } } };
+  const projects = [own, first, second];
+  const view = render(<ProjectsView projects={projects} />);
+  expect(screen.getByText('Project · 1111aaaa')).toBeInTheDocument();
+  expect(screen.getByText('Project · 2222bbbb')).toBeInTheDocument();
+  expect(screen.queryByText(/private-owner/)).not.toBeInTheDocument();
+  expect(screen.queryByText('Project · oject-id')).not.toBeInTheDocument();
+
+  view.rerender(<ProjectsView projects={projects} selectedProject={first} />);
+  await screen.findByRole('button', { name: 'report.html' });
+  expect(screen.getByText('Project · 1111aaaa')).toHaveAttribute('title', `Project ID: ${first.id}`);
+  expect(api.listSharedProjectFiles).toHaveBeenLastCalledWith(first.id);
+  view.rerender(<ProjectsView projects={projects} selectedProject={second} />);
+  await screen.findByText('Project · 2222bbbb');
+  await waitFor(() => expect(api.listSharedProjectFiles).toHaveBeenLastCalledWith(second.id));
+  expect(screen.queryByText(/private-owner/)).not.toBeInTheDocument();
+});
+
 it('tracks the shared project owner rename by immutable id', async () => {
   const view = render(<ProjectsView projects={[shared]} selectedProject={shared} />);
   await screen.findByRole('button', { name: 'report.html' });
