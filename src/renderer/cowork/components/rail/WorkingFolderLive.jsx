@@ -9,7 +9,8 @@
 // - Orphans resolve the active project name → { name, path } via the
 //   projects list, so the path-prefix filter works.
 // - Polls every 3s while streaming, plus once when streaming ends.
-// - Click → HTML opens in-app viewer; other types → OS openPath.
+// - Click → the in-app viewer for what it previews; other types → OS openPath
+//   on desktop, or a download on web.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -25,10 +26,14 @@ import { OverflowMenu } from '../OverflowMenu';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
-import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
-import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
+import {
+  canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
+  isInlinePreviewable,
+} from '../../lib/artifactKinds';
+import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
@@ -196,6 +201,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   }, [rows, openMenuPath]);
   const [busyPath, setBusyPath] = useState(null);
   const [rowError, setRowError] = useState('');
+  /* The neutral counterpart of rowError: what a click did, when it did
+     something other than what a click usually does. */
+  const [rowNote, setRowNote] = useState('');
   // Pending artifact-delete payload — drives the ConfirmModal, same
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
@@ -215,38 +223,53 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
 
   // Kebab menu rows for one artifact.
   const menuItemsFor = (a) => {
-    // Where the Open item goes: the OS on desktop; a tab when there is a
-    // serve or shared URL; otherwise (org mode, non-HTML) it saves the
-    // file, since `openArtifactExternal` falls through to the download.
-    // A separate Download item is only worth a row when Open goes
-    // somewhere else, so the two never say the same thing (ENG-2044).
+    /*
+     * Where the Open item goes: the OS on desktop; a tab when there is a serve
+     * or shared URL. A separate Download item saves the file, so the two never
+     * say the same thing.
+     */
     const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
-    // The fullstack-app exclusion applies to BOTH routes:
-    // canDownloadOrgDraft checks it, but on a non-org web deployment a
-    // fullstack app has a serveUrl too, and the `a.serveUrl ||`
-    // short-circuit was saving its shell index.html (review pass 2).
-    const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
-      && !!(a.serveUrl || canDownloadOrgDraft(a));
-    const openLabel = canOpenLocalFile
-      ? 'Open in OS'
-      // 'Download' only when the click can actually deliver one: an
-      // unshared fullstack app or a card with no primary file falls
-      // through to the dead-end message, and labelling THAT 'Download'
-      // promises a save that cannot happen (review finding on #764).
-      : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
+    /*
+     * canDownloadArtifact leaves out fullstack apps on BOTH routes: on a
+     * non-org web deployment a fullstack app has a serveUrl too, and saving it
+     * would save its shell index.html.
+     */
+    const canDownload = !canOpenLocalFile && canDownloadArtifact(a);
+    /*
+     * On web a tab shows only what canShowInBrowserTab allows; on any other
+     * file it saves without a word, so those files get Download and no tab. An
+     * unshared fullstack app with nothing to save keeps the tab item, which
+     * says why it cannot open rather than promise a download.
+     */
+    const canOpenTab = !canOpenLocalFile && (!host.isWeb || canShowInBrowserTab(a))
+      && (canOpenRemote || !canDownload);
     const busy = busyPath === a.path;
     return [
-      {
-        label: openLabel,
-        icon: (openLabel === 'Download' ? Ico.download : (Ico.externalLink || Ico.upload))(13),
+      // The document types preview first wherever the shared gate allows them.
+      canPreviewDocument(a, host) && {
+        label: 'Preview',
+        icon: (Ico.eye?.(13) || Ico.sparkle(14)),
+        disabled: busy,
+        onClick: () => setPreviewArt(a),
+      },
+      canOpenLocalFile && {
+        label: 'Open in OS',
+        icon: (Ico.externalLink || Ico.upload)(13),
         disabled: busy,
         onClick: () => openArtifactExternal(a),
       },
-      canDownload && canOpenRemote && {
+      canOpenTab && {
+        label: 'Open in new tab',
+        icon: (Ico.externalLink || Ico.upload)(13),
+        disabled: busy,
+        onClick: () => openArtifactExternal(a),
+      },
+      canDownload && {
         label: 'Download',
         icon: Ico.download(14),
         disabled: busy,
         onClick: async () => {
+          setRowNote('');
           if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
         },
       },
@@ -273,14 +296,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         try { await host.openExternal(url); } catch {}
         return;
       }
-      // Org mode, non-HTML artifact: nothing above exists — no serve URL by
-      // design, no published page because autopublish skips binaries — but the
-      // authenticated draft URL still carries the bytes, so save the file
-      // rather than dead-end (ENG-2044). Awaited: the download now runs an
-      // authFetch (a navigation cannot attach the Authorization header), so
-      // the result is a promise. Not for a fullstack app: its primary is a
-      // shell index.html, not the app — the message below is the honest answer.
-      if (canDownloadOrgDraft(a) && await downloadArtifactFile(a)) return;
+      /* Nothing to open and nothing to save: an unshared fullstack app, whose
+         draft is only its shell index.html, or a card with no primary file. */
       setRowError('This artifact has no servable file yet.');
       return;
     }
@@ -326,21 +343,29 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // Inline-previewable artifacts open the ArtifactViewer modal; the
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
-  // handler so the user's default app picks it up.
+  // handler so the user's default app picks it up, or on web to a
+  // download.
   const onOpenArtifact = async (artifact) => {
     /*
      * In org mode the viewer renders the authenticated draft instead of local
      * bytes, and an artifact whose draft it cannot render keeps the published
-     * URL. Local OS handoff remains a desktop-only capability.
+     * URL. Local OS handoff remains a desktop-only capability. Desktop hands
+     * an image to the default app; with no shell to hand it to, the viewer
+     * shows it, as the chat card does. The document types join both previews
+     * wherever the shared document gate allows them.
      */
+    const hasBridge = host.isElectron;
+    const canPreviewDoc = canPreviewDocument(artifact, host);
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
-      canPreviewInline: isInlinePreviewable(artifact),
-      canPreviewDraft: canPreviewOrgDraft(artifact),
-      hasBridge: host.isElectron,
+      canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
+      canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+      hasBridge,
       hasDraft: canDownloadOrgDraft(artifact),
+      canDownload: canDownloadArtifact(artifact),
     });
+    setRowNote('');
     if (target === 'published') {
       /*
        * Awaited so a rejected bridge call is caught rather than left loose.
@@ -351,9 +376,14 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     } else if (target === 'preview') {
       setPreviewArt(artifact);
     } else if (target === 'download') {
-      // The draft the viewer cannot render, nobody shared: its bytes are still
-      // one authenticated request away (ENG-2044).
-      if (!(await downloadArtifactFile(artifact))) setRowError('This artifact has no servable file yet.');
+      /* Nothing here renders the file and nobody shared it: its bytes are
+         still one request away, and the note says why it saved. */
+      if (await downloadArtifactFile(artifact)) {
+        setRowError('');
+        setRowNote(NO_PREVIEW_DOWNLOADED_NOTE);
+      } else {
+        setRowError('This artifact has no servable file yet.');
+      }
     } else if (target === 'os') {
       onOpen(artifact.path);
     }
@@ -383,6 +413,14 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           {rowError}
         </p>
       )}
+      {/* Mounted while empty so a screen reader hears the note arrive. */}
+      <div role="status" aria-live="polite">
+        {rowNote && (
+          <p className="text-xs px-1 pb-0.5 text-ink-3">
+            {rowNote}
+          </p>
+        )}
+      </div>
       {rows.length === 0 ? (
         <p className="text-sm text-ink-4 px-1 pb-1">
           No artifacts yet — the agent will save dashboards, reports, and

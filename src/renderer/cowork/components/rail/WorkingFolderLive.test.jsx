@@ -10,7 +10,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, act, cleanup, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
+
+const FIXTURES = load(readFileSync(resolve(import.meta.dirname, '../../lib/artifactSurfaces.yaml'), 'utf-8'));
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -48,10 +53,16 @@ vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
+// The shared document gate, stubbed per test.
+const canPreviewDocument = vi.fn(() => false);
+vi.mock('../../preview/kinds', () => ({
+  canPreviewDocument: (...a) => canPreviewDocument(...a),
+}));
 
 import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
+import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
@@ -89,6 +100,8 @@ beforeEach(() => {
   downloadArtifactFile.mockClear();
   downloadArtifactFile.mockImplementation(async () => true);
   hostState.isWeb = true; hostState.isElectron = false; hostState.localApi = false;
+  canPreviewDocument.mockReset();
+  canPreviewDocument.mockReturnValue(false);
 });
 afterEach(() => setOrgMode(false));
 
@@ -159,8 +172,8 @@ describe('artifacts rail click in org mode', () => {
 
   it('never hands the path to the OS, which org mode cannot reach', async () => {
     const row = await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/weekly/report.zip',
       draftUrl: '',
     }));
 
@@ -174,14 +187,15 @@ describe('artifacts rail click in org mode', () => {
 
   it('saves a draft the viewer cannot render instead of dying (ENG-2044)', async () => {
     /*
-     * The .docx / .xlsx case that shipped broken: no preview, nothing shared,
-     * no serve URL — but the draft URL streams the bytes. The rail used to
-     * print "This artifact has no servable file yet." for a file on disk.
+     * The case that shipped broken: no preview, nothing shared, no serve URL —
+     * but the draft URL streams the bytes. The rail used to print "This
+     * artifact has no servable file yet." for a file on disk. It now says why
+     * the click downloaded once the save went through.
      */
     const row = await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
-      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/weekly/report.zip',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.zip',
     }));
 
     fireEvent.click(row);
@@ -191,6 +205,7 @@ describe('artifacts rail click in org mode', () => {
     expect(openExternal).not.toHaveBeenCalled();
     expect(openPath).not.toHaveBeenCalled();
     expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeInTheDocument();
   });
 
   it('keeps the honest dead end for an unshared fullstack app rather than saving its shell', async () => {
@@ -278,14 +293,15 @@ describe('artifacts rail click in org mode', () => {
     // and the row must say so rather than end the click in silence.
     downloadArtifactFile.mockImplementationOnce(async () => false);
     const row = await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
-      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/weekly/report.zip',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.zip',
     }));
 
     fireEvent.click(row);
 
     expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
   });
 
   it('labels the menu action Download when a tab has nowhere to open', async () => {
@@ -295,9 +311,9 @@ describe('artifacts rail click in org mode', () => {
      * says what it will do, and does it.
      */
     await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
-      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/weekly/report.zip',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.zip',
     }));
 
     await openKebab();
@@ -315,9 +331,9 @@ describe('artifacts rail click in org mode', () => {
      */
     downloadArtifactFile.mockImplementationOnce(async () => false);
     await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
-      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/weekly/report.zip',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.zip',
     }));
 
     await openKebab();
@@ -330,14 +346,10 @@ describe('artifacts rail click in org mode', () => {
     // Third call site: the separate Download row that renders when Open goes
     // to a tab (shared page) but the file itself is still worth saving.
     downloadArtifactFile.mockImplementationOnce(async () => false);
-    await renderRail(draft({
-      ext: '.docx',
-      path: '/proj/.anton/artifacts/weekly/report.docx',
-      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
-      publishedUrl: SHARED_URL,
-    }));
+    await renderRail(draft({ publishedUrl: SHARED_URL }));
 
     await openKebab();
+    expect(screen.getByText('Open in new tab')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Download'));
 
     expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
@@ -597,5 +609,145 @@ describe('artifacts rail grouping by conversation', () => {
     await screen.findByText('Mine B');
 
     expect(screen.getByText('Mine B').closest('[role="button"]').className).toContain(THREE);
+  });
+});
+
+/*
+ * A file with no preview, clicked in the rail on a web host: it downloads once,
+ * and the rail says why in a neutral line only after the download went
+ * through. Every extension and surface comes from artifactSurfaces.yaml.
+ */
+const fileRow = (ext, overrides = {}) => draft({
+  ext,
+  type: 'file',
+  path: `/proj/.anton/artifacts/data/data${ext}`,
+  draftUrl: `/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/data${ext}`,
+  ...overrides,
+});
+const clickRail = {
+  row: (row) => fireEvent.click(row),
+};
+const railNote = () => screen.getByRole('status');
+
+describe.each(FIXTURES.webModes)('artifacts rail on %s', (mode) => {
+  beforeEach(() => setOrgMode(mode === 'org web'));
+
+  describe.each(FIXTURES.clickSurfaces.artifactsBox)('a %s click on a file with no preview', (surface) => {
+    it.each(FIXTURES.noPreviewExtensions)('downloads %s once, then shows the note', async (ext) => {
+      const row = await renderRail(fileRow(ext));
+
+      clickRail[surface](row);
+
+      await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+      expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+      expect(downloadArtifactFile.mock.calls[0][0]).toMatchObject({ draftUrl: expect.stringContaining(`data${ext}`) });
+      expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+      expect(openExternal).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows the error and no note when the download fails', async () => {
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const row = await renderRail(fileRow('.zip'));
+
+    fireEvent.click(row);
+
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    expect(railNote().textContent).toBe('');
+  });
+
+  it.each(FIXTURES.documentPreviewExtensions)('previews %s first when the document gate allows it', async (ext) => {
+    canPreviewDocument.mockReturnValue(true);
+    const row = await renderRail(fileRow(ext));
+
+    fireEvent.click(row);
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+
+    const items = within(await openKebab()).getAllByRole('menuitem').map((el) => el.textContent);
+    expect(items[0]).toBe('Preview');
+    expect(items).toContain('Download');
+  });
+
+  it.each(FIXTURES.documentPreviewExtensions)('downloads %s with the note when the document gate refuses it', async (ext) => {
+    const row = await renderRail(fileRow(ext));
+
+    fireEvent.click(row);
+
+    await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+});
+
+describe('artifacts rail tab on local web', () => {
+  /* A tab opened on a file a browser cannot show saves it without a word, so
+     the rail offers a tab only for what a tab renders. */
+  beforeEach(() => setOrgMode(false));
+  const SERVE = (ext) => `/v1/artifacts/serve/data/data${ext}`;
+
+  it.each(FIXTURES.browserTab.withheld)('offers Download and no tab for %s', async (ext) => {
+    await renderRail(fileRow(ext, { serveUrl: SERVE(ext) }));
+
+    await openKebab();
+
+    expect(screen.queryByText('Open in new tab')).toBeNull();
+    expect(screen.getByText('Download')).toBeInTheDocument();
+  });
+
+  it.each(FIXTURES.browserTab.opens)('keeps the tab for %s', async (ext) => {
+    await renderRail(fileRow(ext, { serveUrl: SERVE(ext) }));
+
+    await openKebab();
+    fireEvent.click(screen.getByText('Open in new tab'));
+
+    expect(openExternal).toHaveBeenCalledWith(`https://cowork.example${SERVE(ext)}`);
+  });
+
+  it('saves from the Download item through the download helper, never a tab', async () => {
+    await renderRail(fileRow('.xlsx', { serveUrl: SERVE('.xlsx') }));
+
+    await openKebab();
+    fireEvent.click(screen.getByText('Download'));
+
+    await vi.waitFor(() => expect(downloadArtifactFile).toHaveBeenCalledTimes(1));
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
+describe('artifacts rail on desktop', () => {
+  beforeEach(() => {
+    setOrgMode(false);
+    hostState.isWeb = false; hostState.isElectron = true; hostState.localApi = true;
+    openPath.mockResolvedValue({ ok: true });
+  });
+
+  it.each(FIXTURES.documentPreviewExtensions)('opens %s in the default app when the document gate refuses it', async (ext) => {
+    const row = await renderRail(fileRow(ext));
+
+    fireEvent.click(row);
+
+    expect(openPath).toHaveBeenCalledWith(`/proj/.anton/artifacts/data/data${ext}`);
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+  });
+
+  it.each(FIXTURES.documentPreviewExtensions)('previews %s when the document gate allows it', async (ext) => {
+    canPreviewDocument.mockReturnValue(true);
+    const row = await renderRail(fileRow(ext));
+
+    fireEvent.click(row);
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('keeps Open in OS in the menu, with no tab', async () => {
+    await renderRail(fileRow('.zip', { serveUrl: '/v1/artifacts/serve/data/data.zip' }));
+
+    await openKebab();
+
+    expect(screen.getByText('Open in OS')).toBeInTheDocument();
+    expect(screen.queryByText('Open in new tab')).toBeNull();
+    expect(screen.queryByText('Download')).toBeNull();
   });
 });

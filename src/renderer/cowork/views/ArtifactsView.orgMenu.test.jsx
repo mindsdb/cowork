@@ -55,6 +55,7 @@ vi.mock('../components/artifact', () => ({
 
 import ArtifactsView from './ArtifactsView';
 import * as api from '../api';
+import { NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 import { host } from '../../platform/host';
 import { setOrgMode } from '../../lib/orgMode';
 
@@ -77,11 +78,11 @@ const cloudDraft = {
  * (autopublish is HTML/MD-only), no serve URL — the draft URL is the one route
  * to the bytes. Grid and List must both reach it; List missed it in pass 1.
  */
-const cloudXlsx = {
+const cloudZip = {
   id: '55555555555555555555555555555555',
-  path: '/proj/.anton/artifacts/model/model.xlsx',
-  title: 'Quarterly Model', type: 'file', ext: '.xlsx', mtime: 2000,
-  draftUrl: '/api/v1/artifacts/drafts/project/id5/model.xlsx',
+  path: '/proj/.anton/artifacts/model/model.zip',
+  title: 'Quarterly Model', type: 'file', ext: '.zip', mtime: 2000,
+  draftUrl: '/api/v1/artifacts/drafts/project/id5/model.zip',
   publishedUrl: '',
   capabilities: { role: 'owner', canEdit: true },
 };
@@ -559,7 +560,7 @@ describe.each([
   /*
    * Review pass 2 on #764: the grid card got the download fallback and the
    * list row — 250 lines below in the same file — did not, so the identical
-   * .xlsx downloaded in Grid and silently did nothing in List. Same fixture,
+   * file downloaded in Grid and silently did nothing in List. Same fixture,
    * both view modes, so they cannot drift again.
    */
   beforeEach(() => {
@@ -570,17 +571,28 @@ describe.each([
     toastAdd.mockClear();
   });
 
-  it('body click downloads instead of doing nothing', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+  it('body click downloads instead of doing nothing, then says why', async () => {
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     fireEvent.click(screen.getByText('Quarterly Model'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
-    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.xlsx');
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.zip');
     expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('download=1');
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE }));
+  });
+
+  it('body click shows the error toast and no note when the fetch fails', async () => {
+    downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
+    render(<ArtifactsView artifacts={[cloudZip]} />);
+    fireEvent.click(screen.getByText('Quarterly Model'));
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Could not download this artifact.', type: 'danger' }),
+    ));
+    expect(toastAdd).not.toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE });
   });
 
   it('the ↗ Open button downloads too', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     fireEvent.click(screen.getByLabelText('Open'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
   });
@@ -592,7 +604,7 @@ describe.each([
      * that left the click with no feedback of any kind (review pass 2).
      */
     downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     openKebab();
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
@@ -601,7 +613,7 @@ describe.each([
   });
 
   it('stays quiet when the download succeeds (mutation guard for the toast)', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     openKebab();
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));

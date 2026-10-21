@@ -56,14 +56,15 @@ export async function fetchAuthenticatedBlob(url) {
 /**
  * Download a private file without navigating the browser directly to an API
  * URL, because a native navigation cannot attach the expected-organization
- * header. Electron keeps using its main-process-authenticated URL flow.
+ * header. Desktop saves the same way: the main process's onBeforeSendHeaders
+ * listener (src/main/app.ts) adds the local server's token to the renderer's
+ * fetch, while a URL handed to the OS browser carries none and gets a 401.
+ *
+ * Resolves true once a 2xx body is saved. Any other answer rejects with the
+ * error `fetchAuthenticatedResponse` raises, which carries the HTTP status.
  */
 export async function downloadAuthenticatedResource(url, filename) {
   if (!url) return false;
-  if (!host.isWeb) {
-    await host.openExternal(url);
-    return true;
-  }
   downloadBlob(await fetchAuthenticatedBlob(url), filename);
   return true;
 }

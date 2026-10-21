@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from './artifactActions';
+import {
+  NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete,
+} from './artifactActions';
 
 const ALL = ['open', 'preview', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
 
@@ -29,7 +31,7 @@ describe('org mode', () => {
     /*
      * ENG-2044: on an org deployment the draft URL is the only route to the
      * bytes, and it is set for every artifact with a primary file — so a
-     * .xlsx the viewer cannot render is saveable instead of a dead end.
+     * .zip the viewer cannot render is saveable instead of a dead end.
      */
     expect(available({ orgMode: true, hasBridge: false, published: false, hasDraft: true }))
       .toEqual(['preview', 'download', 'delete']);
@@ -56,6 +58,15 @@ describe('desktop mode', () => {
     expect(ids).not.toContain('reveal');
     expect(ids).not.toContain('download');
     expect(ids).toContain('publish');
+  });
+
+  it('offers Download without the bridge when a URL carries the file', () => {
+    /* The web build against a local server: the grid and list menus save the
+       file from its serve or draft URL. Reveal still needs the filesystem. */
+    const ids = available({ orgMode: false, hasBridge: false, published: false, canDownload: true });
+    expect(ids).toContain('download');
+    expect(ids).not.toContain('reveal');
+    expect(isArtifactActionAvailable('download', { orgMode: false, hasBridge: false, canDownload: true })).toBe(true);
   });
 
   it('does not gate publish control on a published URL', () => {
@@ -124,7 +135,7 @@ describe('artifactOpenTarget', () => {
 
   it('saves the file for an org draft the viewer cannot render and nobody shared', () => {
     /*
-     * ENG-2044: a .xlsx / .docx / .zip on web. No preview, no shared page — but
+     * A .zip or .parquet on web. No preview, no shared page — but
      * the draft URL streams the bytes, so the click downloads rather than dies.
      * `canPreviewInline` is the desktop answer and must not leak in here.
      */
@@ -161,10 +172,44 @@ describe('artifactOpenTarget', () => {
   });
 
   it('does not hand a path to a shell that is not there', () => {
-    // Web build, non-previewable type: there is no bridge to open it with.
+    /* Web build, non-previewable type, no URL to save it from: there is no
+       bridge to open it with and nothing to download. */
     expect(artifactOpenTarget({
       orgMode: false, published: false, canPreviewInline: false, hasBridge: false,
     })).toBeNull();
+    expect(artifactOpenTarget({
+      orgMode: false, published: false, canPreviewInline: false, hasBridge: false, canDownload: false,
+    })).toBeNull();
+  });
+
+  it('downloads on web without a bridge when a URL carries the file', () => {
+    /* The local web dead end: the click used to show "No artifact file path
+       is available." for a file the server could stream all along. */
+    expect(artifactOpenTarget({
+      orgMode: false, published: false, canPreviewInline: false, hasBridge: false, canDownload: true,
+    })).toBe('download');
+  });
+
+  it('keeps the shell ahead of a download on desktop, and the preview ahead of both', () => {
+    expect(artifactOpenTarget({
+      orgMode: false, canPreviewInline: false, hasBridge: true, canDownload: true,
+    })).toBe('os');
+    expect(artifactOpenTarget({
+      orgMode: false, canPreviewInline: true, hasBridge: false, canDownload: true,
+    })).toBe('preview');
+  });
+
+  it('leaves org mode to the draft, whatever canDownload says', () => {
+    // A serve URL never reaches org mode; the draft decides there.
+    expect(artifactOpenTarget({
+      orgMode: true, published: false, canPreviewDraft: false, hasDraft: false, canDownload: true,
+    })).toBeNull();
+  });
+});
+
+describe('NO_PREVIEW_DOWNLOADED_NOTE', () => {
+  it('says the file downloaded because it has no preview', () => {
+    expect(NO_PREVIEW_DOWNLOADED_NOTE).toBe('No preview for this file type; downloaded instead.');
   });
 });
 

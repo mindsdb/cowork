@@ -6,9 +6,10 @@
  * live web deployments: the draft-URL save was a bare anchor navigation, a
  * navigation attaches no Authorization header, and the browser saved nginx's
  * 401 page under the artifact's filename. These tests pin the transport
- * split: `serveUrl` keeps the streaming anchor (no auth needed on the
- * loopback/local server), `draftUrl` must go through the authenticated
- * fetch-then-Blob path and must never reach an anchor directly.
+ * split: `draftUrl` must go through the authenticated fetch-then-Blob path and
+ * never reach an anchor directly, and web takes it first because only that
+ * fetch sees the status. `serveUrl` keeps the streaming anchor on desktop, and
+ * on web only for a card without a draft URL.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -33,6 +34,7 @@ const DRAFT = '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/
 const SERVE = '/api/v1/artifacts/serve/p/f.xlsx';
 
 beforeEach(() => {
+  mocks.host.isWeb = true;
   mocks.downloadUrl.mockClear();
   mocks.downloadAuthenticatedResource.mockClear();
   mocks.downloadAuthenticatedResource.mockImplementation(async () => true);
@@ -61,7 +63,28 @@ describe('artifactDownloadUrl', () => {
 });
 
 describe('downloadArtifactFile transport split', () => {
-  it('streams a serve URL through the anchor and never touches the auth path', async () => {
+  it('on web, takes the draft URL through the authenticated fetch even when a serve URL exists', async () => {
+    const ok = await downloadArtifactFile(
+      { serveUrl: SERVE, draftUrl: DRAFT, path: '/p/.anton/artifacts/m/f.xlsx' },
+    );
+    expect(ok).toBe(true);
+    expect(mocks.downloadAuthenticatedResource).toHaveBeenCalledWith(
+      `https://cowork.example${DRAFT}?download=1`, 'f.xlsx',
+    );
+    expect(mocks.downloadUrl).not.toHaveBeenCalled();
+  });
+
+  it('on web, runs the serve-URL anchor only for a card with no draft URL', async () => {
+    const ok = await downloadArtifactFile({ serveUrl: SERVE, path: '/p/.anton/artifacts/m/f.xlsx' });
+    expect(ok).toBe(true);
+    expect(mocks.downloadUrl).toHaveBeenCalledWith(
+      `https://cowork.example${SERVE}?download=1`, 'f.xlsx',
+    );
+    expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
+  });
+
+  it('on desktop, streams a serve URL through the anchor and never touches the auth path', async () => {
+    mocks.host.isWeb = false;
     const ok = await downloadArtifactFile(
       { serveUrl: SERVE, draftUrl: DRAFT, path: '/p/.anton/artifacts/m/f.xlsx' },
     );
@@ -70,6 +93,13 @@ describe('downloadArtifactFile transport split', () => {
       `https://cowork.example${SERVE}?download=1`, 'f.xlsx',
     );
     expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
+  });
+
+  it('on desktop, takes the authenticated path when there is no serve URL', async () => {
+    mocks.host.isWeb = false;
+    await expect(downloadArtifactFile({ draftUrl: DRAFT, path: '/p/f.xlsx' })).resolves.toBe(true);
+    expect(mocks.downloadAuthenticatedResource).toHaveBeenCalledTimes(1);
+    expect(mocks.downloadUrl).not.toHaveBeenCalled();
   });
 
   it('saves a draft URL through the authenticated fetch, never an anchor (the 401 regression)', async () => {

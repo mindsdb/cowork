@@ -103,6 +103,44 @@ describe('authenticated private file resources', () => {
     expect(popup.location.href).not.toContain('/api/v1/');
   });
 
+  it('saves a Blob on desktop too, and never hands the URL to the OS browser', async () => {
+    /*
+     * The OS browser carries no token, so the old hand-off answered 401 while
+     * this resolved true. The renderer's fetch carries the token the main
+     * process adds to requests for its local server.
+     */
+    mocks.host.isWeb = false;
+    const blob = new Blob(['file'], { type: 'application/zip' });
+    mocks.authFetch.mockResolvedValue({ ok: true, status: 200, blob: async () => blob });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await expect(downloadAuthenticatedResource('http://127.0.0.1:26866/api/v1/artifacts/drafts/local/a/data.zip', 'data.zip'))
+      .resolves.toBe(true);
+
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'data.zip' });
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['web', true],
+    ['desktop', false],
+  ])('is true only for a 2xx on %s: any other status rejects and saves nothing', async (_name, isWeb) => {
+    mocks.host.isWeb = isWeb;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    for (const status of [204, 299]) {
+      mocks.authFetch.mockResolvedValueOnce({ ok: true, status, blob: async () => new Blob(['x']) });
+      await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'f.bin')).resolves.toBe(true);
+    }
+    for (const status of [301, 401, 403, 404, 500]) {
+      mocks.authFetch.mockResolvedValueOnce({ ok: false, status });
+      await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'f.bin')).rejects.toMatchObject({ status });
+    }
+    expect(click).toHaveBeenCalledTimes(2);
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+  });
+
   it('preserves Electron main-process authentication without fetching in the renderer', async () => {
     mocks.host.isWeb = false;
 
