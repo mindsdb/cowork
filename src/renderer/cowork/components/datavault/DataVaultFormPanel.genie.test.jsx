@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, setForm } from './formStore';
+import { GENIE_METHOD } from './genieMethod.fixture';
 
 const CID = 'conv-datavault-genie';
 const WORKSPACE_URL = 'https://dbc-1.cloud.databricks.com';
@@ -17,18 +18,7 @@ const DATABRICKS_SPEC = {
   _connector_id: 'databricks',
   title: 'Connect Databricks',
   selected_method: 'genie-mcp',
-  methods: [
-    {
-      id: 'genie-mcp',
-      label: 'Genie space',
-      fields: [
-        { name: 'workspace_url', label: 'Workspace URL', type: 'url', required: true },
-        { name: 'client_id', label: 'Client ID', type: 'text', required: true },
-        { name: 'client_secret', label: 'Client secret', type: 'password', required: true, secret: true },
-        { name: 'genie_space_id', label: 'Genie space ID', type: 'text', required: false },
-      ],
-    },
-  ],
+  methods: [GENIE_METHOD],
 };
 
 describe('DataVaultFormPanel — Databricks Genie method', () => {
@@ -41,9 +31,9 @@ describe('DataVaultFormPanel — Databricks Genie method', () => {
     render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} />);
 
     expect(screen.getByLabelText(/workspace url/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/client id/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/service principal client id/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/genie space id/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/client secret/i)).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText(/service principal secret/i)).toHaveAttribute('type', 'password');
     expect(screen.queryByRole('button', { name: /authorize|sign in/i })).not.toBeInTheDocument();
   });
 
@@ -53,8 +43,8 @@ describe('DataVaultFormPanel — Databricks Genie method', () => {
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/workspace url/i), WORKSPACE_URL);
-    await user.type(screen.getByLabelText(/client id/i), CLIENT_ID);
-    await user.type(screen.getByLabelText(/client secret/i), CLIENT_SECRET);
+    await user.type(screen.getByLabelText(/service principal client id/i), CLIENT_ID);
+    await user.type(screen.getByLabelText(/service principal secret/i), CLIENT_SECRET);
     await user.type(screen.getByLabelText(/genie space id/i), SPACE_ID);
     await user.click(screen.getByRole('button', { name: /submit/i }));
 
