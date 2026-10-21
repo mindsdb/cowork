@@ -738,6 +738,15 @@ export function diffSettingsForWrite(patch, lastFetched) {
       writes[serverKey] = String(value);
     }
   }
+  // A budget saved without the switch beside it reads, to the server, like a
+  // renderer that predates the switch, and turns limits on at that scope. So
+  // any budget write carries the switch the user is looking at: switching
+  // limits on, editing a budget and switching off again must save "off".
+  const switchKey = CLIENT_TO_SERVER.limitsEnabled;
+  const writesBudget = Object.keys(BUDGET_FIELDS).some((key) => CLIENT_TO_SERVER[key] in writes);
+  if (writesBudget && !(switchKey in writes) && 'limitsEnabled' in lastFetched) {
+    writes[switchKey] = String(patch.limitsEnabled ?? lastFetched.limitsEnabled);
+  }
   return writes;
 }
 
