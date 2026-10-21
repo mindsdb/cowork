@@ -31,6 +31,8 @@ export function findSavedSpecMethod(saved, methods) {
  * @returns {object} a method whose `_underlying_method` is the id sent on submit
  */
 export function buildEditCurrentMethod(fields, specMethod) {
+  // No submit_action or oauth from any spec method: re-running a sign-in goes through
+  // "Back to options". The server rejects unknown ids, so submit sends `_underlying_method`.
   return {
     id: '__edit_current__',
     label: 'Currently saved values',
