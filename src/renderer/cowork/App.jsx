@@ -2714,8 +2714,7 @@ function AppCore() {
       // build each field from scratch using only what we know
       // about the saved key — the key name (titlecased into a
       // human label) and whether it was classified secret on save.
-      // The matched spec method is consulted only to name a secret
-      // saved under a hidden `_` key (editCurrentFields).
+      // The matched spec method only names a secret saved under a hidden `_` key.
       const isMultiMethod = Array.isArray(full.form.methods) && full.form.methods.length > 0;
       const matchedSpecMethod = isMultiMethod
         ? findSavedSpecMethod(saved, full.form.methods)

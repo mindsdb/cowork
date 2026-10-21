@@ -1,6 +1,5 @@
-// The modify flow's "Currently saved values" method is built from the saved
-// record alone. A secret saved under a hidden `_` name must still reach the
-// form under the spec's field name, or the edit submits without it.
+// A secret saved under a hidden `_` name must reach the form under the
+// spec's field name, or the edit submits without it.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

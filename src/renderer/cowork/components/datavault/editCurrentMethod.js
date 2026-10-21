@@ -1,7 +1,5 @@
-// Field synthesis for the modify flow's "Currently saved values" method,
-// extracted from App.jsx's handleModifyConnection so it can be tested
-// without rendering App. Pure: reads the saved record and the matched spec
-// method, never the network or the form store.
+// Field synthesis for the modify flow's "Currently saved values" method.
+// Pure: reads the saved record and the matched spec method only.
 
 const GENIE_METHOD_ID = 'genie-mcp';
 
