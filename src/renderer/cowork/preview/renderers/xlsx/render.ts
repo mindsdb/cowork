@@ -26,8 +26,10 @@ const COLUMN_WIDTH_PX = 96;
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 const COMPOUND_FILE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0];
 
+/* The preview fills the frame's viewport whatever height its root has, so the
+   grid scrolls inside it and the sheet tabs stay in view below the grid. */
 const STYLES = `
-.xlsx-preview { display: flex; flex-direction: column; height: 100%; color-scheme: light dark;
+.xlsx-preview { position: fixed; inset: 0; display: flex; flex-direction: column; color-scheme: light dark;
   font: 13px/1.4 system-ui, sans-serif; color: CanvasText; background: Canvas; }
 .xlsx-panels { flex: 1; min-height: 0; overflow: auto; }
 .xlsx-grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
@@ -179,9 +181,10 @@ function appendRows(grid: Grid, view: SheetView, from: number, to: number): void
   grid.body.append(batch);
 }
 
-function emptySheet(): HTMLElement {
+/* A sheet with no rows to show. When it is cut, its cells lie past the row cap. */
+function emptySheet(view: SheetView): HTMLElement {
   const note = element('p', 'xlsx-empty');
-  note.textContent = 'This sheet is empty.';
+  note.textContent = view.truncated ? 'This sheet has no cells in the rows shown.' : 'This sheet is empty.';
   return note;
 }
 
@@ -192,7 +195,7 @@ function nextTask(): Promise<void> {
 /* Builds the first sheet's grid in batches of rows, reporting rows done and
    stopping at the next batch once the signal aborts. */
 async function buildFirstGrid(view: SheetView, ctx: RendererContext): Promise<HTMLElement> {
-  if (view.rowCount === 0) return emptySheet();
+  if (view.rowCount === 0) return emptySheet(view);
   const grid = gridShell(view);
   for (let from = 0; from < view.rowCount; from += ROWS_PER_BATCH) {
     if (from > 0) await nextTask();
@@ -205,7 +208,7 @@ async function buildFirstGrid(view: SheetView, ctx: RendererContext): Promise<HT
 }
 
 function buildGrid(view: SheetView): HTMLElement {
-  if (view.rowCount === 0) return emptySheet();
+  if (view.rowCount === 0) return emptySheet(view);
   const grid = gridShell(view);
   appendRows(grid, view, 0, view.rowCount);
   return grid.table;

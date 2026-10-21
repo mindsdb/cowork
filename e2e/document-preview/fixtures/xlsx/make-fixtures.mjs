@@ -158,11 +158,12 @@ async function buildCorruptWorkbook() {
 /* One sheet one row and one column past the row and column caps (2,000 by
    200). Row 1 names each column (c1 to c201) and column A names each row (r2
    to r2001), so the shown text proves where the grid stops. Every other cell
-   is empty, and the cells carry no r attribute, which ECMA-376 allows, so the
-   file stays small. */
+   holds the number 7, so the preview parses and draws a full grid at the caps.
+   The cells carry no r attribute, which ECMA-376 allows, and the repeated
+   cells compress well, so the file stays small. */
 function pastCapsSheet() {
   const rows = [Array.from({ length: 201 }, (_, c) => `c${c + 1}`)];
-  for (let r = 2; r <= 2001; r += 1) rows.push([`r${r}`]);
+  for (let r = 2; r <= 2001; r += 1) rows.push([`r${r}`, ...Array.from({ length: 200 }, () => 7)]);
   return { name: 'Wide', rows, omitCellRefs: true };
 }
 

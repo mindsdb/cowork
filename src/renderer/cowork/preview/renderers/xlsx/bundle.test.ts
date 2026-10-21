@@ -1,8 +1,8 @@
 /*
- * Builds the xlsx renderer into one IIFE with its build.config.mjs plugins, the
- * way the preview bundle generator builds each type, and checks the bundle
- * against the `bundle` list in code-checks.yaml. It builds twice, minified and
- * not, so neither a comment nor a minifier's rewrite hides a banned name.
+ * Builds the xlsx renderer into one IIFE with Vite's library build and its
+ * build.config.mjs plugins, and checks the bundle against the `bundle` list in
+ * code-checks.yaml. It builds twice, minified and not, so neither a comment nor
+ * a minifier's rewrite hides a banned name.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

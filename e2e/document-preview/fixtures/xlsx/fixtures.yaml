@@ -12,7 +12,9 @@
     textIncludes: [Regions, Products, Region, Revenue, North, '120']
 
 # Row 1 names the columns c1 to c201 and column A names the rows r2 to r2001,
-# so the text shows the grid stops at row 2,000 and column 200.
+# so the text shows the grid stops at row 2,000 and column 200. Every other
+# cell holds a number, so the grid is full at the caps and must still render
+# before the progress watchdog fires.
 - name: a sheet past 2,000 rows and 200 columns
   file: past-caps.xlsx
   kind: clean
@@ -43,8 +45,11 @@
     truncated: false
     textIncludes:
       - example.com link
+      - script link
       - formula link
+      - web service value
       - external value
       - '<img src="https://example.com/xlsx-img.png" onerror="parent.postMessage(1,''*'')">'
       - '<a href="https://example.com/xlsx-anchor">anchor markup</a>'
-    textExcludes: ['HYPERLINK(', 'WEBSERVICE(', 'xlsx-external']
+      - '<style>body{background:url(https://example.com/xlsx-style.png)}</style>'
+    textExcludes: ['HYPERLINK(', 'WEBSERVICE(', '[1]Prices', 'xlsx-external']

@@ -6,7 +6,8 @@
  * modules, since the harness origin stands in for the Cowork origin.
  *
  * Over the frame itself, the spec checks that the grid shows one tab per sheet,
- * holds no link or loaded resource, and stays within the row and column caps.
+ * keeps the tabs in view however long the sheet is, holds no link or loaded
+ * resource, and stays within the row and column caps.
  *
  * The harness page arrives with the preview frame change. Until
  * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
@@ -56,9 +57,18 @@ function expectRequests(run: PreviewRun, fixture: PreviewFixture, harnessOrigin:
   }
 }
 
+/* Where the sheet tab bar sits in the frame's viewport. */
+interface TabBarBox { top: number; bottom: number; viewportHeight: number }
+
 async function expectGrid(page: Page, summary: RenderSummary, fixture: PreviewFixture): Promise<void> {
   const frame = previewFrame(page);
   await expect(frame.locator('body [role="tab"]')).toHaveCount(summary.units);
+  const tabBar = await frame.locator('[role="tablist"]').evaluate((node): TabBarBox => {
+    const box = node.getBoundingClientRect();
+    return { top: box.top, bottom: box.bottom, viewportHeight: window.innerHeight };
+  });
+  expect(tabBar.top, 'the sheet tabs are in view without scrolling').toBeGreaterThanOrEqual(0);
+  expect(tabBar.bottom, 'the sheet tabs are in view without scrolling').toBeLessThanOrEqual(tabBar.viewportHeight);
   await expect(frame.locator('body a, body [href], body [src], body [xlink\\:href]')).toHaveCount(0);
   const rows = frame.locator('[role="tabpanel"]:not([hidden]) tbody tr');
   const rowCount = await rows.count();
