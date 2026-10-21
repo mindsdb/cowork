@@ -7,7 +7,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
-  host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn() },
+  host: {
+    isWeb: true,
+    isElectron: false,
+    isMac: () => false,
+    openExternal: vi.fn(),
+    getApiOrigin: () => 'https://cowork.example',
+  },
 }));
 // Stubbed to a bare button: the real menu drives a whole publish controller
 // (versions, access drafts, passwords), and none of that is what this file is

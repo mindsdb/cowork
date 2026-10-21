@@ -11,7 +11,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { setOrgMode } from '../../../lib/orgMode';
 
 vi.mock('../../../platform/host', () => ({
-  host: { isWeb: false, isElectron: true, isMac: () => false, openExternal: vi.fn() },
+  host: {
+    isWeb: false,
+    isElectron: true,
+    isMac: () => false,
+    openExternal: vi.fn(),
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+  },
 }));
 
 import ArtifactViewerHeader from './ArtifactViewerHeader';

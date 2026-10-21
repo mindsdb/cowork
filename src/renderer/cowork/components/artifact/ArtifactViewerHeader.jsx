@@ -1,12 +1,37 @@
 import Ico from '../Icons';
-import { Menu, Tooltip } from '../ui';
+import { Button, Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { isHtmlArtifact, isImageArtifact } from '../../lib/artifactKinds';
+import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
+import { ArtifactExportMenu } from './export/ArtifactExportMenu';
+
+/*
+ * Besides HTML and images, what a browser tab shows from the file's URL. The
+ * serve route types a .csv as text/csv, which Chrome saves rather than shows,
+ * so it is left out even though the viewer previews it.
+ */
+const BROWSER_TAB_EXTS = ['.md', '.txt', '.pdf'];
+
+/*
+ * Whether a browser tab shows this file rather than saving it, matched on the
+ * declared `ext` and the path like the kind predicates in artifactKinds.js. On
+ * web a tab opened on any other file's serve or draft URL saves the file
+ * without a word. A published artifact opens its shared page, which a tab
+ * always shows.
+ */
+function showsInBrowserTab(artifact, isPublished) {
+  if (isPublished) return true;
+  const ext = (artifact?.ext || '').toLowerCase();
+  const path = (artifact?.path || '').toLowerCase();
+  return isHtmlArtifact(artifact) || isImageArtifact(artifact)
+    || BROWSER_TAB_EXTS.some((tabExt) => ext === tabExt || path.endsWith(tabExt));
+}
 
 export function ArtifactViewerHeader({
   title,
@@ -50,6 +75,26 @@ export function ArtifactViewerHeader({
     onDownload,
     onTrash,
   } = actions;
+  /* A file to save needs a serve or draft URL. A full-stack app's primary file
+     is its static shell, not the app, so it offers none. */
+  const canDownload = !isBackendArtifact && !!(artifact?.serveUrl || artifact?.draftUrl);
+  /* The tab-only rule is a web rule: on desktop an unpublished file opens in
+     its default app instead, as it always has. */
+  const canOpenAsTab = !host.isWeb || showsInBrowserTab(artifact, isPublished);
+  const exportFormats = artifactExportFormats(workspace, artifact);
+  const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
+  const openMenuItems = [
+    ...(canDownload ? [{
+      label: 'Download',
+      icon: Ico.download(14),
+      onClick: onDownload,
+    }] : []),
+    ...(canOpenLocalFile ? [{
+      label: host.isMac() ? 'Show in Finder' : 'Show in folder',
+      icon: Ico.openFolder(14),
+      onClick: onOpenFolder,
+    }] : []),
+  ];
   const workspaceLoading = workspace.status === 'idle' || workspace.status === 'loading';
   const editDisabledReason = !workspace.supported
     ? 'Refresh the artifact to load editing tools'
@@ -107,8 +152,9 @@ export function ArtifactViewerHeader({
             mode because its other entries are OS/file actions and `/publish`
             routes an org deployment cannot answer, and this belongs on both.
             Hidden outright when there is no URL to open — a button that opens
-            nothing is worse than no button. */}
-        {canOpenInBrowserTab && (
+            nothing is worse than no button. Hidden on web, too, for a file a
+            tab would save instead of show. */}
+        {canOpenInBrowserTab && canOpenAsTab && (
           <Tooltip content="Open in a browser tab">
             <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
               {Ico.arrowUpRight(16)}
@@ -154,6 +200,59 @@ export function ArtifactViewerHeader({
             disabledReason={disabledReason}
           />
         )}
+        {/* Download is a visible control on every web host, org mode included,
+            where the ⋯ menu is hidden. Desktop opens the file in its default
+            app instead, and keeps Download in the Open button's menu. */}
+        {host.isWeb && canDownload && (
+          <Tooltip content="Download">
+            <IconButton aria-label="Download" onClick={onDownload}>
+              {Ico.download(16)}
+            </IconButton>
+          </Tooltip>
+        )}
+        {!host.isWeb && (
+          <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <Button
+              size="sm"
+              disabled={openDisabled}
+              title={isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined}
+              onClick={onOpenOS}
+              style={openMenuItems.length > 0 ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 } : undefined}
+            >
+              {Ico.externalLink(14)} Open
+            </Button>
+            {openMenuItems.length > 0 && (
+              <Menu
+                ariaLabel="Open options"
+                align="end"
+                width={190}
+                trigger={
+                  <Button
+                    size="sm"
+                    icon
+                    aria-label="More ways to open"
+                    style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
+                  >
+                    {Ico.chevDown(14)}
+                  </Button>
+                }
+                items={openMenuItems}
+              />
+            )}
+          </div>
+        )}
+        {/* Lists only the server's `exportFormats`, which cowork-server's
+            artifact_capabilities() leaves empty for a caller who can't edit,
+            so a reviewer and an ownerless artifact get no Export. An older
+            server sends no list and gets none either. The route is addressed
+            by the draft URL, so no draft URL means no Export. */}
+        {exportFormats.length > 0 && artifact?.draftUrl && (
+          <ArtifactExportMenu key={artifact.draftUrl} draftUrl={artifact.draftUrl} formats={exportFormats} />
+        )}
+        {/* Download, Open and Show in folder left this menu when they became
+            visible controls, so nothing appears twice. On desktop an
+            unpublished "Open in browser" runs the same action as Open, so it
+            left too; "Open shared link" stays. */}
         {!orgMode && (
           <Menu
             ariaLabel="Artifact actions"
@@ -171,27 +270,10 @@ export function ArtifactViewerHeader({
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
-              ...(canOpenInBrowser ? [{
+              ...(canOpenInBrowser && canOpenAsTab && (host.isWeb || isPublished) ? [{
                 label: isPublished ? 'Open shared link' : 'Open in browser',
                 icon: Ico.arrowUpRight(14),
                 onClick: onOpenInBrowser,
-              }] : []),
-              ...(canOpenLocalFile ? [{
-                label: 'Open folder',
-                icon: Ico.openFolder(14),
-                onClick: onOpenFolder,
-              }] : []),
-              ...(host.isWeb ? [] : [{
-                label: 'Open in OS',
-                icon: Ico.externalLink(14),
-                disabled: !hasActionPath || (isBackendArtifact && !backendPort),
-                title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
-                onClick: onOpenOS,
-              }]),
-              ...(artifact?.serveUrl ? [{
-                label: 'Download',
-                icon: Ico.download(14),
-                onClick: onDownload,
               }] : []),
               { divider: true },
               {
