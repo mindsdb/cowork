@@ -993,4 +993,41 @@ describe('a live-turn .xlsx card on local web', () => {
     expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
     expect(screen.queryByText('No artifact file path is available.')).toBeNull();
   });
+
+  /*
+   * A relative path in a task with no project folder leaves the card without a
+   * local path. The document preview and the download both read the card's
+   * draft URL, so neither needs one.
+   */
+  const relativeLiveTask = () => {
+    const task = liveTask();
+    const relative = 'conversations/c1/.anton/artifacts/data/data.xlsx';
+    task.messages[1].steps = [fileStep('.xlsx', { file_path: relative, path: relative })];
+    return task;
+  };
+
+  it('previews a card with no local path when the gate allows it', async () => {
+    enterMode('local web');
+    canPreviewDocument.mockReturnValue(true);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={relativeLiveTask()} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeEnabled();
+    await user.click(cardOf(container));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+  });
+
+  it('downloads a card with no local path with the note when the gate refuses it', async () => {
+    enterMode('local web');
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={relativeLiveTask()} />);
+
+    await user.click(cardOf(container));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+  });
 });

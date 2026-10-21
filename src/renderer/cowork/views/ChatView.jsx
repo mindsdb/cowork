@@ -846,17 +846,17 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     canDownload,
   });
   /*
-   * Org-mode destinations and a download are addressed by the server card,
-   * through the draft, serve or shared URL, so a path this client could not
-   * canonicalize does not disable them. The local preview and the desktop OS
-   * handoff still need the local path.
+   * Org-mode destinations, a download and a document preview are addressed by
+   * the server card, through the draft, serve or shared URL, so a path this
+   * client could not canonicalize does not disable them. The local preview and
+   * the desktop OS handoff still need the local path.
    *
    * `deleted` stays in both branches. It is the one term of `canAct` that says
    * nothing about addressing: a deleted artifact has a perfectly good draft URL
    * and still cannot be opened, so dropping it here would leave a tombstoned
    * card looking live and hand the whole guard to handleOpen alone.
    */
-  const needsLocalPath = !orgMode && openTarget !== 'download';
+  const needsLocalPath = !orgMode && openTarget !== 'download' && !canPreviewDoc;
   const canActivate = !!openTarget && (needsLocalPath ? canAct : !deleted);
   const activateLabel = openTarget === 'published'
     ? 'Open shared artifact'
