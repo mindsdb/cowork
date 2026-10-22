@@ -147,6 +147,16 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(installer.main(), 2)
             run.assert_not_called()
 
+    @unittest.skipUnless(shutil.which("uv"), "requires uv")
+    def test_forced_colour_does_not_reach_the_tools_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory) / "tools"
+            env = {"UV_TOOL_DIR": str(tools), "FORCE_COLOR": "1", "CLICOLOR_FORCE": "1"}
+            with patch.dict(os.environ, env), patch.object(installer, "snapshot_installed", side_effect=ValueError("stop before install")) as snapshot:
+                with self.assertRaisesRegex(ValueError, "stop before install"):
+                    installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"])
+            self.assertEqual(snapshot.call_args.args[1], tools)
+
     def test_contract_rejects_floating_and_external_requirements(self):
         for requirement in ["fixture>=1", "fixture @ https://example.com/f.whl", "--index-url https://example.com", "", "fixture==1.0"]:
             with self.subTest(requirement=requirement), self.assertRaises(ValueError):

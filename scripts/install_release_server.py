@@ -324,7 +324,8 @@ def install(uv: str, arguments: list[str], python: Path | None = None, state: In
     position = positions[0]
     cache = None
     if not python:
-        tools_dir = Path(subprocess.check_output([uv, "tool", "dir"], text=True).strip())
+        # A forced-colour env (FORCE_COLOR, CLICOLOR_FORCE) wins over NO_COLOR in uv.
+        tools_dir = Path(subprocess.check_output([uv, "tool", "dir", "--color", "never"], text=True).strip())
         state.changed = (tools_dir / ".cowork-release-contracts/install-incomplete").exists()
         cache = snapshot_installed(uv, tools_dir)
     with tempfile.TemporaryDirectory(prefix="cowork-release-") as temporary:
