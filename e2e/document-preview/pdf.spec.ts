@@ -3,9 +3,11 @@
  * ends as its expectation says, and the frame is back at about:srcdoc after the
  * harness clicks through it. A clean fixture reaches only the harness origin. A
  * hostile one reaches it only for its own file and for the harness page and its
- * modules, since the harness origin stands in for the Cowork origin. Pages draw
- * after the preview reports rendered, so the spec applies the same request
- * check to every request of the whole test as well. A fixture with a
+ * modules, since the harness origin stands in for the Cowork origin. The
+ * harness page makes every one of those requests itself: the preview frame and
+ * any frame inside it make none at all. Pages draw after the preview reports
+ * rendered, so the spec applies the same request checks to every request of
+ * the whole test as well. A fixture with a
  * paintedRegion must draw something other than the white page there, and a
  * rendered fixture must start no Worker and compile no WebAssembly in the
  * frame.
@@ -17,8 +19,8 @@
  * emulation, where the frame reads a coarse pointer and gets the smaller touch
  * budget.
  *
- * The harness page arrives with the preview frame change. Until
- * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
+ * The harness page arrives with the preview frame runtime. Until
+ * src/renderer/cowork/preview/runtime exists, the spec skips with that reason.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,13 +31,12 @@ import { previewLimits } from '../../src/renderer/cowork/preview/limits';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 import { loadFixtures, openPreview, type CanvasRegion, type PreviewFixture, type PreviewRun } from './harness';
 
-const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
-const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
+const RUNTIME_READY = existsSync(join(__dirname, '../../src/renderer/cowork/preview/runtime'));
+const SKIP_REASON = 'The preview frame runtime (src/renderer/cowork/preview/runtime) is not in this tree yet';
 
-/* Paths of the harness page itself and of its own modules, which Vite serves
-   from the harness origin: source and dependency modules, and the text and
-   data files the preview imports as modules. */
-const HARNESS_PAGE_PATH = /^\/(?:index\.html)?$|^\/(?:@|node_modules\/)|\.(?:[cm]?[jt]sx?|css|json|txt)$/;
+/* The harness page and its entry module, and the paths the Vite dev server
+   serves modules from. */
+const HARNESS_PAGE_PATH = /^\/(?:index\.html|main\.tsx)?$|^\/(?:@|node_modules\/)/;
 
 /* The fixture one page past maxPdfPages, at the largest page size. */
 const PAGE_CAP_FIXTURE = '501 pages at the largest page size';
@@ -46,6 +47,10 @@ const DRAW_TIMEOUT_MS = 15_000;
 /* What the probe counts in a frame: Workers started and WebAssembly compiles. */
 interface WorkerWasmCounts { workers: number; wasm: number }
 
+/* One request, and whether the harness page made it rather than the preview
+   frame or a frame inside it. */
+interface RecordedRequest { url: string; fromHarnessPage: boolean }
+
 function previewFrame(page: Page): Frame {
   const frame = page.frame({ name: PREVIEW_FRAME_NAME });
   if (!frame) throw new Error(`No frame named ${PREVIEW_FRAME_NAME} is mounted`);
@@ -53,9 +58,9 @@ function previewFrame(page: Page): Frame {
 }
 
 /* Every request the page or any of its frames makes from now on. */
-function recordRequests(page: Page): string[] {
-  const requests: string[] = [];
-  page.on('request', (request) => requests.push(request.url()));
+function recordRequests(page: Page): RecordedRequest[] {
+  const requests: RecordedRequest[] = [];
+  page.on('request', (request) => requests.push({ url: request.url(), fromHarnessPage: request.frame() === page.mainFrame() }));
   return requests;
 }
 
@@ -75,9 +80,15 @@ function expectRequests(requests: readonly string[], fixture: PreviewFixture, ha
   const urls = requests.map((request) => new URL(request));
   expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
   if (fixture.kind === 'hostile') {
-    const strays = urls.filter((url) => !url.pathname.endsWith(`/${fixture.file}`) && !HARNESS_PAGE_PATH.test(url.pathname));
+    const fixtureUrl = `${harnessOrigin}/fixtures/pdf/${fixture.file}`;
+    const strays = urls.filter((url) => url.href !== fixtureUrl && !HARNESS_PAGE_PATH.test(url.pathname));
     expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
   }
+}
+
+function expectNoFrameRequests(requests: readonly RecordedRequest[]): void {
+  const fromFrames = requests.filter((request) => !request.fromHarnessPage).map((request) => request.url);
+  expect(fromFrames, 'requests from the preview frame or a frame inside it').toEqual([]);
 }
 
 /* Runs in every frame before the frame's own scripts. Counts each Worker the
@@ -192,7 +203,7 @@ async function expectCanvasesWithin(page: Page, fixture: PreviewFixture, touch: 
 }
 
 test.describe('pdf preview', () => {
-  if (!HARNESS_READY) {
+  if (!RUNTIME_READY) {
     test('every pdf fixture', () => {
       test.skip(true, SKIP_REASON);
     });
@@ -218,7 +229,8 @@ test.describe('pdf preview', () => {
         }
         expect(await frame.evaluate(readProbe), 'Workers and WebAssembly compiles in the frame').toEqual({ workers: 0, wasm: 0 });
       }
-      expectRequests(testRequests, fixture, harnessOrigin);
+      expectRequests(testRequests.map((request) => request.url), fixture, harnessOrigin);
+      expectNoFrameRequests(testRequests);
     });
   }
 

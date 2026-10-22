@@ -3,15 +3,17 @@
  * ends as its expectation says, and the frame is back at about:srcdoc after the
  * harness clicks through it. A clean fixture reaches only the harness origin. A
  * hostile one reaches it only for its own file and for the harness page and its
- * modules, since the harness origin stands in for the Cowork origin.
+ * modules, since the harness origin stands in for the Cowork origin. The
+ * harness page makes every one of those requests itself: the preview frame and
+ * any frame inside it make none at all.
  *
  * Over the frame itself, the spec checks that a rendered document holds no
  * nested frame or embedded object, and no href but an in-page #fragment. It
- * also applies the request check to every request of the whole test, so a
+ * also applies the request checks to every request of the whole test, so a
  * load that starts after the preview reports rendered counts too.
  *
- * The harness page arrives with the preview frame change. Until
- * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
+ * The harness page arrives with the preview frame runtime. Until
+ * src/renderer/cowork/preview/runtime exists, the spec skips with that reason.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,13 +23,16 @@ import { expect, test, type Frame, type Page } from '@playwright/test';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 import { loadFixtures, openPreview, type PreviewFixture, type PreviewRun } from './harness';
 
-const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
-const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
+const RUNTIME_READY = existsSync(join(__dirname, '../../src/renderer/cowork/preview/runtime'));
+const SKIP_REASON = 'The preview frame runtime (src/renderer/cowork/preview/runtime) is not in this tree yet';
 
-/* Paths of the harness page itself and of its own modules, which Vite serves
-   from the harness origin: source and dependency modules, and the text and
-   data files the preview imports as modules. */
-const HARNESS_PAGE_PATH = /^\/(?:index\.html)?$|^\/(?:@|node_modules\/)|\.(?:[cm]?[jt]sx?|css|json|txt)$/;
+/* The harness page and its entry module, and the paths the Vite dev server
+   serves modules from. */
+const HARNESS_PAGE_PATH = /^\/(?:index\.html|main\.tsx)?$|^\/(?:@|node_modules\/)/;
+
+/* One request, and whether the harness page made it rather than the preview
+   frame or a frame inside it. */
+interface RecordedRequest { url: string; fromHarnessPage: boolean }
 
 function previewFrame(page: Page): Frame {
   const frame = page.frame({ name: PREVIEW_FRAME_NAME });
@@ -36,9 +41,9 @@ function previewFrame(page: Page): Frame {
 }
 
 /* Every request the page or any of its frames makes from now on. */
-function recordRequests(page: Page): string[] {
-  const requests: string[] = [];
-  page.on('request', (request) => requests.push(request.url()));
+function recordRequests(page: Page): RecordedRequest[] {
+  const requests: RecordedRequest[] = [];
+  page.on('request', (request) => requests.push({ url: request.url(), fromHarnessPage: request.frame() === page.mainFrame() }));
   return requests;
 }
 
@@ -58,9 +63,15 @@ function expectRequests(requests: readonly string[], fixture: PreviewFixture, ha
   const urls = requests.map((request) => new URL(request));
   expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
   if (fixture.kind === 'hostile') {
-    const strays = urls.filter((url) => !url.pathname.endsWith(`/${fixture.file}`) && !HARNESS_PAGE_PATH.test(url.pathname));
+    const fixtureUrl = `${harnessOrigin}/fixtures/docx/${fixture.file}`;
+    const strays = urls.filter((url) => url.href !== fixtureUrl && !HARNESS_PAGE_PATH.test(url.pathname));
     expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
   }
+}
+
+function expectNoFrameRequests(requests: readonly RecordedRequest[]): void {
+  const fromFrames = requests.filter((request) => !request.fromHarnessPage).map((request) => request.url);
+  expect(fromFrames, 'requests from the preview frame or a frame inside it').toEqual([]);
 }
 
 /* Every href and xlink:href value left anywhere in the frame's document. */
@@ -71,7 +82,7 @@ function linkTargets(frame: Frame): Promise<string[]> {
 }
 
 test.describe('docx preview', () => {
-  if (!HARNESS_READY) {
+  if (!RUNTIME_READY) {
     test('every docx fixture', () => {
       test.skip(true, SKIP_REASON);
     });
@@ -91,7 +102,8 @@ test.describe('docx preview', () => {
         await expect(frame.locator('iframe, frame, object, embed')).toHaveCount(0);
         expect((await linkTargets(frame)).filter((href) => !href.startsWith('#')), 'hrefs other than #fragment').toEqual([]);
       }
-      expectRequests(testRequests, fixture, harnessOrigin);
+      expectRequests(testRequests.map((request) => request.url), fixture, harnessOrigin);
+      expectNoFrameRequests(testRequests);
     });
   }
 });
