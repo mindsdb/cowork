@@ -1,9 +1,9 @@
 /*
- * The archive guard the runtime runs before render(). contract.ts has it run
- * on every file that starts with PK\x03\x04 and on every other file JSZip
- * opens as an archive. It runs on every file that starts with PK, because
- * SheetJS unzips any file that starts with PK and two bytes below 9, whether
- * JSZip opens it or not.
+ * The archive guard the runtime runs before render(), as contract.ts states it:
+ * on every file that starts with PK and on every other file JSZip opens as an
+ * archive. It takes every file that starts with PK, not only PK\x03\x04,
+ * because SheetJS unzips any file that starts with PK and two bytes below 9,
+ * whether JSZip opens it or not.
  *
  * The guard reads the end record, the central directory and each entry's local
  * header itself, so it checks what JSZip and SheetJS each read, not only the
