@@ -1,6 +1,7 @@
 # Text the slide preview's code must never hold, and packages the repository
 # must never depend on. Each `pattern` is a JavaScript regular expression
-# source, and `flags` its optional flags.
+# source, and `flags` its optional flags. `catches` lists code a pattern must
+# match, each spelling of what it bans that a narrower pattern would let past.
 #
 # bundle: matched against the whole built IIFE, minified and not.
 # source: matched against each renderer file other than tests.
@@ -55,7 +56,17 @@ source:
   - name: createContextualFragment
     pattern: '\bcreateContextualFragment\b'
   - name: a style written as one string
-    pattern: '\bcssText\b|setAttribute\(\s*[''"]style'
+    pattern: '\bcssText\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?[`''"]style|\.style\s*=(?!=)|\[\s*[`''"]style[`''"]\s*\]\s*=(?!=)'
+    flags: i
+    catches:
+      - el.style.cssText = text
+      - el.style = text
+      - 'el["style"] = text'
+      - "el.setAttribute('style', text)"
+      - "el.setAttribute('STYLE', text)"
+      - el.setAttribute(`style`, text)
+      - "el.setAttributeNS(null, 'style', text)"
+      - "el.setAttributeNS(SVG_NS, 'style', text)"
   # Nothing in a slide is a link, and no picture is followed through r:link.
   - name: an anchor element
     pattern: "createElement\\(\\s*['\"]a['\"]"
@@ -63,7 +74,12 @@ source:
     pattern: '\bhref\b'
     flags: i
   - name: a read of an r:link attribute
-    pattern: "['\"]link['\"]"
+    pattern: "[`'\"](?:\\w+:)?link[`'\"]"
+    catches:
+      - "relationshipAttr(blip, 'link')"
+      - relationshipAttr(blip, `link`)
+      - "blip.getAttribute('r:link')"
+      - 'blip.getAttributeNS(namespace, "link")'
   # Nothing in the frame may reach the network or start a thread.
   - name: a fetch call
     pattern: '\bfetch\b'

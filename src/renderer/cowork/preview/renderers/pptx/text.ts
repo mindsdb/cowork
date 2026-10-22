@@ -8,7 +8,8 @@
  * inherited list styles (layout and master placeholders, the master's text
  * styles, the presentation's default). A run's own rPr wins over all of them,
  * and the shape style's font color sits between the shape's own list style and
- * the inherited ones, as PowerPoint applies it.
+ * the inherited ones, as PowerPoint applies it. A bullet takes the color of the
+ * paragraph's first run unless an a:buClr gives it its own.
  */
 import { cssColor, type ColorScheme } from './color';
 import { resolveTypeface, type ThemeFonts } from './theme';
@@ -34,15 +35,17 @@ const EMU_PER_POINT = 12_700;
 const DEFAULT_SIZE = 1_800; // hundredths of a point
 const SYMBOL_FONTS = /wingdings|symbol|webdings/i;
 
-const ALIGN: Readonly<Record<string, string>> = {
-  l: 'left',
-  ctr: 'center',
-  r: 'right',
-  just: 'justify',
-  dist: 'justify',
-  justLow: 'justify',
-  thaiDist: 'justify',
-};
+/* Read with the file's algn value, so a Map: an object would answer
+   'constructor' or '__proto__' with what Object.prototype holds. */
+const ALIGN: ReadonlyMap<string, string> = new Map([
+  ['l', 'left'],
+  ['ctr', 'center'],
+  ['r', 'right'],
+  ['just', 'justify'],
+  ['dist', 'justify'],
+  ['justLow', 'justify'],
+  ['thaiDist', 'justify'],
+]);
 
 type Bullet = { kind: 'char'; char: string } | { kind: 'number'; scheme: string; start: number };
 
@@ -94,7 +97,7 @@ function drawParagraph(p: Element, options: TextOptions, counters: Array<number 
   const el = doc.createElement('p');
   el.className = 'pptx-p';
   if (boolAttr(chain.find((node) => node.hasAttribute('rtl')), 'rtl')) el.dir = 'rtl';
-  const align = ALIGN[firstAttr(chain, 'algn') ?? ''];
+  const align = ALIGN.get(firstAttr(chain, 'algn') ?? '');
   if (align) el.style.textAlign = align;
   const marL = intAttr(chain.find((node) => node.hasAttribute('marL')), 'marL');
   if (marL) el.style.marginInlineStart = `${options.cqw(marL).toFixed(3)}cqw`;
@@ -121,6 +124,8 @@ function drawParagraph(p: Element, options: TextOptions, counters: Array<number 
     const mark = doc.createElement('span');
     mark.className = 'pptx-bullet';
     mark.textContent = bullet.kind === 'char' ? bullet.char : formatNumber(number ?? bullet.start, bullet.scheme);
+    const color = bulletColor(chain, options.scheme) ?? runs.find((run) => run.textContent)?.style.color;
+    if (color) mark.style.color = color;
     el.append(mark);
   }
   el.append(...runs);
@@ -201,6 +206,18 @@ function bulletFor(chain: readonly Element[]): Bullet | null {
       };
     }
     if (child(el, 'buBlip')) return { kind: 'char', char: '•' };
+  }
+  return null;
+}
+
+/* The color of a paragraph's bullet: the a:buClr of the first level that sets
+   one, or null where the bullet takes the color of the paragraph's first run,
+   as a:buClrTx and no setting at all both mean. */
+function bulletColor(chain: readonly Element[], scheme: ColorScheme): string | null {
+  for (const el of chain) {
+    if (child(el, 'buClrTx')) return null;
+    const color = child(el, 'buClr');
+    if (color) return cssColor(color, scheme);
   }
   return null;
 }

@@ -2,15 +2,20 @@
  * Draws one slide: its background, then the master's and the layout's own
  * shapes, then the slide's shapes, in document order so later shapes sit on
  * top. Positions are approximate: each shape becomes a box at its offset and
- * size, rotated, with its fill, outline and text.
+ * size, rotated, with its fill, outline and text. A connector, and a shape with
+ * a line, lineInv or connector preset, become one straight line across their
+ * box instead.
  *
  * Pictures come only from r:embed relationships to parts inside the package,
- * as data: URLs of bytes whose signature is PNG, JPEG, GIF, BMP or WebP. A
- * picture with only r:link, an External relationship, or anything else shows a
- * placeholder. So do charts, diagrams, embedded objects, audio and video, whose
- * parts are never read.
+ * as data: URLs of bytes whose signature is PNG, JPEG, GIF, BMP or WebP and
+ * whose header declares at most the deck's pixel budget. A picture with only
+ * r:link, an External relationship, or anything else shows a placeholder. So
+ * do charts, diagrams, embedded objects, audio and video, whose parts are
+ * never read. A picture fill on a background or a shape follows the same
+ * rules, and shows mid-gray where a picture would show a placeholder.
  */
 import { cssColor, type ColorScheme } from './color';
+import { imageSize, imageType, type ImageSize } from './image';
 import { firstPartOfKind, relationshipPart, type PartReader, type Relationships, documentRoot } from './package';
 import { PLACEHOLDER_LABELS, UNREADABLE_SLIDE_NOTE, type PlaceholderKind } from './styles';
 import { drawParagraphs } from './text';
@@ -23,16 +28,29 @@ export interface SlideSize {
 }
 
 /* What every slide of one deck shares: the parts, the slide size, the
-   presentation's default text style and the caches. Each cache is keyed by
-   the archive's own spelling of a part name, from parts.entryName. */
+   presentation's default text style, the render's abort signal and the
+   caches. Each cache is keyed by the archive's own spelling of a part name,
+   from parts.entryName. */
 export interface DeckContext {
   doc: Document;
   parts: PartReader;
+  /* ctx.signal. A slide stops once its parts are read, and no picture is
+     encoded after it aborts. */
+  signal: AbortSignal;
   size: SlideSize;
   defaultTextStyle: Element | null;
-  images: Map<string, Promise<string | null>>;
+  /* The most pixels one picture's header may declare. */
+  maxImagePixels: number;
+  images: Map<string, Promise<ShownImage | null>>;
   themes: Map<string, Promise<Theme>>;
   placeholders: Map<string, PlaceholderIndex>;
+}
+
+/* A picture part the preview can show: its data: URL, and the size its header
+   declares. */
+interface ShownImage {
+  url: string;
+  size: ImageSize;
 }
 
 /* One XML part in the slide's inheritance chain and its relationships. */
@@ -70,7 +88,26 @@ interface Box {
 
 type Transform = (box: Box) => Box;
 
-type Fill = { kind: 'none' } | { kind: 'color'; css: string };
+/* A picture fill keeps its a:blipFill, so its r:embed resolves against the
+   part the fill was read from. */
+type PictureFill = { kind: 'picture'; blipFill: Element };
+
+type Fill = { kind: 'none' } | { kind: 'color'; css: string } | PictureFill;
+
+/* A shape's outline: its color, and its width in EMU. */
+export interface Outline {
+  color: string;
+  width: number;
+}
+
+/* How far in from each edge a:srcRect crops a picture, in thousandths of a
+   percent of the picture. A negative edge pads the picture out instead. */
+interface Crop {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
 
 interface PlaceholderKey {
   type: string;
@@ -88,7 +125,42 @@ interface PlaceholderIndex {
 const IDENTITY: Transform = (box) => box;
 const DEFAULT_INSETS = { left: 91_440, top: 45_720, right: 91_440, bottom: 45_720 };
 const DEFAULT_LINE_WIDTH = 9_525;
-const ANCHOR: Readonly<Record<string, string>> = { t: 'flex-start', ctr: 'center', b: 'flex-end' };
+/* DrawingML angles count in 60,000ths of a degree. */
+const ROTATION_PER_DEGREE = 60_000;
+/* A crop and a tile's scale count in thousandths of a percent of the picture. */
+const WHOLE_PICTURE = 100_000;
+/* The most one negative crop edge pads a picture out: ten times the picture's
+   own size. Further out the picture would be a speck. */
+const MAX_PADDING = 10 * WHOLE_PICTURE;
+/* A tiled picture fill draws each pixel of the picture as 1/96 inch. */
+const EMU_PER_PIXEL = 9_525;
+/* The presets that draw as one straight line across their box: line, lineInv
+   and the connector presets, which a p:sp can carry as well as a p:cxnSp.
+   Each connector runs from its box's top-left corner to the bottom-right, so a
+   bent or curved one is drawn as the straight line between its ends. */
+const LINE_PRESETS = new Set([
+  'line',
+  'lineInv',
+  'straightConnector1',
+  'bentConnector2',
+  'bentConnector3',
+  'bentConnector4',
+  'bentConnector5',
+  'curvedConnector2',
+  'curvedConnector3',
+  'curvedConnector4',
+  'curvedConnector5',
+]);
+/* Mid-gray, for a picture fill the preview can't show: light text drawn for a
+   dark picture stays readable on it, where on the slide's white it vanishes. */
+const UNSHOWN_PICTURE_FILL = '#808080';
+/* Read with the file's anchor value, so a Map: an object would answer
+   'constructor' or '__proto__' with what Object.prototype holds. */
+const ANCHOR: ReadonlyMap<string, string> = new Map([
+  ['t', 'flex-start'],
+  ['ctr', 'center'],
+  ['b', 'flex-end'],
+]);
 const TITLE_TYPES = new Set(['title', 'ctrTitle']);
 const MASTER_OWN_TYPES = new Set(['title', 'dt', 'ftr', 'sldNum']);
 const GRAPHIC_KINDS: ReadonlyArray<[RegExp, PlaceholderKind]> = [
@@ -103,6 +175,7 @@ export async function drawSlide(deck: DeckContext, slidePart: string | null, ind
   section.style.aspectRatio = `${deck.size.cx} / ${deck.size.cy}`;
 
   const layers = slidePart ? await loadLayers(deck, slidePart) : null;
+  deck.signal.throwIfAborted();
   if (!layers) {
     section.classList.add('pptx-slide-note');
     const note = deck.doc.createElement('p');
@@ -112,10 +185,12 @@ export async function drawSlide(deck: DeckContext, slidePart: string | null, ind
     return section;
   }
 
-  const background = backgroundColor(layers);
-  if (background) section.style.background = background;
-
   const loads: Promise<void>[] = [];
+  const background = backgroundFill(layers);
+  const slideBox: Box = { x: 0, y: 0, w: deck.size.cx, h: deck.size.cy };
+  if (background?.kind === 'color') section.style.background = background.css;
+  else if (background?.kind === 'picture') loads.push(fillWithPicture(section, slideBox, background, layers, deck));
+
   const showMaster = (layer: Layer | null): boolean => layer?.root.getAttribute('showMasterSp') !== '0';
   const draw = (layer: Layer): void =>
     drawTree(descend(layer.root, 'cSld', 'spTree'), { deck, layers, layer, sink: section, loads }, IDENTITY);
@@ -141,7 +216,19 @@ async function loadLayers(deck: DeckContext, slidePart: string): Promise<SlideLa
     ? await loadLayer(deck.parts, firstPartOfKind(layout.part, layout.rels, 'slideMaster'), 'sldMaster')
     : null;
   const theme = master ? await themeFor(deck, master) : EMPTY_THEME;
-  return { slide, layout, master, theme, scheme: { theme: theme.colors, map: readColorMap(child(master?.root, 'clrMap')) } };
+  return { slide, layout, master, theme, scheme: { theme: theme.colors, map: colorMap(slide, layout, master) } };
+}
+
+/* The color map every color on the slide resolves through, the master's and
+   the layout's shapes included: the slide's own p:clrMapOvr override, else
+   the layout's, else the master's p:clrMap. A part whose p:clrMapOvr holds
+   a:masterClrMapping, or that has none, defers to the next. */
+function colorMap(slide: Layer, layout: Layer | null, master: Layer | null): ReadonlyMap<string, string> {
+  for (const layer of [slide, layout]) {
+    const override = descend(layer?.root, 'clrMapOvr', 'overrideClrMapping');
+    if (override) return readColorMap(override);
+  }
+  return readColorMap(child(master?.root, 'clrMap'));
 }
 
 function themeFor(deck: DeckContext, master: Layer): Promise<Theme> {
@@ -156,16 +243,16 @@ function themeFor(deck: DeckContext, master: Layer): Promise<Theme> {
   return theme;
 }
 
-function backgroundColor(layers: SlideLayers): string | null {
+/* The fill of the first p:bg in the slide, its layout or its master. A bgRef
+   draws as the color it carries. */
+function backgroundFill(layers: SlideLayers): Fill | null {
   for (const layer of [layers.slide, layers.layout, layers.master]) {
     const bg = descend(layer?.root, 'cSld', 'bg');
     if (!bg) continue;
     const bgPr = child(bg, 'bgPr');
-    if (bgPr) {
-      const fill = readFill(bgPr, layers.scheme);
-      return fill?.kind === 'color' ? fill.css : null;
-    }
-    return cssColor(child(bg, 'bgRef'), layers.scheme);
+    if (bgPr) return readFill(bgPr, layers.scheme);
+    const css = cssColor(child(bg, 'bgRef'), layers.scheme);
+    return css ? { kind: 'color', css } : null;
   }
   return null;
 }
@@ -182,6 +269,9 @@ function drawNode(node: Element, ctx: DrawContext, transform: Transform): void {
       break;
     case 'pic':
       drawPicture(node, ctx, transform);
+      break;
+    case 'cxnSp':
+      drawConnector(node, ctx, transform);
       break;
     case 'graphicFrame':
       drawGraphicFrame(node, ctx, transform);
@@ -292,7 +382,7 @@ function place(el: HTMLElement, box: Box, xfrm: Element | null, ctx: DrawContext
   el.style.height = percent(box.h, cy);
   const transforms: string[] = [];
   const rotation = intAttr(xfrm, 'rot');
-  if (rotation) transforms.push(`rotate(${(rotation / 60_000).toFixed(3)}deg)`);
+  if (rotation) transforms.push(`rotate(${(rotation / ROTATION_PER_DEGREE).toFixed(3)}deg)`);
   if (flips && boolAttr(xfrm, 'flipH')) transforms.push('scaleX(-1)');
   if (flips && boolAttr(xfrm, 'flipV')) transforms.push('scaleY(-1)');
   if (transforms.length) el.style.transform = transforms.join(' ');
@@ -302,9 +392,12 @@ function cqw(emu: number, ctx: DrawContext): number {
   return (emu / ctx.deck.size.cx) * 100;
 }
 
-/* The fill set directly in a spPr or bgPr, or null when it sets none this reads. */
+/* The fill set directly in a spPr, bgPr or ln, or null when it sets none this
+   reads. */
 function readFill(parent: Element | null, scheme: ColorScheme): Fill | null {
   if (child(parent, 'noFill')) return { kind: 'none' };
+  const blipFill = child(parent, 'blipFill');
+  if (blipFill) return { kind: 'picture', blipFill };
   const solid = child(parent, 'solidFill');
   const gradientStop = descend(parent, 'gradFill', 'gsLst', 'gs');
   const pattern = descend(parent, 'pattFill', 'fgClr');
@@ -317,25 +410,144 @@ function styleRefColor(shape: Element, refName: string, scheme: ColorScheme): st
   return ref && intAttr(ref, 'idx') !== 0 ? cssColor(ref, scheme) : null;
 }
 
-function applyFillAndLine(el: HTMLElement, chain: readonly Element[], ctx: DrawContext): void {
-  const { scheme } = ctx.layers;
-  const shape = chain[0];
-  const spPrs = chain.map((node) => child(node, 'spPr'));
-  const fill = spPrs.map((spPr) => readFill(spPr, scheme)).find((value) => value !== null);
-  const fillColor = fill ? (fill.kind === 'color' ? fill.css : null) : styleRefColor(shape, 'fillRef', scheme);
-  if (fillColor) el.style.backgroundColor = fillColor;
+/*
+ * The outline the a:ln elements in the inheritance chain draw, each property
+ * from the first a:ln that sets it. The color comes from the first a:ln with a
+ * fill of its own, else from the shape style's lnRef, as for a shape with no
+ * a:ln. The width comes from the first a:ln with a w. So a slide placeholder
+ * whose a:ln sets only a width keeps its layout placeholder's color, and an
+ * a:ln that sets only a width or a dash keeps the lnRef's color. noFill draws
+ * no outline.
+ */
+export function readOutline(chain: readonly Element[], scheme: ColorScheme): Outline | null {
+  const lines = chain.map((node) => descend(node, 'spPr', 'ln')).filter((ln): ln is Element => ln !== null);
+  const lineFill = lines.map((ln) => readFill(ln, scheme)).find((fill) => fill !== null) ?? null;
+  const color =
+    lineFill?.kind === 'color' ? lineFill.css : lineFill === null ? styleRefColor(chain[0], 'lnRef', scheme) : null;
+  const width = lines.map((ln) => intAttr(ln, 'w')).find((w) => w !== null) ?? DEFAULT_LINE_WIDTH;
+  return color ? { color, width } : null;
+}
 
-  const ln = spPrs.map((spPr) => child(spPr, 'ln')).find((value) => value !== null) ?? null;
-  const lineFill = ln ? readFill(ln, scheme) : null;
-  const lineColor = ln ? (lineFill?.kind === 'color' ? lineFill.css : null) : styleRefColor(shape, 'lnRef', scheme);
-  if (lineColor && lineFill?.kind !== 'none') {
-    const width = intAttr(ln, 'w') ?? DEFAULT_LINE_WIDTH;
-    el.style.border = `max(1px, ${cqw(width, ctx).toFixed(3)}cqw) solid ${lineColor}`;
+function outlineWidth(outline: Outline, ctx: DrawContext): string {
+  return `max(1px, ${cqw(outline.width, ctx).toFixed(3)}cqw)`;
+}
+
+function presetGeometry(chain: readonly Element[]): string | null {
+  return chain.map((node) => descend(node, 'spPr', 'prstGeom')?.getAttribute('prst')).find((value) => value) ?? null;
+}
+
+/* The layer whose part el was read from. Each part is parsed into a document
+   of its own. */
+function partLayer(el: Element, layers: SlideLayers): Layer | null {
+  return [layers.slide, layers.layout, layers.master].find((layer) => layer?.root.ownerDocument === el.ownerDocument) ?? null;
+}
+
+/* The image part a blip's r:embed names from its layer, or null when it names
+   none: no r:embed, or a relationship that isn't an internal image. */
+function embeddedImage(blip: Element | null, layer: Layer | null): string | null {
+  const embedId = blip ? relationshipAttr(blip, 'embed') : null;
+  if (!embedId || !layer) return null;
+  const rel = layer.rels.get(embedId);
+  return rel?.kind === 'image' ? relationshipPart(layer.part, rel) : null;
+}
+
+/*
+ * Draws a picture fill as the background image of el, whose box is `box`. An
+ * a:stretch fill is stretched over el. An a:tile fill is repeated from el's
+ * top-left corner, each tile the picture's pixels at 1/96 inch each, times the
+ * tile's sx and sy; a negative scale, which flips the tile, draws it
+ * unflipped. The r:embed resolves against the part the fill was read from: the
+ * slide's, the layout's or the master's. A picture the preview can't show
+ * leaves mid-gray. The URL is base64 text after data:image/...;base64, so it
+ * holds no quote or parenthesis that could end the url().
+ */
+function fillWithPicture(el: HTMLElement, box: Box, fill: PictureFill, layers: SlideLayers, deck: DeckContext): Promise<void> {
+  const part = embeddedImage(child(fill.blipFill, 'blip'), partLayer(fill.blipFill, layers));
+  return (part ? imageUrl(deck, part) : Promise.resolve(null)).then((image) => {
+    if (!image) {
+      el.style.backgroundColor = UNSHOWN_PICTURE_FILL;
+      return;
+    }
+    el.style.backgroundImage = `url("${image.url}")`;
+    const tile = child(fill.blipFill, 'tile');
+    if (!tile) {
+      el.style.backgroundSize = '100% 100%';
+      return;
+    }
+    /* One tile's side in percent of el's side, the unit background-size
+       takes. A box with no width or height shows no tile, so it keeps the
+       default size. */
+    const side = (pixels: number, scale: string, whole: number): string =>
+      percent((pixels * EMU_PER_PIXEL * Math.abs(intAttr(tile, scale) ?? WHOLE_PICTURE)) / WHOLE_PICTURE, whole);
+    el.style.backgroundRepeat = 'repeat';
+    if (box.w && box.h) {
+      el.style.backgroundSize = `${side(image.size.width, 'sx', box.w)} ${side(image.size.height, 'sy', box.h)}`;
+    }
+  });
+}
+
+function applyFillAndLine(el: HTMLElement, box: Box, chain: readonly Element[], ctx: DrawContext): void {
+  const { scheme } = ctx.layers;
+  const fill = chain.map((node) => readFill(child(node, 'spPr'), scheme)).find((value) => value !== null);
+  if (fill?.kind === 'picture') {
+    ctx.loads.push(fillWithPicture(el, box, fill, ctx.layers, ctx.deck));
+  } else {
+    const fillColor = fill ? (fill.kind === 'color' ? fill.css : null) : styleRefColor(chain[0], 'fillRef', scheme);
+    if (fillColor) el.style.backgroundColor = fillColor;
   }
 
-  const geometry = spPrs.map((spPr) => child(spPr, 'prstGeom')?.getAttribute('prst')).find(Boolean);
+  const outline = readOutline(chain, scheme);
+  if (outline) {
+    el.style.borderStyle = 'solid';
+    el.style.borderColor = outline.color;
+    el.style.borderWidth = outlineWidth(outline, ctx);
+  }
+
+  const geometry = presetGeometry(chain);
   if (geometry === 'ellipse') el.style.borderRadius = '50%';
   else if (geometry === 'roundRect') el.style.borderRadius = '8%';
+}
+
+/*
+ * A line from one corner of the box to the opposite one: top-left to
+ * bottom-right, or the other diagonal when exactly one of flipH and flipV is
+ * set. The lineInv preset runs on that other diagonal unflipped, so a flip
+ * brings it back. It is one element as long as the diagonal, centered on the
+ * box, turned to the diagonal's angle plus the shape's own rotation, and drawn
+ * as its top border, so it is one line width thick whichever way it runs. The
+ * slide keeps the deck's aspect ratio, so an angle in EMU is the angle on
+ * screen. A line with no outline draws nothing.
+ */
+function drawLine(chain: readonly Element[], box: Box, xfrm: Element | null, ctx: DrawContext): void {
+  const outline = readOutline(chain, ctx.layers.scheme);
+  if (!outline) return;
+  const { cx, cy } = ctx.deck.size;
+  const length = Math.hypot(box.w, box.h);
+  const flipped = (boolAttr(xfrm, 'flipH') === true) !== (boolAttr(xfrm, 'flipV') === true);
+  const mirrored = flipped !== (presetGeometry(chain) === 'lineInv');
+  const slope = (Math.atan2(box.h, box.w) * 180) / Math.PI;
+  const angle = (mirrored ? -slope : slope) + (intAttr(xfrm, 'rot') ?? 0) / ROTATION_PER_DEGREE;
+
+  const el = ctx.deck.doc.createElement('div');
+  el.className = 'pptx-shape pptx-line';
+  el.style.left = percent(box.x + (box.w - length) / 2, cx);
+  el.style.top = percent(box.y + box.h / 2, cy);
+  el.style.width = percent(length, cx);
+  el.style.borderTopStyle = 'solid';
+  el.style.borderTopColor = outline.color;
+  el.style.borderTopWidth = outlineWidth(outline, ctx);
+  el.style.transform = `translateY(-50%) rotate(${angle.toFixed(3)}deg)`;
+  ctx.sink.append(el);
+}
+
+/* A connector (p:cxnSp) draws as a straight line across its box whatever its
+   preset, so a bent or curved one comes out straight, and with no arrowheads:
+   "Preview may differ" covers both. A lineInv connector takes the other
+   diagonal, as a lineInv shape does. */
+function drawConnector(cxnSp: Element, ctx: DrawContext, transform: Transform): void {
+  const xfrm = descend(cxnSp, 'spPr', 'xfrm');
+  const own = readBox(xfrm);
+  if (own) drawLine([cxnSp], transform(own), xfrm, ctx);
 }
 
 function masterTextStyle(ctx: DrawContext, key: PlaceholderKey | null): Element | null {
@@ -354,7 +566,10 @@ function drawShape(sp: Element, ctx: DrawContext, transform: Transform): void {
   const el = ctx.deck.doc.createElement('div');
   el.className = 'pptx-shape';
   place(el, box, xfrm, ctx, false);
-  applyFillAndLine(el, chain, ctx);
+  /* A line, lineInv or connector preset draws as a line, under a box with no
+     fill or outline that holds any text it has. */
+  if (LINE_PRESETS.has(presetGeometry(chain) ?? '')) drawLine(chain, box, xfrm, ctx);
+  else applyFillAndLine(el, box, chain, ctx);
 
   const txBody = child(sp, 'txBody');
   if (txBody) {
@@ -369,7 +584,7 @@ function drawShape(sp: Element, ctx: DrawContext, transform: Transform): void {
     ]
       .map((emu) => `${cqw(emu, ctx).toFixed(3)}cqw`)
       .join(' ');
-    const anchor = ANCHOR[bodyPrs.find((bodyPr) => bodyPr.hasAttribute('anchor'))?.getAttribute('anchor') ?? ''];
+    const anchor = ANCHOR.get(bodyPrs.find((bodyPr) => bodyPr.hasAttribute('anchor'))?.getAttribute('anchor') ?? '');
     if (anchor) el.style.justifyContent = anchor;
     if (bodyPrs.find((bodyPr) => bodyPr.hasAttribute('wrap'))?.getAttribute('wrap') === 'none') {
       el.style.whiteSpace = 'pre';
@@ -414,10 +629,7 @@ function drawPicture(pic: Element, ctx: DrawContext, transform: Transform): void
   const box = transform(own);
 
   const media = mediaKind(pic);
-  const blip = descend(pic, 'blipFill', 'blip');
-  const embedId = blip ? relationshipAttr(blip, 'embed') : null;
-  const rel = embedId ? ctx.layer.rels.get(embedId) : undefined;
-  const part = rel?.kind === 'image' ? relationshipPart(ctx.layer.part, rel) : null;
+  const part = embeddedImage(descend(pic, 'blipFill', 'blip'), ctx.layer);
   if (media || !part) {
     drawPlaceholder(media ?? 'picture', box, xfrm, ctx);
     return;
@@ -427,26 +639,47 @@ function drawPicture(pic: Element, ctx: DrawContext, transform: Transform): void
   img.className = 'pptx-picture';
   img.alt = child(nonVisual(pic), 'cNvPr')?.getAttribute('descr') ?? '';
   img.draggable = false;
-  place(img, box, xfrm, ctx, true);
-  ctx.sink.append(img);
+  const crop = readCrop(pic);
+  const shown = crop ? croppedPicture(img, crop, ctx.deck.doc) : img;
+  place(shown, box, xfrm, ctx, true);
+  ctx.sink.append(shown);
   ctx.loads.push(
-    imageUrl(ctx.deck, part).then((url) => {
-      if (url) img.src = url;
-      else img.replaceWith(placeholderElement('picture', box, xfrm, ctx));
+    imageUrl(ctx.deck, part).then((image) => {
+      if (image) img.src = image.url;
+      else shown.replaceWith(placeholderElement('picture', box, xfrm, ctx));
     }),
   );
 }
 
-function imageType(bytes: Uint8Array): string | null {
-  const starts = (...signature: number[]): boolean => signature.every((byte, i) => bytes[i] === byte);
-  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
-  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
-  if (starts(0x47, 0x49, 0x46, 0x38)) return 'image/gif';
-  if (starts(0x42, 0x4d)) return 'image/bmp';
-  if (starts(0x52, 0x49, 0x46, 0x46) && [0x57, 0x45, 0x42, 0x50].every((byte, i) => bytes[8 + i] === byte)) {
-    return 'image/webp';
-  }
-  return null;
+/* The picture's a:srcRect, or null when it crops nothing or leaves nothing to
+   show, so the whole picture is drawn. A negative edge pads the picture out,
+   as PowerPoint's Crop > Fit and pptxgenjs's contain sizing write it, so the
+   picture keeps its shape inside its box. Each edge is clamped to the whole
+   picture inward and to MAX_PADDING outward. */
+function readCrop(pic: Element): Crop | null {
+  const srcRect = descend(pic, 'blipFill', 'srcRect');
+  const edge = (name: string): number => Math.min(WHOLE_PICTURE, Math.max(-MAX_PADDING, intAttr(srcRect, name) ?? 0));
+  const crop: Crop = { l: edge('l'), t: edge('t'), r: edge('r'), b: edge('b') };
+  if (crop.l + crop.r >= WHOLE_PICTURE || crop.t + crop.b >= WHOLE_PICTURE) return null;
+  return crop.l || crop.t || crop.r || crop.b ? crop : null;
+}
+
+/* A box that clips the picture to its crop. The picture inside is drawn at
+   the size the whole picture would have, offset so only the kept part shows
+   in the box. A padded edge leaves that much of the box empty, so the picture
+   draws smaller than the box and away from that edge. place() puts the box,
+   so rotation and flips turn the cropped picture as one. */
+function croppedPicture(img: HTMLImageElement, crop: Crop, doc: Document): HTMLElement {
+  const frame = doc.createElement('div');
+  frame.className = 'pptx-picture-crop';
+  const keptWidth = WHOLE_PICTURE - crop.l - crop.r;
+  const keptHeight = WHOLE_PICTURE - crop.t - crop.b;
+  img.style.left = percent(-crop.l, keptWidth);
+  img.style.top = percent(-crop.t, keptHeight);
+  img.style.width = percent(WHOLE_PICTURE, keptWidth);
+  img.style.height = percent(WHOLE_PICTURE, keptHeight);
+  frame.append(img);
+  return frame;
 }
 
 /* The bytes as a data: URL, or null when the browser can't read them. */
@@ -460,19 +693,27 @@ function dataUrl(bytes: Uint8Array, type: string): Promise<string | null> {
 }
 
 /* Each picture part is read and encoded once per deck, however many slides
-   and pictures show it and however their targets spell its name. */
-function imageUrl(deck: DeckContext, name: string): Promise<string | null> {
+   and pictures show it and however their targets spell its name. A picture
+   whose header declares more pixels than the deck's budget, or whose size
+   can't be read, gets no URL, since the browser would decode every pixel.
+   Bytes that arrive after the signal aborts are never encoded. */
+function imageUrl(deck: DeckContext, name: string): Promise<ShownImage | null> {
   const part = deck.parts.entryName(name);
   if (!part) return Promise.resolve(null);
-  let url = deck.images.get(part);
-  if (!url) {
-    url = deck.parts.bytes(part).then((bytes) => {
+  let image = deck.images.get(part);
+  if (!image) {
+    image = deck.parts.bytes(part).then(async (bytes) => {
+      deck.signal.throwIfAborted();
       const type = bytes ? imageType(bytes) : null;
-      return bytes && type ? dataUrl(bytes, type) : null;
+      if (!bytes || !type) return null;
+      const size = imageSize(bytes, type);
+      if (!size || size.width * size.height > deck.maxImagePixels) return null;
+      const url = await dataUrl(bytes, type);
+      return url ? { url, size } : null;
     });
-    deck.images.set(part, url);
+    deck.images.set(part, image);
   }
-  return url;
+  return image;
 }
 
 function placeholderElement(kind: PlaceholderKind, box: Box, xfrm: Element | null, ctx: DrawContext): HTMLElement {

@@ -23,7 +23,8 @@ export type Box = [number, number, number, number];
 export interface ParagraphSpec {
   text: string;
   rtl?: boolean;
-  align?: 'l' | 'ctr' | 'r';
+  /* Written as is into a:pPr algn, such as l, ctr or r. */
+  align?: string;
   level?: number;
   /* Points. */
   size?: number;
@@ -35,6 +36,8 @@ export interface ParagraphSpec {
   lang?: string;
   /* An External hyperlink on the run. */
   link?: string;
+  /* Written as is into the a:srgbClr val of the paragraph's own a:buClr. */
+  bulletColor?: string;
 }
 
 export interface TextShapeSpec {
@@ -45,10 +48,27 @@ export interface TextShapeSpec {
   idx?: number;
   /* Written as is into a:srgbClr val. */
   fill?: string;
+  /* A media file from DeckSpec.images the shape is filled with (a:blipFill). */
+  fillImage?: string;
+  /* Tiles fillImage at this a:tile sx and sy, in thousandths of a percent,
+     in place of stretching it. */
+  fillTile?: number;
   line?: string;
+  /* EMU. The a:ln's width, in place of 12700 with `line`. Alone, the a:ln sets
+     only this width and no fill, as python-pptx's line.width writes it. */
+  lineWidth?: number;
+  /* Writes <a:ln><a:noFill/></a:ln>. */
+  noLine?: boolean;
+  /* Adds the p:style python-pptx gives an autoshape: an accent1 outline
+     (lnRef 1) and fill (fillRef 3), and lt1 text. */
+  styled?: boolean;
   geometry?: string;
   /* Degrees. */
   rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
+  /* Written as is into a:bodyPr anchor, such as t, ctr or b. */
+  anchor?: string;
   paragraphs: ParagraphSpec[];
   /* Writes this many copies of the shape, one when left out. With idx, each
      copy's idx counts up from it. */
@@ -70,6 +90,9 @@ export interface PictureSpec {
   externalEmbed?: string;
   /* A raw internal Target the picture names with r:embed. */
   embedTarget?: string;
+  /* a:srcRect l, t, r and b, in thousandths of a percent of the picture. An
+     edge of 0 is left out, as python-pptx writes a crop. */
+  crop?: [number, number, number, number];
 }
 
 export interface TableSpec {
@@ -94,6 +117,23 @@ export interface MediaSpec {
   embedded?: string;
 }
 
+/* A straight connector (p:cxnSp) across its box, with the p:style
+   python-pptx's add_connector writes: an accent1 line (lnRef 2). */
+export interface ConnectorSpec {
+  kind: 'connector';
+  box: Box;
+  /* Written as is into a:prstGeom prst; line when left out. */
+  geometry?: string;
+  /* Degrees. */
+  rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
+  /* Written as is into the a:ln's a:srgbClr val. */
+  line?: string;
+  /* EMU. */
+  lineWidth?: number;
+}
+
 export interface GroupSpec {
   kind: 'group';
   box: Box;
@@ -101,13 +141,25 @@ export interface GroupSpec {
   shapes: ShapeSpec[];
 }
 
-export type ShapeSpec = TextShapeSpec | PictureSpec | TableSpec | ChartSpec | MediaSpec | GroupSpec;
+export type ShapeSpec = TextShapeSpec | PictureSpec | TableSpec | ChartSpec | MediaSpec | ConnectorSpec | GroupSpec;
 
 export interface SlideSpec {
   shapes: ShapeSpec[];
   /* Hex for a solid slide background. */
   background?: string;
+  /* A media file from DeckSpec.images for a picture slide background. */
+  backgroundImage?: string;
+  /* Tiles backgroundImage at this a:tile sx and sy, in thousandths of a
+     percent, in place of stretching it. */
+  backgroundTile?: number;
+  /* The slide's own color map in p:clrMapOvr; the master's when left out. */
+  colorMap?: ColorMapSpec;
 }
+
+/* A color map override: light maps bg1 and bg2 to lt1 and lt2 and tx1 and tx2
+   to dk1 and dk2, as the skeleton master does; dark swaps them, as a dark
+   section header layout does. */
+export type ColorMapSpec = 'light' | 'dark';
 
 export interface DeckSpec {
   /* cx, cy in EMU; 16:9 when left out. */
@@ -122,8 +174,13 @@ export interface DeckSpec {
   /* Media file name to base64 bytes. Each is stored as ppt/media/<name>,
      whether or not a picture names it. */
   images?: Record<string, string>;
-  /* Text shapes added to the layout's shape tree, after its own placeholders. */
-  layoutShapes?: TextShapeSpec[];
+  /* Text shapes and connectors added to the layout's shape tree, after its
+     own placeholders. */
+  layoutShapes?: Array<TextShapeSpec | ConnectorSpec>;
+  /* A media file from DeckSpec.images for a picture background on the layout. */
+  layoutBackgroundImage?: string;
+  /* The layout's own color map in p:clrMapOvr; the master's when left out. */
+  layoutColorMap?: ColorMapSpec;
 }
 
 /* One committed fixture file and the deck it holds, as decks.yaml lists them. */
@@ -173,6 +230,14 @@ const CONTENT_TYPES = {
 };
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 const EMU_PER_DEGREE = 60_000;
+/* The p:style elements python-pptx writes for an autoshape and a connector. */
+const AUTOSHAPE_STYLE =
+  '<p:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="3"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="2"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style>';
+const CONNECTOR_STYLE =
+  '<p:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="0"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="1"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef></p:style>';
+const MASTER_COLOR_MAP = '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>';
+/* The color map names an override maps to themselves. */
+const SAME_COLOR_NAMES = ['accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
 
 interface RelEntry {
   id: string;
@@ -213,21 +278,59 @@ function relsXml(rels: RelEntry[]): string {
   return `${XML_HEADER}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${entries.join('')}</Relationships>`;
 }
 
-function xfrmXml(box: Box, rotation?: number, tag = 'a:xfrm'): string {
-  const rot = rotation ? ` rot="${Math.round(rotation * EMU_PER_DEGREE)}"` : '';
-  return `<${tag}${rot}><a:off x="${box[0]}" y="${box[1]}"/><a:ext cx="${box[2]}" cy="${box[3]}"/></${tag}>`;
+function xfrmXml(box: Box, rotation?: number, tag = 'a:xfrm', flips: { flipH?: boolean; flipV?: boolean } = {}): string {
+  const attrs = [
+    rotation ? ` rot="${Math.round(rotation * EMU_PER_DEGREE)}"` : '',
+    flips.flipH ? ' flipH="1"' : '',
+    flips.flipV ? ' flipV="1"' : '',
+  ].join('');
+  return `<${tag}${attrs}><a:off x="${box[0]}" y="${box[1]}"/><a:ext cx="${box[2]}" cy="${box[3]}"/></${tag}>`;
 }
 
 function colorXml(value: string): string {
   return `<a:solidFill><a:srgbClr val="${escapeXml(value)}"/></a:solidFill>`;
 }
 
+/* An a:ln with an optional color and width, or nothing when neither is set. */
+function lineXml(color: string | undefined, width: number | undefined): string {
+  if (color === undefined && width === undefined) return '';
+  return `<a:ln w="${width ?? 12_700}">${color === undefined ? '' : colorXml(color)}</a:ln>`;
+}
+
+/* A picture fill of a media file from DeckSpec.images: stretched over the
+   shape or background, or tiled at `tile` (a:tile sx and sy) from its
+   top-left corner, as PowerPoint's "Tile picture as texture" writes it. */
+function pictureFillXml(writer: SlideWriter, image: string, tile?: number): string {
+  const mode =
+    tile === undefined
+      ? '<a:stretch><a:fillRect/></a:stretch>'
+      : `<a:tile tx="0" ty="0" sx="${tile}" sy="${tile}" flip="none" algn="tl"/>`;
+  return `<a:blipFill dpi="0" rotWithShape="1"><a:blip r:embed="${addRel(writer, REL_TYPES.image, imageTarget(writer, image))}"/><a:srcRect/>${mode}</a:blipFill>`;
+}
+
+/* A slide's or layout's p:clrMapOvr: the master's mapping, or an override. */
+function colorMapXml(colorMap: ColorMapSpec | undefined): string {
+  if (!colorMap) return MASTER_COLOR_MAP;
+  const [background, text] = colorMap === 'dark' ? ['dk', 'lt'] : ['lt', 'dk'];
+  const same = SAME_COLOR_NAMES.map((name) => ` ${name}="${name}"`).join('');
+  return `<p:clrMapOvr><a:overrideClrMapping bg1="${background}1" tx1="${text}1" bg2="${background}2" tx2="${text}2"${same}/></p:clrMapOvr>`;
+}
+
+function backgroundXml(writer: SlideWriter, color: string | undefined, image: string | undefined, tile?: number): string {
+  if (image) return `<p:bg><p:bgPr>${pictureFillXml(writer, image, tile)}<a:effectLst/></p:bgPr></p:bg>`;
+  return color ? `<p:bg><p:bgPr>${colorXml(color)}<a:effectLst/></p:bgPr></p:bg>` : '';
+}
+
 function paragraphXml(paragraph: ParagraphSpec, writer: SlideWriter): string {
-  const pPr = [
+  const pPrAttrs = [
     paragraph.level ? ` lvl="${paragraph.level}"` : '',
-    paragraph.align ? ` algn="${paragraph.align}"` : '',
+    paragraph.align ? ` algn="${escapeXml(paragraph.align)}"` : '',
     paragraph.rtl ? ' rtl="1"' : '',
   ].join('');
+  const bulletColor = paragraph.bulletColor ? `<a:buClr><a:srgbClr val="${escapeXml(paragraph.bulletColor)}"/></a:buClr>` : '';
+  let pPr = '';
+  if (bulletColor) pPr = `<a:pPr${pPrAttrs}>${bulletColor}</a:pPr>`;
+  else if (pPrAttrs) pPr = `<a:pPr${pPrAttrs}/>`;
   const rPrAttrs = [
     ` lang="${escapeXml(paragraph.lang ?? 'en-US')}"`,
     paragraph.size ? ` sz="${Math.round(paragraph.size * 100)}"` : '',
@@ -236,14 +339,15 @@ function paragraphXml(paragraph: ParagraphSpec, writer: SlideWriter): string {
   const link = paragraph.link ? `<a:hlinkClick r:id="${addRel(writer, REL_TYPES.hyperlink, paragraph.link, true)}"/>` : '';
   const color = paragraph.color ? colorXml(paragraph.color) : '';
   const font = paragraph.font ? `<a:latin typeface="${escapeXml(paragraph.font)}"/>` : '';
-  return `<a:p>${pPr ? `<a:pPr${pPr}/>` : ''}<a:r><a:rPr${rPrAttrs} dirty="0">${color}${font}${link}</a:rPr><a:t>${escapeXml(paragraph.text)}</a:t></a:r></a:p>`;
+  return `<a:p>${pPr}<a:r><a:rPr${rPrAttrs} dirty="0">${color}${font}${link}</a:rPr><a:t>${escapeXml(paragraph.text)}</a:t></a:r></a:p>`;
 }
 
-function nonVisualXml(kind: 'sp' | 'pic' | 'graphicFrame', writer: SlideWriter, name: string, nvPr = '<p:nvPr/>', descr?: string): string {
+function nonVisualXml(kind: 'sp' | 'pic' | 'graphicFrame' | 'cxnSp', writer: SlideWriter, name: string, nvPr = '<p:nvPr/>', descr?: string): string {
   const id = writer.nextShapeId++;
   const cNvPr = `<p:cNvPr id="${id}" name="${escapeXml(`${name} ${id}`)}"${descr ? ` descr="${escapeXml(descr)}"` : ''}/>`;
   if (kind === 'sp') return `<p:nvSpPr>${cNvPr}<p:cNvSpPr/>${nvPr}</p:nvSpPr>`;
   if (kind === 'pic') return `<p:nvPicPr>${cNvPr}<p:cNvPicPr/>${nvPr}</p:nvPicPr>`;
+  if (kind === 'cxnSp') return `<p:nvCxnSpPr>${cNvPr}<p:cNvCxnSpPr/>${nvPr}</p:nvCxnSpPr>`;
   return `<p:nvGraphicFramePr>${cNvPr}<p:cNvGraphicFramePr/>${nvPr}</p:nvGraphicFramePr>`;
 }
 
@@ -259,13 +363,21 @@ function textShapeCopyXml(shape: TextShapeSpec, idx: number | undefined, writer:
     ? `<p:nvPr><p:ph type="${shape.placeholder}"${idx !== undefined ? ` idx="${idx}"` : ''}/></p:nvPr>`
     : undefined;
   const spPr = [
-    shape.box ? xfrmXml(shape.box, shape.rotation) : '',
+    shape.box ? xfrmXml(shape.box, shape.rotation, 'a:xfrm', shape) : '',
     shape.box ? `<a:prstGeom prst="${escapeXml(shape.geometry ?? 'rect')}"><a:avLst/></a:prstGeom>` : '',
     shape.fill ? colorXml(shape.fill) : '',
-    shape.line ? `<a:ln w="12700">${colorXml(shape.line)}</a:ln>` : '',
+    shape.fillImage ? pictureFillXml(writer, shape.fillImage, shape.fillTile) : '',
+    shape.noLine ? '<a:ln><a:noFill/></a:ln>' : lineXml(shape.line, shape.lineWidth),
   ].join('');
+  const style = shape.styled ? AUTOSHAPE_STYLE : '';
+  const anchor = shape.anchor === undefined ? '' : ` anchor="${escapeXml(shape.anchor)}"`;
   const paragraphs = shape.paragraphs.map((paragraph) => paragraphXml(paragraph, writer)).join('');
-  return `<p:sp>${nonVisualXml('sp', writer, shape.placeholder ? 'Placeholder' : 'TextBox', ph)}<p:spPr>${spPr}</p:spPr><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+  return `<p:sp>${nonVisualXml('sp', writer, shape.placeholder ? 'Placeholder' : 'TextBox', ph)}<p:spPr>${spPr}</p:spPr>${style}<p:txBody><a:bodyPr wrap="square"${anchor}/><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+}
+
+function connectorXml(shape: ConnectorSpec, writer: SlideWriter): string {
+  const spPr = `${xfrmXml(shape.box, shape.rotation, 'a:xfrm', shape)}<a:prstGeom prst="${escapeXml(shape.geometry ?? 'line')}"><a:avLst/></a:prstGeom>${lineXml(shape.line, shape.lineWidth)}`;
+  return `<p:cxnSp>${nonVisualXml('cxnSp', writer, 'Connector')}<p:spPr>${spPr}</p:spPr>${CONNECTOR_STYLE}</p:cxnSp>`;
 }
 
 function mediaPart(writer: SlideWriter, name: string, bytes: string | Uint8Array): string {
@@ -292,7 +404,11 @@ function pictureXml(shape: PictureSpec, writer: SlideWriter): string {
   } else if (shape.embedTarget) {
     blip = `<a:blip r:embed="${addRel(writer, REL_TYPES.image, shape.embedTarget)}"/>`;
   }
-  return `<p:pic>${nonVisualXml('pic', writer, 'Picture', undefined, shape.descr)}<p:blipFill>${blip}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(shape.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  const crop = (shape.crop ?? [])
+    .map((edge, i) => (edge ? ` ${['l', 't', 'r', 'b'][i]}="${edge}"` : ''))
+    .join('');
+  const srcRect = crop ? `<a:srcRect${crop}/>` : '';
+  return `<p:pic>${nonVisualXml('pic', writer, 'Picture', undefined, shape.descr)}<p:blipFill>${blip}${srcRect}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(shape.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
 function mediaXml(shape: MediaSpec, writer: SlideWriter): string {
@@ -359,21 +475,28 @@ function shapeXml(shape: ShapeSpec, writer: SlideWriter): string {
     case 'video':
     case 'audio':
       return mediaXml(shape, writer);
+    case 'connector':
+      return connectorXml(shape, writer);
     case 'group':
       return groupXml(shape, writer);
   }
 }
 
 function slideXml(slide: SlideSpec, writer: SlideWriter): string {
-  const background = slide.background ? `<p:bg><p:bgPr>${colorXml(slide.background)}<a:effectLst/></p:bgPr></p:bg>` : '';
+  const background = backgroundXml(writer, slide.background, slide.backgroundImage, slide.backgroundTile);
   const shapes = slide.shapes.map((shape) => shapeXml(shape, writer)).join('');
-  return `${XML_HEADER}<p:sld xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}"><p:cSld>${background}<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+  return `${XML_HEADER}<p:sld xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}"><p:cSld>${background}<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapes}</p:spTree></p:cSld>${colorMapXml(slide.colorMap)}</p:sld>`;
 }
 
-/* The skeleton's layout with these shapes appended to its shape tree. */
-function layoutXml(shapes: TextShapeSpec[], writer: SlideWriter): string {
-  const added = shapes.map((shape) => textShapeXml(shape, writer)).join('');
-  return readFileSync(join(SKELETON, 'slideLayout1.xml'), 'utf8').replace('</p:spTree>', () => `${added}</p:spTree>`);
+/* The skeleton's layout with these shapes appended to its shape tree, a
+   picture background when one is named, and its color map. */
+function layoutXml(spec: DeckSpec, writer: SlideWriter): string {
+  const background = backgroundXml(writer, undefined, spec.layoutBackgroundImage);
+  const added = (spec.layoutShapes ?? []).map((shape) => shapeXml(shape, writer)).join('');
+  return readFileSync(join(SKELETON, 'slideLayout1.xml'), 'utf8')
+    .replace('<p:spTree>', () => `${background}<p:spTree>`)
+    .replace('</p:spTree>', () => `${added}</p:spTree>`)
+    .replace(MASTER_COLOR_MAP, () => colorMapXml(spec.layoutColorMap));
 }
 
 function numberedSlide(n: number): SlideSpec {
@@ -450,9 +573,9 @@ export async function buildDeck(spec: DeckSpec): Promise<Uint8Array> {
     ]),
   );
   /* The skeleton layout's own shapes use ids 1 to 3. */
-  const layoutWriter: SlideWriter = { rels: [], parts: new Map(), overrides: new Map(), images: {}, nextShapeId: 4 };
+  const layoutWriter: SlideWriter = { rels: [], parts: new Map(), overrides: new Map(), images: spec.images ?? {}, nextShapeId: 4 };
   addRel(layoutWriter, REL_TYPES.slideMaster, '../slideMasters/slideMaster1.xml');
-  add('ppt/slideLayouts/slideLayout1.xml', layoutXml(spec.layoutShapes ?? [], layoutWriter));
+  add('ppt/slideLayouts/slideLayout1.xml', layoutXml(spec, layoutWriter));
   add('ppt/slideLayouts/_rels/slideLayout1.xml.rels', relsXml(layoutWriter.rels));
   add('ppt/theme/theme1.xml', readFileSync(join(SKELETON, 'theme1.xml'), 'utf8'));
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 9 } });

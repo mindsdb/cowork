@@ -1,7 +1,8 @@
 /*
  * The committed pptx preview fixtures are exactly what make-fixtures.mjs
  * writes from decks.yaml, so the script beside them stays the record of how
- * they were made.
+ * they were made. python-pptx.pptx is the one exception: make-python-pptx.py
+ * writes it with python-pptx, and this test doesn't check it.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

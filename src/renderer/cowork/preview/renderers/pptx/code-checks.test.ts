@@ -19,6 +19,8 @@ interface CodeCheck {
   name: string;
   pattern: string;
   flags?: string;
+  /* Code the pattern must match. */
+  catches?: string[];
 }
 
 interface CodeChecks {
@@ -102,6 +104,10 @@ describe.each([true, false])('the pptx preview bundle (minify: %s)', (minify) =>
 describe('the pptx renderer source', () => {
   it('has files to check', () => {
     expect(SOURCE_FILES).toContain('render.ts');
+  });
+
+  it.each(CHECKS.source.filter((check) => check.catches))('check for $name catches each spelling it lists', ({ pattern, flags, catches }) => {
+    for (const code of catches ?? []) expect(code).toMatch(new RegExp(pattern, flags));
   });
 
   describe.each(SOURCE_FILES)('%s', (file) => {

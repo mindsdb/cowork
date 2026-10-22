@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // "Start a new project" modal.
 //
 // Replaces the inline-edit dashed card on the projects page. Owns
@@ -162,7 +163,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           await writeProjectFile(finalName, ANTON_PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.warn('[new-project] writing anton.md failed', e);
+          diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_writing_anton_md_failed", '[new-project] writing anton.md failed', e);
         }
       }
 
@@ -174,7 +175,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           await uploadProjectFiles(finalName, files);
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.warn('[new-project] uploads failed', e);
+          diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_uploads_failed", '[new-project] uploads failed', e);
         }
       }
 

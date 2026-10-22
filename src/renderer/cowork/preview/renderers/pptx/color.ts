@@ -9,7 +9,7 @@ import { intAttr } from './xml';
 export interface ColorScheme {
   /* Theme color names (dk1, lt1, accent1 ...) to six-digit hex. */
   theme: ReadonlyMap<string, string>;
-  /* The master's color map, such as bg1 to lt1 and tx1 to dk1. */
+  /* The slide's color map, such as bg1 to lt1 and tx1 to dk1. */
   map: ReadonlyMap<string, string>;
 }
 

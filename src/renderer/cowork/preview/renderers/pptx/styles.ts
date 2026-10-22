@@ -75,6 +75,10 @@ export const PPTX_STYLES = `
   box-sizing: border-box;
   object-fit: fill;
 }
+.pptx-picture-crop {
+  position: absolute;
+  overflow: hidden;
+}
 .pptx-placeholder {
   align-items: center;
   justify-content: center;

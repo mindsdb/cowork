@@ -30,6 +30,9 @@ const MAX_SIDE = 51_206_400;
 /* The first bytes of an OLE compound file, which is what a password-protected
    .pptx and an old binary .ppt both are. */
 const COMPOUND_FILE_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+/* An RGBA pixel takes 4 bytes. One picture may decode to at most the inflate
+   budget's worth of them, the cap the PDF preview puts on each image. */
+const BYTES_PER_PIXEL = 4;
 
 function isCompoundFile(bytes: ArrayBuffer): boolean {
   const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, COMPOUND_FILE_SIGNATURE.length));
@@ -105,8 +108,10 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
   const deck: DeckContext = {
     doc,
     parts,
+    signal: ctx.signal,
     size: presentation.size,
     defaultTextStyle: presentation.defaultTextStyle,
+    maxImagePixels: Math.floor(ctx.limits.maxInflatedBytes / BYTES_PER_PIXEL),
     images: new Map(),
     themes: new Map(),
     placeholders: new Map(),

@@ -1,7 +1,7 @@
 /*
  * The theme a slide master points at: its twelve named colors, its heading
- * and body fonts, and the master's map from bg1, tx1 and the rest to those
- * names.
+ * and body fonts, and the map a master's p:clrMap, or a slide's or layout's
+ * a:overrideClrMapping, gives from bg1, tx1 and the rest to those names.
  */
 import { hexColor } from './color';
 import { child, descend } from './xml';

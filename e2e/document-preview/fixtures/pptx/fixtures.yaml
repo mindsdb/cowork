@@ -1,6 +1,7 @@
 # The pptx preview fixtures, read only through loadFixtures in harness.ts.
-# make-fixtures.mjs writes every file listed here from its deck in decks.yaml.
-# units counts the slides drawn.
+# make-fixtures.mjs writes every file listed here from its deck in decks.yaml,
+# except python-pptx.pptx, which make-python-pptx.py writes with python-pptx
+# itself. units counts the slides drawn.
 #
 # pptx.spec.ts reads two fields more strictly than the harness does:
 #   textIncludes  lists text in the order the preview shows it, since slides
@@ -23,6 +24,25 @@
       - North
       - 'Third slide: a chart'
       - Chart not shown in preview
+
+- name: a deck python-pptx writes on its default template
+  file: python-pptx.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 3
+    truncated: false
+    textIncludes:
+      - Preview may differ from PowerPoint
+      - A deck python-pptx wrote
+      - Bullets from the master
+      - Boxes from the layout
+      - Fonts from the theme
+      - A picture placeholder
+      - The picture is cropped to the placeholder
+      - A connector and a wide outline
+      - A six point outline
+      - An inverse line
 
 - name: overlapping shapes and a group
   file: overlapping-shapes.pptx

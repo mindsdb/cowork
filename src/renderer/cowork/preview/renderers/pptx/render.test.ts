@@ -6,10 +6,16 @@
  * happy-dom's XML parser, which these tests run on, drops an r:id that follows
  * an id on the same element. PowerPoint writes each sldId that way, and so do
  * the committed fixtures, which the pptx spec renders in Chromium. So the
- * test's archive hands the renderer each sldId with r:id first.
+ * test's archive hands the renderer each sldId with r:id first. The parser
+ * also rejects an XML declaration in single quotes, which python-pptx writes,
+ * so the archive hands the renderer that declaration in double quotes.
  *
  * The xml helpers run unchanged through a spy, so a case can count how many
  * times the renderer lists a shape tree's p:sp shapes.
+ *
+ * happy-dom drops a style value that uses max() or cqw, so the cases check a
+ * line's or outline's color and the sides it draws, not its width, and a
+ * paragraph's alignment, bullet, typeface and color, not its font size.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +25,7 @@ import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDeck, FIXTURE_DIR, type DeckSpec } from '../../../../../../e2e/document-preview/fixtures/pptx/deck';
+import { FORBIDDEN_ELEMENTS } from '../../../../../../e2e/document-preview/fixtures/pptx/forbidden';
 import type { GuardedZip, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
 import { isPreviewError, previewError } from '../../errors';
 import { previewLimits } from '../../limits';
@@ -30,6 +37,33 @@ vi.mock('./xml', async (importOriginal) => {
   const xml = await importOriginal<typeof import('./xml')>();
   return { ...xml, children: vi.fn(xml.children) };
 });
+
+/* A drawn line's inline box, turn and color. */
+interface LineExpectation {
+  left: string;
+  top: string;
+  width: string;
+  transform: string;
+  color: string;
+}
+
+/* A cropped picture: its clipping box, and the picture inside it, each as
+   inline left, top, width and height. */
+interface CropExpectation {
+  frame: [string, string, string, string];
+  picture: [string, string, string, string];
+}
+
+/* What a paragraph draws: its inline text-align, the bullet before it ('' for
+   none) and the bullet's inline color, and its first run's inline font family
+   and color. A field left out isn't checked. */
+interface ParagraphExpectation {
+  align?: string;
+  bullet?: string;
+  bulletColor?: string;
+  font?: string;
+  color?: string;
+}
 
 interface CaseExpectation {
   error?: PreviewErrorCode;
@@ -47,6 +81,15 @@ interface CaseExpectation {
   unread?: string[];
   readCounts?: Record<string, number>;
   maxShapeTreeScans?: number;
+  backgrounds?: string[];
+  fills?: Record<string, string>;
+  outlines?: Record<string, string>;
+  lines?: LineExpectation[];
+  crops?: CropExpectation[];
+  boxes?: Record<string, [string, string, string, string]>;
+  transforms?: Record<string, string>;
+  anchors?: Record<string, string>;
+  paragraphs?: Record<string, ParagraphExpectation>;
 }
 
 interface RenderCase {
@@ -75,6 +118,8 @@ interface RunOptions {
   signal?: AbortSignal;
   openZip?: RendererContext['openZip'];
   onProgress?: (done: number, total: number | null) => void;
+  /* Called as the renderer asks the recorded archive for an entry. */
+  onRead?: (name: string) => void;
 }
 
 interface Run {
@@ -94,9 +139,8 @@ interface Rect {
 
 const DATA = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
 const SLD_ID_ID_FIRST = /<p:sldId id="(\d+)" r:id="(\w+)"\/>/g;
-
-/* Elements that can load, play or navigate, none of which a slide preview draws. */
-const FORBIDDEN_ELEMENTS = 'a, area, [href], iframe, frame, object, embed, video, audio, source, script, form, base';
+const XML_DECLARATION = /^<\?xml\s[^?]*\?>/;
+const PICTURE_URL = /^url\("data:image\/(?:png|jpeg|gif|bmp|webp);base64,[A-Za-z0-9+/=]+"\)$/;
 
 type Source = Pick<RenderCase, 'file' | 'deck' | 'bytes'>;
 
@@ -106,12 +150,13 @@ async function deckBytes(source: Source): Promise<ArrayBuffer> {
   return new Uint8Array(bytes).buffer;
 }
 
-async function recordingZip(bytes: ArrayBuffer): Promise<RecordedZip> {
+async function recordingZip(bytes: ArrayBuffer, onRead?: (name: string) => void): Promise<RecordedZip> {
   const archive = await JSZip.loadAsync(bytes);
   const names = Object.values(archive.files).filter((entry) => !entry.dir).map((entry) => entry.name);
   const reads: string[] = [];
   const entry = (name: string): JSZip.JSZipObject | null => {
     reads.push(name);
+    onRead?.(name);
     return archive.file(name);
   };
   return {
@@ -121,7 +166,10 @@ async function recordingZip(bytes: ArrayBuffer): Promise<RecordedZip> {
       bytes: async (name) => (await entry(name)?.async('uint8array')) ?? null,
       text: async (name) => {
         const text = await entry(name)?.async('string');
-        return text === undefined ? null : text.replace(SLD_ID_ID_FIRST, '<p:sldId r:id="$2" id="$1"/>');
+        if (text === undefined) return null;
+        return text
+          .replace(XML_DECLARATION, (declaration) => declaration.replaceAll("'", '"'))
+          .replace(SLD_ID_ID_FIRST, '<p:sldId r:id="$2" id="$1"/>');
       },
     },
   };
@@ -144,7 +192,7 @@ async function startRender(source: Source, options: RunOptions = {}): Promise<Ru
     openZip:
       options.openZip ??
       (async (archive) => {
-        const zip = await recordingZip(archive);
+        const zip = await recordingZip(archive, options.onRead);
         opened.push(zip);
         return zip.zip;
       }),
@@ -168,9 +216,49 @@ function shapeWithText(root: HTMLElement, text: string): HTMLElement {
   return shape;
 }
 
+/* A paragraph's runs, without the bullet drawn before them. */
+function runsOf(paragraph: HTMLElement): HTMLElement[] {
+  return Array.from(paragraph.children).filter(
+    (el): el is HTMLElement => el instanceof HTMLElement && el.localName === 'span' && !el.classList.contains('pptx-bullet'),
+  );
+}
+
+function paragraphWithText(root: HTMLElement, text: string): HTMLElement {
+  const paragraph = Array.from(root.querySelectorAll<HTMLElement>('p.pptx-p')).find(
+    (p) => runsOf(p).map((run) => run.textContent).join('') === text,
+  );
+  if (!paragraph) throw new Error(`No paragraph reads "${text}"`);
+  return paragraph;
+}
+
+/* The shape box that holds a paragraph reading `text`, so a shape of several
+   paragraphs or with bullets is found by any one of its paragraphs. */
+function shapeHolding(root: HTMLElement, text: string): HTMLElement {
+  const shape = paragraphWithText(root, text).closest<HTMLElement>('.pptx-shape');
+  if (!shape) throw new Error(`The paragraph "${text}" is in no shape`);
+  return shape;
+}
+
 function rect(el: HTMLElement): Rect {
   const { left, top, width, height } = el.style;
   return { left: parseFloat(left), top: parseFloat(top), width: parseFloat(width), height: parseFloat(height) };
+}
+
+function box(el: HTMLElement): [string, string, string, string] {
+  const { left, top, width, height } = el.style;
+  return [left, top, width, height];
+}
+
+/* A slide's or shape's fill as backgrounds and fills name it: picture for a
+   data: picture stretched over it, tiled and the tile's background-size for
+   one repeated in tiles, else its inline background color. */
+function fillOf(el: HTMLElement): string {
+  const { backgroundImage, backgroundColor, backgroundSize, backgroundRepeat } = el.style;
+  if (!backgroundImage.startsWith('url(')) return backgroundColor;
+  expect(backgroundImage).toMatch(PICTURE_URL);
+  if (backgroundRepeat === 'repeat') return `tiled ${backgroundSize}`;
+  expect(backgroundSize).toBe('100% 100%');
+  return 'picture';
 }
 
 function overlap(a: Rect, b: Rect): boolean {
@@ -207,6 +295,56 @@ function expectDrawn(root: HTMLElement, want: CaseExpectation): void {
   }
   expect(root.querySelectorAll(FORBIDDEN_ELEMENTS)).toHaveLength(0);
   for (const text of want.markupExcludes ?? []) expect(root.innerHTML).not.toContain(text);
+}
+
+function expectStyles(root: HTMLElement, want: CaseExpectation): void {
+  if (want.backgrounds !== undefined) expect(slideElements(root).map(fillOf)).toEqual(want.backgrounds);
+  for (const [text, fill] of Object.entries(want.fills ?? {})) {
+    expect(fillOf(shapeWithText(root, text)), `fill of ${text}`).toBe(fill);
+  }
+  for (const [text, color] of Object.entries(want.outlines ?? {})) {
+    const { style } = shapeWithText(root, text);
+    expect([style.borderStyle, style.borderColor], `outline of ${text}`).toEqual(color ? ['solid', color] : ['', '']);
+  }
+  if (want.lines !== undefined) {
+    const lines = Array.from(root.querySelectorAll<HTMLElement>('.pptx-line'), ({ style }) => {
+      expect([style.borderTopStyle, style.borderRightStyle, style.borderBottomStyle, style.borderLeftStyle], 'a line draws its top border only').toEqual(['solid', '', '', '']);
+      expect(style.backgroundColor, 'a line has no fill').toBe('');
+      return { left: style.left, top: style.top, width: style.width, transform: style.transform, color: style.borderTopColor };
+    });
+    expect(lines).toEqual(want.lines);
+  }
+  if (want.crops !== undefined) {
+    const crops = Array.from(root.querySelectorAll<HTMLElement>('.pptx-picture-crop'), (frame) => {
+      const img = frame.querySelector('img');
+      if (!img) throw new Error('A crop box holds no picture');
+      expect(img.style.transform, 'rotation and flips stay on the crop box').toBe('');
+      return { frame: box(frame), picture: box(img) };
+    });
+    expect(crops).toEqual(want.crops);
+  }
+  for (const [text, wanted] of Object.entries(want.boxes ?? {})) {
+    expect(box(shapeHolding(root, text)), `box of ${text}`).toEqual(wanted);
+  }
+  for (const [text, transform] of Object.entries(want.transforms ?? {})) {
+    expect(shapeHolding(root, text).style.transform, `transform of ${text}`).toBe(transform);
+  }
+  for (const [text, anchor] of Object.entries(want.anchors ?? {})) {
+    expect(shapeHolding(root, text).style.justifyContent, `anchor of ${text}`).toBe(anchor);
+  }
+  for (const [text, wanted] of Object.entries(want.paragraphs ?? {})) {
+    const paragraph = paragraphWithText(root, text);
+    const [run] = runsOf(paragraph);
+    const bullet = paragraph.querySelector<HTMLElement>('.pptx-bullet');
+    const drawn: Required<ParagraphExpectation> = {
+      align: paragraph.style.textAlign,
+      bullet: bullet?.textContent ?? '',
+      bulletColor: bullet?.style.color ?? '',
+      font: run.style.fontFamily,
+      color: run.style.color,
+    };
+    expect(drawn, `paragraph ${text}`).toMatchObject(wanted);
+  }
 }
 
 function expectReads(opened: RecordedZip[], want: CaseExpectation): void {
@@ -249,6 +387,7 @@ describe('the pptx renderer', () => {
     expect(run.root.querySelector('.pptx-deck')?.firstElementChild?.textContent).toBe(DATA.label);
     expectSlides(run.root, summary, want);
     expectDrawn(run.root, want);
+    expectStyles(run.root, want);
     expectReads(run.opened, want);
   });
 });
@@ -288,6 +427,41 @@ describe('progress and stopping', () => {
     });
     await expect(run.rendered).rejects.toMatchObject({ name: 'AbortError' });
     expect(slideElements(run.root)).toHaveLength(1);
+  });
+
+  /* three-slides.pptx draws slide3.xml first, then slide1.xml, whose picture
+     is ppt/media/swatch.png. */
+  it('reads no picture of a slide whose parts were being read when the signal aborted', async () => {
+    const controller = new AbortController();
+    const run = await startRender(THREE_SLIDES, {
+      signal: controller.signal,
+      onRead: (name) => {
+        if (name === 'ppt/slides/slide1.xml') controller.abort();
+      },
+    });
+    await expect(run.rendered).rejects.toMatchObject({ name: 'AbortError' });
+    const { reads } = run.opened[0];
+    expect(reads).toContain('ppt/slides/slide1.xml');
+    expect(reads.filter((name) => name.startsWith('ppt/media/')), 'pictures read after the abort').toEqual([]);
+    expect(slideElements(run.root)).toHaveLength(1);
+  });
+
+  it('encodes no picture whose bytes arrive after the signal aborts', async () => {
+    const controller = new AbortController();
+    const encode = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+    try {
+      const run = await startRender(THREE_SLIDES, {
+        signal: controller.signal,
+        onRead: (name) => {
+          if (name === 'ppt/media/swatch.png') controller.abort();
+        },
+      });
+      await expect(run.rendered).rejects.toMatchObject({ name: 'AbortError' });
+      expect(run.opened[0].reads).toContain('ppt/media/swatch.png');
+      expect(encode).not.toHaveBeenCalled();
+    } finally {
+      encode.mockRestore();
+    }
   });
 });
 

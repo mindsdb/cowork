@@ -1,14 +1,17 @@
 /*
  * The pptx preview in the harness. Each fixture in fixtures/pptx/fixtures.yaml
- * ends as its expectation says, strayRequests finds nothing in the requests its
- * preview made, and the frame is back at about:srcdoc after the harness clicks
- * through it.
+ * ends as its expectation says, and the frame is back at about:srcdoc after the
+ * harness clicks through it. strayRequests finds nothing in the run's requests,
+ * nor in every request of the whole test, so a load that starts after the
+ * preview reports rendered counts too. On top of that, the preview frame and
+ * any frame inside it make no request at all: the harness page makes them all.
  *
  * Over the frame itself, the spec checks that it draws one slide per unit under
- * the "Preview may differ from PowerPoint" label, holds no link, media element
- * or nested frame, and shows pictures only from data: or blob: URLs that
- * decoded. textIncludes must appear in the order listed, and textExcludes
- * nowhere in the frame's markup, as the header of fixtures.yaml says.
+ * the "Preview may differ from PowerPoint" label, holds none of the elements
+ * fixtures/pptx/forbidden.ts lists, and shows pictures only from data: or
+ * blob: URLs that decoded. textIncludes must appear in the order listed, and
+ * textExcludes nowhere in the frame's markup, as the header of fixtures.yaml
+ * says.
  *
  * The harness page arrives with the preview frame change. Until
  * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
@@ -20,13 +23,22 @@ import { expect, test, type Frame, type Page } from '@playwright/test';
 
 import type { RenderSummary } from '../../src/renderer/cowork/preview/contract';
 import { PREVIEW_LABEL } from '../../src/renderer/cowork/preview/renderers/pptx/styles';
+import { FORBIDDEN_ELEMENTS } from './fixtures/pptx/forbidden';
 import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
 
 const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
 const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
 
-/* Elements that can load, play or navigate, none of which a slide preview draws. */
-const FORBIDDEN_ELEMENTS = 'a, area, [href], [xlink\\:href], iframe, frame, object, embed, video, audio, source, form, base';
+/* One request, and whether the harness page made it rather than the preview
+   frame or a frame inside it. */
+interface RecordedRequest { url: string; fromHarnessPage: boolean }
+
+/* Every request the page or any of its frames makes from now on. */
+function recordRequests(page: Page): RecordedRequest[] {
+  const requests: RecordedRequest[] = [];
+  page.on('request', (request) => requests.push({ url: request.url(), fromHarnessPage: request.frame() === page.mainFrame() }));
+  return requests;
+}
 
 function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   const want = fixture.expect;
@@ -42,6 +54,11 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   const positions = texts.map((text) => run.text.indexOf(text));
   expect(positions, 'textIncludes in the order the preview shows them').toEqual([...positions].sort((a, b) => a - b));
   for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
+}
+
+function expectNoFrameRequests(requests: readonly RecordedRequest[]): void {
+  const fromFrames = requests.filter((request) => !request.fromHarnessPage).map((request) => request.url);
+  expect(fromFrames, 'requests from the preview frame or a frame inside it').toEqual([]);
 }
 
 /* The frame body's markup, attributes and styles included, without the frame's
@@ -85,12 +102,17 @@ test.describe('pptx preview', () => {
   for (const fixture of loadFixtures('pptx')) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
       if (!baseURL) throw new Error('The web project sets baseURL to the harness page');
+      const harnessOrigin = new URL(baseURL).origin;
+      const testRequests = recordRequests(page);
       const run = await openPreview(page, 'pptx', fixture);
 
       expectOutcome(run, fixture);
-      expect(strayRequests('pptx', fixture, run.requests, new URL(baseURL).origin)).toEqual([]);
+      expect(strayRequests('pptx', fixture, run.requests, harnessOrigin), 'requests the harness rules refuse').toEqual([]);
       expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
       if (run.outcome === 'rendered' && run.summary) await expectSlides(page, run.summary, fixture);
+      const testUrls = testRequests.map((request) => request.url);
+      expect(strayRequests('pptx', fixture, testUrls, harnessOrigin), 'requests of the whole test the harness rules refuse').toEqual([]);
+      expectNoFrameRequests(testRequests);
     });
   }
 });

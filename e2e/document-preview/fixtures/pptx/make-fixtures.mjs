@@ -1,7 +1,8 @@
 /*
  * Writes the .pptx files that fixtures.yaml lists, each built from its deck in
  * decks.yaml by deck.ts. The renderer's fixtures test fails when a committed
- * file differs from what this writes.
+ * file differs from what this writes. python-pptx.pptx is the one exception:
+ * make-python-pptx.py writes it with python-pptx.
  *
  * Rewrite the committed files from the repository root with:
  *   node e2e/document-preview/fixtures/pptx/make-fixtures.mjs
