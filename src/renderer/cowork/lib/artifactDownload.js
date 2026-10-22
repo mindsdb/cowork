@@ -2,9 +2,10 @@
 //
 // Two URLs can carry the bytes, and they need DIFFERENT transports:
 //
-//   - `serveUrl` — the sidecar's stateless `/v1/artifacts/serve/...`. Desktop
-//     and the local web build have it, and a plain anchor navigation works:
-//     the native `<a download>` flow streams, no Blob in memory, no size cap.
+//   - `serveUrl`: the server's stateless `/api/v1/artifacts/serve/...`, which
+//     only a server outside org mode sets. Desktop saves it through a plain
+//     anchor navigation: the native `<a download>` flow streams, no Blob in
+//     memory, no size cap.
 //   - `draftUrl` — the authenticated `/api/v1/artifacts/drafts/...` route, set
 //     on every card with a primary file. On an org deployment it is the ONLY
 //     route to the bytes (ENG-2044) — and it cannot be a navigation: the
@@ -14,11 +15,13 @@
 //     organization boundary as JSON APIs and saves the Blob. The tradeoff is
 //     buffering: a very large .zip/.xlsm is held in memory before the save.
 //
-// Web tries `draftUrl` first, because only the fetch sees the HTTP status: a
-// true result there means the server answered 2xx, which is what lets a caller
-// say "downloaded" afterwards. The serve-URL anchor runs on web only for a card
-// with no draft URL, and it resolves true once the anchor is clicked, since a
-// navigation never reports its status. Desktop keeps the streaming anchor on
+// Web saves every file through `downloadAuthenticatedResource`, `draftUrl`
+// first and `serveUrl` when the card has no draft URL, because only the fetch
+// sees the HTTP status: a true result means the server answered 2xx, which is
+// what lets a caller say "downloaded" afterwards. An anchor navigation never
+// reports its status, so web never saves through one. The server sets both
+// URLs under /api/v1, and on web the API origin is the page origin, which is
+// what `assertPrivateApiUrl` requires. Desktop keeps the streaming anchor on
 // `serveUrl` and uses the authenticated Blob path only without one.
 //
 // `?download=1` is appended to both, but only the drafts route honours it
@@ -57,14 +60,16 @@ export async function downloadArtifactFile(artifact, { actionPath } = {}) {
   const filename = downloadFilename(rawPath, artifact?.title || 'artifact');
   const serveRel = artifact?.serveUrl || '';
   const draftRel = artifact?.draftUrl || '';
-  // Web takes the draft URL first and desktop the serve URL; see the header.
-  if (serveRel && !(host.isWeb && draftRel)) return downloadUrl(withDownloadParam(serveRel), filename);
-  if (!draftRel) return false;
+  // Desktop streams the serve URL; web fetches either URL; see the header.
+  if (serveRel && !host.isWeb) return downloadUrl(withDownloadParam(serveRel), filename);
+  const fetchRel = draftRel || serveRel;
+  if (!fetchRel) return false;
   try {
-    return await downloadAuthenticatedResource(withDownloadParam(draftRel), filename);
+    return await downloadAuthenticatedResource(withDownloadParam(fetchRel), filename);
   } catch {
-    // 401/403/network: resolve false so every caller's existing "no
-    // downloadable file" messaging fires instead of an unhandled rejection.
+    // A non-2xx answer, a URL assertPrivateApiUrl refuses, or a network
+    // error: resolve false so every caller's existing "no downloadable file"
+    // messaging fires instead of an unhandled rejection.
     return false;
   }
 }

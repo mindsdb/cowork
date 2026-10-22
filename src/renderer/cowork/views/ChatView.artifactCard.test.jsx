@@ -25,6 +25,9 @@ const showItemInFolder = vi.fn();
 const revealArtifact = vi.fn(() => Promise.resolve());
 // Async on purpose — handleDownload awaits it; see the failure-path test.
 const downloadArtifactFile = vi.fn(async () => true);
+/* The request the real download helper makes, for the serve-URL tests that
+   run it. */
+const authFetch = vi.fn();
 // A getter (not a plain property) so tests can flip web-vs-desktop per case
 // without needing a whole new mock module.
 let hostIsWeb = false;
@@ -77,7 +80,7 @@ vi.mock('../components/artifact', () => ({
 // needs to be controllable here.
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, revealArtifact: (...a) => revealArtifact(...a) };
+  return { ...actual, revealArtifact: (...a) => revealArtifact(...a), authFetch: (...a) => authFetch(...a) };
 });
 
 vi.mock('../lib/artifactDownload', () => ({
@@ -849,6 +852,59 @@ describe.each(FIXTURES.webModes)('a file with no preview on %s', (mode) => {
       selector: '.chat-artifact-card__status',
     })).toBeInTheDocument();
     expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+  });
+});
+
+/*
+ * A card whose only URL is the serve URL, as a local server sends it, through
+ * the real download helper with only authFetch stubbed. The note follows a
+ * 2xx, and a 404 shows the error instead.
+ */
+describe('a file with no preview and only a serve URL on local web', () => {
+  const SERVE = '/api/v1/artifacts/serve/general/data/data.zip';
+  const serveOnlyStep = () => fileStep('.zip', { draftUrl: '', serveUrl: SERVE });
+  let click;
+
+  beforeEach(async () => {
+    enterMode('local web');
+    authFetch.mockReset();
+    const actual = await vi.importActual('../lib/artifactDownload');
+    downloadArtifactFile.mockImplementationOnce(actual.downloadArtifactFile);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:artifact-file');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(FIXTURES.clickSurfaces.chatCard)('from the %s, saves the file after a 2xx, then shows the note', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['zip']) });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(serveOnlyStep())} />);
+
+    await clickCard[surface](user, container);
+
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledExactlyOnceWith(`http://localhost:1${SERVE}?download=1`, { signal: undefined });
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:artifact-file', download: 'data.zip' });
+  });
+
+  it.each(FIXTURES.clickSurfaces.chatCard)('from the %s, shows the error and no note after a 404', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(serveOnlyStep())} />);
+
+    await clickCard[surface](user, container);
+
+    expect(await screen.findByText('This artifact has no downloadable file yet.', {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledOnce();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(click).not.toHaveBeenCalled();
   });
 });
 

@@ -24,12 +24,16 @@ const openPath = vi.fn();
 // (review pass 2). With a promise, a dropped await turns `!(Promise)` into
 // false and the failure-path test below catches it.
 const downloadArtifactFile = vi.fn(async () => true);
+/* The request the real download helper makes, for the serve-URL tests that
+   run it. */
+const authFetch = vi.fn();
 
 vi.mock('../../api', () => ({
   fetchActiveProject: vi.fn(() => Promise.resolve(null)),
   fetchArtifacts: vi.fn(() => Promise.resolve([])),
   fetchProjects: vi.fn(() => Promise.resolve([])),
   unpublishArtifact: vi.fn(),
+  authFetch: (...a) => authFetch(...a),
 }));
 // Mutable so individual tests can flip the desktop half of the gates —
 // with a hard-coded literal, `!canOpenLocalFile` was unverifiable here.
@@ -753,6 +757,53 @@ describe.each(FIXTURES.webModes)('artifacts rail on %s', (mode) => {
     await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+});
+
+/*
+ * A row whose only URL is the serve URL, as a local server sends it, through
+ * the real download helper with only authFetch stubbed. The note follows a
+ * 2xx, and a 404 shows the error instead.
+ */
+describe('artifacts rail on local web, a file with only a serve URL', () => {
+  const SERVE = '/api/v1/artifacts/serve/general/data/data.zip';
+  const serveOnlyRow = () => fileRow('.zip', { draftUrl: '', serveUrl: SERVE });
+  let click;
+
+  beforeEach(async () => {
+    setOrgMode(false);
+    authFetch.mockReset();
+    const actual = await vi.importActual('../../lib/artifactDownload');
+    downloadArtifactFile.mockImplementationOnce(actual.downloadArtifactFile);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:artifact-file');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(FIXTURES.clickSurfaces.artifactsBox)('a %s click saves the file after a 2xx, then shows the note', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['zip']) });
+    const row = await renderRail(serveOnlyRow());
+
+    clickRail[surface](row);
+
+    await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+    expect(authFetch).toHaveBeenCalledExactlyOnceWith(`https://cowork.example${SERVE}?download=1`, { signal: undefined });
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:artifact-file', download: 'data.zip' });
+  });
+
+  it.each(FIXTURES.clickSurfaces.artifactsBox)('a %s click shows the error and no note after a 404', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    const row = await renderRail(serveOnlyRow());
+
+    clickRail[surface](row);
+
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledOnce();
+    expect(railNote().textContent).toBe('');
+    expect(click).not.toHaveBeenCalled();
   });
 });
 

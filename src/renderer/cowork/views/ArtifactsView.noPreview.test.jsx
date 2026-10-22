@@ -14,9 +14,15 @@ import { load } from 'js-yaml';
 const FIXTURES = load(readFileSync(resolve(import.meta.dirname, '../lib/artifactSurfaces.yaml'), 'utf-8'));
 
 const mocks = vi.hoisted(() => ({
-  host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn(async () => {}) },
+  host: {
+    isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn(async () => {}),
+    getApiOrigin: () => 'https://cowork.example',
+  },
   openArtifactFile: vi.fn(),
   downloadArtifactFile: vi.fn(async () => true),
+  /* The request the real download helper makes, for the serve-URL tests that
+     run it. */
+  authFetch: vi.fn(),
   canPreviewDocument: vi.fn(() => false),
   toastAdd: vi.fn(),
 }));
@@ -30,6 +36,7 @@ vi.mock('../api', () => ({
   publishTargetPath: vi.fn(),
   artifactServeUrl: (a) => (a?.serveUrl ? `https://cowork.example${a.serveUrl}` : ''),
   openArtifactFile: (...a) => mocks.openArtifactFile(...a),
+  authFetch: (...a) => mocks.authFetch(...a),
 }));
 vi.mock('../../platform/host', () => ({ host: mocks.host }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
@@ -186,6 +193,55 @@ describe.each(FIXTURES.webModes)('Live Artifacts on %s', (mode) => {
       expect(screen.queryByLabelText('Open')).toBeNull();
     });
 
+  });
+});
+
+/*
+ * A card whose only URL is the serve URL, as a local server sends it, through
+ * the real download helper with only authFetch stubbed. The note follows a
+ * 2xx, and a 404 shows the error instead.
+ */
+describe.each(FIXTURES.clickSurfaces.liveArtifacts)('Live Artifacts %s on local web, a file with only a serve URL', (surface) => {
+  const SERVE = '/api/v1/artifacts/serve/general/data/data.zip';
+  const serveOnlyCard = () => card('.zip', 'local web', { draftUrl: '', serveUrl: SERVE });
+  let click;
+
+  beforeEach(async () => {
+    enter('local web');
+    mocks.authFetch.mockReset();
+    const actual = await vi.importActual('../lib/artifactDownload');
+    mocks.downloadArtifactFile.mockImplementation(actual.downloadArtifactFile);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:artifact-file');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('saves the file after a 2xx, then shows the note', async () => {
+    mocks.authFetch.mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['zip']) });
+    renderView(surface, serveOnlyCard());
+
+    clickBody();
+
+    await vi.waitFor(() => expect(mocks.toastAdd).toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE }));
+    expect(mocks.authFetch).toHaveBeenCalledExactlyOnceWith(`https://cowork.example${SERVE}?download=1`, { signal: undefined });
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:artifact-file', download: 'data.zip' });
+  });
+
+  it('shows the error and no note after a 404', async () => {
+    mocks.authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    renderView(surface, serveOnlyCard());
+
+    clickBody();
+
+    await vi.waitFor(() => expect(mocks.toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Could not download this artifact.', type: 'danger' }),
+    ));
+    expect(mocks.authFetch).toHaveBeenCalledOnce();
+    expect(noteShown()).toBe(false);
+    expect(click).not.toHaveBeenCalled();
   });
 });
 
