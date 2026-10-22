@@ -26,12 +26,13 @@ describe('the docx build config', () => {
     expect(config.plugins).toEqual([]);
   });
 
-  it('names a notice that resolves from the repository root and carries the Zlib license text', async () => {
+  it('names a notice that resolves from the repository root and carries the Zlib license text and no code', async () => {
     const config = await buildConfig();
     const require = createRequire(join(REPO_ROOT, 'package.json'));
     expect(config.notices).toHaveLength(1);
     const text = readFileSync(require.resolve(config.notices![0]), 'utf8');
     expect(text).toContain("This software is provided 'as-is', without any express or implied");
     expect(text).toContain('3. This notice may not be removed or altered from any source distribution.');
+    expect(text).not.toContain('module.exports');
   });
 });
