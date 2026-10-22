@@ -886,7 +886,9 @@ export function ArtifactViewer({
   };
   /* The document preview's plain source and callbacks. The draft URL is made
      absolute here and versioned like the image URL, so a reload or a new
-     mtime remounts the preview with a new frame and token. */
+     mtime remounts the preview with a new frame and token. fetchFile hands
+     DocumentPreview's abort signal to fetchAuthenticatedResponse as its
+     `signal` option. */
   const documentPreview = showDocumentPreview ? {
     source: {
       url: withArtifactVersion(
@@ -896,7 +898,7 @@ export function ArtifactViewer({
       previewType: documentType,
       filename: title || 'file',
     },
-    fetchFile: fetchAuthenticatedResponse,
+    fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
     download: () => downloadArtifactFile(artifact, { actionPath }),
     openInDefaultApp: onOpenOS,
     onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, 'Could not load this file')),

@@ -215,8 +215,8 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
 
   it(`disables Edit and Review with "${PREVIEW_ONLY}", even with a text sibling to load`, async () => {
     renderViewer(artifact);
-    const edit = await screen.findByRole('tab', { name: `Edit unavailable — ${PREVIEW_ONLY}` });
-    const review = screen.getByRole('tab', { name: `Review unavailable — ${PREVIEW_ONLY}` });
+    const edit = await screen.findByRole('tab', { name: `Edit unavailable \u2014 ${PREVIEW_ONLY}` });
+    const review = screen.getByRole('tab', { name: `Review unavailable \u2014 ${PREVIEW_ONLY}` });
     expect(edit).toBeDisabled();
     expect(review).toBeDisabled();
     expect(workspaceApi.loadArtifactSource).not.toHaveBeenCalled();
@@ -255,6 +255,26 @@ describe('the document branch', () => {
 
     view.rerender(<ArtifactViewer open={false} artifact={docx} onClose={vi.fn()} onChange={vi.fn()} />);
     expect(previewFrames()).toHaveLength(0);
+  });
+
+  it('aborts the draft request still in flight on a file switch and on close', async () => {
+    fetchAuthenticatedResponse.mockImplementation(() => new Promise(() => undefined));
+    const view = renderViewer(xlsx);
+    await waitFor(() => expect(fetchAuthenticatedResponse).toHaveBeenCalledTimes(1));
+    const [firstUrl, firstOptions] = fetchAuthenticatedResponse.mock.calls[0];
+    expect(firstUrl).toContain(xlsx.draftUrl);
+    expect(firstOptions).toEqual({ signal: expect.any(AbortSignal) });
+    expect(firstOptions.signal.aborted).toBe(false);
+
+    view.rerender(<ArtifactViewer open artifact={docx} onClose={vi.fn()} onChange={vi.fn()} />);
+    await waitFor(() => expect(fetchAuthenticatedResponse).toHaveBeenCalledTimes(2));
+    expect(firstOptions.signal.aborted).toBe(true);
+    const [nextUrl, nextOptions] = fetchAuthenticatedResponse.mock.calls[1];
+    expect(nextUrl).toContain(docx.draftUrl);
+    expect(nextOptions.signal.aborted).toBe(false);
+
+    view.rerender(<ArtifactViewer open={false} artifact={docx} onClose={vi.fn()} onChange={vi.fn()} />);
+    expect(nextOptions.signal.aborted).toBe(true);
   });
 
   it('on web downloads a file it cannot preview and says so after the download succeeded', async () => {
