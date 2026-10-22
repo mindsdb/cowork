@@ -56,7 +56,8 @@ function escapeAttribute(value: string): string {
  * previewFramePolicy(scriptSha256), so no caller can widen it, and a token or
  * script text the frame can't use throws instead of building a frame.
  */
-export function buildPreviewSrcdoc({ policy, token, scriptText, scriptSha256 }: PreviewSrcdocInput): string {
+export function buildPreviewSrcdoc(input: PreviewSrcdocInput): string {
+  const { policy, token, scriptText, scriptSha256 } = input;
   if (policy !== previewFramePolicy(scriptSha256)) {
     throw new Error('buildPreviewSrcdoc takes only the frame policy for its script');
   }
