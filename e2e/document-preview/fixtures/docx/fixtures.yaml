@@ -89,6 +89,20 @@
     textIncludes:
       - A VML shape
 
+# CSS shorthands that hold a var() next to a url() aimed at a Google host, as
+# written and with the url name escaped (u\72l). Two VML rectangle styles and
+# two styles.xml values (a font in the document defaults and a color in a
+# paragraph style) carry them. A browser keeps such a shorthand's text as
+# written and reports each of its longhands as empty.
+- name: var() shorthands hiding a url()
+  file: css-shorthand-var.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Shorthands that hold a var()
+
 # A valid zip archive that holds no Word document.
 - name: not a Word document
   file: not-a-document.docx

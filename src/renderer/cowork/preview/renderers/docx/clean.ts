@@ -44,6 +44,11 @@ function loadsInCss(value: string): boolean {
  * Removes each declaration that would load a resource from a host. A custom
  * property keeps only plain tokens, since the browser keeps its text as
  * written and a var() can place it where a url() loads.
+ *
+ * A shorthand that holds a var() also keeps its text as written, escapes
+ * included, and the browser reports each of its longhands as ''. Those
+ * longhands go too when the block's text holds a backslash or still loads
+ * something.
  */
 function cleanDeclarations(style: CSSStyleDeclaration): void {
   const names = Array.from({ length: style.length }, (_, index) => style.item(index));
@@ -51,6 +56,11 @@ function cleanDeclarations(style: CSSStyleDeclaration): void {
     const value = style.getPropertyValue(name);
     const loads = name.startsWith('--') ? /[\\(]/.test(value) : loadsInCss(value);
     if (loads) style.removeProperty(name);
+  }
+  const pending = Array.from({ length: style.length }, (_, index) => style.item(index))
+    .filter((name) => !name.startsWith('--') && style.getPropertyValue(name) === '');
+  if (pending.length > 0 && (style.cssText.includes('\\') || loadsInCss(style.cssText))) {
+    for (const name of pending) style.removeProperty(name);
   }
 }
 
