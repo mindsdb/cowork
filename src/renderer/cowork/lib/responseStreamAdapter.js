@@ -542,15 +542,21 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // placeholder back.
   if (type === 'response.first_take.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
-    if (!delta || state.firstTake?.cleared || state.status === 'done' || state.status === 'error') return state;
+    if (!delta || state.firstTake?.cleared || state.firstTake?.ended || state.status === 'done' || state.status === 'error') return state;
     return { ...state, firstTake: { text: (state.firstTake?.text || '') + delta, done: false } };
   }
   if (type === 'response.first_take.done') {
     if (!state.firstTake || state.firstTake.cleared) return state;
     return { ...state, firstTake: { ...state.firstTake, done: true } };
   }
+  // The server has stopped writing the take. It does not decide when the take
+  // leaves the screen: that is the answer starting, a question, or the turn's
+  // end, all handled here. An older server sends this on Anton's first
+  // narration, which must not take the take away with it (ENG-3554), so it
+  // only ends the text: no later frame can add to it.
   if (type === 'response.first_take.cleared') {
-    return { ...state, firstTake: CLEARED_TAKE };
+    if (!state.firstTake || state.firstTake.cleared) return state;
+    return { ...state, firstTake: { ...state.firstTake, done: true, ended: true } };
   }
 
   // Anton's completion verifier forced a continuation, so the text that

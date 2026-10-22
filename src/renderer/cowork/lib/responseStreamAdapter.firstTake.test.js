@@ -30,8 +30,23 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
   });
 
-  it('goes on the server clear, and nothing late brings it back', () => {
+  it("stays on the server's clear, which only stops it growing (ENG-3554)", () => {
     const state = reduceAll([created, take('Checking.'), cleared, take(' more'), takeDone]);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('Checking.');
+  });
+
+  it("an older server's clear on Anton's narration doesn't take it away (ENG-3554)", () => {
+    // That server clears the take right before Anton's first words.
+    const state = reduceAll([
+      created, take("I'll build that game for you."), cleared, text("I'll create a hybrid game."),
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 't1' },
+    ]);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe("I'll build that game for you.");
+    expect(state.steps[0]).toEqual(expect.objectContaining({ badge: 'Note', label: "I'll create a hybrid game." }));
+  });
+
+  it('after the clear, the answer still takes its place', () => {
+    const state = reduceAll([created, take('Checking.'), cleared, text('# Results\n\nAll good.')]);
     expect(visibleFirstTake(state.firstTake)).toBeNull();
   });
 
