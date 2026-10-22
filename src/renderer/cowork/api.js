@@ -455,6 +455,13 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
 /** Default page size for the paginated /items envelope. Matches
  * the server's own default so the two agree without either side needing to
  * repeat the number. */
@@ -506,9 +513,11 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
   //
   // Only warmed when a caller is actually listening. Seven of the eight
   // `fetchSessions` call sites want the list and nothing else (every task
@@ -516,27 +525,36 @@ export async function fetchSessions({ onItems } = {}) {
   // every one away, which is 50 wasted requests on the app's most common
   // interaction.
   if (onItems) {
-    for (const c of conversations.slice(0, EAGER)) {
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
       // Bounded like every other transcript fetch. Warming the FULL history of
       // the 50 most recent conversations moved the unbounded fetch from
       // task-open to startup rather than removing it — and it pre-filled a long
       // conversation so completely that neither the loading state nor
       // "load earlier" ever engaged for the tasks most likely to be opened.
       req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
-        .then((r) => {
-          const page = _pageFromItemsResponse(r);
-          onItems(c.id, _hydrateAssistantEvents(page.items), {
-            hasMoreMessages: page.hasMore,
-            messagesCursor: page.nextBefore,
-          });
-        })
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
         .catch(() => {});
-    }
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
   }
 
   // Guarded: the outer try/catch that used to wrap this whole function is gone,
