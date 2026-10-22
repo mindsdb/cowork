@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
@@ -551,7 +552,7 @@ export async function fetchSessions({ onItems } = {}) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
         // eslint-disable-next-line no-console
-        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        diagnostic("renderer.cowork.api", "WARNING", "fetchsessions_skipped_a_malformed_conversation_row", '[fetchSessions] skipped a malformed conversation row', c?.id, err);
         return null;
       }
     })
@@ -1919,12 +1920,12 @@ export async function fetchDatasources() {
 // retired ConnectView still imports them; they are unreachable in the
 // current routing. Remove when ConnectView is fully deleted.
 export async function saveDatasource(_payload) {
-  console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "savedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'saveDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { ok: true };
 }
 
 export async function validateDatasource(_payload) {
-  console.warn('validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "validatedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'validateDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { valid: true };
 }
 

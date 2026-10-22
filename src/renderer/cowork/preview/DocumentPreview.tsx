@@ -49,6 +49,7 @@ export interface DocumentPreviewProps {
 
 export const PREVIEW_FAILED_NOTE = "Couldn't preview this file";
 export const PREVIEW_FAILED_DOWNLOADED_NOTE = "Couldn't preview this file; downloaded instead.";
+export const DOWNLOAD_FAILED_NOTE = "Couldn't download this file.";
 
 const MIB = 1024 * 1024;
 
@@ -109,6 +110,34 @@ function PreviewFailure({ code, download, openInDefaultApp }: FailureProps) {
       {host.isWeb
         ? downloaded === false && <Button onClick={save}>Download</Button>
         : <Button onClick={openInDefaultApp}>Open</Button>}
+    </div>
+  );
+}
+
+interface TruncationBarProps {
+  previewType: DocumentPreviewType;
+  download(): Promise<boolean>;
+  openInDefaultApp(): void;
+}
+
+/* Says what the preview left out and offers the whole file. On web a failed
+   download says so beside the button, which stays for a retry; the viewer's
+   own error would replace the frame, so the bar keeps the message itself. */
+function TruncationBar({ previewType, download, openInDefaultApp }: TruncationBarProps) {
+  const [saveFailed, setSaveFailed] = useState(false);
+  const save = () => {
+    setSaveFailed(false);
+    download().then((ok) => setSaveFailed(!ok), () => setSaveFailed(true));
+  };
+  return (
+    <div className="document-preview-truncated" role="note">
+      <span>{truncationLine(previewType, host.isWeb)}</span>
+      {host.isWeb && saveFailed && (
+        <span className="document-preview-truncated-error" role="alert">{DOWNLOAD_FAILED_NOTE}</span>
+      )}
+      <Button onClick={host.isWeb ? save : openInDefaultApp}>
+        {host.isWeb ? 'Download' : 'Open'}
+      </Button>
     </div>
   );
 }
@@ -179,12 +208,7 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
         </div>
       )}
       {summary?.truncated && (
-        <div className="document-preview-truncated" role="note">
-          <span>{truncationLine(source.previewType, host.isWeb)}</span>
-          <Button onClick={host.isWeb ? () => { void download(); } : openInDefaultApp}>
-            {host.isWeb ? 'Download' : 'Open'}
-          </Button>
-        </div>
+        <TruncationBar previewType={source.previewType} download={download} openInDefaultApp={openInDefaultApp} />
       )}
     </>
   );

@@ -159,6 +159,34 @@ describe('startPreviewFrame handshake', () => {
     expect(context!.limits.maxPdfCanvasPixels).toBe(16_777_216);
     expect(context!.signal.aborted).toBe(false);
   });
+
+  /* Renderers stop on ctx.signal, and pagehide is what aborts it when the
+     frame goes away mid-render. */
+  it('aborts ctx.signal when the frame window hides', async () => {
+    const token = newPreviewToken();
+    const { win } = frameWindow(token);
+    let context: RendererContext | null = null;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const rendering = new Promise<void>((resolve) => { started = resolve; });
+    startPreviewFrame(renderer(async (_bytes, ctx) => {
+      context = ctx;
+      started();
+      await held;
+      return SUMMARY;
+    }), win);
+    const session = sendPort(win, token);
+    sendDocument(session, token, new ArrayBuffer(1));
+    await rendering;
+
+    expect(context!.signal.aborted).toBe(false);
+    win.dispatchEvent(new Event('pagehide'));
+    expect(context!.signal.aborted).toBe(true);
+
+    release();
+    await session.next();
+  });
 });
 
 describe('render outcomes', () => {

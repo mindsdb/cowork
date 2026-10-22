@@ -41,6 +41,7 @@ vi.mock('./DocumentPreviewFrame', async () => {
 
 import {
   DocumentPreview,
+  DOWNLOAD_FAILED_NOTE,
   PREVIEW_FAILED_DOWNLOADED_NOTE,
   PREVIEW_FAILED_NOTE,
   PREVIEW_FAILURE_REASONS,
@@ -204,6 +205,54 @@ describe('a truncated render', () => {
     act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+  });
+
+  async function truncatedOnWeb(download: DocumentPreviewProps['download']) {
+    const view = mount({ download });
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
+    return view;
+  }
+
+  it('on web downloads the file from the bar and shows no message when the download succeeded', async () => {
+    const { props } = await truncatedOnWeb(vi.fn(async () => true));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(props.download).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(DOWNLOAD_FAILED_NOTE)).toBeNull();
+  });
+
+  it('on web says the download failed beside the button, keeps the frame, and clears the message on a retry that succeeds', async () => {
+    const download = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await truncatedOnWeb(download);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(screen.getByRole('note')).toHaveTextContent(DOWNLOAD_FAILED_NOTE);
+    expect(screen.getByTitle('Preview of report.xlsx')).toBeInTheDocument();
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(DOWNLOAD_FAILED_NOTE)).toBeNull();
+  });
+
+  it('on web drops the failed-download message while a retry is still downloading', async () => {
+    const retry = deferred<boolean>();
+    const download = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockReturnValueOnce(retry.promise);
+    await truncatedOnWeb(download);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(screen.getByRole('note')).toHaveTextContent(DOWNLOAD_FAILED_NOTE);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(DOWNLOAD_FAILED_NOTE)).toBeNull();
+
+    await act(async () => { retry.resolve(false); });
+    expect(screen.getByRole('note')).toHaveTextContent(DOWNLOAD_FAILED_NOTE);
+  });
+
+  it('on web says the download failed when the download threw', async () => {
+    await truncatedOnWeb(vi.fn(async () => { throw new Error('offline'); }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(screen.getByRole('note')).toHaveTextContent(DOWNLOAD_FAILED_NOTE);
+    expect(screen.getByTitle('Preview of report.xlsx')).toBeInTheDocument();
   });
 });
 

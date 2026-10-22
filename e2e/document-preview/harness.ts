@@ -231,7 +231,9 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
   /* Requests are recorded where they reach the network layer, so a load the
      browser refused under the frame policy, which never left the page, is not
      one. A request for another origin is recorded and then stopped, so a
-     failing spec never reaches a real outside host. */
+     failing spec never reaches a real outside host. The route is on the
+     page's context rather than the page, because a page route never sees
+     the first request of a popup the frame opens. */
   const record = (route: Route) => {
     const url = route.request().url();
     requests.push(url);
@@ -247,7 +249,7 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
     if (frame.parentFrame() === page.mainFrame() && url !== '' && url !== 'about:srcdoc') navigations.push(url);
   };
   page.on('framenavigated', noteNavigation);
-  await page.route('**/*', record);
+  await page.context().route('**/*', record);
   try {
     const outcome = await page.evaluate(
       ([fixtureSet, file]) => window.coworkPreviewHarness!.open(fixtureSet, file),
@@ -258,7 +260,13 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
          navigation was seen. */
       return { ...outcome, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc' };
     }
-    const frame = await previewFrame(page);
+    /* A frame that navigated before it reported, on both mounts, ends
+       removed with internal. The throw then names that outcome and the
+       recorded navigations, which are the cause. */
+    const frame = await previewFrame(page).catch((error: Error) => {
+      const seen = navigations.length ? navigations.join(', ') : 'none';
+      throw new Error(`${error.message} The run ended ${outcome.errorCode ?? outcome.outcome}; recorded navigations: ${seen}.`);
+    });
     const stray = await frame.evaluate(strayFrameDirectives);
     if (stray.length) throw new Error(`The preview frame holds ${stray.join(', ')}, which acts with no click.`);
     const text = await frame.evaluate(() => document.body.innerText);
@@ -268,7 +276,7 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
     return { ...outcome, text, requests: [...requests], frameUrlAfterClicks };
   } finally {
     page.off('framenavigated', noteNavigation);
-    await page.unroute('**/*', record);
+    await page.context().unroute('**/*', record);
   }
 }
 

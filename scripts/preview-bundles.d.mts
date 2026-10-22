@@ -64,3 +64,4 @@ export declare function generatePreviewBundles(
   options?: GeneratePreviewBundlesOptions,
 ): Promise<{ types: string[]; outDir: string }>;
 export declare function setup(): Promise<void>;
+export declare function teardown(): void;

@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 import { useState, useEffect, useRef } from 'react';
 import { host, getAccessToken } from '../../platform/host';
 import { trackKeyProvisioningRefused } from '../lib/analytics';
@@ -63,7 +64,7 @@ export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refr
         const finalizeResult = await host.mindshubFinalize();
         if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
       } catch (e) {
-        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
+        diagnostic("renderer.cowork.hooks.useSso", "WARNING", "sso_finalize_failed_after_sign_in_account_is_authenticated", '[sso] finalize failed after sign-in (account is authenticated):', e);
       }
       refreshData();
     } finally {

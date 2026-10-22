@@ -53,10 +53,12 @@ const NOTICE_FILE = /^(?:licen[cs]e|notice)/i;
 const PACKAGE_NOTICE_FILES = new Map([['pako', ['lib/zlib/README']]]);
 
 /* Text a frame bundle must not hold. The first two end or confuse the inline
-   <script>; NUL changes under the HTML parser; the next three reach for Node or
-   a module loader that the frame doesn't have. The last is the stand-in Vite
-   gives a Node built-in module outside production builds, so a bundle holding
-   it would differ between the dev server or Vitest and the build that ships. */
+   <script>; NUL changes under the HTML parser; the next four reach for Node or
+   a module loader that the frame doesn't have. The require( rule skips a
+   property call such as x.require(, which is no loader. The last is the
+   stand-in Vite gives a Node built-in module outside production builds, so a
+   bundle holding it would differ between the dev server or Vitest and the
+   build that ships. */
 const FORBIDDEN_SCRIPT_TEXT = [
   { label: '</script', pattern: /<\/script/i },
   { label: '<script', pattern: /<script/i },
@@ -64,6 +66,7 @@ const FORBIDDEN_SCRIPT_TEXT = [
   { label: 'a leftover process.', pattern: /\bprocess\./ },
   { label: 'import(', pattern: /\bimport\s*\(/ },
   { label: 'import.meta', pattern: /\bimport\s*\.\s*meta\b/ },
+  { label: 'a leftover require(', pattern: /(?<![.\w$])require\s*\(/ },
   { label: "Vite's development stand-in for a Node module", pattern: /has been externalized for browser compatibility/ },
 ];
 
@@ -169,7 +172,13 @@ export async function buildPreviewBundle({
     root: repoRoot,
     publicDir: false,
     plugins,
-    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+    /* Vite sets import.meta.env.DEV and PROD from the NODE_ENV of the process
+       that runs the build, so they are pinned with it. */
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'import.meta.env.DEV': 'false',
+      'import.meta.env.PROD': 'true',
+    },
     resolve: {
       alias: [
         { find: new RegExp(`^${RENDERER_SPECIFIER}$`), replacement: renderPath },
@@ -196,6 +205,18 @@ export async function buildPreviewBundle({
       sourcemap: false,
       minify: true,
       reportCompressedSize: false,
+      /* Rolldown swaps each import.meta in an IIFE for {} and only logs
+         EMPTY_IMPORT_META, which logLevel 'silent' hides, so the text check
+         never sees it. Vite still calls onLog under 'silent', so that log
+         fails the build here. */
+      rolldownOptions: {
+        onLog(level, log, handler) {
+          if (log.code === 'EMPTY_IMPORT_META') {
+            throw new Error(`preview bundle ${type}: ${log.id ?? 'a module'} uses import.meta, which the IIFE would replace with {}`);
+          }
+          handler(level, log);
+        },
+      },
       lib: {
         entry: runtimeEntry,
         formats: ['iife'],
@@ -345,14 +366,27 @@ export async function generatePreviewBundles({
 }
 
 /* Vitest's globalSetup entry: the generated folder exists before any test
-   file imports it. */
+   file imports it. Vitest calls it once per project, each project inheriting
+   the root's globalSetup, all in one process, so the first run is kept and
+   the later calls wait on it. It returns nothing, since Vitest refuses a
+   setup that returns anything but a teardown function. */
+let generated;
 export async function setup() {
-  await generatePreviewBundles();
+  await (generated ??= generatePreviewBundles());
+}
+
+/* A watch-mode restart builds a new Vitest in the same process, where this
+   module stays loaded, so the memo is cleared when each run closes. */
+export function teardown() {
+  generated = undefined;
 }
 
 /* Run as a script by the npm hooks. No top-level await, so a Vite config
-   that imports this module can still be bundled as CommonJS. */
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+   that imports this module can still be bundled as CommonJS. The name check
+   matches the other scripts here: it holds when the path runs through a
+   symlink, which Node's loader resolves for import.meta.url but not for
+   argv. */
+if (process.argv[1]?.endsWith('preview-bundles.mjs')) {
   generatePreviewBundles().then(({ types, outDir }) => {
     console.log(`preview bundles: ${types.length ? types.join(', ') : 'no renderers'} -> ${path.relative(REPO_ROOT, outDir)}`);
   }, (error) => {

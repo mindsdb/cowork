@@ -75,6 +75,11 @@ describe('message shapes', () => {
     expect(message?.type === 'error' && message.detail?.length).toBe(MAX_ERROR_DETAIL_LENGTH);
   });
 
+  /* too-large and timeout belong to the parent, so the frame never sends them. */
+  it.each(['too-large', 'timeout'])('drops a frame error with the parent-owned code %s', (code) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code }, TOKEN)).toBeNull();
+  });
+
   it('drops a document whose bytes are not an ArrayBuffer', () => {
     expect(readParentToFrame({ token: TOKEN, type: 'document', previewType: 'pdf', bytes: 'abc' }, TOKEN)).toBeNull();
   });

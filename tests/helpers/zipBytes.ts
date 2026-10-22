@@ -30,6 +30,9 @@ export interface ZipEntryInput {
   dataDescriptor?: boolean;
   /* Adds a ZIP64 extra field holding the true sizes to that header. */
   zip64Extra?: 'central' | 'local';
+  /* Bytes the directory record carries as its comment, such as a whole
+     record a reader that starts elsewhere finds. */
+  centralComment?: Uint8Array;
 }
 
 export interface ZipOptions {
@@ -39,6 +42,12 @@ export interface ZipOptions {
   lead?: Uint8Array;
   /* The entry count the end record states, when it should lie. */
   statedEntries?: number;
+  /* The directory size the end record states, when it should lie. */
+  statedDirectorySize?: number;
+  /* The disk numbers the end record states instead of 0: the disk it is on,
+     and the disk the directory starts on. */
+  statedDiskNumber?: number;
+  statedDirectoryDisk?: number;
   /* Puts the first `endRecordCopy` bytes of a copy of the end record after
      it. */
   endRecordCopy?: number;
@@ -79,7 +88,10 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
 
 export function zipBytes(
   entries: readonly ZipEntryInput[],
-  { prefix = new Uint8Array(0), lead = new Uint8Array(0), statedEntries, endRecordCopy }: ZipOptions = {},
+  {
+    prefix = new Uint8Array(0), lead = new Uint8Array(0), statedEntries, statedDirectorySize, statedDiskNumber = 0,
+    statedDirectoryDisk = 0, endRecordCopy,
+  }: ZipOptions = {},
 ): ArrayBuffer {
   const parts: Uint8Array[] = [];
   const directory: Uint8Array[] = [];
@@ -98,6 +110,7 @@ export function zipBytes(
       : { ...centralSizes, ...entry.localSizes };
     const centralExtra = entry.zip64Extra === 'central' ? zip64Field(trueSizes) : new Uint8Array(0);
     const localExtra = entry.zip64Extra === 'local' ? zip64Field(trueSizes) : new Uint8Array(0);
+    const centralComment = entry.centralComment ?? new Uint8Array(0);
     const local = header(30, (view) => {
       view.setUint32(0, LOCAL_HEADER, true);
       view.setUint16(4, 20, true);
@@ -130,9 +143,10 @@ export function zipBytes(
       view.setUint32(24, centralSizes.uncompressed, true);
       view.setUint16(28, name.length, true);
       view.setUint16(30, centralExtra.length, true);
+      view.setUint16(32, centralComment.length, true);
       view.setUint32(38, entry.externalAttributes ?? 0, true);
       view.setUint32(42, offset, true);
-    }), name, centralExtra);
+    }), name, centralExtra, centralComment);
     const record = [local, localName, localExtra, body, descriptor];
     parts.push(...record);
     offset += record.reduce((sum, part) => sum + part.length, 0);
@@ -141,9 +155,11 @@ export function zipBytes(
   const count = statedEntries ?? entries.length;
   const end = header(22, (view) => {
     view.setUint32(0, END_RECORD, true);
+    view.setUint16(4, statedDiskNumber, true);
+    view.setUint16(6, statedDirectoryDisk, true);
     view.setUint16(8, count, true);
     view.setUint16(10, count, true);
-    view.setUint32(12, directorySize, true);
+    view.setUint32(12, statedDirectorySize ?? directorySize, true);
     view.setUint32(16, offset, true);
   });
   const endCopy = end.subarray(0, endRecordCopy ?? 0);

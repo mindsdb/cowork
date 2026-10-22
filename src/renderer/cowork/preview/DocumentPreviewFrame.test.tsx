@@ -231,6 +231,31 @@ describe('a frame that loads again', () => {
     expect(frames(container)).toHaveLength(0);
   });
 
+  /* A rebuilt frame that rendered and then navigated again must not stay on
+     screen under its rendered summary. happy-dom fires each srcdoc frame's
+     first load by itself, so each tick here stands in for that first load. */
+  it('is removed with internal on the next load even after the rebuilt frame rendered', async () => {
+    const { container, props } = mount();
+    await tick();
+    const [first] = frames(container);
+    act(() => { first.dispatchEvent(new Event('load')); });
+    await tick();
+
+    const [rebuilt, ...others] = frames(container);
+    expect(others).toHaveLength(0);
+    expect(rebuilt).not.toBe(first);
+    const { port } = handshake(rebuilt);
+    port.postMessage({ token: tokenOf(rebuilt), type: 'rendered', summary: SUMMARY });
+    await tick();
+    expect(props.onRendered).toHaveBeenCalledWith(SUMMARY);
+    expect(frames(container)).toHaveLength(1);
+    expect(props.onError).not.toHaveBeenCalled();
+
+    act(() => { rebuilt.dispatchEvent(new Event('load')); });
+    expect(frames(container)).toHaveLength(0);
+    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+  });
+
   it('drops the old token after the rebuild', () => {
     const { container } = mount();
     const [first] = frames(container);

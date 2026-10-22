@@ -136,14 +136,17 @@ export function DocumentPreviewFrame({
       const documentMessage: ParentToFrame = { token, type: 'document', previewType, bytes: copy };
       channel.port1.postMessage(documentMessage, [copy]);
     };
+    /* A second load ends this frame whether or not it already settled, so a
+       frame that rendered and then navigated is never left in the viewer. */
     const onLoad = () => {
       loads += 1;
       if (loads < 2) return;
+      settle();
       if (mount.rebuilt) {
-        remove('internal', 'The preview frame loaded again after its rebuild.');
+        setRemoved(true);
+        handlers.current.onError('internal', 'The preview frame loaded again after its rebuild.');
         return;
       }
-      settle();
       setMount({ token: newPreviewToken(), rebuilt: true });
     };
     window.addEventListener('message', onWindowMessage);

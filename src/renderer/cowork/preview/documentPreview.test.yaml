@@ -43,6 +43,7 @@ forbiddenScriptText:
   - { label: a leftover process., text: "a=process.env.HOME" }
   - { label: "import(", text: "a=import ('./other.js')" }
   - { label: import.meta, text: "a=import.meta.url" }
+  - { label: "a leftover require(", text: "a=require(b)" }
   - label: Vite's development stand-in for a Node module
     text: "console.warn('Module \"stream\" has been externalized for browser compatibility.')"
 
@@ -51,6 +52,10 @@ allowedScriptText:
   - "a=typeof process"
   - "a={important:1}"
   - "a='<style>'"
+  - "a=typeof require"
+  - "a.require(b)"
+  - "a=$require(b)"
+  - "a=_require(b)"
 
 # The NODE_ENV of each process that runs the bundle generator: the dev server
 # sets development and Vitest sets test. The npm hooks leave it unset, which
@@ -111,6 +116,16 @@ archiveGuard:
       entries:
         - { name: xl/workbook.xml, size: 1024, dataDescriptor: true }
       names: [xl/workbook.xml]
+    # Info-ZIP writes this local header when its output is a pipe.
+    - case: a deflated entry with a data descriptor whose local header keeps its uncompressed size
+      entries:
+        - { name: xl/workbook.xml, size: 1024, dataDescriptor: true, localSizes: { uncompressed: 1024 } }
+      names: [xl/workbook.xml]
+    - case: a %PDF lead the offsets count
+      entries:
+        - { name: xl/workbook.xml, size: 1024 }
+      archive: { lead: "%PDF-1.4\n" }
+      names: [xl/workbook.xml]
   # Shapes two zip readers read differently: SheetJS's own zip reader inflates
   # data that JSZip drops, cuts short or never finds. The guard refuses each
   # with parse-failed before a renderer reads it.
@@ -137,6 +152,21 @@ archiveGuard:
     - case: a local header that states other sizes
       entries:
         - { name: xl/bomb.xml, size: 1024, localSizes: { uncompressed: 104857600 } }
+    - case: a larger local compressed size on a stored entry with a data descriptor
+      entries:
+        - { name: xl/bomb.xml, size: 1024, store: true, dataDescriptor: true, localSizes: { compressed: 2048 } }
+    - case: a kept local uncompressed size on a stored entry with a data descriptor
+      entries:
+        - { name: xl/bomb.xml, size: 1024, store: true, dataDescriptor: true, localSizes: { uncompressed: 1024 } }
+    - case: a deflated entry with a data descriptor whose local header states a larger uncompressed size
+      entries:
+        - { name: xl/bomb.xml, size: 1024, dataDescriptor: true, localSizes: { uncompressed: 2048 } }
+    - case: a local header that states 0 for both sizes without the data descriptor flag
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { compressed: 0, uncompressed: 0 } }
+    - case: a deflated entry whose local header states 0 for its compressed size without the data descriptor flag
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { compressed: 0 } }
     - case: a local header that states another name
       entries:
         - { name: xl/workbook.xml, size: 1024, localName: xl/bomb.xml }
@@ -150,6 +180,12 @@ archiveGuard:
       entries:
         - { name: xl/bomb.xml, size: 1024 }
       archive: { lead: "PK\x07\x08", endRecordCopy: 20 }
+    # Not a shape the readers read differently: both read the same bytes. No
+    # zip writer makes it, and the guard refuses it itself instead of relying
+    # on JSZip failing to read past the end of the file.
+    - case: stored data that runs into the central directory
+      entries:
+        - { name: xl/workbook.xml, size: 4, store: true, centralSizes: { compressed: 14, uncompressed: 14 } }
   # Archive options for a directory of one more record than maxZipEntries, each
   # an empty stored entry. JSZip reads central records for as long as their
   # signature follows, whatever the end record counts, and shifts its start

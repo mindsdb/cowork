@@ -784,6 +784,7 @@ describe('useArtifactWorkspace previewOnly', () => {
 
     await waitFor(() => expect(result.current.status).toBe('unsupported'));
     expect(result.current.unsupportedReason).toBe(PREVIEW_ONLY);
+    expect(result.current.previewOnly).toBe(true);
     expect(result.current.source).toBeNull();
     expect(result.current.currentRevision).toBeNull();
     await act(() => result.current.load());
@@ -791,6 +792,13 @@ describe('useArtifactWorkspace previewOnly', () => {
     expect(api.loadArtifactSource).not.toHaveBeenCalled();
     expect(api.loadArtifactReview).not.toHaveBeenCalled();
     expect(api.enableDraftComments).not.toHaveBeenCalled();
+  });
+
+  it('returns previewOnly false for an editable artifact', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.previewOnly).toBe(false);
   });
 
   it('reads Preview only: Cowork can\'t edit this file type.', () => {

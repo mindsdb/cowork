@@ -55,3 +55,8 @@
   color: var(--ink-3);
   font: 12.5px/1.4 var(--font-body);
 }
+/* A failed Download's message sits beside the button it retries. */
+.document-preview-truncated-error {
+  margin-left: auto;
+  color: var(--danger);
+}

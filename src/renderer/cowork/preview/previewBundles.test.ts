@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +24,7 @@ const data = documentPreviewData();
 const GENERATED_DIR = path.join(__dirname, 'generated');
 const PUBLIC_DIR = path.join(__dirname, '../../public');
 const NODE_MODULES = path.join(__dirname, '../../../../node_modules');
+const SCRIPTS_DIR = path.join(__dirname, '../../../../scripts');
 
 /* A renderer whose text holds `marker`, so a test can find it in its bundle. */
 function rendererSource(type: string, line = "ctx.root.title = 'MARKER';"): string {
@@ -39,6 +42,16 @@ function tempDir(): string {
 function writeRenderer(renderersDir: string, type: string, files: Record<string, string>): void {
   mkdirSync(path.join(renderersDir, type), { recursive: true });
   for (const [name, text] of Object.entries(files)) writeFileSync(path.join(renderersDir, type, name), text);
+}
+
+/* Copies the named scripts into `root`/scripts, so the generator's default
+   folders (renderers, generated, public) all sit under `root` and a test never
+   touches the checkout's. `root`/node_modules links to the checkout's, so the
+   copy can import Vite. */
+function scriptsUnder(root: string, names = ['preview-bundles.mjs']): void {
+  mkdirSync(path.join(root, 'scripts'), { recursive: true });
+  for (const name of names) copyFileSync(path.join(SCRIPTS_DIR, name), path.join(root, 'scripts', name));
+  symlinkSync(NODE_MODULES, path.join(root, 'node_modules'), 'junction');
 }
 
 function readGenerated(outDir: string, name: string): string {
@@ -132,13 +145,36 @@ describe('frame bundle builds', () => {
       .rejects.toThrow('exactly one chunk');
   });
 
+  /* Rolldown swaps import.meta for {} in an IIFE, so the text check alone never
+     sees it, and new URL(..., {}.url) throws in the frame. */
+  it('fails a renderer that uses import.meta', async () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, 'render.ts'), rendererSource('pdf', "ctx.root.title = new URL('./x.bin', import.meta.url).href;"));
+    await expect(buildPreviewBundle({ type: 'pdf', renderPath: path.join(dir, 'render.ts') }))
+      .rejects.toThrow('uses import.meta, which the IIFE would replace with {}');
+  });
+
+  /* The import.meta hook hands every other log on to Vite, whose handler fails
+     an import nothing resolves. Without it the IIFE reads a global of that
+     name, which throws in the frame. */
+  it('fails a renderer that imports a package that does not exist', async () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, 'render.ts'), `import missing from 'no-such-package';\n${rendererSource('pdf', 'ctx.root.title = String(missing);')}`);
+    await expect(buildPreviewBundle({ type: 'pdf', renderPath: path.join(dir, 'render.ts') }))
+      .rejects.toThrow('failed to resolve import "no-such-package"');
+  });
+
   /* The harness's dev server and Vitest build the bundles they load in their
      own process, so a bundle that changed with NODE_ENV would ship bytes they
      never tested. JSZip in the runtime pulls in Node's stream module, whose
-     Vite stand-in changes with it unless the generator resolves it. */
-  it('builds the same script text under every NODE_ENV that runs the generator', async () => {
+     Vite stand-in changes with it unless the generator resolves it, and Vite
+     sets import.meta.env.DEV from it unless the generator pins it. */
+  it.each([
+    ['a plain renderer', rendererSource('pdf')],
+    ['a renderer that reads import.meta.env.DEV', rendererSource('pdf', 'ctx.root.title = String(import.meta.env.DEV);')],
+  ])('builds the same script text for %s under every NODE_ENV that runs the generator', async (_, source) => {
     const dir = tempDir();
-    writeFileSync(path.join(dir, 'render.ts'), rendererSource('pdf'));
+    writeFileSync(path.join(dir, 'render.ts'), source);
     const texts = new Set<string>();
     for (const nodeEnv of data.bundleNodeEnvs) {
       vi.stubEnv('NODE_ENV', nodeEnv);
@@ -256,6 +292,60 @@ describe('generatePreviewBundles', () => {
     const root = tempDir();
     writeRenderer(path.join(root, 'renderers'), 'pdf', { 'render.ts': rendererSource('pdf'), 'build.config.mjs': source });
     await expect(generateUnder(root).run()).rejects.toThrow(error);
+  });
+});
+
+describe('the script and globalSetup entries', () => {
+  /* Node's loader resolves the symlink for import.meta.url but leaves argv as
+     typed, so a check that compares the two never runs the generator. */
+  it('generates when run as a script through a symlinked path', () => {
+    const root = tempDir();
+    scriptsUnder(path.join(root, 'repo'));
+    symlinkSync(path.join(root, 'repo'), path.join(root, 'link'), 'junction');
+    const run = spawnSync(process.execPath, [path.join(root, 'link/scripts/preview-bundles.mjs')], { encoding: 'utf8' });
+
+    expect(run.stderr).toBe('');
+    expect(run.stdout).toContain('preview bundles: no renderers');
+    expect(existsSync(path.join(root, 'repo/src/renderer/cowork/preview/generated/registry.ts'))).toBe(true);
+  });
+
+  it('does not generate when verify-preview-build.mjs imports it', () => {
+    const root = tempDir();
+    scriptsUnder(root, ['preview-bundles.mjs', 'verify-preview-build.mjs']);
+    const run = spawnSync(process.execPath, [path.join(root, 'scripts/verify-preview-build.mjs'), path.join(root, 'dist')], { encoding: 'utf8' });
+
+    expect(run.stderr).toContain(`has no ${NOTICES_FILE}`);
+    expect(existsSync(path.join(root, 'src'))).toBe(false);
+  });
+
+  /* Vitest calls setup() once per project in one process. */
+  it('runs the generator once however many times setup() is called', async () => {
+    const root = tempDir();
+    scriptsUnder(root);
+    const generator: typeof import('../../../../scripts/preview-bundles.mjs') =
+      await import(pathToFileURL(path.join(root, 'scripts/preview-bundles.mjs')).href);
+    await generator.setup();
+    const stray = path.join(root, 'src/renderer/cowork/preview/generated/stray.txt');
+    writeFileSync(stray, '');
+    await generator.setup();
+
+    /* A second run would remove it, as it removes any file no build gives. */
+    expect(existsSync(stray)).toBe(true);
+  });
+
+  /* A watch-mode restart runs teardown() then setup() in the same process. */
+  it('runs the generator again after teardown()', async () => {
+    const root = tempDir();
+    scriptsUnder(root);
+    const generator: typeof import('../../../../scripts/preview-bundles.mjs') =
+      await import(pathToFileURL(path.join(root, 'scripts/preview-bundles.mjs')).href);
+    await generator.setup();
+    const stray = path.join(root, 'src/renderer/cowork/preview/generated/stray.txt');
+    writeFileSync(stray, '');
+    generator.teardown();
+    await generator.setup();
+
+    expect(existsSync(stray)).toBe(false);
   });
 });
 

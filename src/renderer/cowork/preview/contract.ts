@@ -71,7 +71,9 @@ export interface RendererContext {
    its offsets don't count, a name listed twice, a local header that differs
    from its directory record, or an entry that inflates to another size than
    it states. It also raises parse-failed for an entry with a ZIP64 extra
-   field, and zip-limit past the caps. In any file with an end record,
+   field, and zip-limit past the caps. An end record whose 16-bit entry count
+   is past maxZipEntries, the ZIP64 marker 0xFFFF included, also ends in
+   zip-limit. In any file with an end record,
    whatever the file starts with, it counts the central directory signatures
    before JSZip reads the file, and more than maxZipEntries of them ends it
    with zip-limit. A file the guard ends never reaches render(). So render()

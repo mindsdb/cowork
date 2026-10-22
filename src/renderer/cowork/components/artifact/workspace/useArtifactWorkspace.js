@@ -70,7 +70,9 @@ export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
  * `previewOnly` marks a file the viewer shows read-only, such as an .xlsx,
  * .docx, .pptx or .pdf file in the document preview. The hook then loads no
  * editable source, whatever the server would send for it, and names
- * PREVIEW_ONLY as the reason Edit and Review are unavailable.
+ * PREVIEW_ONLY as the reason Edit and Review are unavailable. It returns
+ * `previewOnly` too: an older card with a short id is also not `supported`,
+ * and the header needs the flag to name PREVIEW_ONLY instead of a refresh.
  */
 export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = false } = {}) {
   const supported = canUseArtifactWorkspace(artifact);
@@ -536,6 +538,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
 
   return useMemo(() => ({
     supported,
+    previewOnly,
     mode,
     setMode: changeMode,
     source,
@@ -569,7 +572,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   }), [
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, revisions, save, source, status,
     supported, unsupportedReason,
   ]);

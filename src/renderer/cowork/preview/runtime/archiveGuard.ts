@@ -13,16 +13,28 @@
  *   doesn't end where the end record starts (bytes prepended or moved, which
  *   JSZip skips and a reader that trusts the stated offsets doesn't), or an end
  *   record that counts a different number of entries than the directory holds;
+ * - an end record that states a disk number other than 0, for its own disk or
+ *   the directory's. JSZip reads 0xFFFF in either as a ZIP64 marker and reads
+ *   the directory a ZIP64 end record points to, which the guard never reads;
  * - a name listed twice;
  * - a local header that is missing, or that states another name, method or
- *   sizes than its directory record. Its sizes may both be 0 when its flags
- *   say a data descriptor follows the data;
+ *   sizes than its directory record. When its flags say a data descriptor
+ *   follows the data, both sizes may be 0, and a deflated entry's uncompressed
+ *   size may instead be the directory's, as Info-ZIP writes to a pipe, since
+ *   SheetJS sizes only its inflate buffer by it. A stored entry keeps both at
+ *   0: SheetJS reads its data by the local compressed size, so it reads such
+ *   an entry as empty where JSZip reads its data. The guard accepts that
+ *   difference, since SheetJS reads less than JSZip, not more;
  * - a ZIP64 extra field, which JSZip and SheetJS apply differently;
  * - an entry JSZip reads as a directory, and so drops, that holds data;
- * - an entry whose data runs into the central directory, whose deflate stream
- *   runs past its stated compressed size (SheetJS inflates until the stream
- *   ends, not until that size), or that inflates to another size than it
- *   states.
+ * - an entry whose deflate stream runs past its stated compressed size
+ *   (SheetJS inflates until the stream ends, not until that size), or that
+ *   inflates to another size than it states.
+ *
+ * It also refuses an entry whose data runs past the start of the central
+ * directory. No zip writer makes one, and both readers read it the same way,
+ * but refusing it means the guard never depends on JSZip failing to read
+ * past the end of the file.
  *
  * It never trusts the sizes an archive declares. It inflates the data of every
  * directory record, directories and empty entries included, counts the bytes
@@ -193,7 +205,8 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
   const extraStart = nameStart + view.getUint16(at + 26, true);
   const dataStart = extraStart + view.getUint16(at + 28, true);
   const sameSizes = compressedSize === record.compressedSize && uncompressedSize === record.uncompressedSize;
-  const sizesInDescriptor = (flags & DATA_DESCRIPTOR_FLAG) !== 0 && compressedSize === 0 && uncompressedSize === 0;
+  const sizesInDescriptor = (flags & DATA_DESCRIPTOR_FLAG) !== 0 && compressedSize === 0
+    && (uncompressedSize === 0 || (record.method === DEFLATED && uncompressedSize === record.uncompressedSize));
   if (view.getUint16(at + 8, true) !== record.method
     || !sameBytes(bytes.subarray(nameStart, extraStart), record.name)
     || !(sameSizes || sizesInDescriptor)) {
@@ -214,9 +227,10 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
 /*
  * Reads the archive's end record, central directory and local headers, and
  * returns each entry. It throws zip-limit past maxZipEntries, and parse-failed
- * when the end record is cut short, when the directory doesn't run from its
- * stated offset to the end record or holds a different number of entries than
- * the end record counts, or when checkedEntry refuses an entry.
+ * when the end record is cut short or states a disk other than 0, when the
+ * directory doesn't run from its stated offset to the end record or holds a
+ * different number of entries than the end record counts, or when
+ * checkedEntry refuses an entry.
  */
 function checkedEntries(buffer: ArrayBuffer, limits: ArchiveLimits): CheckedEntry[] {
   const bytes = new Uint8Array(buffer);
@@ -224,11 +238,16 @@ function checkedEntries(buffer: ArrayBuffer, limits: ArchiveLimits): CheckedEntr
   const end = endRecordOffset(bytes);
   if (end < 0) throw previewError('parse-failed', 'The archive has no end record.');
   if (end + END_RECORD_SIZE > bytes.length) throw previewError('parse-failed', "The archive's end record is cut short.");
+  const diskNumber = view.getUint16(end + 4, true);
+  const directoryDisk = view.getUint16(end + 6, true);
   const entriesOnDisk = view.getUint16(end + 8, true);
   const entries = view.getUint16(end + 10, true);
   const directorySize = view.getUint32(end + 12, true);
   const directoryOffset = view.getUint32(end + 16, true);
   if (Math.max(entriesOnDisk, entries) > limits.maxZipEntries) throw tooManyEntries(limits);
+  if (diskNumber !== 0 || directoryDisk !== 0) {
+    throw previewError('parse-failed', "The archive's end record states another disk.");
+  }
   if (directoryOffset + directorySize !== end) {
     throw previewError('parse-failed', "The archive's directory isn't where its end record says.");
   }
