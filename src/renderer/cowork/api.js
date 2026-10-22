@@ -458,7 +458,7 @@ const EAGER = 50;
 /** How many of those warm-up reads run at once. Every page load warms, so
  * firing all 50 together turned each reload into a 50-request burst; one
  * browser reloading staging up to 13 times a minute starved cowork-server's
- * single process with them (ENG-3682). A reload drops the reads still queued,
+ * single process with them. A reload drops the reads still queued,
  * so at most this many reach the server per load. */
 const WARM_CONCURRENCY = 4;
 
