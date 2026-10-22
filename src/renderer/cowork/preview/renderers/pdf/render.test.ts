@@ -2,10 +2,14 @@
  * The PDF renderer, run on the real pdf.js with the harness's .pdf fixtures.
  * Pages draw only as they scroll into view, which these tests never do, so
  * they cover the document options, the page layout and how render() ends.
+ * The image cap cases read page 1's operator list from the document render()
+ * opened, to see the cap take effect in pdf.js's fake worker. Their images
+ * come from render.test.yaml.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { load } from 'js-yaml';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
@@ -18,7 +22,14 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', async (importOriginal) => {
   return { ...actual, getDocument: vi.fn(actual.getDocument) };
 });
 
+interface ImageCase { file: string; pixels: number }
+interface RenderCases { images: ImageCase[] }
+
+const CASES = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/pdf');
+
+/* Every pdf.js operator that paints an image. */
+const IMAGE_PAINT_OPS = new Set(Object.entries(pdfjs.OPS).filter(([name]) => name.includes('Image')).map(([, op]) => op));
 
 function fixtureBytes(name: string): ArrayBuffer {
   const bytes = readFileSync(join(FIXTURES, name));
@@ -33,6 +44,19 @@ function context(limits: PreviewLimits = previewLimits({ touch: false }), signal
 
 function pageSlots(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>('[data-page-number]'));
+}
+
+/* Renders the file under these limits, then counts the image paints in page
+   1's operator list from the document render() opened, and stops the
+   preview. */
+async function imagePaintsOnPageOne(file: string, limits: PreviewLimits): Promise<number> {
+  const controller = new AbortController();
+  await renderer.render(fixtureBytes(file), context(limits, controller.signal));
+  const task = vi.mocked(pdfjs.getDocument).mock.results.at(-1)?.value as pdfjs.PDFDocumentLoadingTask;
+  const page = await (await task.promise).getPage(1);
+  const { fnArray } = await page.getOperatorList();
+  controller.abort();
+  return fnArray.filter((op) => IMAGE_PAINT_OPS.has(op)).length;
 }
 
 afterEach(() => {
@@ -56,6 +80,20 @@ describe('pdfDocumentParams', () => {
     const params = pdfDocumentParams(new ArrayBuffer(0), context(limits));
     expect(params.canvasMaxAreaInBytes).toBe(limits.maxPdfCanvasPixels * 4);
     expect(params.maxImageSize).toBe(limits.maxInflatedBytes / 4);
+  });
+});
+
+describe('the image cap in pdf.js\'s fake worker', () => {
+  it('runs pdf.js on this thread, through the worker module render.ts imports', () => {
+    /* pdf.js starts no Worker when globalThis.pdfjsWorker holds a
+       WorkerMessageHandler, and runs that handler as a fake worker instead. */
+    expect((globalThis as { pdfjsWorker?: { WorkerMessageHandler?: unknown } }).pdfjsWorker?.WorkerMessageHandler).toBeDefined();
+  });
+
+  it.each(CASES.images)('keeps the image in $file at the cap and drops it one pixel over', async ({ file, pixels }) => {
+    const limits = previewLimits({ touch: false });
+    await expect(imagePaintsOnPageOne(file, { ...limits, maxInflatedBytes: pixels * 4 })).resolves.toBe(1);
+    await expect(imagePaintsOnPageOne(file, { ...limits, maxInflatedBytes: (pixels - 1) * 4 })).resolves.toBe(0);
   });
 });
 
