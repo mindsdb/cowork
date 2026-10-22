@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
@@ -144,16 +145,16 @@ const CONNECT_FOLLOWUPS = [
   const ui = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?';
   const hash = typeof __GIT_HASH__ !== 'undefined' && __GIT_HASH__ ? __GIT_HASH__ : '';
   const built = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
-  console.log(
+  diagnostic("renderer.cowork.App", "INFO", "c_cowork_c_build_info",
     '%c Cowork %c Build Info ',
     'background:#7CC4B6;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px 0 0 3px',
     'background:#334;color:#eee;padding:2px 6px;border-radius:0 3px 3px 0',
   );
-  console.log(`  UI (cowork):  ${ui}${hash ? ` (${hash})` : ''}${built ? `  built ${built}` : ''}`);
+  diagnostic("renderer.cowork.App", "INFO", "ui_cowork", `  UI (cowork):  ${ui}${hash ? ` (${hash})` : ''}${built ? `  built ${built}` : ''}`);
   fetchHealth().then((h) => {
     if (!h || h.status === 'offline') return;
-    console.log(`  Server (cowork-server):  ${h.server_version || '?'}`);
-    console.log(`  Agent (anton-agent):     ${h.anton_version || '?'}`);
+    diagnostic("renderer.cowork.App", "INFO", "server_cowork_server", `  Server (cowork-server):  ${h.server_version || '?'}`);
+    diagnostic("renderer.cowork.App", "INFO", "agent_anton_agent", `  Agent (anton-agent):     ${h.anton_version || '?'}`);
   }).catch(() => {});
 }
 
@@ -1031,7 +1032,13 @@ function AppCore() {
                 // Only the most recent page — merge against what the task
                 // already has. The server never saved refused questions, so
                 // any the merge dropped go back after it.
-                const merged = mergeMessagePage(t.messages, reconciled, knownIds);
+                // With no stream of ours on it, a placeholder or live stub
+                // here is left over from opening the run while the server
+                // still listed it; the merge would carry it past the answer.
+                const local = hasLiveTurnHere(cid)
+                  ? t.messages
+                  : removeThinkingPlaceholder(stripStreaming(t.messages));
+                const merged = mergeMessagePage(local, reconciled, knownIds);
                 const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
                 return {
                   ...t,
@@ -1050,7 +1057,7 @@ function AppCore() {
       }
       return next;
     });
-  }, [abortStream]);
+  }, [abortStream, hasLiveTurnHere]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -2653,12 +2660,12 @@ function AppCore() {
     const [full, savedRaw] = await Promise.all([
       fetchConnector(connection.engine).catch((e) => {
         // eslint-disable-next-line no-console
-        console.warn('[connectors] failed to load full spec for modify', e);
+        diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_full_spec_for_modify", '[connectors] failed to load full spec for modify', e);
         return null;
       }),
       fetchSavedConnection(connection.engine, connection.name).catch((e) => {
         // eslint-disable-next-line no-console
-        console.warn('[connectors] failed to load saved connection for modify', e);
+        diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_saved_connection_for_modify", '[connectors] failed to load saved connection for modify', e);
         return null;
       }),
     ]);
@@ -2874,7 +2881,7 @@ function AppCore() {
       await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[connectors] disconnect failed', e);
+      diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
       alert(`Could not disconnect: ${e?.message || e}`);
       return;
     }
@@ -2945,7 +2952,7 @@ function AppCore() {
       full = await fetchConnector(connector.id);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[connectors] failed to load full spec, falling back to chat', e);
+      diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_full_spec_falling_back_to_chat", '[connectors] failed to load full spec, falling back to chat', e);
     }
 
     const label = full?.label || connector.label || connector.id;
@@ -3435,7 +3442,7 @@ function AppCore() {
       return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[ensureGeneralProject] could not bootstrap general project', e);
+      diagnostic("renderer.cowork.App", "WARNING", "ensuregeneralproject_could_not_bootstrap_general_project", '[ensureGeneralProject] could not bootstrap general project', e);
       return null;
     }
   };
@@ -4658,13 +4665,13 @@ function AppCore() {
   // dialog matches the rest of the UX.
   const handleDeleteTask = (taskId) => {
     // eslint-disable-next-line no-console
-    console.log('[handleDeleteTask] open confirm for', taskId);
+    diagnostic("renderer.cowork.App", "INFO", "handledeletetask_open_confirm_for", '[handleDeleteTask] open confirm for', taskId);
     setPendingDeleteTaskId(taskId);
   };
   const performDeleteTask = async (taskId) => {
     if (!taskId) return;
     // eslint-disable-next-line no-console
-    console.log('[performDeleteTask] confirmed', taskId);
+    diagnostic("renderer.cowork.App", "INFO", "performdeletetask_confirmed", '[performDeleteTask] confirmed', taskId);
     const task = tasks.find((t) => t.id === taskId);
     // Fire-and-forget: stop the PTY (if still running) and remove its git
     // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
@@ -4692,20 +4699,20 @@ function AppCore() {
     // wearing a tmp- id from before the first stream chunk arrived).
     if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
       // eslint-disable-next-line no-console
-      console.log('[performDeleteTask] tempId — local-only delete');
+      diagnostic("renderer.cowork.App", "INFO", "performdeletetask_tempid_local_only_delete", '[performDeleteTask] tempId — local-only delete');
       return;
     }
     try {
       await deleteConversation(taskId);
       // eslint-disable-next-line no-console
-      console.log('[performDeleteTask] server delete ok');
+      diagnostic("renderer.cowork.App", "INFO", "performdeletetask_server_delete_ok", '[performDeleteTask] server delete ok');
       // Unpin only once the delete has really happened. Run in parallel, a
       // refused delete still committed the unpin server-side, and the
       // restored row came back silently unpinned across reloads.
       await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[performDeleteTask] server delete failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "performdeletetask_server_delete_failed", '[performDeleteTask] server delete failed', e);
       /*
         The chat is still on the server, so put the row back rather than leave
         the sidebar claiming it is gone. Console-only used to mean the user saw
@@ -4797,7 +4804,7 @@ function AppCore() {
       const res = await fetchSessionResult(taskId);
       if (res?.status !== 'ok' || !Array.isArray(res.task?.messages)) {
         // eslint-disable-next-line no-console
-        console.error('[resyncConversationAfterDelete] no transcript returned', res?.status);
+        diagnostic("renderer.cowork.App", "ERROR", "resyncconversationafterdelete_no_transcript_returned", '[resyncConversationAfterDelete] no transcript returned', res?.status);
         return null;
       }
       const fresh = res.task;
@@ -4822,7 +4829,7 @@ function AppCore() {
       return { committed, pageIds: fresh.messages.map((m) => m?.id).filter(Boolean) };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[resyncConversationAfterDelete] refetch failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "resyncconversationafterdelete_refetch_failed", '[resyncConversationAfterDelete] refetch failed', e);
       return null;
     }
   };
@@ -5121,7 +5128,7 @@ function AppCore() {
           }
         } catch (e) {
           // eslint-disable-next-line no-console -- the delete goes ahead with the local anchor
-          console.error('[performDeleteTurn] anchor re-read failed', e);
+          diagnostic("renderer.cowork.App", "ERROR", "performdeleteturn_anchor_re_read_failed", '[performDeleteTurn] anchor re-read failed', e);
         }
       }
       let failure = null;
@@ -5130,7 +5137,7 @@ function AppCore() {
         result = await deleteConversationTurn(taskId, serverAnchorId);
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error('[performDeleteTurn] server delete failed', e);
+        diagnostic("renderer.cowork.App", "ERROR", "performdeleteturn_server_delete_failed", '[performDeleteTurn] server delete failed', e);
         failure = e;
       }
       // A 404 arrives as {status:'gone'} rather than throwing, and means the
@@ -5230,7 +5237,7 @@ function AppCore() {
       await deleteProject(project);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[performDeleteProject] failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "performdeleteproject_failed", '[performDeleteProject] failed', e);
       toastManager.add({
         type: 'danger',
         timeout: 0,
@@ -5318,7 +5325,7 @@ function AppCore() {
       await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[move task] failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "move_task_failed", '[move task] failed', e);
     } finally {
       setMoveModalTask(null);
     }

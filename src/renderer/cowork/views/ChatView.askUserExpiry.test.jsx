@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../../platform/host', () => ({
   host: {
@@ -131,5 +131,66 @@ describe('ask_user card expiry is per question, not per conversation', () => {
 
     expect(option('ask:1')).toBeDisabled();
     expect(option('ask:2')).toBeEnabled();
+  });
+
+  describe('a timed-out question in the latest finished turn', () => {
+    const TIMEOUT = { status: 'timeout', values: [], text: '' };
+    const timedOutTurn = (qid) => ({ role: 'assistant', content: 'still waiting', steps: [askStep(qid, TIMEOUT)], startedAt: 1 });
+
+    it('stays answerable, and a pick goes out as a new message', () => {
+      const onSend = vi.fn();
+      render(
+        <ChatView
+          task={taskWith([{ role: 'user', content: 'hi' }, timedOutTurn('ask:old')])}
+          onSend={onSend}
+          inFlightSet={new Set()}
+        />,
+      );
+      fireEvent.click(option('ask:old'));
+      expect(onSend).toHaveBeenCalledWith('pg-ask:old', []);
+    });
+
+    it('closes while a run is in flight or once a newer exchange exists', () => {
+      const { unmount } = render(
+        <ChatView
+          task={taskWith([{ role: 'user', content: 'hi' }, timedOutTurn('ask:old')])}
+          onSend={vi.fn()}
+          inFlightSet={new Set(['conv-a'])}
+        />,
+      );
+      expect(option('ask:old')).toBeDisabled();
+      unmount();
+
+      render(
+        <ChatView
+          task={taskWith([
+            { role: 'user', content: 'hi' },
+            timedOutTurn('ask:old'),
+            { role: 'user', content: 'never mind' },
+            { role: 'assistant', content: 'ok', steps: [], startedAt: 3 },
+          ])}
+          onSend={vi.fn()}
+          inFlightSet={new Set()}
+        />,
+      );
+      expect(option('ask:old')).toBeDisabled();
+    });
+
+    it('shows the pick that followed as its answer, not the timeout', () => {
+      render(
+        <ChatView
+          task={taskWith([
+            { role: 'user', content: 'hi' },
+            timedOutTurn('ask:old'),
+            { role: 'user', content: 'pg-ask:old' },
+          ])}
+          onSend={vi.fn()}
+          inFlightSet={new Set(['conv-a'])}
+        />,
+      );
+      expect(option('ask:old')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Answered:')).toBeInTheDocument();
+      expect(screen.queryByText(/timed out/)).toBeNull();
+    });
   });
 });

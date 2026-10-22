@@ -1505,3 +1505,8 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 ---
 
 _Built by MindsDB._
+
+## Diagnostics
+
+See [structured logging](docs/structured-logging.md) for defaults, troubleshooting
+overrides, retained evidence streams and rollout requirements.

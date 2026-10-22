@@ -72,7 +72,15 @@ LABEL org.opencontainers.image.description="MindsHub Cowork SPA (static, nginx)"
 COPY scripts/nginx-frontend.conf /etc/nginx/conf.d/default.conf
 COPY --from=spa-builder /build/dist/renderer-web/ /usr/share/nginx/html/
 
+COPY scripts/nginx-logging.conf.template /etc/nginx/diagnostic-logging.conf.template
+COPY --chown=101 scripts/nginx-logging.conf.template /etc/nginx/conf.d/00-logging.conf
+COPY scripts/nginx-diagnostics.sh /nginx-diagnostics.sh
+ENV LOG_LEVEL=WARNING ACCESS_LOG_MODE=errors
+STOPSIGNAL SIGTERM
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+
+CMD ["/nginx-diagnostics.sh"]

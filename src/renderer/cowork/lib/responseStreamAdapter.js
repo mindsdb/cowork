@@ -528,7 +528,9 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       conversationId: event.conversation_id ?? state.conversationId,
       harness: event.harness ?? state.harness,
       userMessageId: event.user_message_id ?? state.userMessageId,
-      startedAt: state.startedAt ?? now(),
+      // The event's own stamp, so a replayed turn keeps the time it ran,
+      // not the moment the chat was reopened.
+      startedAt: state.startedAt ?? eventTs,
       status: 'thinking',
     };
   }
