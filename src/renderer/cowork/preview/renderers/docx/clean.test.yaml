@@ -74,6 +74,12 @@ attributes:
   - name: an SVG paint server on another host goes
     html: '<svg><rect fill="url(http://localhost:9/vml-fill#paint)"></rect></svg>'
     absent: ['localhost', 'fill=']
+  - name: an SVG fill whose url name is escaped goes
+    html: '<svg><rect fill="u\72l(http://localhost:9/x#p)"></rect></svg>'
+    absent: ['localhost', 'fill=']
+  - name: an SVG stroke whose url name is escaped goes
+    html: '<svg><rect stroke="u\72l(http://localhost:9/x#p)"></rect></svg>'
+    absent: ['localhost', 'stroke=']
   - name: an SVG paint server in the same document stays
     html: '<svg><rect fill="url(#paint)"></rect></svg>'
     present: ['fill="url(#paint)"']
@@ -131,3 +137,24 @@ styleSheets:
     html: '<style>@supports (display: grid) { p { color: red } } p { color: blue }</style>'
     present: ['blue']
     absent: ['supports']
+
+customProperties:
+  - name: a picture bullet keeps its data image, as docx-preview writes it
+    html: '<style>p.docx-num-1-0:before { content: " "; display: inline-block; background: var(--docx-rid1); width: 9pt; height: 9pt } .docx-wrapper { --docx-rid1: url(data:image/png;base64,AA==) }</style>'
+    present: ['var(--docx-rid1)', '--docx-rid1', 'data:image/png;base64,AA==']
+  - name: a url() to another host goes and the rule stays
+    html: '<style>.docx-wrapper { --h: url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--h', 'https']
+  - name: a quoted data url() wrapped around a remote url() goes
+    html: '<style>.docx-wrapper { --m: url("data:x" url(https://x/a.png)); color: red }</style>'
+    present: ['color']
+    absent: ['--m', 'https']
+  - name: an escaped url name goes
+    html: '<style>.docx-wrapper { --e: \75rl(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--e', 'https']
+  - name: a data url() followed by a remote url() goes
+    html: '<style>.docx-wrapper { --d: url(data:x) url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--d', 'https']

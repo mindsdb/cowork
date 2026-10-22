@@ -55,12 +55,18 @@ function leftoverTargets(root: HTMLElement): string[] {
   )).map((attribute) => `href=${attribute.value}`);
   const sources = Array.from(root.querySelectorAll('[src]'), (element) => element.getAttribute('src') ?? '')
     .filter((source) => !source.startsWith('data:')).map((source) => `src=${source}`);
+  /* Any other attribute, such as an SVG fill or stroke, that holds a url() to
+     load or a CSS escape that could spell one. */
+  const paints = Array.from(root.querySelectorAll('*')).flatMap((element) => (
+    Array.from(element.attributes).filter((attribute) => !['href', 'src', 'style'].includes(attribute.localName)
+      && (attribute.value.includes('\\') || LOADING_URL.test(attribute.value)))
+  )).map((attribute) => `${attribute.localName}=${attribute.value}`);
   const styles = [
     ...Array.from(root.querySelectorAll('style'), (style) => style.textContent ?? ''),
     ...Array.from(root.querySelectorAll('[style]'), (element) => element.getAttribute('style') ?? ''),
   ].filter((text) => LOADING_URL.test(text));
   const embeds = Array.from(root.querySelectorAll('iframe, frame, object, embed, script, link, meta, base'), (element) => element.localName);
-  return [...hrefs, ...sources, ...styles, ...embeds];
+  return [...hrefs, ...sources, ...paints, ...styles, ...embeds];
 }
 
 afterEach(() => {

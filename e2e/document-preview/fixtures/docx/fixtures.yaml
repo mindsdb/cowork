@@ -79,7 +79,8 @@
 
 # A VML rectangle whose style carries a background url() aimed at a Google host
 # and a cursor url() aimed at loopback, and whose fill is a url() aimed at
-# localhost.
+# localhost. A second rectangle's fill color and stroke color spell the url
+# name escaped (u\72l), aimed at localhost and loopback.
 - name: VML style url()
   file: vml-url.docx
   kind: hostile

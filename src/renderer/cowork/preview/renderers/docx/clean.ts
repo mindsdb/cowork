@@ -30,6 +30,11 @@ const CSS_DATA_URL = /url\(\s*["']?\s*data:[^)]*\)/gi;
 /* An SVG paint or clip reference to an element in the same document. */
 const FRAGMENT_REFERENCE = /url\(\s*["']?#[^)]*\)/gi;
 
+/* A custom property value that is one unquoted url() of a data: URL and
+   nothing else, such as the picture bullet docx-preview writes from the
+   file's numbering image. */
+const ONLY_CSS_DATA_URL = /^url\(data:[^()"'\\\s]*\)$/i;
+
 /* Rule types docx-preview writes: style rules, @font-face and @media. Any
    other rule in its CSS came from the file, so it goes. */
 function isKeptRule(rule: CSSRule): rule is CSSStyleRule | CSSFontFaceRule | CSSMediaRule {
@@ -42,8 +47,9 @@ function loadsInCss(value: string): boolean {
 
 /*
  * Removes each declaration that would load a resource from a host. A custom
- * property keeps only plain tokens, since the browser keeps its text as
- * written and a var() can place it where a url() loads.
+ * property keeps only plain tokens, or a lone url() of a data: URL, since the
+ * browser keeps its text as written and a var() can place it where a url()
+ * loads.
  *
  * A shorthand that holds a var() also keeps its text as written, escapes
  * included, and the browser reports each of its longhands as ''. Those
@@ -54,7 +60,9 @@ function cleanDeclarations(style: CSSStyleDeclaration): void {
   const names = Array.from({ length: style.length }, (_, index) => style.item(index));
   for (const name of names) {
     const value = style.getPropertyValue(name);
-    const loads = name.startsWith('--') ? /[\\(]/.test(value) : loadsInCss(value);
+    const loads = name.startsWith('--')
+      ? /[\\(]/.test(value) && !ONLY_CSS_DATA_URL.test(value.trim())
+      : loadsInCss(value);
     if (loads) style.removeProperty(name);
   }
   const pending = Array.from({ length: style.length }, (_, index) => style.item(index))
@@ -99,7 +107,11 @@ function cleanAttributes(element: Element): void {
     else if (name === 'src') keep = INLINE_SOURCE.test(attribute.value);
     else if (name === 'style') keep = true;
     else if (name.startsWith('on') || URL_ATTRIBUTES.has(name)) keep = false;
-    else keep = !loadsInCss(attribute.value.replace(FRAGMENT_REFERENCE, ''));
+    /* An SVG paint attribute such as fill or stroke is read as CSS, where an
+       escape like u\72l( still spells url( and CSS_LOADS misses it. So any
+       other attribute goes when its value holds a backslash, as a custom
+       property does. */
+    else keep = !attribute.value.includes('\\') && !loadsInCss(attribute.value.replace(FRAGMENT_REFERENCE, ''));
     if (!keep) element.removeAttributeNode(attribute);
   }
   if (!element.hasAttribute('style')) return;
