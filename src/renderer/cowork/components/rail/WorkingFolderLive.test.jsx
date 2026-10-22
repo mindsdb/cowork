@@ -656,6 +656,47 @@ describe.each(FIXTURES.webModes)('artifacts rail on %s', (mode) => {
     expect(railNote().textContent).toBe('');
   });
 
+  it('drops the last click\'s error once the next click downloads', async () => {
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const row = await renderRail(fileRow('.zip'));
+
+    fireEvent.click(row);
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    fireEvent.click(row);
+
+    await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+    expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+  });
+
+  it('keeps an error raised while an earlier click was still downloading', async () => {
+    /*
+     * Row A's click download resolves only after row B's menu Download has
+     * failed. A's late success shows the note and leaves B's error in place.
+     */
+    let finishA;
+    downloadArtifactFile
+      .mockImplementationOnce(() => new Promise((done) => { finishA = done; }))
+      .mockImplementationOnce(async () => false);
+    fetchArtifacts.mockResolvedValue([
+      fileRow('.zip', { title: 'Data A', path: '/proj/.anton/artifacts/a/a.zip' }),
+      fileRow('.parquet', { title: 'Data B', path: '/proj/.anton/artifacts/b/b.parquet' }),
+    ]);
+    render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    const rowA = (await screen.findByText('Data A')).closest('[role="button"]');
+    const rowB = screen.getByText('Data B').closest('[role="button"]');
+
+    fireEvent.click(rowA);
+    fireEvent.click(within(rowB).getByLabelText('More actions'));
+    fireEvent.click(within(await screen.findByRole('menu')).getByText('Download'));
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+
+    await act(async () => finishA(true));
+
+    await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+    expect(screen.getByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(2);
+  });
+
   it.each(FIXTURES.documentPreviewExtensions)('previews %s first when the document gate allows it', async (ext) => {
     canPreviewDocument.mockReturnValue(true);
     const row = await renderRail(fileRow(ext));

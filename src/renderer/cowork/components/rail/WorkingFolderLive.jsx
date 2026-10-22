@@ -365,6 +365,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       hasDraft: canDownloadOrgDraft(artifact),
       canDownload: canDownloadArtifact(artifact),
     });
+    /* Cleared as the click starts, so a download that resolves late never
+       erases an error another action raised in the meantime. */
+    setRowError('');
     setRowNote('');
     if (target === 'published') {
       /*
@@ -379,7 +382,6 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       /* Nothing here renders the file and nobody shared it: its bytes are
          still one request away, and the note says why it saved. */
       if (await downloadArtifactFile(artifact)) {
-        setRowError('');
         setRowNote(NO_PREVIEW_DOWNLOADED_NOTE);
       } else {
         setRowError('This artifact has no servable file yet.');
