@@ -41,6 +41,10 @@ noPreviewExtensions: [.zip, .parquet, .json, .doc, .ppt, .xlsm]
 # supports the document frame.
 documentPreviewExtensions: [.xlsx, .docx, .pptx, .pdf]
 
+# Fullstack app types. Their primary file is only the app's shell
+# static/index.html, so no surface offers it as a download or shows the note.
+fullstackAppTypes: [fullstack-stateless-app, fullstack-stateful-app]
+
 # On web, the files a surface opens in a browser tab, and the ones it keeps out
 # of a tab. A tab saves an Office file, an archive or a .csv (Chrome saves a
 # text/csv response) without a word.

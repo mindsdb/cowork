@@ -346,6 +346,9 @@ describe('inline artifact banner in org mode', () => {
     await user.click(screen.getByRole('button', { name: 'Download' }));
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
     expect(openExternal).not.toHaveBeenCalled();
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 
   it('says why it has nowhere to go when there is no primary file at all', () => {

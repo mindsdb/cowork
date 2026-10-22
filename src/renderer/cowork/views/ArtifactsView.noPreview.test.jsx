@@ -170,6 +170,17 @@ describe.each(FIXTURES.webModes)('Live Artifacts on %s', (mode) => {
       expect(menuLabels()).not.toContain('Open');
     });
 
+    it.each(FIXTURES.fullstackAppTypes)('offers no Download and no note for a %s', (type) => {
+      renderView(surface, card('.html', mode, { type, path: '/proj/.anton/artifacts/ops/static/index.html' }));
+
+      clickBody();
+      openKebab();
+
+      expect(menuLabels()).not.toContain('Download');
+      expect(mocks.downloadArtifactFile).not.toHaveBeenCalled();
+      expect(noteShown()).toBe(false);
+    });
+
     it.each(FIXTURES.browserTab.withheld)('shows no ↗ for %s', (ext) => {
       renderView(surface, card(ext, mode));
       expect(screen.queryByLabelText('Open')).toBeNull();
