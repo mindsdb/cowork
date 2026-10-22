@@ -38,8 +38,11 @@ export interface RenderSummary { type: DocumentPreviewType; units: number; trunc
    - internal: the runtime, for any other throw. */
 export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'unsupported' | 'timeout' | 'internal';
 
-/* render() fails with a code by rejecting with a PreviewError. The runtime
-   reports any other rejection as internal. */
+/* render() fails with a code by rejecting with a PreviewError. errors.ts, the
+   one shared helper for preview errors, builds one with previewError and
+   recognizes one with isPreviewError. The runtime reports any other rejection
+   as internal. A PreviewError whose code the frame doesn't own (too-large,
+   timeout) is reported as internal too. */
 export interface PreviewError extends Error { code: PreviewErrorCode }
 
 export interface GuardedZip {
