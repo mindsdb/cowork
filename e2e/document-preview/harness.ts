@@ -30,11 +30,16 @@
  * Every spec asserts three things: clean fixtures reach only the harness
  * origin, hostile fixtures reach nothing external, and frameUrlAfterClicks is
  * about:srcdoc. strayRequests holds the request rules for the first two, so no
- * spec writes its own: a spec asserts that strayRequests finds nothing in
- * run.requests, and in any list of the whole test's requests it records. The
- * harness origin is the origin of baseURL. It stands in for the Cowork origin,
- * so a hostile fixture may reach it only for its own file and for the harness
- * page and its modules.
+ * spec keeps its own list of allowed origins or paths. A spec asserts that
+ * strayRequests finds nothing in run.requests, and in any list of the whole
+ * test's requests it records. A spec may add stricter checks that name no
+ * allowed paths, such as: the fixture's URL appears exactly once in
+ * run.requests; a clean fixture also passes the rules for a hostile one; no
+ * request comes from the preview frame or a frame inside it. The harness
+ * origin is the origin of baseURL. It stands in for the Cowork origin, so a
+ * hostile fixture may reach it only on the paths strayRequests allows: its own
+ * file, the harness page, and the Vite dev server's module URLs, which cover
+ * any file under the checkout through /@fs.
  */
 import type { Frame, Page } from '@playwright/test';
 
