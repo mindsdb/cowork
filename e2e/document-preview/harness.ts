@@ -28,6 +28,10 @@
  *
  * Every spec asserts three things: clean fixtures reach only the harness host,
  * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
+ * openPreview also throws when the rendered frame holds a meta with http-equiv
+ * or a base element beyond the two metas the frame document starts with. Such an
+ * element acts as soon as it is in the DOM, with no click, and nothing in the
+ * frame stops a meta refresh, so a renderer must never leave one.
  * Specs compare `new URL(request).origin` with the origin of baseURL, never
  * hostnames, because 127.0.0.1 on another port is a hostile target too. The
  * harness origin stands in for the Cowork origin, so for hostile fixtures a
@@ -93,6 +97,8 @@ const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
 /* How long a click gets to start a navigation or a request before the frame's
    URL is read. */
 const CLICK_SETTLE_MS = 500;
+/* The http-equiv values of the metas the frame document starts with. */
+const FRAME_HEAD_DIRECTIVES = ['content-security-policy', 'x-dns-prefetch-control'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -179,6 +185,15 @@ async function clickEverything(frame: Frame, everyElement: boolean): Promise<voi
   }, everyElement);
 }
 
+/* The outer HTML of each meta with http-equiv and each base element in the
+   frame, other than the metas the frame document starts with in its head. */
+async function strayDirectives(frame: Frame): Promise<string[]> {
+  return frame.evaluate((ownDirectives) => Array.from(document.querySelectorAll('meta[http-equiv], base'))
+    .filter((element) => element.parentElement !== document.head
+      || !ownDirectives.includes((element.getAttribute('http-equiv') ?? '').toLowerCase()))
+    .map((element) => element.outerHTML), FRAME_HEAD_DIRECTIVES);
+}
+
 export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
   if (!/^https?:/.test(page.url())) await page.goto('/');
   await page.waitForFunction(() => !!window.coworkPreviewHarness);
@@ -207,6 +222,8 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
       [set, fixture.file] as const,
     );
     const frame = page.frame({ name: PREVIEW_FRAME_NAME });
+    const stray = frame ? await strayDirectives(frame) : [];
+    if (stray.length) throw new Error(`The preview frame holds ${stray.join(', ')}, which acts with no click.`);
     const text = frame ? await frame.evaluate(() => document.body.innerText) : '';
     if (frame) await clickEverything(frame, fixture.kind === 'hostile');
     await page.waitForTimeout(CLICK_SETTLE_MS);
