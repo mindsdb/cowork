@@ -27,6 +27,13 @@ clickSurfaces:
 # show the note.
 webModes: [local web, org web]
 
+# The Live Artifacts menu item that opens the viewer on a document the gate
+# allows, per surface and web host. A local-web list row has no Preview item:
+# its Open item runs the same click.
+liveArtifactsPreviewItem:
+  grid card: { local web: Preview, org web: Preview }
+  list row: { local web: Open, org web: Preview }
+
 # Files the viewer has no preview for, with or without a renderer build.
 noPreviewExtensions: [.zip, .parquet, .json, .doc, .ppt, .xlsm]
 

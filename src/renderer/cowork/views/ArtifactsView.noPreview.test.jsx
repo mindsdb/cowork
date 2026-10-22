@@ -81,6 +81,7 @@ function renderView(surface, artifact) {
 
 const clickBody = () => fireEvent.click(screen.getByText(TITLE));
 const openKebab = () => fireEvent.click(screen.getByLabelText('Artifact menu'));
+const menuLabels = () => screen.getAllByRole('menuitem').map((el) => el.textContent);
 const noteShown = () => mocks.toastAdd.mock.calls.some(([toast]) => toast?.title === NO_PREVIEW_DOWNLOADED_NOTE);
 
 beforeEach(() => {
@@ -136,6 +137,18 @@ describe.each(FIXTURES.webModes)('Live Artifacts on %s', (mode) => {
       expect(mocks.downloadArtifactFile).not.toHaveBeenCalled();
     });
 
+    it.each(FIXTURES.documentPreviewExtensions)('offers Download beside the preview of %s in the menu', (ext) => {
+      mocks.canPreviewDocument.mockReturnValue(true);
+      renderView(surface, card(ext, mode));
+
+      openKebab();
+      expect(menuLabels()).toContain('Download');
+      fireEvent.click(screen.getByRole('menuitem', { name: FIXTURES.liveArtifactsPreviewItem[surface][mode] }));
+
+      expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+      expect(mocks.downloadArtifactFile).not.toHaveBeenCalled();
+    });
+
     it.each(FIXTURES.documentPreviewExtensions)('downloads %s with the note when the document gate refuses it', async (ext) => {
       renderView(surface, card(ext, mode));
 
@@ -146,12 +159,15 @@ describe.each(FIXTURES.webModes)('Live Artifacts on %s', (mode) => {
       expect(screen.queryByTestId('artifact-viewer')).toBeNull();
     });
 
-    it('offers Download in the menu', () => {
-      renderView(surface, card('.zip', mode));
+    /* The click already downloads these, so the menu has no Open item that
+       would do the same. */
+    it.each(FIXTURES.noPreviewExtensions)('offers Download and no Open item for %s in the menu', (ext) => {
+      renderView(surface, card(ext, mode));
 
       openKebab();
 
-      expect(screen.getByText('Download')).toBeInTheDocument();
+      expect(menuLabels()).toContain('Download');
+      expect(menuLabels()).not.toContain('Open');
     });
 
     it.each(FIXTURES.browserTab.withheld)('shows no ↗ for %s', (ext) => {
@@ -206,14 +222,20 @@ describe.each(FIXTURES.clickSurfaces.liveArtifacts)('Live Artifacts %s on deskto
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
-  it.each(FIXTURES.documentPreviewExtensions)('previews %s when the document gate allows it', (ext) => {
+  it.each(FIXTURES.documentPreviewExtensions)('previews %s when the document gate allows it, and ↗ opens the default app', (ext) => {
     mocks.canPreviewDocument.mockReturnValue(true);
-    renderView(surface, card(ext, 'desktop'));
+    const artifact = card(ext, 'desktop');
+    renderView(surface, artifact);
+
+    fireEvent.click(screen.getByLabelText('Open'));
+    expect(mocks.openArtifactFile).toHaveBeenCalledWith(artifact);
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
 
     clickBody();
 
     expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
-    expect(mocks.openArtifactFile).not.toHaveBeenCalled();
+    expect(mocks.openArtifactFile).toHaveBeenCalledTimes(1);
   });
 
   it('tries the shared page before the default app', () => {

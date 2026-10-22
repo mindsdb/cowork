@@ -425,7 +425,7 @@ function useArtifactOpen(artifact, onOpenViewer) {
   /* On web a tab shows only what canShowInBrowserTab allows and saves anything
      else without a word, so ↗ is offered for those alone. */
   const canOpenOutside = !host.isWeb || canShowInBrowserTab(artifact);
-  return { orgMode, toastManager, published, openBest, openOutside, canOpenOutside };
+  return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 
 // Name: title primary, filename secondary (ENG-1123 Bug 1). Web apps have no
@@ -530,12 +530,14 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   return [
-    {
+    (orgMode || onOpen) && {
       id: 'open',
       /*
        * "Open viewer" would be a lie in org mode: the row itself previews the
        * authenticated draft there, and this item is the page a collaborator
-       * opens. The filter below drops it when nothing is shared yet.
+       * opens. The filter below drops it when nothing is shared yet. Outside
+       * org mode the row leaves out onOpen when its click downloads, since the
+       * Download item below already does that.
        */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
       icon: Ico.externalLink(14),
@@ -609,11 +611,11 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
 }
 
 function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform }) {
-  const { orgMode, toastManager, published, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
+  const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
   const menuItems = rowMenuItems({
     artifact,
     orgMode,
-    onOpen: openBest,
+    onOpen: target === 'download' ? undefined : openBest,
     onOpenShared: () => openUrl(artifact.publishedUrl),
     onPreview: () => onOpenViewer?.(artifact),
     onReveal: host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } },

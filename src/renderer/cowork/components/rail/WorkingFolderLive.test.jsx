@@ -741,6 +741,18 @@ describe('artifacts rail on desktop', () => {
     expect(openPath).not.toHaveBeenCalled();
   });
 
+  it.each(FIXTURES.documentPreviewExtensions)('lists Preview, then Open in OS, for %s when the document gate allows it', async (ext) => {
+    canPreviewDocument.mockReturnValue(true);
+    await renderRail(fileRow(ext, { serveUrl: `/v1/artifacts/serve/data/data${ext}` }));
+
+    const menu = await openKebab();
+    expect(within(menu).getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Preview', 'Open in OS', 'Delete']);
+    fireEvent.click(within(menu).getByText('Open in OS'));
+
+    await vi.waitFor(() => expect(openPath).toHaveBeenCalledWith(`/proj/.anton/artifacts/data/data${ext}`));
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
   it('keeps Open in OS in the menu, with no tab', async () => {
     await renderRail(fileRow('.zip', { serveUrl: '/v1/artifacts/serve/data/data.zip' }));
 
