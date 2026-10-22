@@ -11,12 +11,15 @@
 #   slides         text each drawn slide holds, from the first slide on
 #   lastSlide      text the last drawn slide holds
 #   placeholders   the placeholder kinds drawn, in drawing order
+#   shapes         how many shape boxes (.pptx-shape) are drawn, counting the
+#                  skeleton master's footer bar once on each drawn slide
 #   images         how many pictures are drawn, each from a data: URL
 #   rtl            the text of each right-to-left paragraph, in order
 #   overlaps       lists of shape texts: each list's shapes are drawn in that
 #                  order, and each one's box overlaps the next one's
 #   markupExcludes text that appears nowhere in the rendered markup
 #   unread         archive entries the renderer never reads
+#   withinMs       render() settles in less than this many milliseconds
 
 label: Preview may differ from PowerPoint
 
@@ -189,3 +192,33 @@ cases:
       presentationXml: <?xml version="1.0" encoding="UTF-8"?><workbook/>
     expect:
       error: parse-failed
+
+  # Every sldId names the one slide part. The part is drawn once and each
+  # later sldId shows the unreadable-slide note, so a file of a few KB can't
+  # have that part's shapes drawn once per sldId.
+  - name: sldIds that name a slide part an earlier sldId names
+    deck:
+      order: [1, 1, 1]
+      slides:
+        - shapes:
+            - { kind: text, box: [0, 0, 1219200, 685800], repeat: 2000, paragraphs: [{ text: Repeated shape }] }
+    expect:
+      units: 3
+      truncated: false
+      slides: [Repeated shape, "This slide couldn't be shown.", "This slide couldn't be shown."]
+      shapes: 2001
+
+  # Each slide placeholder looks up its layout placeholder by idx, so render
+  # time grows with the placeholder count, not with the count squared.
+  - name: a slide and layout with thousands of placeholders
+    deck:
+      layoutShapes:
+        - { kind: text, placeholder: body, idx: 10, repeat: 2000, box: [0, 0, 1219200, 685800], paragraphs: [] }
+      slides:
+        - shapes:
+            - { kind: text, placeholder: body, idx: 10, repeat: 2000, paragraphs: [{ text: Placeholder text }] }
+    expect:
+      units: 1
+      truncated: false
+      shapes: 2001
+      withinMs: 4000

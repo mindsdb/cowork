@@ -31,6 +31,7 @@ export interface DeckContext {
   defaultTextStyle: Element | null;
   images: Map<string, Promise<string | null>>;
   themes: Map<string, Promise<Theme>>;
+  placeholders: Map<string, PlaceholderIndex>;
 }
 
 /* One XML part in the slide's inheritance chain and its relationships. */
@@ -72,6 +73,14 @@ type Fill = { kind: 'none' } | { kind: 'color'; css: string };
 interface PlaceholderKey {
   type: string;
   idx: string | null;
+}
+
+/* A layout's or master's first placeholder shape for each idx, each type and
+   each master type. */
+interface PlaceholderIndex {
+  byIdx: Map<string, Element>;
+  byType: Map<string, Element>;
+  byMasterType: Map<string, Element>;
 }
 
 const IDENTITY: Transform = (box) => box;
@@ -201,27 +210,46 @@ function masterType(type: string): string {
   return MASTER_OWN_TYPES.has(type) ? type : 'body';
 }
 
-function findPlaceholder(layer: Layer | null, key: PlaceholderKey, byIndex: boolean): Element | null {
-  const shapes = children(descend(layer?.root, 'cSld', 'spTree'), 'sp');
-  const keyed = shapes.map((shape) => ({ shape, ph: placeholderKey(shape) })).filter((entry) => entry.ph);
-  const match = (test: (ph: PlaceholderKey) => boolean): Element | null =>
-    keyed.find((entry) => entry.ph && test(entry.ph))?.shape ?? null;
+/* Each layout and master is indexed once per deck, however many slides and
+   placeholders look it up. */
+function placeholderIndex(deck: DeckContext, layer: Layer): PlaceholderIndex {
+  let index = deck.placeholders.get(layer.part);
+  if (!index) {
+    index = { byIdx: new Map(), byType: new Map(), byMasterType: new Map() };
+    for (const shape of children(descend(layer.root, 'cSld', 'spTree'), 'sp')) {
+      const ph = placeholderKey(shape);
+      if (!ph) continue;
+      if (ph.idx !== null && !index.byIdx.has(ph.idx)) index.byIdx.set(ph.idx, shape);
+      if (!index.byType.has(ph.type)) index.byType.set(ph.type, shape);
+      if (!index.byMasterType.has(masterType(ph.type))) index.byMasterType.set(masterType(ph.type), shape);
+    }
+    deck.placeholders.set(layer.part, index);
+  }
+  return index;
+}
+
+/* A layout placeholder matches by idx, then by type, then by master type. A
+   master placeholder matches by master type. */
+function findPlaceholder(deck: DeckContext, layer: Layer | null, key: PlaceholderKey, byIndex: boolean): Element | null {
+  if (!layer) return null;
+  const index = placeholderIndex(deck, layer);
   if (byIndex) {
     return (
-      (key.idx !== null ? match((ph) => ph.idx === key.idx) : null) ??
-      match((ph) => ph.type === key.type) ??
-      match((ph) => masterType(ph.type) === masterType(key.type))
+      (key.idx !== null ? index.byIdx.get(key.idx) : undefined) ??
+      index.byType.get(key.type) ??
+      index.byMasterType.get(masterType(key.type)) ??
+      null
     );
   }
-  return match((ph) => ph.type === masterType(key.type));
+  return index.byType.get(masterType(key.type)) ?? null;
 }
 
 /* The shape followed by the layout and master placeholders it inherits from. */
 function inheritanceChain(shape: Element, ctx: DrawContext): Element[] {
   const key = placeholderKey(shape);
   if (!key || ctx.layer !== ctx.layers.slide) return [shape];
-  const fromLayout = findPlaceholder(ctx.layers.layout, key, true);
-  const fromMaster = findPlaceholder(ctx.layers.master, fromLayout ? placeholderKey(fromLayout) ?? key : key, false);
+  const fromLayout = findPlaceholder(ctx.deck, ctx.layers.layout, key, true);
+  const fromMaster = findPlaceholder(ctx.deck, ctx.layers.master, fromLayout ? placeholderKey(fromLayout) ?? key : key, false);
   return [shape, fromLayout, fromMaster].filter((el): el is Element => el !== null);
 }
 

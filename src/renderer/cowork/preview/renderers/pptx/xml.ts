@@ -31,7 +31,7 @@ export function children(el: Element | null | undefined, name: string): Element[
   return Array.from(el.children).filter((node) => node.localName === name);
 }
 
-/* Follows a chain of child names, such as path(sp, 'spPr', 'xfrm'). */
+/* Follows a chain of child names, such as descend(sp, 'spPr', 'xfrm'). */
 export function descend(el: Element | null | undefined, ...names: string[]): Element | null {
   let node: Element | null = el ?? null;
   for (const name of names) node = child(node, name);

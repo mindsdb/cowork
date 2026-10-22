@@ -30,11 +30,13 @@ interface CaseExpectation {
   slides?: string[];
   lastSlide?: string;
   placeholders?: PlaceholderKind[];
+  shapes?: number;
   images?: number;
   rtl?: string[];
   overlaps?: string[][];
   markupExcludes?: string[];
   unread?: string[];
+  withinMs?: number;
 }
 
 interface RenderCase {
@@ -70,6 +72,8 @@ interface Run {
   /* Each archive the renderer opened through ctx.openZip. */
   opened: RecordedZip[];
   progress: Array<[number, number | null]>;
+  /* performance.now() just before render() is called. */
+  started: number;
   rendered: Promise<RenderSummary>;
 }
 
@@ -138,7 +142,8 @@ async function startRender(source: Source, options: RunOptions = {}): Promise<Ru
       }),
     requestAsset: async () => null,
   };
-  return { root, opened, progress, rendered: renderer.render(bytes, ctx) };
+  const started = performance.now();
+  return { root, opened, progress, started, rendered: renderer.render(bytes, ctx) };
 }
 
 function slideElements(root: HTMLElement): HTMLElement[] {
@@ -173,6 +178,7 @@ function expectDrawn(root: HTMLElement, want: CaseExpectation): void {
     const kinds = Array.from(root.querySelectorAll<HTMLElement>('[data-placeholder]'), (el) => el.dataset.placeholder);
     expect(kinds).toEqual(want.placeholders);
   }
+  if (want.shapes !== undefined) expect(root.querySelectorAll('.pptx-shape')).toHaveLength(want.shapes);
   const images = Array.from(root.querySelectorAll('img'));
   if (want.images !== undefined) expect(images).toHaveLength(want.images);
   for (const img of images) expect(img.getAttribute('src')).toMatch(/^data:image\/(?:png|jpeg|gif|bmp|webp);base64,/);
@@ -220,6 +226,7 @@ describe('the pptx renderer', () => {
     }
 
     const summary = await run.rendered;
+    if (want.withinMs !== undefined) expect(performance.now() - run.started, 'render time in ms').toBeLessThan(want.withinMs);
     expect(summary.type).toBe('pptx');
     if (want.units !== undefined) expect(summary.units).toBe(want.units);
     if (want.truncated !== undefined) expect(summary.truncated).toBe(want.truncated);

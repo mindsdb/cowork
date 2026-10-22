@@ -14,7 +14,8 @@ import { NO_SLIDES_NOTE, PPTX_STYLES, PREVIEW_LABEL } from './styles';
 import { child, children, intAttr, relationshipAttr } from './xml';
 
 interface Presentation {
-  /* One entry per sldIdLst item, in order; null when it names no slide part. */
+  /* One entry per sldIdLst item, in order; null when it names no slide part or
+     a part an earlier item names, so each slide part is drawn at most once. */
   slideParts: Array<string | null>;
   size: SlideSize;
   defaultTextStyle: Element | null;
@@ -59,10 +60,15 @@ async function readPresentation(parts: PartReader): Promise<Presentation> {
   const root = documentRoot(await parts.xml(part), 'presentation');
   if (!root) throw previewError('parse-failed', 'The file has no readable presentation part.');
   const rels = await parts.relationships(part);
+  /* Part names compare without regard to case. */
+  const listed = new Set<string>();
   const slideParts = children(child(root, 'sldIdLst'), 'sldId').map((sldId) => {
     const id = relationshipAttr(sldId, 'id');
     const rel = id ? rels.get(id) : undefined;
-    return rel?.kind === 'slide' ? relationshipPart(part, rel) : null;
+    const slidePart = rel?.kind === 'slide' ? relationshipPart(part, rel) : null;
+    if (!slidePart || listed.has(slidePart.toLowerCase())) return null;
+    listed.add(slidePart.toLowerCase());
+    return slidePart;
   });
   return { slideParts, size: slideSize(child(root, 'sldSz')), defaultTextStyle: child(root, 'defaultTextStyle') };
 }
@@ -102,6 +108,7 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
     defaultTextStyle: presentation.defaultTextStyle,
     images: new Map(),
     themes: new Map(),
+    placeholders: new Map(),
   };
   ctx.progress(0, shown.length);
   for (const [index, slidePart] of shown.entries()) {

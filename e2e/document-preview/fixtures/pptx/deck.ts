@@ -50,6 +50,9 @@ export interface TextShapeSpec {
   /* Degrees. */
   rotation?: number;
   paragraphs: ParagraphSpec[];
+  /* Writes this many copies of the shape, one when left out. With idx, each
+     copy's idx counts up from it. */
+  repeat?: number;
 }
 
 export interface PictureSpec {
@@ -119,6 +122,8 @@ export interface DeckSpec {
   /* Media file name to base64 bytes. Each is stored as ppt/media/<name>,
      whether or not a picture names it. */
   images?: Record<string, string>;
+  /* Text shapes added to the layout's shape tree, after its own placeholders. */
+  layoutShapes?: TextShapeSpec[];
 }
 
 /* One committed fixture file and the deck it holds, as decks.yaml lists them. */
@@ -243,8 +248,15 @@ function nonVisualXml(kind: 'sp' | 'pic' | 'graphicFrame', writer: SlideWriter, 
 }
 
 function textShapeXml(shape: TextShapeSpec, writer: SlideWriter): string {
+  const copies = Array.from({ length: shape.repeat ?? 1 }, (_, i) =>
+    textShapeCopyXml(shape, shape.idx === undefined ? undefined : shape.idx + i, writer),
+  );
+  return copies.join('');
+}
+
+function textShapeCopyXml(shape: TextShapeSpec, idx: number | undefined, writer: SlideWriter): string {
   const ph = shape.placeholder
-    ? `<p:nvPr><p:ph type="${shape.placeholder}"${shape.idx !== undefined ? ` idx="${shape.idx}"` : ''}/></p:nvPr>`
+    ? `<p:nvPr><p:ph type="${shape.placeholder}"${idx !== undefined ? ` idx="${idx}"` : ''}/></p:nvPr>`
     : undefined;
   const spPr = [
     shape.box ? xfrmXml(shape.box, shape.rotation) : '',
@@ -358,6 +370,12 @@ function slideXml(slide: SlideSpec, writer: SlideWriter): string {
   return `${XML_HEADER}<p:sld xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}"><p:cSld>${background}<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
 }
 
+/* The skeleton's layout with these shapes appended to its shape tree. */
+function layoutXml(shapes: TextShapeSpec[], writer: SlideWriter): string {
+  const added = shapes.map((shape) => textShapeXml(shape, writer)).join('');
+  return readFileSync(join(SKELETON, 'slideLayout1.xml'), 'utf8').replace('</p:spTree>', () => `${added}</p:spTree>`);
+}
+
 function numberedSlide(n: number): SlideSpec {
   return { shapes: [{ kind: 'text', box: [838200, 2743200, 10515600, 1371600], paragraphs: [{ text: `Slide ${n}`, size: 40 }] }] };
 }
@@ -431,11 +449,11 @@ export async function buildDeck(spec: DeckSpec): Promise<Uint8Array> {
       { id: 'rId2', type: REL_TYPES.theme, target: '../theme/theme1.xml', external: false },
     ]),
   );
-  add('ppt/slideLayouts/slideLayout1.xml', readFileSync(join(SKELETON, 'slideLayout1.xml'), 'utf8'));
-  add(
-    'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
-    relsXml([{ id: 'rId1', type: REL_TYPES.slideMaster, target: '../slideMasters/slideMaster1.xml', external: false }]),
-  );
+  /* The skeleton layout's own shapes use ids 1 to 3. */
+  const layoutWriter: SlideWriter = { rels: [], parts: new Map(), overrides: new Map(), images: {}, nextShapeId: 4 };
+  addRel(layoutWriter, REL_TYPES.slideMaster, '../slideMasters/slideMaster1.xml');
+  add('ppt/slideLayouts/slideLayout1.xml', layoutXml(spec.layoutShapes ?? [], layoutWriter));
+  add('ppt/slideLayouts/_rels/slideLayout1.xml.rels', relsXml(layoutWriter.rels));
   add('ppt/theme/theme1.xml', readFileSync(join(SKELETON, 'theme1.xml'), 'utf8'));
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 9 } });
 }
