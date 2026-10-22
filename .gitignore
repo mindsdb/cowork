@@ -34,3 +34,7 @@ build/pkg-scripts/server-credentials.json
 
 src/main/updater-version.gen.txt
 build/app-update.yml
+
+# Document preview frame bundles, hashes, notices and registry, written by
+# scripts/preview-bundles.mjs before every build, dev server, typecheck and test run.
+src/renderer/cowork/preview/generated/

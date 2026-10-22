@@ -1,0 +1,57 @@
+# Data the document preview tests read (loaded with js-yaml).
+
+# One artifact per document type, as a chat card carries it.
+documentArtifacts:
+  - type: xlsx
+    id: "11111111111141118111111111111111"
+    title: Quarterly report
+    path: /artifacts/report/report.xlsx
+    draftUrl: /api/v1/artifacts/drafts/local/11111111111141118111111111111111/report.xlsx
+  - type: docx
+    id: "22222222222242228222222222222222"
+    title: Project brief
+    path: /artifacts/brief/brief.docx
+    draftUrl: /api/v1/artifacts/drafts/local/22222222222242228222222222222222/brief.docx
+  - type: pptx
+    id: "33333333333343338333333333333333"
+    title: Launch deck
+    path: /artifacts/deck/deck.pptx
+    draftUrl: /api/v1/artifacts/drafts/local/33333333333343338333333333333333/deck.pptx
+  - type: pdf
+    id: "44444444444444448444444444444444"
+    title: Field guide
+    path: /artifacts/guide/guide.pdf
+    draftUrl: /api/v1/artifacts/drafts/local/44444444444444448444444444444444/guide.pdf
+
+# Sandbox keywords the preview frame must never carry.
+forbiddenSandboxKeywords:
+  - allow-same-origin
+  - allow-popups
+  - allow-popups-to-escape-sandbox
+  - allow-forms
+  - allow-modals
+  - allow-downloads
+  - allow-top-navigation
+  - allow-top-navigation-by-user-activation
+  - allow-top-navigation-to-custom-protocols
+
+# Script text the bundle generator refuses, each with the label its error names.
+forbiddenScriptText:
+  - { label: "</script", text: "a='</script>'" }
+  - { label: "<script", text: "a='<SCRIPT src=x>'" }
+  - { label: a NUL character, text: "a='\0'" }
+  - { label: a leftover process., text: "a=process.env.HOME" }
+  - { label: "import(", text: "a=import ('./other.js')" }
+  - { label: import.meta, text: "a=import.meta.url" }
+
+# Script text the bundle generator keeps: look-alikes of the forbidden text.
+allowedScriptText:
+  - "a=typeof process"
+  - "a={important:1}"
+  - "a='<style>'"
+
+# Error codes whose reason the failure note names, one sentence each.
+reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]
+
+# Ways a component could read the window's size; the preview reads none.
+windowSizeReads: [innerWidth, innerHeight, outerWidth, outerHeight, matchMedia, screen.]

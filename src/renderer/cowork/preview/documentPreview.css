@@ -1,0 +1,57 @@
+/* Document preview ---------------------------------------------------------
+   The preview fills whatever container holds it and reads no window size, so
+   a later layout can resize it with a container rule alone. */
+.document-preview {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-2);
+}
+.document-preview-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+.document-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--surface-2);
+  color: var(--ink-4);
+  font: 12px/1.4 var(--font-body);
+}
+.document-preview-note {
+  margin: auto;
+  max-width: 460px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  font: 13px/1.5 var(--font-body);
+}
+.document-preview-note p { margin: 0; }
+.document-preview-note-title { color: var(--ink); font-weight: 500; }
+.document-preview-note-reason { color: var(--ink-3); }
+.document-preview-truncated {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font: 12.5px/1.4 var(--font-body);
+}
