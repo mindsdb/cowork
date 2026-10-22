@@ -1,8 +1,10 @@
 import { act, render } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { documentPreviewData } from '../../../../tests/helpers/documentPreviewData';
 import { scriptSha256 } from '../../../../scripts/preview-bundles.mjs';
+import { PREVIEW_FRAME_NAME } from '../../../shared/document-preview';
 import type { PreviewAssetProvider, RenderSummary } from './contract';
 import { DocumentPreviewFrame, type DocumentPreviewFrameProps } from './DocumentPreviewFrame';
 import { previewFramePolicy } from './frameDocument';
@@ -19,8 +21,8 @@ function frameBundle(assets: PreviewAssetProvider | null = null): LoadedPreviewB
   return { scriptText: SCRIPT, scriptSha256: HASH, assets };
 }
 
-function mount(overrides: Partial<DocumentPreviewFrameProps> = {}) {
-  const props: DocumentPreviewFrameProps = {
+function frameProps(overrides: Partial<DocumentPreviewFrameProps> = {}): DocumentPreviewFrameProps {
+  return {
     previewType: 'xlsx',
     bytes: new Uint8Array([1, 2, 3]).buffer,
     bundle: frameBundle(),
@@ -29,6 +31,10 @@ function mount(overrides: Partial<DocumentPreviewFrameProps> = {}) {
     onError: vi.fn(),
     ...overrides,
   };
+}
+
+function mount(overrides: Partial<DocumentPreviewFrameProps> = {}) {
+  const props = frameProps(overrides);
   const view = render(<DocumentPreviewFrame {...props} />);
   return { ...view, props };
 }
@@ -79,6 +85,20 @@ describe('the preview iframe', () => {
     expect(iframe.hasAttribute('src')).toBe(false);
     expect(iframe.getAttribute('srcdoc')!.startsWith(`<meta http-equiv="Content-Security-Policy" content="${previewFramePolicy(HASH)}">`)).toBe(true);
     for (const keyword of data.forbiddenSandboxKeywords) expect(iframe.getAttribute('sandbox')).not.toContain(keyword);
+  });
+
+  /* The desktop shell marks the preview frame by its name when Electron
+     creates the frame, before any script runs, so the name has to be on the
+     element React first renders, not set later by an effect. Static markup
+     runs no effect. */
+  it('carries its name in the markup it first renders', () => {
+    const template = document.createElement('template');
+    template.innerHTML = renderToStaticMarkup(<DocumentPreviewFrame {...frameProps()} />);
+    const iframes = template.content.querySelectorAll('iframe');
+    expect(iframes).toHaveLength(1);
+    expect(iframes[0].getAttribute('name')).toBe(PREVIEW_FRAME_NAME);
+    expect(PREVIEW_FRAME_NAME).toBe('cowork-document-preview');
+    expect(iframes[0].getAttribute('sandbox')).toBe('allow-scripts');
   });
 
   it('fills its container through a class, with no inline size', () => {
