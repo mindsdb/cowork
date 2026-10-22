@@ -559,7 +559,10 @@ off it.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
-sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+sidecar's own token, so the Keycloak JWT cannot arrive under that name. The
+exceptions are requests from the document preview frame, from frames inside
+it, and requests with no frame: the main process adds no token to those
+(`src/main/document-preview-guard.ts`).
 
 ### The MindsHub workspace selector
 

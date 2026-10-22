@@ -111,7 +111,7 @@ COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
 COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
 ```
 
-When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
+When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). The `/api/v1/health/` endpoint is always exempt.
 
 #### Install source & channel
 
