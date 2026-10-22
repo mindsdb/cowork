@@ -18,13 +18,14 @@
  *
  * openPreview leaves the preview frame mounted until the next openPreview or
  * the end of the test, except that a `timeout` unmounts it the way the parent's
- * watchdog does. A spec reaches the frame with
- * page.frame({ name: PREVIEW_FRAME_NAME }), importing the name from
- * src/shared/document-preview.ts. Checks that PreviewRun doesn't carry, such
- * as counting canvases, reading pixels and canvas sizes, finding a nested
- * iframe, or searching attributes and styles across the whole DOM, are spec
- * code over that frame. The data they compare against, such as
- * `paintedRegion`, stays in fixtures.yaml.
+ * watchdog does. Specs reach the frame only through previewFrame, and read its
+ * URL with frame.evaluate(() => location.href), never frame.url() or
+ * frame.name(). Full Chromium (headed, debug, or channel 'chromium') runs the
+ * sandboxed frame in its own process, where Playwright reports both as empty.
+ * Checks that PreviewRun doesn't carry, such as counting canvases, reading
+ * pixels and canvas sizes, finding a nested iframe, or searching attributes and
+ * styles across the whole DOM, are spec code over that frame. The data they
+ * compare against, such as `paintedRegion`, stays in fixtures.yaml.
  *
  * Every spec asserts three things: clean fixtures reach only the harness host,
  * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
@@ -34,13 +35,14 @@
  * spec also requires every harness-origin request to be the fixture's own URL
  * or one of the harness's own module paths.
  */
-import type { Page } from '@playwright/test';
+import type { Frame, Page } from '@playwright/test';
 
 import type {
   DocumentPreviewType,
   PreviewErrorCode,
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
+import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
 
@@ -58,9 +60,13 @@ export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'h
    that point. It then clicks each a, area, [href] and [xlink:href] element in
    the frame, and for a hostile fixture every element in the frame body, so
    linked cells and shapes with no anchor get clicked too. After those clicks it
-   reads the frame's URL into frameUrlAfterClicks. Specs do no clicking of their
-   own. `requests` holds the absolute URL of every request the page or any frame
-   made from the moment openPreview started, the fixture fetch included. */
+   sets frameUrlAfterClicks to the frame's URL, read inside the frame as
+   location.href or taken from the frame's recorded navigations. openPreview
+   throws when no preview frame is mounted, except after too-large or timeout,
+   which end with none, so it never reports empty text and about:srcdoc for a
+   frame it couldn't reach. Specs do no clicking of their own. `requests` holds
+   the absolute URL of every request the page or any frame made from the moment
+   openPreview started, the fixture fetch included. */
 export interface PreviewRun {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; summary?: RenderSummary;
   text: string; requests: string[]; frameUrlAfterClicks: string;
@@ -72,4 +78,11 @@ export function loadFixtures(set: PreviewFixtureSet): PreviewFixture[] {
 
 export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
   throw new Error(`openPreview is not implemented yet (${set}: ${fixture.name})`);
+}
+
+/* The mounted preview frame. It reaches the frame through its iframe element,
+   iframe[name="<PREVIEW_FRAME_NAME>"], with elementHandle().contentFrame(), and
+   throws when no preview frame is mounted. */
+export async function previewFrame(page: Page): Promise<Frame> {
+  throw new Error(`previewFrame is not implemented yet (iframe[name="${PREVIEW_FRAME_NAME}"])`);
 }
