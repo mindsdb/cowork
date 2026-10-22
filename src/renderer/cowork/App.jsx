@@ -1983,9 +1983,9 @@ function AppCore() {
   const refreshDataRef = useRef(null);
   const {
     serverOnline, setServerOnline,
-    serverBusy, setServerBusy,
-    serverBusyKind, setServerBusyKind,
-    handleServerStart, handleServerStop,
+    serverBusy,
+    serverBusyKind,
+    handleServerStart, handleServerStop, handleServerToggle,
   } = useServerControl({ refreshDataRef });
 
   // `config_ready` deliberately omitted from the initial state — the
@@ -5748,36 +5748,7 @@ function AppCore() {
           artifactTipOpen={artifactTipOpen && !(sidebarPopout && !navPopoutOpen)}
           onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
-          onToggleServer={async () => {
-            if (serverBusy) return;
-            // Decide intent from main's actual state, not renderer state.
-            // Treat "running OR mid-start" as up so a click during boot
-            // stops the in-flight start instead of double-spawning python.
-            let actuallyRunning = serverOnline;
-            let actuallyStarting = false;
-            try {
-              const info = await host.serverInfo();
-              if (info) {
-                if (typeof info.running === 'boolean') actuallyRunning = info.running;
-                if (typeof info.starting === 'boolean') actuallyStarting = info.starting;
-              }
-            } catch {}
-            const isUp = actuallyRunning || actuallyStarting;
-            const goingUp = !isUp;
-            setServerBusyKind(goingUp ? 'starting' : 'stopping');
-            setServerBusy(true);
-            try {
-              const result = goingUp
-                ? await host.serverStart()
-                : await host.serverStop();
-              if (result) {
-                setServerOnline(!!result.running);
-                if (result.running) setTimeout(refreshData, 400);
-              }
-            } catch {} finally {
-              setServerBusy(false);
-            }
-          }}
+          onToggleServer={handleServerToggle}
         />
       </div>
       )}

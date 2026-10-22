@@ -42,7 +42,7 @@ interface AntonTronAPI {
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   pickCodeFolder: () => Promise<{ ok: boolean; path?: string; cancelled?: boolean; reason?: string }>;
-  serverInfo: () => Promise<{ running: boolean; starting: boolean; port: number }>;
+  serverInfo: () => Promise<{ running: boolean; starting: boolean; port: number; startGeneration?: number }>;
   serverStart: () => Promise<{ running: boolean; port?: number; error?: string }>;
   serverStop: () => Promise<{ running: boolean; port?: number; error?: string }>;
   serverDiagnostics: () => Promise<{

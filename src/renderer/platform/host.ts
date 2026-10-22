@@ -158,6 +158,10 @@ export interface ServerInfo {
   starting: boolean;
   port: number | null;
   origin: string;
+  /** Goes up each time main brings a backend up. Null from a shell too old to
+   *  report it (an OTA renderer can be newer than its shell); absent on web,
+   *  which has no backend to replace. */
+  startGeneration?: number | null;
 }
 
 export interface ServerControlResult {
@@ -174,6 +178,7 @@ export async function serverInfo(): Promise<ServerInfo> {
       starting: !!info?.starting,
       port: info?.port ?? null,
       origin: info?.origin || `http://127.0.0.1:${info?.port ?? ANTON_SERVER_PORT}`,
+      startGeneration: typeof info?.startGeneration === 'number' ? info.startGeneration : null,
     };
   }
   return {

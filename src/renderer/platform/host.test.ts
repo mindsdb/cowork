@@ -457,6 +457,17 @@ describe('electron mode (bridge present)', () => {
     await expect(host.pickCodeFolder()).resolves.toMatchObject({ ok: false });
   });
 
+  it('serverInfo passes on main\'s start generation, and reads a shell too old to send one as null', async () => {
+    const info = { running: true, starting: false, port: 12345 };
+    (window as unknown as Record<string, unknown>).antontron = { serverInfo: async () => ({ ...info, startGeneration: 3 }) };
+    let host = await importHost();
+    await expect(host.serverInfo()).resolves.toMatchObject({ running: true, startGeneration: 3 });
+
+    (window as unknown as Record<string, unknown>).antontron = { serverInfo: async () => info };
+    host = await importHost();
+    await expect(host.serverInfo()).resolves.toMatchObject({ running: true, startGeneration: null });
+  });
+
   it('a partial bridge (method missing) falls back to the web stub, never throws', async () => {
     // OTA-updated renderers can be newer than the installed main process —
     // a bridge method added in a new UI must degrade, not crash.
