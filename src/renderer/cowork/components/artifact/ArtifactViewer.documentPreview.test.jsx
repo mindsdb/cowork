@@ -5,15 +5,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { documentPreviewData } from '../../../../../tests/helpers/documentPreviewData';
 
+/* The host members these tests reach. A desktop header with a folder to show
+   calls isMac to label "Show in Finder". */
 const platform = vi.hoisted(() => ({
   isWeb: true,
   isElectron: false,
   supportsDocumentPreview: true,
+  isMac: () => true,
   getApiOrigin: () => 'http://localhost',
   isLocalApiOrigin: () => false,
   openExternal: vi.fn(),
@@ -303,7 +306,9 @@ describe('the document branch', () => {
     expect(await screen.findByText(PREVIEW_FAILURE_REASONS['too-large'])).toBeInTheDocument();
     expect(screen.getByText(PREVIEW_FAILED_NOTE)).toBeInTheDocument();
     expect(downloadArtifactFile).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open' })); });
+    /* The note's own Open, not the header's desktop Open beside it. */
+    const note = screen.getByText(PREVIEW_FAILED_NOTE).closest('[role="status"]');
+    await act(async () => { fireEvent.click(within(note).getByRole('button', { name: 'Open' })); });
     expect(platform.openPath).toHaveBeenCalledWith(xlsx.canonicalPath);
   });
 
