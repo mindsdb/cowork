@@ -1,0 +1,98 @@
+# Word fixtures for the document preview harness (e2e/document-preview/harness.ts).
+# Each entry names a .docx file in this folder.
+
+# A heading in the Title style and one paragraph.
+- name: title and paragraph
+  file: title-and-paragraph.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Quarterly summary
+      - Revenue grew in every region this quarter.
+
+# Korean and Chinese runs that name East Asian fonts (Malgun Gothic, SimSun)
+# the file doesn't embed.
+- name: korean and chinese without embedded fonts
+  file: korean-and-chinese.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - 안녕하세요
+      - 你好世界
+
+# Pictures whose image relationships are External: a Google host, loopback by
+# address and by name, and a path on the app's own origin. Three use r:embed
+# and one r:link.
+- name: external images
+  file: external-image.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - External images
+
+# Hyperlinks to javascript:, to a Google host, to loopback by address and by
+# name, and to a path on the app's own origin, plus one link to a bookmark in
+# the document.
+- name: script and outside links
+  file: script-link.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Script link
+      - Jump to the later section
+      - Later section
+
+# An altChunk whose HTML holds a meta refresh to a Google host and a loopback
+# image.
+- name: altchunk with a meta refresh
+  file: altchunk-refresh.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Before the chunk
+      - After the chunk
+    textExcludes:
+      - Imported chunk text
+
+# styles.xml font and color values that end their CSS declaration or rule and
+# add a background url() aimed at a Google image host.
+- name: styles.xml url()
+  file: styles-url.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Styled with hostile values
+
+# A VML rectangle whose style carries a background url() aimed at a Google host
+# and a cursor url() aimed at loopback, and whose fill is a url() aimed at
+# localhost.
+- name: VML style url()
+  file: vml-url.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - A VML shape
+
+# A valid zip archive that holds no Word document.
+- name: not a Word document
+  file: not-a-document.docx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed

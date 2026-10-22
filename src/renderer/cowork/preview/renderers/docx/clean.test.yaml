@@ -1,0 +1,133 @@
+# Cases for clean.test.ts. Each case puts `html` into a holder element of an
+# inert document, the way render.ts does, runs cleanRenderedNodes on it, and
+# reads the holder's innerHTML. Every `present` string must be in it, and no
+# `absent` string may be.
+
+links:
+  - name: a javascript link loses its href and keeps its text
+    html: '<a href="javascript:document.title=''ran''">Run</a>'
+    present: ['<a>Run</a>']
+    absent: ['javascript']
+  - name: a link to another host loses its href
+    html: '<a href="https://docs.google.com/document/d/x">Docs</a>'
+    present: ['<a>Docs</a>']
+    absent: ['docs.google.com']
+  - name: a path on the app's own origin loses its href
+    html: '<a href="/api/v1/artifacts/x">Same origin</a>'
+    present: ['<a>Same origin</a>']
+    absent: ['/api/v1']
+  - name: a link to a fragment keeps its href
+    html: '<a href="#later">Later</a>'
+    present: ['href="#later"']
+  - name: an SVG link loses its xlink:href
+    html: '<svg><a xlink:href="http://127.0.0.1:9/x"><text>Shape</text></a></svg>'
+    present: ['<text>Shape</text>']
+    absent: ['127.0.0.1', 'href']
+  - name: an SVG use keeps a fragment reference
+    html: '<svg><use href="#shape"></use></svg>'
+    present: ['href="#shape"']
+  - name: an image map area loses its href
+    html: '<map name="m"><area href="http://localhost:9/x"></map>'
+    absent: ['localhost', 'href']
+
+sources:
+  - name: an image from another host loses its src
+    html: '<img src="https://lh3.googleusercontent.com/a/x" alt="remote">'
+    present: ['alt="remote"']
+    absent: ['googleusercontent', 'src=']
+  - name: an image whose source is the word null loses its src
+    html: '<img src="null" alt="missing">'
+    present: ['alt="missing"']
+    absent: ['src=']
+  - name: a data image keeps its src
+    html: '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="inline">'
+    present: ['src="data:image/gif;base64,R0lGODlhAQABAAAAACw="']
+  - name: a blob image keeps its src
+    html: '<img src="blob:null/1234" alt="blob">'
+    present: ['src="blob:null/1234"']
+  - name: srcset, ping, background and poster go
+    html: '<img srcset="https://x/a.png 2x"><a ping="https://x/p">p</a><table background="https://x/b.png"></table><video poster="https://x/v.png"></video>'
+    absent: ['srcset', 'ping', 'background', 'poster', 'https']
+  - name: form targets go
+    html: '<form action="https://x/f"><button formaction="https://x/g">Go</button></form>'
+    absent: ['action', 'https']
+  - name: event handlers go
+    html: '<p onclick="alert(1)" onmouseover="alert(2)">Text</p>'
+    present: ['<p>Text</p>']
+    absent: ['onclick', 'onmouseover', 'alert']
+
+elements:
+  - name: frames and embedded objects go with what they hold
+    html: '<p>Kept</p><iframe srcdoc="&lt;p&gt;Imported chunk text&lt;/p&gt;"></iframe><object data="https://x/o"></object><embed src="https://x/e">'
+    present: ['<p>Kept</p>']
+    absent: ['iframe', 'Imported chunk text', 'object', 'embed']
+  - name: script, link, meta and base go
+    html: '<script>alert(1)</script><link rel="stylesheet" href="https://x/s.css"><meta http-equiv="refresh" content="0;url=https://x/"><base href="https://x/"><p>Kept</p>'
+    present: ['<p>Kept</p>']
+    absent: ['script', 'alert', 'link', 'meta', 'refresh', 'base']
+  - name: SVG animation elements go, so nothing rewrites an attribute later
+    html: '<svg><a><animate attributeName="href" values="https://x/"></animate><set attributeName="href" to="https://x/"></set><text>Shape</text></a></svg>'
+    present: ['<text>Shape</text>']
+    absent: ['animate', '<set', 'https']
+
+attributes:
+  - name: an SVG paint server on another host goes
+    html: '<svg><rect fill="url(http://localhost:9/vml-fill#paint)"></rect></svg>'
+    absent: ['localhost', 'fill=']
+  - name: an SVG paint server in the same document stays
+    html: '<svg><rect fill="url(#paint)"></rect></svg>'
+    present: ['fill="url(#paint)"']
+  - name: a plain attribute stays
+    html: '<p class="docx-paragraph" lang="ko-KR">안녕하세요</p>'
+    present: ['class="docx-paragraph"', 'lang="ko-KR"', '안녕하세요']
+
+inlineStyles:
+  - name: a background image from another host goes and the colour stays
+    html: '<p style="color: red; background-image: url(https://docs.google.com/vml-style)">Text</p>'
+    present: ['color']
+    absent: ['background', 'docs.google.com']
+  - name: a cursor from loopback goes
+    html: '<p style="cursor: url(http://127.0.0.1:9/vml-cursor), auto">Text</p>'
+    absent: ['cursor', '127.0.0.1']
+  - name: an image set goes
+    html: '<p style="background-image: image-set(''https://x/a.png'' 1x)">Text</p>'
+    absent: ['image-set', 'https']
+  - name: a data background stays
+    html: '<p style="background-image: url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)">Text</p>'
+    present: ['data:image/gif']
+  - name: a custom property that could carry a URL goes
+    html: '<p style="--hidden: url(https://x/a.png); --font: Calibri">Text</p>'
+    present: ['--font']
+    absent: ['--hidden', 'https']
+  - name: an SVG style background goes
+    html: '<svg style="width: 100pt; background-image: url(https://docs.google.com/vml-style)"></svg>'
+    present: ['width']
+    absent: ['background', 'docs.google.com']
+
+styleSheets:
+  - name: a declaration that loads from another host goes and its rule stays
+    html: '<style>.docx p { color: red; background-image: url(https://lh3.googleusercontent.com/a/x) }</style>'
+    present: ['.docx p', 'color']
+    absent: ['background', 'googleusercontent']
+  - name: a rule that a hostile font name closed and opened loses what loads
+    html: '<style>.docx { font-family: y }*{background-image:url(https://lh3.googleusercontent.com/a/x)}z{x:y }</style>'
+    present: ['font-family']
+    absent: ['background', 'googleusercontent']
+  - name: an import goes
+    html: '<style>@import url(https://x/s.css); p { color: red }</style>'
+    absent: ['import', 'https']
+  - name: a font face keeps a data source
+    html: '<style>@font-face { font-family: Embedded; src: url(data:font/ttf;base64,AAEAAA==) }</style>'
+    present: ['font-face', 'data:font/ttf']
+  - name: a font face loses a remote source
+    html: '<style>@font-face { font-family: Remote; src: url(https://x/f.ttf) }</style>'
+    present: ['font-face']
+    absent: ['https', 'src']
+  - name: a media rule keeps its rules and loses what loads
+    html: '<style>@media print { p { color: red; background: url(https://x/b.png) } }</style>'
+    present: ['media', 'color']
+    absent: ['https', 'url(']
+  - name: a rule type docx-preview never writes goes
+    html: '<style>@supports (display: grid) { p { color: red } } p { color: blue }</style>'
+    present: ['blue']
+    absent: ['supports']
