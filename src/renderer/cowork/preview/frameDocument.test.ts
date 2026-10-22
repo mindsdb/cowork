@@ -37,6 +37,8 @@ describe('previewFramePolicy', () => {
     ['a hex digest', 'a'.repeat(64)],
     ['a digest without padding', HASH.slice(0, -1)],
     ['a directive spliced after the digest', `${HASH}'; script-src *; '`],
+    ['a directive spliced before the digest', `x'; connect-src *; img-src *; script-src 'sha256-${HASH}`],
+    ['a 44-character digest with characters outside base64', "a'; connect-src *; img-src *; script-src 'b="],
   ])('throws on %s', (_label, digest) => {
     expect(() => previewFramePolicy(digest)).toThrow('base64 sha256');
   });

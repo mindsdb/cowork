@@ -10,14 +10,15 @@ export interface PreviewDevice {
 
 /* The caps the parent enforces: the streamed byte cap and the two watchdogs.
    They are the same on every device, so the parent reads them without a
-   device. */
+   device. The constant is frozen, so no importer can change a cap for the
+   others. */
 export type PreviewParentLimits = Pick<PreviewLimits, 'maxBytes' | 'readyTimeoutMs' | 'progressTimeoutMs'>;
 
-export const PREVIEW_PARENT_LIMITS: PreviewParentLimits = {
+export const PREVIEW_PARENT_LIMITS: Readonly<PreviewParentLimits> = Object.freeze({
   maxBytes: 32 * MIB,
   readyTimeoutMs: 10_000,
   progressTimeoutMs: 20_000,
-};
+});
 
 /* The caps every document preview reads from RendererContext.limits. The frame
    runtime calls this with its own touch reading. A touch device gets a quarter
