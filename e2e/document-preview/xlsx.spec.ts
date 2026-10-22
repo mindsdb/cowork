@@ -1,9 +1,9 @@
 /*
  * The xlsx preview in the harness. Each fixture in fixtures/xlsx/fixtures.yaml
- * ends as its expectation says, and the frame is back at about:srcdoc after the
- * harness clicks through it. A clean fixture reaches only the harness origin. A
- * hostile one reaches it only for its own file and for the harness page and its
- * modules, since the harness origin stands in for the Cowork origin.
+ * ends as its expectation says, makes no request that strayRequests in
+ * harness.ts flags, and leaves the frame at about:srcdoc after the harness
+ * clicks through it. strayRequests holds the request rules, so this spec keeps
+ * no list of allowed origins or paths.
  *
  * Over the frame itself, the spec checks that the grid shows one tab per sheet,
  * keeps the tabs in view however long the sheet is, holds no link or loaded
@@ -15,26 +15,15 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { expect, test, type Frame, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import type { RenderSummary } from '../../src/renderer/cowork/preview/contract';
 import { previewLimits } from '../../src/renderer/cowork/preview/limits';
-import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
-import { loadFixtures, openPreview, type PreviewFixture, type PreviewRun } from './harness';
+import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
 
 const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
 const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
 const LIMITS = previewLimits({ touch: false });
-
-/* Paths of the harness page itself and of its own modules, which Vite serves
-   from the harness origin. */
-const HARNESS_PAGE_PATH = /^\/(?:index\.html)?$|^\/(?:@|node_modules\/)|\.(?:[cm]?[jt]sx?|css)$/;
-
-function previewFrame(page: Page): Frame {
-  const frame = page.frame({ name: PREVIEW_FRAME_NAME });
-  if (!frame) throw new Error(`No frame named ${PREVIEW_FRAME_NAME} is mounted`);
-  return frame;
-}
 
 function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   const want = fixture.expect;
@@ -48,20 +37,11 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
 }
 
-function expectRequests(run: PreviewRun, fixture: PreviewFixture, harnessOrigin: string): void {
-  const urls = run.requests.map((request) => new URL(request));
-  expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
-  if (fixture.kind === 'hostile') {
-    const strays = urls.filter((url) => !url.pathname.endsWith(`/${fixture.file}`) && !HARNESS_PAGE_PATH.test(url.pathname));
-    expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
-  }
-}
-
 /* Where the sheet tab bar sits in the frame's viewport. */
 interface TabBarBox { top: number; bottom: number; viewportHeight: number }
 
 async function expectGrid(page: Page, summary: RenderSummary, fixture: PreviewFixture): Promise<void> {
-  const frame = previewFrame(page);
+  const frame = await previewFrame(page);
   await expect(frame.locator('body [role="tab"]')).toHaveCount(summary.units);
   const tabBar = await frame.locator('[role="tablist"]').evaluate((node): TabBarBox => {
     const box = node.getBoundingClientRect();
@@ -94,7 +74,7 @@ test.describe('xlsx preview', () => {
       const run = await openPreview(page, 'xlsx', fixture);
 
       expectOutcome(run, fixture);
-      expectRequests(run, fixture, new URL(baseURL).origin);
+      expect(strayRequests('xlsx', fixture, run.requests, new URL(baseURL).origin)).toEqual([]);
       expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
       if (run.outcome === 'rendered' && run.summary) await expectGrid(page, run.summary, fixture);
     });

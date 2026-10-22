@@ -16,7 +16,8 @@
  */
 import { read, type CellObject, type WorkBook, type WorkSheet } from 'xlsx';
 
-import type { PreviewError, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
+import type { PreviewLimits, RenderSummary, RendererContext } from '../../contract';
+import { previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
 
 const ROWS_PER_BATCH = 100;
@@ -75,10 +76,6 @@ interface SheetView {
 interface Grid {
   table: HTMLTableElement;
   body: HTMLTableSectionElement;
-}
-
-function previewError(code: PreviewErrorCode, message: string): PreviewError {
-  return Object.assign(new Error(message), { code });
 }
 
 function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {

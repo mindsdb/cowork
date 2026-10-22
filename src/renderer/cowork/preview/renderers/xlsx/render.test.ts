@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { PreviewFixture } from '../../../../../../e2e/document-preview/harness';
 import { buildWorkbook, type FixtureSheet } from '../../../../../../e2e/document-preview/fixtures/xlsx/make-fixtures.mjs';
 import type { PreviewError, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
+import { isPreviewError } from '../../errors';
 import { previewLimits } from '../../limits';
 import renderer from './render';
 
@@ -87,10 +88,12 @@ async function renderFailure(bytes: ArrayBuffer, ctx = context()): Promise<Previ
   );
 }
 
+/* A rejection that isPreviewError doesn't recognize ends as internal, as the
+   runtime reports it. */
 async function renderEnding(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderEnding> {
   return renderer.render(bytes, ctx).then(
     (summary): RenderEnding => ({ outcome: 'rendered', summary }),
-    (error: PreviewError): RenderEnding => ({ outcome: 'error', errorCode: error.code }),
+    (error: unknown): RenderEnding => ({ outcome: 'error', errorCode: isPreviewError(error) ? error.code : 'internal' }),
   );
 }
 
@@ -351,6 +354,7 @@ describe('xlsx renderer', () => {
 
   it('fails with parse-failed for text that is not a zip, and never hands it to SheetJS', async () => {
     const error = await renderFailure(new TextEncoder().encode('<table><tr><td>a</td></tr></table>').buffer as ArrayBuffer);
+    expect(isPreviewError(error)).toBe(true);
     expect(error.code).toBe('parse-failed');
     expect(read).not.toHaveBeenCalled();
   });
@@ -358,6 +362,7 @@ describe('xlsx renderer', () => {
   it('fails with unsupported for an encrypted workbook or an old .xls', async () => {
     const compoundFile = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]);
     const error = await renderFailure(compoundFile.buffer);
+    expect(isPreviewError(error)).toBe(true);
     expect(error.code).toBe('unsupported');
     expect(read).not.toHaveBeenCalled();
   });
@@ -367,6 +372,7 @@ describe('xlsx renderer', () => {
     zip.file('readme.txt', 'not a workbook');
     const bytes = await zip.generateAsync({ type: 'uint8array' });
     const error = await renderFailure(bytes.buffer as ArrayBuffer);
+    expect(isPreviewError(error)).toBe(true);
     expect(error.code).toBe('parse-failed');
     expect(read).toHaveBeenCalledTimes(1);
   });
@@ -374,6 +380,7 @@ describe('xlsx renderer', () => {
   it('fails with parse-failed for the corrupt fixture, whose workbook lists no sheet', async () => {
     const ctx = context();
     const error = await renderFailure(fixture('corrupt.xlsx'), ctx);
+    expect(isPreviewError(error)).toBe(true);
     expect(error.code).toBe('parse-failed');
     expect(ctx.root.childElementCount).toBe(0);
   });
