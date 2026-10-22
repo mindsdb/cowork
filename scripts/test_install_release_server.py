@@ -286,6 +286,11 @@ class ReleaseTests(unittest.TestCase):
             actual_run, actual_output = subprocess.run, subprocess.check_output
             def command(args):
                 args = [arg.replace(official_anton, local_anton) for arg in args]
+                for arg in args:
+                    if arg.endswith(".txt") and Path(arg).is_file():
+                        text = Path(arg).read_text()
+                        if official_anton in text:
+                            Path(arg).write_text(text.replace(official_anton, local_anton))
                 return [*args, "--no-index", "--find-links", str(registry)] if args[1:3] in (["pip", "compile"], ["pip", "install"], ["tool", "install"]) else args
             def run(args, **kwargs):
                 environment = kwargs.get("env", os.environ)
@@ -305,6 +310,28 @@ class ReleaseTests(unittest.TestCase):
                 python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                 version = actual_output([str(python), "-c", "from importlib.metadata import version; print(version('fixture-dependency'))"], text=True)
                 self.assertEqual(version.strip(), "1.0.0")
+                # An override must not hide the server's original Anton range:
+                # reject the incompatible Git source before touching a working tool.
+                candidate = root / "cowork_server-2.0.0-py3-none-any.whl"
+                candidate.write_bytes(wheel(version="2.0.0", requirements=["anton-agent>=2,<3", "fixture-dependency>=1", "packaging"], contract=contract))
+                rejected = installer.Release(str(candidate), contract, version="2.0.0", anton_commit=native_anton_commit)
+                override = root / "official-override.txt"
+                override.write_text("anton-agent @ " + official_anton + "\n")
+                def tool_files():
+                    return {str(path.relative_to(tools)): hashlib.sha256(path.read_bytes()).hexdigest()
+                            for path in (tools / "cowork-server").rglob("*") if path.is_file()}
+                before = tool_files()
+                with patch.dict(os.environ, {"UV_OVERRIDE": str(override)}), patch.object(installer, "prepare", return_value=rejected):
+                    state = installer.InstallState()
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==2.0.0"], state=state)
+                    self.assertFalse(state.changed, "incompatible source reached live tool replacement")
+                    self.assertEqual(tool_files(), before)
+                    self.assertFalse((tools / ".cowork-release-contracts/install-incomplete").exists())
+                    native_rejected = root / "native-rejected" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==2.0.0"], native_rejected)
+                    self.assertFalse(native_rejected.parent.parent.exists())
                 # Compatible local drift must not supersede the embedded release contract.
                 run([shutil.which("uv"), "pip", "install", "--python", str(python), "--no-deps", "fixture-dependency==2.0.0"], check=True)
                 installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"])

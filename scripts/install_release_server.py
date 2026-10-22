@@ -287,6 +287,13 @@ def preflight(uv: str, release: Release, directory: Path, contract: Path, enviro
     """Reject missing wheels, incompatible metadata and extra dependencies before installation."""
     artifact = directory / "artifact.txt"
     artifact.write_text(release.source + "\n")
+    if release.anton_commit:
+        # A direct source keeps the server's original Anton version constraint.
+        # UV_OVERRIDE would erase that constraint and hide incompatible pairs.
+        artifact.write_text(release.source + "\n" + Path(environment["UV_OVERRIDE"]).read_text())
+        contract = directory / "preflight-requirements.txt"
+        contract.write_text(without_anton(release.contract))
+        environment = {**environment, "UV_OVERRIDE": ""}
     common = [uv, "pip", "compile", "--python", sys.executable, "--no-config", "--no-header", "--no-annotate", "--no-emit-package", "cowork-server", "--quiet"]
     if release.anton_commit:
         common.extend(["--no-emit-package", "anton-agent"])
