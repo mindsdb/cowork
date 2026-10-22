@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Context card body — surfaces memories (Project + Global) AND
 // project instructions (`.anton/anton.md`) plus any legacy `.context/`
 // files. Listed via GET /projects/{name}/files; Working folder hides
@@ -1087,7 +1088,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
             setTaskUploadError(err?.message || 'Could not delete attachment.');
             bumpAttachments();
           }
@@ -1131,7 +1132,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             if (isInstructions) reloadFiles({ forceFresh: true });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete file failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_file_failed", '[context] delete file failed', err);
             setUploadError(err?.message || 'Could not delete file.');
             // Restore by refetching the canonical list from server.
             reloadFiles();
@@ -1161,7 +1162,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] remove drive file failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_remove_drive_file_failed", '[context] remove drive file failed', err);
             setUploadError(err?.message || 'Could not remove file.');
             reloadDriveFiles();
           }
@@ -1193,7 +1194,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
             setTaskUploadError(err?.message || 'Could not delete attachment.');
             bumpAttachments();
           }
