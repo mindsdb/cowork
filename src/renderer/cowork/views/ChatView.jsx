@@ -3125,6 +3125,7 @@ export default function ChatView({
                   {/* Above the text: a question is asked, then answered, then
                       (at most) the turn's closing text streams — so every
                       card and block precedes the text that came after. */}
+                  {justFinished(m) && m._leavingTake && <FirstTake take={null} leavingText={m._leavingTake} />}
                   <TurnSegments
                     steps={m.steps}
                     startedAt={m.startedAt}

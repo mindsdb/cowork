@@ -4196,3 +4196,11 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   min-height: 0;
   overflow: hidden;
 }
+/* The first take leaving: the words fade first, then the space closes, so it
+   settles rather than snaps. Scaled from --dur-layout, so reduced motion
+   still makes it instant. */
+.fold--gentle {
+  transition:
+    grid-template-rows calc(var(--dur-layout) * 1.6) var(--ease-out),
+    opacity calc(var(--dur-layout) * 0.9) var(--ease-out);
+}

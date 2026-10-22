@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react';
 
 /** Matches --dur-layout (200ms) plus a frame of slack. */
 export const FOLD_MS = 220;
+/** `.fold--gentle`: 1.6 x --dur-layout plus a frame of slack. */
+export const GENTLE_FOLD_MS = 340;
 
 export function prefersReducedMotion() {
   try {
@@ -20,7 +22,7 @@ export function prefersReducedMotion() {
   }
 }
 
-export function useFold(open, { animateOpen = true } = {}) {
+export function useFold(open, { animateOpen = true, durationMs = FOLD_MS } = {}) {
   const [mounted, setMounted] = useState(open);
   const [folded, setFolded] = useState(!open);
 
@@ -40,9 +42,9 @@ export function useFold(open, { animateOpen = true } = {}) {
       setMounted(false);
       return undefined;
     }
-    const id = setTimeout(() => setMounted(false), FOLD_MS);
+    const id = setTimeout(() => setMounted(false), durationMs);
     return () => clearTimeout(id);
-  }, [open, animateOpen]);
+  }, [open, animateOpen, durationMs]);
 
   return { mounted: mounted || open, folded: !open || folded };
 }

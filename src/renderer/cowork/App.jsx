@@ -2392,6 +2392,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -2403,6 +2406,7 @@ function AppCore() {
                 // Client-only: lets its steps fold shut instead of vanishing
                 // when the live turn is swapped for this message (ENG-3554).
                 _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -3716,6 +3720,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -3727,6 +3734,7 @@ function AppCore() {
                 // Client-only: lets its steps fold shut instead of vanishing
                 // when the live turn is swapped for this message (ENG-3554).
                 _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -4178,6 +4186,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -4189,6 +4200,7 @@ function AppCore() {
                 // Client-only: lets its steps fold shut instead of vanishing
                 // when the live turn is swapped for this message (ENG-3554).
                 _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -4513,6 +4525,9 @@ function AppCore() {
         const finalIncompleteReason = streamState.incompleteReason;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
@@ -4521,6 +4536,7 @@ function AppCore() {
                 // Client-only: lets its steps fold shut instead of vanishing
                 // when the live turn is swapped for this message (ENG-3554).
                 _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
