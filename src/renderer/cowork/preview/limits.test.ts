@@ -34,3 +34,9 @@ describe('previewLimits', () => {
     }
   });
 });
+
+describe('PREVIEW_PARENT_LIMITS', () => {
+  it('is frozen, so no importer can change a cap for the others', () => {
+    expect(Object.isFrozen(PREVIEW_PARENT_LIMITS)).toBe(true);
+  });
+});
