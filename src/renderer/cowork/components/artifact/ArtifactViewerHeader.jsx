@@ -60,7 +60,6 @@ export function ArtifactViewerHeader({
     disabledReason,
   } = publication;
   const {
-    canOpenInBrowser,
     canOpenInBrowserTab,
     canOpenLocalFile,
     isBackendArtifact,
@@ -68,7 +67,6 @@ export function ArtifactViewerHeader({
     artifact,
     deleteBusy,
     onReload,
-    onOpenInBrowser,
     onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
@@ -250,9 +248,10 @@ export function ArtifactViewerHeader({
           <ArtifactExportMenu key={artifact.draftUrl} draftUrl={artifact.draftUrl} formats={exportFormats} />
         )}
         {/* Download, Open and Show in folder left this menu when they became
-            visible controls, so nothing appears twice. On desktop an
-            unpublished "Open in browser" runs the same action as Open, so it
-            left too; "Open shared link" stays. */}
+            visible controls, so nothing appears twice. "Open in browser" and
+            "Open shared link" left too: they opened the published or serve
+            URL, and ArtifactViewer's onOpenInBrowserTab opens that same URL
+            from the browser-tab arrow, which shows whenever either exists. */}
         {!orgMode && (
           <Menu
             ariaLabel="Artifact actions"
@@ -270,11 +269,6 @@ export function ArtifactViewerHeader({
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
-              ...(canOpenInBrowser && canOpenAsTab && (host.isWeb || isPublished) ? [{
-                label: isPublished ? 'Open shared link' : 'Open in browser',
-                icon: Ico.arrowUpRight(14),
-                onClick: onOpenInBrowser,
-              }] : []),
               { divider: true },
               {
                 label: 'Delete',

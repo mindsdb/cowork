@@ -2,8 +2,8 @@
  * What the viewer header offers for each file in each deployment mode: a
  * visible Download on web, a visible Open with Download and Show in folder in
  * its menu on desktop, a browser tab only for a file a tab shows on web, a ⋯
- * menu without the entries that became visible controls, and an Export button
- * that lists exactly the server's formats. The cases live in
+ * menu that repeats none of those controls, and an Export button that lists
+ * exactly the server's formats. The cases live in
  * ArtifactViewerHeader.modes.test.yaml.
  */
 import { readFileSync } from 'node:fs';
@@ -51,6 +51,7 @@ function headerProps(mode, {
   authorship = null,
   isPublished = false,
 } = {}) {
+  const publishedUrl = isPublished ? 'https://pages.example/storefront' : '';
   return {
     title: path,
     authorship: authorship && artifactAuthorship(authorship),
@@ -67,13 +68,12 @@ function headerProps(mode, {
     publication: {
       canManage: true,
       publishable: false,
-      controller: { publishedUrl: isPublished ? 'https://pages.example/storefront' : '' },
+      controller: { publishedUrl },
       hasActionPath: true,
       isPublished,
       disabledReason: '',
     },
     actions: {
-      canOpenInBrowser: true,
       canOpenInBrowserTab: true,
       canOpenLocalFile: mode.localFiles,
       isBackendArtifact: type === 'fullstack-stateless-app',
@@ -87,7 +87,6 @@ function headerProps(mode, {
       },
       deleteBusy: false,
       onReload: vi.fn(),
-      onOpenInBrowser: vi.fn(),
       onOpenInBrowserTab: vi.fn(),
       onOpenFolder: vi.fn(),
       onOpenOS: vi.fn(),
@@ -133,15 +132,14 @@ describe.each(cases.modes)('the viewer header on $name', (mode) => {
 
     expect(!!screen.queryByRole('button', { name: 'More actions' })).toBe(mode.moreActions);
     if (mode.moreActions) {
-      const moreItems = await menuItemNames(user, 'More actions');
-      for (const dropped of cases.droppedFromMoreActions) expect(moreItems).not.toContain(dropped);
-      expect(moreItems.includes('Open in browser')).toBe(mode.openInBrowser && showsTab);
+      expect(await menuItemNames(user, 'More actions')).toEqual(cases.moreActionsMenu);
     }
   });
 
   /* A full-stack app addressed by its folder has no extension, so only its
-     published page makes it a file a tab shows. */
-  it('offers a published artifact\'s shared page', async () => {
+     published page makes it a file a tab shows. The arrow opens that page,
+     so the ⋯ menu doesn't offer it again. */
+  it('offers a published artifact\'s shared page once', async () => {
     useMode(mode);
     const user = userEvent.setup();
     render(<ArtifactViewerHeader {...headerProps(mode, {
@@ -152,7 +150,7 @@ describe.each(cases.modes)('the viewer header on $name', (mode) => {
 
     expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
     if (mode.moreActions) {
-      expect(await menuItemNames(user, 'More actions')).toContain(cases.sharedLinkLabel);
+      expect(await menuItemNames(user, 'More actions')).toEqual(cases.moreActionsMenu);
     }
   });
 });

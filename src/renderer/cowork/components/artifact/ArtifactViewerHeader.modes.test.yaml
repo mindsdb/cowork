@@ -2,11 +2,11 @@
 # ArtifactViewerHeader.modes.test.jsx. The test renders the header once per
 # mode and file, then checks every control against the values below.
 
-# The ⋯ menu entries that left it when they became visible header controls.
-droppedFromMoreActions: [Download, Open in OS, Open folder]
-
-# A published artifact's ⋯ entry, which opens its shared page.
-sharedLinkLabel: Open shared link
+# The ⋯ menu, on every mode that has one, for an owner. Download, Open in OS
+# and Open folder left it when they became visible header controls. Open in
+# browser and Open shared link left it because the browser-tab arrow opens the
+# same URL.
+moreActionsMenu: [Reload preview, Delete]
 
 modes:
   - name: local web
@@ -20,8 +20,6 @@ modes:
     moreActions: true
     # Web offers a browser tab only for a file a tab shows.
     tabRule: true
-    # The ⋯ menu's "Open in browser" for an unpublished file.
-    openInBrowser: true
   - name: org web
     web: true
     org: true
@@ -32,7 +30,6 @@ modes:
     download: header
     moreActions: false
     tabRule: true
-    openInBrowser: false
   - name: desktop on macOS
     web: false
     org: false
@@ -44,8 +41,6 @@ modes:
     revealLabel: Show in Finder
     moreActions: true
     tabRule: false
-    # Unpublished, it runs the same action as the visible Open.
-    openInBrowser: false
   - name: desktop on Windows or Linux
     web: false
     org: false
@@ -56,7 +51,6 @@ modes:
     revealLabel: Show in folder
     moreActions: true
     tabRule: false
-    openInBrowser: false
   - name: desktop on a remote server
     web: false
     org: false
@@ -68,7 +62,6 @@ modes:
     revealLabel: null
     moreActions: true
     tabRule: false
-    openInBrowser: false
 
 files:
   - path: model.xlsx

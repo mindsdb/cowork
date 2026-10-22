@@ -45,7 +45,6 @@ const props = {
     disabledReason: '',
   },
   actions: {
-    canOpenInBrowser: false,
     canOpenInBrowserTab: true,
     canOpenLocalFile: false,
     isBackendArtifact: false,
@@ -53,7 +52,6 @@ const props = {
     artifact: { serveUrl: '' },
     deleteBusy: false,
     onReload: vi.fn(),
-    onOpenInBrowser: vi.fn(),
     onOpenInBrowserTab,
     onOpenFolder: vi.fn(),
     onOpenOS: vi.fn(),
