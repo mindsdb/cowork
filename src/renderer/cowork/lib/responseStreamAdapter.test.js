@@ -426,6 +426,37 @@ describe('narration becomes steps, the answer area switches once (ENG-1108, ENG-
     expect(answerBody(state)).toBe('Better.');
   });
 
+  it('a tool announced by progress markers ends the round too (create_artifact, in-process)', () => {
+    // The event order of a real desktop turn: narration, create_artifact
+    // announced through progress markers, the next round's narration (led by
+    // the server's round break), a scratchpad, then the answer.
+    const progress = (extra) => ({ type: 'response.in_progress', thought_role: 'thought.progress', ...extra });
+    const seen = [];
+    let state = initialStreamState();
+    for (const ev of [
+      created(), take("I'll build that hybrid game for you."),
+      text("I'll create a hybrid game combining tic-tac-toe and Tetris mechanics. Let me register the artifact and build it."),
+      progress({ content: 'create_artifact', tool_use_id: 'toolu_1' }),
+      progress({ content: '{"name": "Hybrid"}', tool_use_id: 'toolu_1' }),
+      progress({ content: 'tool_start: create_artifact', phase: 'tool_start', message: 'create_artifact', tool_use_id: '' }),
+      progress({ content: 'reasoning_done', phase: 'reasoning_done', tool_use_id: '' }),
+      text("\n\nNow I'll build the game and write it to the artifact folder:"),
+      padStart,
+      text("\n\nPerfect! I've created the game.\n\n## How it works"),
+      { type: 'response.completed' },
+    ]) {
+      state = reduceStream(state, ev, now);
+      seen.push(answerBody(state) ? 'answer' : visibleFirstTake(state.firstTake) ? 'take' : 'empty');
+    }
+    // The take holds until the answer, which replaces it once.
+    expect(seen.slice(1)).toEqual(['take', 'take', 'take', 'take', 'take', 'take', 'take', 'take', 'answer', 'answer']);
+    expect(notes(state).map((n) => n.label)).toEqual([
+      "I'll create a hybrid game combining tic-tac-toe and Tetris mechanics. Let me register the artifact and build it.",
+      "Now I'll build the game and write it to the artifact folder:",
+    ]);
+    expect(answerBody(state).trim()).toBe("Perfect! I've created the game.\n\n## How it works");
+  });
+
   it('seals the reasoning burst on a tool start when there is no narration (next burst starts fresh)', () => {
     const state = reduceAll([
       created(),

@@ -319,6 +319,14 @@ export function settleRound(state) {
   return promoteToAnswer(state);
 }
 
+/** Whether a progress marker announces a tool starting: the `tool_start` /
+ *  `scratchpad_start` phases, or the tool's own announcement carrying its
+ *  tool_use_id. */
+function startsTool(event) {
+  if (event.phase === 'tool_start' || event.phase === 'scratchpad_start') return true;
+  return !event.phase && !event.subtype && typeof event.tool_use_id === 'string' && event.tool_use_id !== '';
+}
+
 /** A tool call is starting mid-turn — compute the steps/bodyText patch for it.
  *
  *  Any text that streamed before this tool call was narration ("let me check
@@ -1059,6 +1067,16 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // Progress markers
   if (role === 'thought.progress') {
     const phase = event.phase;
+
+    // A tool announced through a progress marker rather than a tool-call or
+    // scratchpad event (the in-process stream does this for create_artifact
+    // and other non-scratchpad tools). It ends the round just the same: the
+    // text before it was narration, so it is filed as a Note now, before the
+    // next round's text is appended to it and the paragraph break between
+    // the two rounds makes it look like an answer (ENG-3554).
+    if (startsTool(event) && state.bodyText.trim()) {
+      state = { ...state, ...sealRoundOnToolStart(state, eventTs) };
+    }
 
     // anton is deliberately idle, waiting out a velocity rate-limit before
     // resuming the same step (ENG-1537). Surfaced as an ephemeral live line —
