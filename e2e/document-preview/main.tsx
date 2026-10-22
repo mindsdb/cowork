@@ -14,7 +14,7 @@ import { DocumentPreviewFrame } from '../../src/renderer/cowork/preview/Document
 import { previewBundles } from '../../src/renderer/cowork/preview/generated/registry';
 import { PREVIEW_PARENT_LIMITS } from '../../src/renderer/cowork/preview/limits';
 import { loadPreviewBundle, type LoadedPreviewBundle } from '../../src/renderer/cowork/preview/runtime/bundle';
-import { isPreviewError } from '../../src/renderer/cowork/preview/runtime/errors';
+import { isPreviewError } from '../../src/renderer/cowork/preview/errors';
 import { readPreviewBytes } from '../../src/renderer/cowork/preview/runtime/readBytes';
 import type { HarnessOutcome, PreviewFixtureSet } from './harness';
 

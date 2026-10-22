@@ -2,19 +2,16 @@ import { expect, test } from '@playwright/test';
 
 import { buildPreviewSrcdoc, previewFramePolicy } from '../../src/renderer/cowork/preview/frameDocument';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
-import { loadFixtures, openPreview, type PreviewFixture, type PreviewRun } from './harness';
+import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
 
 /*
  * The frame's own isolation, with the harness-only navigation renderer. Every
- * fixture renders, every click leaves the frame at about:srcdoc, and the only
- * network request is the harness's fetch of the fixture itself, apart from the
- * harness page's own modules. Requests are compared by origin, never by host
- * name, because 127.0.0.1 on another port is a target too.
+ * fixture renders, every click leaves the frame at about:srcdoc, and every
+ * fixture, clean ones too, passes strayRequests' rules for a hostile fixture:
+ * the harness fetches the fixture itself exactly once, and nothing else is
+ * requested but the harness page's own modules.
  */
 const SET = 'navigation';
-
-/* The Vite dev server's own module paths on the harness origin. */
-const isHarnessModule = (url: URL) => url.pathname.startsWith('/@') || url.pathname.startsWith('/node_modules/');
 
 function expectOutcome(run: PreviewRun, fixture: PreviewFixture) {
   const { expect: expected } = fixture;
@@ -33,10 +30,9 @@ for (const fixture of loadFixtures(SET)) {
     expectOutcome(run, fixture);
 
     const harnessOrigin = new URL(baseURL!).origin;
-    const network = run.requests.filter((url) => /^https?:/.test(url)).map((url) => new URL(url));
-    expect(network.filter((url) => url.origin !== harnessOrigin).map(String)).toEqual([]);
-    expect(network.filter((url) => url.origin === harnessOrigin && !isHarnessModule(url)).map(String))
-      .toEqual([`${harnessOrigin}/fixtures/${SET}/${fixture.file}`]);
+    expect(strayRequests(SET, { ...fixture, kind: 'hostile' }, run.requests, harnessOrigin)).toEqual([]);
+    const fixtureUrl = `${harnessOrigin}/fixtures/${SET}/${fixture.file}`;
+    expect(run.requests.filter((url) => url === fixtureUrl)).toEqual([fixtureUrl]);
     expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
   });
 }
@@ -57,7 +53,7 @@ test('the frame is sandboxed, named, built from srcdoc, and holds no token meta 
   const scriptText = srcdoc.match(/<script>([\s\S]*)<\/script>$/)?.[1] ?? '';
   expect(srcdoc).toBe(buildPreviewSrcdoc({ policy, token, scriptText, scriptSha256 }));
 
-  const frame = page.frame({ name: PREVIEW_FRAME_NAME })!;
+  const frame = await previewFrame(page);
   const head = await frame.evaluate(() => Array.from(document.head.children)
     .map((element) => element.getAttribute('http-equiv') ?? element.getAttribute('name') ?? element.tagName));
   expect(head).toEqual(['Content-Security-Policy', 'x-dns-prefetch-control', 'SCRIPT']);

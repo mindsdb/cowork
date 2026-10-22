@@ -13,7 +13,7 @@ import type {
   ParentToFrame,
   RenderSummary,
 } from '../contract';
-import { isPreviewErrorCode } from './errors';
+import { isPreviewErrorCode } from '../errors';
 
 /* The meta buildPreviewSrcdoc writes the token into, and the frame removes. */
 export const PREVIEW_TOKEN_META_NAME = 'cowork-preview-token';

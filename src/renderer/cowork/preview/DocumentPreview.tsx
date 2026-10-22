@@ -20,10 +20,10 @@ import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import type { DocumentPreviewType, PreviewErrorCode, RenderSummary } from './contract';
 import { DocumentPreviewFrame } from './DocumentPreviewFrame';
+import { isPreviewError } from './errors';
 import { previewBundles } from './generated/registry';
 import { PREVIEW_PARENT_LIMITS, previewLimits } from './limits';
 import { loadPreviewBundle, type LoadedPreviewBundle } from './runtime/bundle';
-import { isPreviewError } from './runtime/errors';
 import { readPreviewBytes } from './runtime/readBytes';
 import './documentPreview.css';
 

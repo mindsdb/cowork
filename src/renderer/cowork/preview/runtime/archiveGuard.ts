@@ -35,7 +35,7 @@
 import JSZip from 'jszip';
 
 import type { GuardedZip, PreviewLimits } from '../contract';
-import { isPreviewError, previewError } from './errors';
+import { isPreviewError, previewError } from '../errors';
 
 export type ArchiveLimits = Pick<PreviewLimits, 'maxInflatedBytes' | 'maxZipEntryInflatedBytes' | 'maxZipEntries'>;
 

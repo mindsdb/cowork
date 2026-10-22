@@ -1,4 +1,4 @@
-import { previewError } from './errors';
+import { previewError } from '../errors';
 
 /*
  * Reads a file response into one ArrayBuffer, counting bytes as they arrive.

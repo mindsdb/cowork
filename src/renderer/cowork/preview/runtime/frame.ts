@@ -19,9 +19,10 @@ import type {
   PreviewLimits,
   RendererContext,
 } from '../contract';
+import { previewError } from '../errors';
 import { previewLimits } from '../limits';
 import { guardArchive } from './archiveGuard';
-import { frameErrorCode, previewError } from './errors';
+import { frameErrorCode } from './errors';
 import {
   isPreviewToken,
   MAX_ERROR_DETAIL_LENGTH,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { zipBytes } from '../../../../../tests/helpers/zipBytes';
 import type { DocumentRenderer, FrameToParent, GuardedZip, RendererContext, RenderSummary } from '../contract';
-import { previewError } from './errors';
+import { previewError } from '../errors';
 import { startPreviewFrame } from './frame';
 import { newPreviewToken, PREVIEW_TOKEN_META_NAME } from './protocol';
 

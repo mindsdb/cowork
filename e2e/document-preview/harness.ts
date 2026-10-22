@@ -41,7 +41,7 @@
  * file, the harness page, and the Vite dev server's module URLs, which cover
  * any file under the checkout through /@fs.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 import type { Frame, Page, Route } from '@playwright/test';
@@ -52,7 +52,7 @@ import type {
   PreviewErrorCode,
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
-import { isPreviewErrorCode, PREVIEW_ERROR_CODES } from '../../src/renderer/cowork/preview/runtime/errors';
+import { isPreviewErrorCode, PREVIEW_ERROR_CODES } from '../../src/renderer/cowork/preview/errors';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
@@ -106,6 +106,15 @@ const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
 const CLICK_SETTLE_MS = 500;
 /* The http-equiv values of the metas the frame document starts with. */
 const FRAME_HEAD_DIRECTIVES = ['content-security-policy', 'x-dns-prefetch-control'];
+/* The outcomes that end with no preview frame mounted: the parent refuses a
+   too-large file before it mounts one, and its watchdog unmounts the frame on
+   a timeout. */
+const FRAMELESS_ERRORS: ReadonlySet<PreviewErrorCode> = new Set(['too-large', 'timeout']);
+/* The path prefix of every file under the checkout that the Vite dev server
+   serves through /@fs. Vite names a file by its real path. */
+const REPOSITORY_FS_PREFIX = `/@fs${realpathSync(path.resolve(__dirname, '../..'))}/`;
+/* The Vite dev server's own module paths besides /@fs. */
+const VITE_MODULE_PREFIXES = ['/@id/', '/@vite/', '/@react-refresh'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -137,7 +146,7 @@ function readExpectation(value: unknown, where: string): FixtureExpectation {
   const { outcome, errorCode, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion } = value;
   if (outcome !== 'rendered' && outcome !== 'error') throw new Error(`${where}: outcome must be rendered or error`);
   if (errorCode !== undefined && !isPreviewErrorCode(errorCode)) {
-    throw new Error(`${where}: errorCode must be one of ${PREVIEW_ERROR_CODES.join(', ')}`);
+    throw new Error(`${where}: errorCode must be one of ${Object.keys(PREVIEW_ERROR_CODES).join(', ')}`);
   }
   if (units !== undefined && typeof units !== 'number') throw new Error(`${where}: units must be a number`);
   if (minUnits !== undefined && typeof minUnits !== 'number') throw new Error(`${where}: minUnits must be a number`);
@@ -217,9 +226,13 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
     return new URL(url).origin === harnessOrigin ? route.fallback() : route.abort('blockedbyclient');
   };
   /* DocumentPreviewFrame rebuilds a frame that loads again, which would put
-     it back at about:srcdoc, so every navigation away from it is kept. */
+     it back at about:srcdoc, so every navigation away from it is kept. The
+     preview frame is the harness page's only child frame. It is matched by
+     its parent, not its name, and an empty URL is skipped, because full
+     Chromium reports both as empty for the sandboxed srcdoc frame. */
   const noteNavigation = (frame: Frame) => {
-    if (frame.name() === PREVIEW_FRAME_NAME && frame.url() !== 'about:srcdoc') navigations.push(frame.url());
+    const url = frame.url();
+    if (frame.parentFrame() === page.mainFrame() && url !== '' && url !== 'about:srcdoc') navigations.push(url);
   };
   page.on('framenavigated', noteNavigation);
   await page.route('**/*', record);
@@ -228,16 +241,18 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
       ([fixtureSet, file]) => window.coworkPreviewHarness!.open(fixtureSet, file),
       [set, fixture.file] as const,
     );
-    const frame = page.frame({ name: PREVIEW_FRAME_NAME });
-    const stray = frame ? await strayDirectives(frame) : [];
+    if (outcome.errorCode !== undefined && FRAMELESS_ERRORS.has(outcome.errorCode)) {
+      /* A frame the watchdog removed never left about:srcdoc unless a
+         navigation was seen. */
+      return { ...outcome, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc' };
+    }
+    const frame = await previewFrame(page);
+    const stray = await strayDirectives(frame);
     if (stray.length) throw new Error(`The preview frame holds ${stray.join(', ')}, which acts with no click.`);
-    const text = frame ? await frame.evaluate(() => document.body.innerText) : '';
-    if (frame) await clickEverything(frame, fixture.kind === 'hostile');
+    const text = await frame.evaluate(() => document.body.innerText);
+    await clickEverything(frame, fixture.kind === 'hostile');
     await page.waitForTimeout(CLICK_SETTLE_MS);
-    /* A frame the watchdog removed never left about:srcdoc unless a
-       navigation was seen. */
-    const current = page.frame({ name: PREVIEW_FRAME_NAME });
-    const frameUrlAfterClicks = navigations[0] ?? current?.url() ?? 'about:srcdoc';
+    const frameUrlAfterClicks = navigations[0] ?? await frame.evaluate(() => location.href);
     return { ...outcome, text, requests: [...requests], frameUrlAfterClicks };
   } finally {
     page.off('framenavigated', noteNavigation);
@@ -249,7 +264,12 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
    iframe[name="<PREVIEW_FRAME_NAME>"], with elementHandle().contentFrame(), and
    throws when no preview frame is mounted. */
 export async function previewFrame(page: Page): Promise<Frame> {
-  throw new Error(`previewFrame is not implemented yet (iframe[name="${PREVIEW_FRAME_NAME}"])`);
+  const iframe = page.locator(`iframe[name="${PREVIEW_FRAME_NAME}"]`);
+  /* count() first, because elementHandle() waits for an element to appear. */
+  if (await iframe.count() === 0) throw new Error(`No preview frame is mounted (iframe[name="${PREVIEW_FRAME_NAME}"]).`);
+  const frame = await (await iframe.elementHandle())?.contentFrame();
+  if (!frame) throw new Error(`The preview iframe has no frame (iframe[name="${PREVIEW_FRAME_NAME}"]).`);
+  return frame;
 }
 
 /* The URLs in `requests` that break the request rules, as given and in order.
@@ -271,5 +291,17 @@ export function strayRequests(
   requests: readonly string[],
   harnessOrigin: string,
 ): string[] {
-  throw new Error(`strayRequests is not implemented yet (${set}: ${fixture.name})`);
+  const allowedUrls = new Set(
+    [`/fixtures/${set}/${fixture.file}`, '/', '/main.tsx'].map((pathname) => new URL(pathname, harnessOrigin).href),
+  );
+  /* Parsed the way a request URL is, so both are percent-encoded alike. */
+  const allowedPrefixes = [REPOSITORY_FS_PREFIX, ...VITE_MODULE_PREFIXES]
+    .map((prefix) => new URL(prefix, harnessOrigin).pathname);
+  return requests.filter((request) => {
+    const url = new URL(request);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (url.origin !== harnessOrigin) return true;
+    if (fixture.kind === 'clean') return false;
+    return !allowedUrls.has(url.href) && !allowedPrefixes.some((prefix) => url.pathname.startsWith(prefix));
+  });
 }
