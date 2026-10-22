@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import type { PreviewErrorCode } from './contract';
@@ -73,11 +74,18 @@ describe('isPreviewError', () => {
 });
 
 describe('errors.ts imports', () => {
-  it('imports only types from contract.ts, so the frame bundle and Node can load it', () => {
+  it('imports and re-exports only types from contract.ts, so the frame bundle and Node can load it', () => {
     const source = readFileSync(join(__dirname, 'errors.ts'), 'utf8');
-    const imports = source.match(/^import\b.*$/gm) ?? [];
-    expect(imports).not.toEqual([]);
-    for (const line of imports) expect(line).toMatch(/^import type \{[^}]*\} from '\.\/contract';$/);
-    expect(source).not.toMatch(/import\.meta|\bimport\s*\(|\brequire\s*\(/);
+    /* Every module errors.ts reaches: imports, re-exports, side-effect imports, dynamic import() and require(). */
+    const modules = ts.preProcessFile(source, true, true).importedFiles.map((imported) => imported.fileName);
+    expect(modules).toEqual(['./contract']);
+    /* That one module is reached only through a type-only import, so nothing of it is left at run time. */
+    const file = ts.createSourceFile('errors.ts', source, ts.ScriptTarget.Latest);
+    const reachesModule = (statement: ts.Statement) =>
+      ts.isImportDeclaration(statement) || (ts.isExportDeclaration(statement) && statement.moduleSpecifier !== undefined);
+    const isTypeOnlyImport = (statement: ts.Statement) =>
+      ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly === true;
+    expect(file.statements.filter(reachesModule).every(isTypeOnlyImport)).toBe(true);
+    expect(source).not.toMatch(/import\.meta/);
   });
 });
