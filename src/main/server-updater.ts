@@ -228,11 +228,12 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
 
 /** `uv tool dir` — its on-disk layout differs across versions/OSes
  *  (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows), so ask uv.
- *  Async so it never blocks the Electron main thread. Null on failure. */
+ *  Async so it never blocks the Electron main thread. Null on failure.
+ *  `--color never`: a forced-colour env wins over NO_COLOR and would wrap the path in ANSI codes. */
 function uvToolsDir(uv: string): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
-      uv, ['tool', 'dir'],
+      uv, ['tool', 'dir', '--color', 'never'],
       { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000, encoding: 'utf-8' },
       (err, stdout) => resolve(err ? null : String(stdout).trim() || null),
     );

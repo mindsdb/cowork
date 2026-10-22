@@ -517,6 +517,30 @@ describe('repairServerInstall (orchestration)', () => {
 
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
   });
+
+  it('asks uv for an uncoloured tools dir, since forced colour wins over NO_COLOR', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push(args);
+      if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    await repairServerInstall(BROKEN);
+
+    const toolDirCalls = execCalls.filter((args) => args[0] === 'tool' && args[1] === 'dir');
+    expect(toolDirCalls.length).toBeGreaterThan(0);
+    for (const args of toolDirCalls) expect(args).toEqual(['tool', 'dir', '--color', 'never']);
+  });
 });
 
 describe('stream repair — prod install stranded on a pre-release', () => {
