@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 // The deployment brand a web build with the platform UI off reads at run
 // time. /brand/brand.js (see shared/deployment-brand.ts) sets the global
 // before the bundle runs; this module reads it once, checks each field on its
@@ -109,13 +110,10 @@ export function resolveBrandLoad(platformUi: boolean, raw: unknown): BrandLoad {
 
 function reportBrandLoad(load: BrandLoad): void {
   if (load.status === 'failed') {
-    console.error(
-      `The deployment brand did not load: ${BRAND_SCRIPT_PATH} did not set window.${BRAND_GLOBAL} ` +
-      'to an object. Showing the stock name, styles and icons.',
-    );
+    diagnostic('renderer.lib.deploymentBrand', 'ERROR', 'deployment_brand_missing', { config_source: BRAND_SCRIPT_PATH });
   } else if (load.status === 'loaded') {
     for (const field of load.dropped) {
-      console.warn(`The deployment brand's ${field} is not valid and was ignored.`);
+      diagnostic('renderer.lib.deploymentBrand', 'WARNING', 'deployment_brand_field_ignored', { config_field: field });
     }
   }
 }

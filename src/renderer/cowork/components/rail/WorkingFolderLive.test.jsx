@@ -67,6 +67,7 @@ import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
+import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
@@ -705,6 +706,19 @@ describe.each(FIXTURES.webModes)('artifacts rail on %s', (mode) => {
 
     expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Data B');
     expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+  });
+
+  it('drops the note when a later Delete fails', async () => {
+    deleteArtifactAndSync.mockRejectedValueOnce(new Error('Delete failed.'));
+    const row = await renderRail(fileRow('.zip'));
+
+    fireEvent.click(row);
+    await vi.waitFor(() => expect(railNote()).toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE));
+    fireEvent.click(within(await openKebab()).getByText('Delete'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByText('Delete failed.')).toBeInTheDocument();
+    expect(railNote().textContent).toBe('');
   });
 
   it('keeps an error raised while an earlier click was still downloading', async () => {

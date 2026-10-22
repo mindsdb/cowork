@@ -289,6 +289,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     ].filter(Boolean);
   };
   const openArtifactExternal = async (a) => {
+    /* An earlier click's note says nothing about this action, so it never
+       sits beside the error this one may raise. */
+    setRowNote('');
     if (!canOpenLocalFile) {
       // `serveUrl` is origin-relative (`/v1/...`). In a web tab a
       // relative URL resolves against the page origin (the server) —
@@ -322,6 +325,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     if (!a?.path || a?.capabilities?.canEdit === false) return;
     setBusyPath(a.path);
     setRowError('');
+    setRowNote('');
     // Optimistic remove — mirrors the Project Files / Task Uploads
     // deletes so the row vanishes the same frame the user confirms.
     // Reached only after the ConfirmModal is accepted (see the

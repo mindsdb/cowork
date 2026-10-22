@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Connect Apps and Data — the page that lists everything the user has
 // hooked Anton up with. Mirrors the Projects page layout (header +
 // filter row + grid of cards + empty state). The "+ Connect" CTA
@@ -542,7 +543,7 @@ export default function CustomizeView({
     // that silently does nothing.
     if (!onConnectNew) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_customizeview_rendered_without_onconnectnew_the_connect_cta_has_no_effect", '[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
       return;
     }
     onConnectNew();
@@ -588,7 +589,7 @@ export default function CustomizeView({
       onConnectionsSyncedRef.current?.(next);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[connectors] refresh after delete failed', e);
+      diagnostic("renderer.cowork.views.CustomizeView", "WARNING", "connectors_refresh_after_delete_failed", '[connectors] refresh after delete failed', e);
     }
     /* Project files' Context card holds its own Google Drive file list and has
        no other way to learn a connection just vanished (and with it, that
@@ -630,7 +631,7 @@ export default function CustomizeView({
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] delete failed', e);
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
       alert(`Could not disconnect: ${e?.message || e}`);
       return false;
     }
