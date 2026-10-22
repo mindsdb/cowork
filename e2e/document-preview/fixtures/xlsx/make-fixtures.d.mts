@@ -18,6 +18,9 @@ export interface FixtureSheet {
   omitDimension?: boolean;
   /* Mark the sheet hidden in the workbook. */
   hidden?: boolean;
+  /* Leave the sheet's worksheet part out of the zip, while the workbook still
+     lists the sheet. */
+  omitPart?: boolean;
 }
 
 /* An externalLink part pointing at another workbook, with one cached cell. */

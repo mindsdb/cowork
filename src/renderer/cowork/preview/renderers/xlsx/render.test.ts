@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import type { PreviewFixture } from '../../../../../../e2e/document-preview/harness';
 import { buildWorkbook, type FixtureSheet } from '../../../../../../e2e/document-preview/fixtures/xlsx/make-fixtures.mjs';
-import type { PreviewError, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
+import type { PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
 import { isPreviewError } from '../../errors';
 import { previewLimits } from '../../limits';
 import renderer from './render';
@@ -81,10 +81,12 @@ function cellTexts(ctx: RendererContext): string[][] {
   return [...visiblePanel(ctx).querySelectorAll('tbody tr')].map((row) => [...row.querySelectorAll('td')].map((td) => td.textContent ?? ''));
 }
 
-async function renderFailure(bytes: ArrayBuffer, ctx = context()): Promise<PreviewError> {
+/* Whatever render() rejected with, unchecked: an abort rejects with the
+   signal's reason, which is not a PreviewError. */
+async function renderRejection(bytes: ArrayBuffer, ctx = context()): Promise<unknown> {
   return renderer.render(bytes, ctx).then(
     () => { throw new Error('render() resolved'); },
-    (error: PreviewError) => error,
+    (error: unknown) => error,
   );
 }
 
@@ -176,6 +178,40 @@ describe('xlsx renderer', () => {
     tabs(ctx)[0].click();
 
     expect(cellTexts(ctx)[1]).toEqual(['North', '120']);
+  });
+
+  /* render() keeps no cells of a later sheet, so its tab reads it again each
+     time it opens. */
+  it('reads a later sheet again each time its tab opens, and never reads the first sheet again', async () => {
+    const ctx = context();
+    await renderer.render(await workbook({ name: 'One', rows: [['one']] }, { name: 'Two', rows: [['two']] }, { name: 'Three', rows: [['three']] }), ctx);
+    const sheetsRead = (): unknown[] => vi.mocked(read).mock.calls.map(([, options]) => options?.sheets);
+
+    expect(sheetsRead()).toEqual([[0], [1], [2]]);
+
+    tabs(ctx)[2].click();
+    tabs(ctx)[1].click();
+    tabs(ctx)[1].click();
+    tabs(ctx)[0].click();
+    tabs(ctx)[1].click();
+
+    expect(sheetsRead()).toEqual([[0], [1], [2], [2], [1], [1]]);
+    expect(cellTexts(ctx)).toEqual([['two']]);
+  });
+
+  it('shows a note in a later tab whose read fails when the tab opens', async () => {
+    const ctx = context();
+    await renderer.render(await workbook({ name: 'One', rows: [['one']] }, { name: 'Two', rows: [['two']] }), ctx);
+    vi.mocked(read).mockImplementationOnce(() => { throw new Error('the read failed'); });
+
+    tabs(ctx)[1].click();
+
+    expect(visiblePanel(ctx).textContent).toBe('This sheet could not be read.');
+
+    tabs(ctx)[0].click();
+    tabs(ctx)[1].click();
+
+    expect(cellTexts(ctx)).toEqual([['two']]);
   });
 
   it('keeps only the first grid and the open tab\'s grid, and builds a left tab again when it reopens', async () => {
@@ -300,7 +336,7 @@ describe('xlsx renderer', () => {
       if (done === 1 && total === 3) controller.abort();
     });
 
-    const error = await renderFailure(await workbook(grid('A', 1, 1), grid('B', 1, 1), grid('C', 1, 1)), ctx);
+    const error = await renderRejection(await workbook(grid('A', 1, 1), grid('B', 1, 1), grid('C', 1, 1)), ctx);
 
     expect(error).toBe(controller.signal.reason);
     expect(read).toHaveBeenCalledTimes(1);
@@ -314,7 +350,7 @@ describe('xlsx renderer', () => {
       if (done === 100) controller.abort();
     });
 
-    const error = await renderFailure(await workbook(grid('Rows', 250, 1)), ctx);
+    const error = await renderRejection(await workbook(grid('Rows', 250, 1)), ctx);
 
     expect(error).toBe(controller.signal.reason);
     expect(ctx.progress.mock.calls).toEqual([[0, null], [100, 250]]);
@@ -324,7 +360,7 @@ describe('xlsx renderer', () => {
   it('never parses once the signal has aborted', async () => {
     const controller = new AbortController();
     controller.abort();
-    const error = await renderFailure(fixture('two-sheets.xlsx'), context({}, controller.signal));
+    const error = await renderRejection(fixture('two-sheets.xlsx'), context({}, controller.signal));
     expect(error).toBe(controller.signal.reason);
     expect(read).not.toHaveBeenCalled();
   });
@@ -345,6 +381,27 @@ describe('xlsx renderer', () => {
     expect(visiblePanel(ctx).textContent).toBe('This sheet has no cells in the rows shown.');
   });
 
+  /* SheetJS gives no sheet for a name whose part is missing. The fixtures.yaml
+     entry covers a missing first sheet; this covers one behind a later tab. */
+  it('says a later sheet SheetJS gave no sheet for could not be read, and shows the others', async () => {
+    const ctx = context();
+    const summary = await renderer.render(await workbook({ name: 'Kept', rows: [['kept']] }, { name: 'Gone', rows: [], omitPart: true }), ctx);
+
+    expect(summary).toEqual<RenderSummary>({ type: 'xlsx', units: 2, truncated: false });
+    expect(cellTexts(ctx)).toEqual([['kept']]);
+
+    tabs(ctx)[1].click();
+
+    expect(visiblePanel(ctx).textContent).toBe('This sheet could not be read.');
+  });
+
+  it('fails with parse-failed when SheetJS gives no sheet for any name', async () => {
+    const ctx = context();
+    const bytes = await workbook({ name: 'Gone', rows: [], omitPart: true }, { name: 'Lost', rows: [], omitPart: true });
+    expect(await renderEnding(bytes, ctx)).toEqual<RenderEnding>({ outcome: 'error', errorCode: 'parse-failed' });
+    expect(ctx.root.childElementCount).toBe(0);
+  });
+
   it('marks a hidden sheet in its tab', async () => {
     const ctx = context();
     const summary = await renderer.render(await workbook(grid('Shown', 1, 1), { ...grid('Kept', 1, 1), hidden: true }), ctx);
@@ -353,35 +410,31 @@ describe('xlsx renderer', () => {
   });
 
   it('fails with parse-failed for text that is not a zip, and never hands it to SheetJS', async () => {
-    const error = await renderFailure(new TextEncoder().encode('<table><tr><td>a</td></tr></table>').buffer as ArrayBuffer);
-    expect(isPreviewError(error)).toBe(true);
-    expect(error.code).toBe('parse-failed');
+    const bytes = new TextEncoder().encode('<table><tr><td>a</td></tr></table>').buffer as ArrayBuffer;
+    expect(await renderEnding(bytes, context())).toEqual<RenderEnding>({ outcome: 'error', errorCode: 'parse-failed' });
     expect(read).not.toHaveBeenCalled();
   });
 
   it('fails with unsupported for an encrypted workbook or an old .xls', async () => {
     const compoundFile = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]);
-    const error = await renderFailure(compoundFile.buffer);
-    expect(isPreviewError(error)).toBe(true);
-    expect(error.code).toBe('unsupported');
+    expect(await renderEnding(compoundFile.buffer, context())).toEqual<RenderEnding>({ outcome: 'error', errorCode: 'unsupported' });
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('fails with parse-failed for a zip SheetJS cannot read as a workbook', async () => {
+  it('fails with parse-failed for a zip SheetJS cannot read as a workbook, and keeps SheetJS\'s error as the cause', async () => {
     const zip = new JSZip();
     zip.file('readme.txt', 'not a workbook');
     const bytes = await zip.generateAsync({ type: 'uint8array' });
-    const error = await renderFailure(bytes.buffer as ArrayBuffer);
-    expect(isPreviewError(error)).toBe(true);
+    const error = await renderRejection(bytes.buffer as ArrayBuffer);
+    if (!isPreviewError(error)) throw new Error('render() rejected with something other than a PreviewError');
     expect(error.code).toBe('parse-failed');
+    expect(error.cause).toBeInstanceOf(Error);
     expect(read).toHaveBeenCalledTimes(1);
   });
 
   it('fails with parse-failed for the corrupt fixture, whose workbook lists no sheet', async () => {
     const ctx = context();
-    const error = await renderFailure(fixture('corrupt.xlsx'), ctx);
-    expect(isPreviewError(error)).toBe(true);
-    expect(error.code).toBe('parse-failed');
+    expect(await renderEnding(fixture('corrupt.xlsx'), ctx)).toEqual<RenderEnding>({ outcome: 'error', errorCode: 'parse-failed' });
     expect(ctx.root.childElementCount).toBe(0);
   });
 });

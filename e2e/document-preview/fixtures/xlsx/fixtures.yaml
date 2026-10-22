@@ -55,3 +55,16 @@
       - '<a href="https://example.com/xlsx-anchor">anchor markup</a>'
       - '<style>body{background:url(https://example.com/xlsx-style.png)}</style>'
     textExcludes: ['HYPERLINK(', 'WEBSERVICE(', '[1]Prices', 'xlsx-external']
+
+# The workbook lists two sheets, but the first sheet's part is missing from the
+# zip. SheetJS gives no sheet for it, so its tab says it could not be read,
+# never that it is empty, and the second sheet still opens.
+- name: a workbook whose first sheet's part is missing
+  file: missing-sheet.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Missing, Stock, This sheet could not be read.]
+    textExcludes: [This sheet is empty.]

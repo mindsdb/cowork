@@ -88,7 +88,9 @@ function newZip() {
 }
 
 /* Builds an .xlsx from a FixtureWorkbook. Strings go to the shared string
-   table, as Excel writes them. */
+   table, as Excel writes them. A sheet with omitPart keeps its entry in the
+   workbook, its relationship and its content type, but its part is left out
+   of the zip. */
 export async function buildWorkbook(workbook) {
   const zip = newZip();
   const sharedStrings = new Map();
@@ -97,7 +99,7 @@ export async function buildWorkbook(workbook) {
 
   workbook.sheets.forEach((sheet, i) => {
     const part = `worksheets/sheet${i + 1}.xml`;
-    zip.add(`xl/${part}`, sheetXml(sheet, sharedStrings));
+    if (!sheet.omitPart) zip.add(`xl/${part}`, sheetXml(sheet, sharedStrings));
     overrides.push(`<Override PartName="/xl/${part}" ContentType="${CONTENT_TYPE}.worksheet+xml"/>`);
     workbookRels.push({ id: `rId${i + 1}`, type: 'worksheet', target: part });
     if (sheet.hyperlinks?.length) {
@@ -213,6 +215,15 @@ export async function xlsxFixtureFiles() {
     { file: 'past-caps.xlsx', bytes: await buildWorkbook({ sheets: [pastCapsSheet()] }) },
     { file: 'corrupt.xlsx', bytes: await buildCorruptWorkbook() },
     { file: 'hostile.xlsx', bytes: await buildWorkbook(hostileWorkbook()) },
+    {
+      file: 'missing-sheet.xlsx',
+      bytes: await buildWorkbook({
+        sheets: [
+          { name: 'Missing', rows: [], omitPart: true },
+          { name: 'Stock', rows: [['Item', 'Count'], ['Bolts', 30]] },
+        ],
+      }),
+    },
   ];
 }
 
