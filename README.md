@@ -44,7 +44,8 @@ dependency compatibility, and the PyJWT security floor. A missing artifact or a
 mismatch fails the build; it does not select a newer package. Change the supplied
 contract explicitly when updating dependencies.
 
-Builds without `COWORK_SERVER_LOCK=true` retain the existing version/ref behavior.
+Builds without `COWORK_SERVER_LOCK=true` select a server version or Git ref and
+consume that release's dependency contract, as described below.
 Git build backends, apt packages, and the frontend have separate build inputs.
 
 ## Build Channels

@@ -291,7 +291,17 @@ def preflight(uv: str, release: Release, directory: Path, contract: Path, enviro
     if release.anton_commit:
         common.extend(["--no-emit-package", "anton-agent"])
     expected = subprocess.check_output([*common, "--no-deps", str(contract)], text=True, env=environment)
-    actual = subprocess.check_output([*common, "--only-binary", ":all:", str(artifact), str(contract)], text=True, env=environment)
+    binary = ["--only-binary", ":all:"]
+    if release.commit or release.anton_commit:
+        # uv 0.7 cannot exempt a Git project from --only-binary :all:.
+        # Keep every registry requirement wheel-only; permit the selected sources.
+        registry = {line.split("==", 1)[0] for line in requirement_lines(release.contract)} | {"cowork-server"}
+        if release.commit:
+            registry.discard("cowork-server")
+        if release.anton_commit:
+            registry.discard("anton-agent")
+        binary = [argument for name in sorted(registry) for argument in ("--only-binary", name)]
+    actual = subprocess.check_output([*common, *binary, str(artifact), str(contract)], text=True, env=environment)
     packages = lambda output: [line.strip() for line in output.splitlines() if line.strip() and not line.startswith("#")]
     if packages(expected) != packages(actual):
         raise ValueError("Release metadata requires packages outside its reviewed contract")
@@ -333,6 +343,9 @@ def install(uv: str, arguments: list[str], python: Path | None = None, state: In
             release = replace(release, anton_commit=commit)
         preflight(uv, release, directory, contract, environment)
         if python:
+            # Native source installs are explicit below. Keep Git overrides out
+            # of the separate registry phase, which requires wheel hashes.
+            environment["UV_OVERRIDE"] = ""
             if release.anton_commit:
                 contract.write_text(without_anton(release.contract))
             subprocess.run([uv, "venv", "--python", sys.executable, str(python.parent.parent)], check=True, env=environment)

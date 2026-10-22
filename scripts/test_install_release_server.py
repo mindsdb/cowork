@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -42,6 +43,56 @@ def wheel(name="cowork_server", version="1.0.0", requirements=(), contract=CONTR
 
 def metadata(data):
     return json.dumps({"info": {"version": "1.0.0"}, "urls": [{"filename": "cowork_server-1.0.0-py3-none-any.whl", "url": "https://files.pythonhosted.org/server.whl", "digests": {"sha256": hashlib.sha256(data).hexdigest()}}]}).encode()
+
+
+def source_project(directory, name, requirements=()):
+    """A real PEP 517 source project whose backend needs only the standard library."""
+    project = directory / name
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[build-system]\nrequires = []\nbuild-backend = "fixture_backend"\nbackend-path = ["."]\n'
+    )
+    prefix = name.replace("-", "_") + "-1.0.0.dist-info"
+    metadata_text = f"Metadata-Version: 2.3\nName: {name}\nVersion: 1.0.0\n" + "".join(f"Requires-Dist: {requirement}\n" for requirement in requirements)
+    (project / "PKG-INFO").write_text(metadata_text)
+    (project / "fixture_backend.py").write_text(
+        "from pathlib import Path\nimport zipfile\n"
+        f"METADATA = {metadata_text!r}\nPREFIX = {prefix!r}\n"
+        "def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):\n"
+        "    target = Path(metadata_directory) / PREFIX\n"
+        "    target.mkdir()\n"
+        "    (target / 'METADATA').write_text(METADATA)\n"
+        "    return PREFIX\n"
+        "def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):\n"
+        "    filename = PREFIX.removesuffix('.dist-info') + '-py3-none-any.whl'\n"
+        "    with zipfile.ZipFile(Path(wheel_directory) / filename, 'w') as archive:\n"
+        "        archive.writestr(PREFIX + '/METADATA', METADATA)\n"
+        "        archive.writestr(PREFIX + '/WHEEL', 'Wheel-Version: 1.0\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n')\n"
+        "        archive.writestr(PREFIX + '/RECORD', '')\n"
+        "    return filename\n"
+    )
+    return project
+
+
+def source_archive(directory, name):
+    project = source_project(directory, name)
+    archive = directory / f"{name}-1.0.0.tar.gz"
+    with tarfile.open(archive, "w:gz") as output:
+        output.add(project, arcname=f"{name}-1.0.0")
+    return archive
+
+
+def git_project(directory, name, requirements=()):
+    project = source_project(directory, name, requirements)
+    # Git projects need the backend to prepare metadata, as hatch-vcs does.
+    # A pre-generated PKG-INFO would bypass the source-build restriction.
+    (project / "PKG-INFO").unlink()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    common = ["git", "-C", str(project), "-c", "user.name=Release fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"]
+    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Source fixture"]):
+        subprocess.run([*common, *args], check=True, capture_output=True, env=env)
+    commit = subprocess.check_output([*common, "rev-parse", "HEAD"], text=True, env=env).strip()
+    return "git+" + project.as_uri() + "@" + commit, commit
 
 
 class ReleaseTests(unittest.TestCase):
@@ -139,6 +190,51 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     installer.preflight(shutil.which("uv"), release, root, contract, env)
 
+    @unittest.skipUnless(shutil.which("uv") and shutil.which("git"), "requires uv and Git")
+    def test_real_source_projects_do_not_allow_registry_source_builds(self):
+        for server_source, anton_source in [(True, False), (False, True), (True, True)]:
+            with self.subTest(server_source=server_source, anton_source=anton_source), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                registry = root / "registry"
+                registry.mkdir()
+                dependency = registry / "fixture_dependency-1.0.0-py3-none-any.whl"
+                dependency.write_bytes(wheel("fixture_dependency", contract=None))
+                (registry / "anton_agent-1.0.0-py3-none-any.whl").write_bytes(wheel("anton_agent", contract=None))
+                requirements = ["anton-agent>=1", "fixture-dependency>=1"]
+                server_commit = anton_commit = None
+                if server_source:
+                    source, server_commit = git_project(root, "cowork-server", requirements)
+                else:
+                    artifact = root / "cowork_server-1.0.0-py3-none-any.whl"
+                    artifact.write_bytes(wheel(requirements=requirements))
+                    source = str(artifact)
+                env = {**os.environ, "UV_OFFLINE": "true", "UV_NO_CACHE": "true", "UV_OVERRIDE": "", "UV_CONSTRAINT": "", "UV_CACHE_DIR": str(root / "cache")}
+                if anton_source:
+                    override = root / "override.txt"
+                    anton, anton_commit = git_project(root, "anton-agent")
+                    override.write_text("anton-agent @ " + anton + "\n")
+                    env["UV_OVERRIDE"] = str(override)
+                contract = root / "contract.txt"
+                contract.write_text(CONTRACT)
+                release = installer.Release(source, CONTRACT, commit=server_commit, anton_commit=anton_commit)
+                actual_output = subprocess.check_output
+                def local_output(args, **kwargs):
+                    return actual_output([*args, "--no-index", "--find-links", str(registry)], stderr=subprocess.PIPE, **kwargs)
+                with patch.object(installer.subprocess, "check_output", side_effect=local_output):
+                    try:
+                        installer.preflight(shutil.which("uv"), release, root, contract, env)
+                    except subprocess.CalledProcessError as failure:
+                        self.fail("Selected source project was rejected: " + failure.stderr)
+                    # The exact same registry version remains available as a valid
+                    # source distribution, but only the selected projects may build.
+                    dependency.unlink()
+                    source_archive(registry, "fixture-dependency")
+                    env["UV_CACHE_DIR"] = str(root / "source-only-cache")
+                    with self.assertRaises(subprocess.CalledProcessError) as failure:
+                        installer.preflight(shutil.which("uv"), release, root, contract, env)
+                    self.assertIn("fixture-dependency", failure.exception.stderr)
+                    self.assertIn("no usable wheels", failure.exception.stderr)
+
     def test_cached_wheel_and_snapshot_restore_without_http(self):
         data = wheel(contract=None)
         with tempfile.TemporaryDirectory() as directory:
@@ -164,7 +260,7 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Cannot preserve"):
                     installer.snapshot_installed("uv", root)
 
-    @unittest.skipUnless(shutil.which("uv"), "requires uv and packaging")
+    @unittest.skipUnless(shutil.which("uv") and shutil.which("git"), "requires uv, Git and packaging")
     def test_real_tool_install_native_hashes_and_legacy_git_snapshot(self):
         packaging = importlib.metadata.distribution("packaging")
         package_files = {str(file).replace("\\", "/"): file.locate().read_bytes() for file in packaging.files if str(file).startswith("packaging/") and str(file).endswith(".py")}
@@ -183,15 +279,27 @@ class ReleaseTests(unittest.TestCase):
                 contract += f"{name.replace('_', '-')}=={version} \\\n    --hash=sha256:{hashlib.sha256(data).hexdigest()}\n"
             (registry / "fixture_dependency-2.0.0-py3-none-any.whl").write_bytes(wheel("fixture_dependency", "2.0.0", contract=None))
             data = wheel(requirements=["anton-agent>=1", "fixture-dependency>=1", "packaging"], contract=contract)
+            local_anton, native_anton_commit = git_project(root, "anton-agent")
+            official_anton = f"git+https://github.com/mindsdb/anton.git@{native_anton_commit}"
+            local_override = root / "local-override.txt"
+            local_override.write_text("anton-agent @ " + local_anton + "\n")
             actual_run, actual_output = subprocess.run, subprocess.check_output
             def command(args):
+                args = [arg.replace(official_anton, local_anton) for arg in args]
                 return [*args, "--no-index", "--find-links", str(registry)] if args[1:3] in (["pip", "compile"], ["pip", "install"], ["tool", "install"]) else args
             def run(args, **kwargs):
+                environment = kwargs.get("env", os.environ)
+                if environment.get("UV_OVERRIDE") and official_anton in Path(environment["UV_OVERRIDE"]).read_text():
+                    # Redirect only Git transport. Preserve whether the real
+                    # installer passes the override to each actual uv command.
+                    kwargs["env"] = {**environment, "UV_OVERRIDE": str(local_override)}
+                if "--require-hashes" in args:
+                    kwargs["stderr"] = subprocess.PIPE
                 return actual_run(command(args), **kwargs)
             def output(args, **kwargs):
                 return actual_output(args, **kwargs)
             tools = root / "tools"
-            env = {"UV_TOOL_DIR": str(tools), "UV_TOOL_BIN_DIR": str(root / "bin"), "UV_CACHE_DIR": str(root / "uv-cache"), "UV_OVERRIDE": "", "UV_CONSTRAINT": ""}
+            env = {"UV_TOOL_DIR": str(tools), "UV_TOOL_BIN_DIR": str(root / "bin"), "UV_CACHE_DIR": str(root / "uv-cache"), "UV_OFFLINE": "true", "UV_OVERRIDE": "", "UV_CONSTRAINT": ""}
             with patch.dict(os.environ, env), patch.object(installer.subprocess, "run", side_effect=run), patch.object(installer.subprocess, "check_output", side_effect=output), patch.object(installer, "download", side_effect=lambda url: metadata(data) if url.endswith("json") else data):
                 installer.install(shutil.which("uv"), ["tool", "install", "--force", "cowork-server==1.0.0"])
                 python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -221,11 +329,26 @@ class ReleaseTests(unittest.TestCase):
                 installer.verify(python, restored)
                 native = root / "native" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                 installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"], native)
-                # A valid server wheel carrying a wrong dependency hash must fail
-                # in the actual native installer, before project imports.
-                data = wheel(requirements=["anton-agent>=1", "fixture-dependency>=1", "packaging"], contract=contract.replace(hashlib.sha256(packaging_wheel).hexdigest(), "0" * 64))
-                with self.assertRaises(subprocess.CalledProcessError):
-                    installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"], root / "bad-hash" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
+                override = root / "official-override.txt"
+                override.write_text("anton-agent @ " + official_anton + "\n")
+                with patch.dict(os.environ, {"UV_OVERRIDE": str(override)}):
+                    # Desktop resolution must retain the selected Git override;
+                    # the later native phases install that source explicitly.
+                    installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"])
+                    desktop_url = json.loads(actual_output([str(python), "-c", "from importlib.metadata import distribution; print(distribution('anton-agent').read_text('direct_url.json'))"], text=True))
+                    self.assertEqual(desktop_url["vcs_info"]["commit_id"], native_anton_commit)
+                    native_git = root / "native-git" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+                    try:
+                        installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"], native_git)
+                    except subprocess.CalledProcessError as failure:
+                        self.fail(f"Native Git install failed: {failure.stderr}")
+                    direct_url = json.loads(actual_output([str(native_git), "-c", "from importlib.metadata import distribution; print(distribution('anton-agent').read_text('direct_url.json'))"], text=True))
+                    self.assertEqual(direct_url["vcs_info"]["commit_id"], native_anton_commit)
+                    # The Git exception must not bypass registry hash checking.
+                    data = wheel(requirements=["anton-agent>=1", "fixture-dependency>=1", "packaging"], contract=contract.replace(hashlib.sha256(packaging_wheel).hexdigest(), "0" * 64))
+                    with self.assertRaises(subprocess.CalledProcessError) as failure:
+                        installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"], root / "bad-hash" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
+                    self.assertIn(b"Hash mismatch", failure.exception.stderr)
 
 
 
