@@ -11,7 +11,8 @@
 import { getDocument, PasswordException } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 
-import type { PreviewError, PreviewErrorCode, RendererContext, RenderSummary } from '../../contract';
+import type { RendererContext, RenderSummary } from '../../contract';
+import { previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
 import { bundledBinaryData } from './binaryData';
 import { PdfPages } from './pages';
@@ -41,10 +42,6 @@ export function pdfDocumentParams(bytes: ArrayBuffer, ctx: RendererContext): Pdf
   };
 }
 
-function previewError(code: PreviewErrorCode, message: string, cause: unknown): PreviewError {
-  return Object.assign(new Error(message, { cause }), { code });
-}
-
 async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderSummary> {
   ctx.signal.throwIfAborted();
   ctx.progress(0, null);
@@ -59,8 +56,8 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
     const pdf = await loading.promise.catch((error: unknown) => {
       ctx.signal.throwIfAborted();
       throw error instanceof PasswordException
-        ? previewError('unsupported', 'This PDF needs a password.', error)
-        : previewError('parse-failed', 'This file is not a readable PDF.', error);
+        ? previewError('unsupported', 'This PDF needs a password.', { cause: error })
+        : previewError('parse-failed', 'This file is not a readable PDF.', { cause: error });
     });
     const units = Math.min(pdf.numPages, ctx.limits.maxPdfPages);
     pages = new PdfPages(pdf, ctx.root, ctx.limits);

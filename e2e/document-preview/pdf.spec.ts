@@ -1,16 +1,13 @@
 /*
  * The PDF preview in the harness. Each fixture in fixtures/pdf/fixtures.yaml
  * ends as its expectation says, and the frame is back at about:srcdoc after the
- * harness clicks through it. A clean fixture reaches only the harness origin. A
- * hostile one reaches it only for its own file and for the harness page and its
- * modules, since the harness origin stands in for the Cowork origin. The
- * harness page makes every one of those requests itself: the preview frame and
- * any frame inside it make none at all. Pages draw after the preview reports
- * rendered, so the spec applies the same request checks to every request of
- * the whole test as well. A fixture with a
- * paintedRegion must draw something other than the white page there, and a
- * rendered fixture must start no Worker and compile no WebAssembly in the
- * frame.
+ * harness clicks through it. strayRequests finds nothing in the run's requests.
+ * Pages draw after the preview reports rendered, so it finds nothing in every
+ * request of the whole test either. On top of that, the preview frame and any
+ * frame inside it make no request at all: the harness page makes them all. A
+ * fixture with a paintedRegion must draw something other than the white page
+ * there, and a rendered fixture must start no Worker and compile no
+ * WebAssembly in the frame.
  *
  * The page-cap file then runs three more times, each in a view that would
  * break one cap if the renderer ignored it: a tall, narrow view with more
@@ -25,18 +22,21 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { expect, test, type Frame, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { previewLimits } from '../../src/renderer/cowork/preview/limits';
-import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
-import { loadFixtures, openPreview, type CanvasRegion, type PreviewFixture, type PreviewRun } from './harness';
+import {
+  loadFixtures,
+  openPreview,
+  previewFrame,
+  strayRequests,
+  type CanvasRegion,
+  type PreviewFixture,
+  type PreviewRun,
+} from './harness';
 
 const RUNTIME_READY = existsSync(join(__dirname, '../../src/renderer/cowork/preview/runtime'));
 const SKIP_REASON = 'The preview frame runtime (src/renderer/cowork/preview/runtime) is not in this tree yet';
-
-/* The harness page and its entry module, and the paths the Vite dev server
-   serves modules from. */
-const HARNESS_PAGE_PATH = /^\/(?:index\.html|main\.tsx)?$|^\/(?:@|node_modules\/)/;
 
 /* The fixture one page past maxPdfPages, at the largest page size. */
 const PAGE_CAP_FIXTURE = '501 pages at the largest page size';
@@ -50,12 +50,6 @@ interface WorkerWasmCounts { workers: number; wasm: number }
 /* One request, and whether the harness page made it rather than the preview
    frame or a frame inside it. */
 interface RecordedRequest { url: string; fromHarnessPage: boolean }
-
-function previewFrame(page: Page): Frame {
-  const frame = page.frame({ name: PREVIEW_FRAME_NAME });
-  if (!frame) throw new Error(`No frame named ${PREVIEW_FRAME_NAME} is mounted`);
-  return frame;
-}
 
 /* Every request the page or any of its frames makes from now on. */
 function recordRequests(page: Page): RecordedRequest[] {
@@ -74,16 +68,6 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   if (want.truncated !== undefined) expect(run.summary?.truncated).toBe(want.truncated);
   for (const text of want.textIncludes ?? []) expect(run.text).toContain(text);
   for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
-}
-
-function expectRequests(requests: readonly string[], fixture: PreviewFixture, harnessOrigin: string): void {
-  const urls = requests.map((request) => new URL(request));
-  expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
-  if (fixture.kind === 'hostile') {
-    const fixtureUrl = `${harnessOrigin}/fixtures/pdf/${fixture.file}`;
-    const strays = urls.filter((url) => url.href !== fixtureUrl && !HARNESS_PAGE_PATH.test(url.pathname));
-    expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
-  }
 }
 
 function expectNoFrameRequests(requests: readonly RecordedRequest[]): void {
@@ -190,7 +174,7 @@ function canvasReport(): CanvasReport {
 async function expectCanvasesWithin(page: Page, fixture: PreviewFixture, touch: boolean): Promise<void> {
   const run = await openPreview(page, 'pdf', fixture);
   expect(run.outcome).toBe('rendered');
-  const frame = previewFrame(page);
+  const frame = await previewFrame(page);
   const region = fixture.expect.paintedRegion;
   if (!region) throw new Error(`${fixture.name} has no paintedRegion to wait for`);
   await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);
@@ -219,17 +203,18 @@ test.describe('pdf preview', () => {
       const testRequests = recordRequests(page);
       const run = await openPreview(page, 'pdf', fixture);
       expectOutcome(run, fixture);
-      expectRequests(run.requests, fixture, harnessOrigin);
+      expect(strayRequests('pdf', fixture, run.requests, harnessOrigin), 'requests the harness rules refuse').toEqual([]);
       expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
       if (run.outcome === 'rendered') {
-        const frame = previewFrame(page);
+        const frame = await previewFrame(page);
         const region = fixture.expect.paintedRegion;
         if (region) {
           await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);
         }
         expect(await frame.evaluate(readProbe), 'Workers and WebAssembly compiles in the frame').toEqual({ workers: 0, wasm: 0 });
       }
-      expectRequests(testRequests.map((request) => request.url), fixture, harnessOrigin);
+      const testUrls = testRequests.map((request) => request.url);
+      expect(strayRequests('pdf', fixture, testUrls, harnessOrigin), 'requests of the whole test the harness rules refuse').toEqual([]);
       expectNoFrameRequests(testRequests);
     });
   }
@@ -244,7 +229,7 @@ test.describe('pdf preview', () => {
       const run = await openPreview(page, 'pdf', pageCap);
       expect(run.outcome).toBe('rendered');
       const cap = previewLimits({ touch: false }).maxPdfCanvasesAlive;
-      const report = await previewFrame(page).evaluate(scrollThroughPages);
+      const report = await (await previewFrame(page)).evaluate(scrollThroughPages);
       expect(report.mostPagesInView, 'more pages than the cap were in view at once').toBeGreaterThan(cap);
       expect(report.mostCanvases).toBeGreaterThan(0);
       expect(report.mostCanvases).toBeLessThanOrEqual(cap);

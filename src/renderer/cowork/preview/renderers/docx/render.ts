@@ -4,7 +4,8 @@
  */
 import { parseAsync, renderDocument, type Options } from 'docx-preview';
 
-import type { PreviewError, PreviewErrorCode, RendererContext, RenderSummary } from '../../contract';
+import type { RendererContext, RenderSummary } from '../../contract';
+import { previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
 import { cleanRenderedNodes, keepLinksInPage } from './clean';
 
@@ -37,10 +38,6 @@ interface PictureLoader {
   loadDocumentImage(id: string, part?: unknown): Promise<string | null>;
 }
 
-function previewError(code: PreviewErrorCode, message: string, cause: unknown): PreviewError {
-  return Object.assign(new Error(message, { cause }), { code });
-}
-
 /*
  * docx-preview sets each picture's source on an element of the frame's own
  * document, and an image starts loading as soon as its source is set, attached
@@ -61,7 +58,7 @@ async function libraryStep<T>(step: () => Promise<T>, signal: AbortSignal): Prom
     return await step();
   } catch (error) {
     signal.throwIfAborted();
-    throw previewError('parse-failed', 'This file is not a readable Word document.', error);
+    throw previewError('parse-failed', 'This file is not a readable Word document.', { cause: error });
   }
 }
 
