@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { answerBody, initialStreamState, looksLikeAnswer, reduceStream, reduceAll, truncateLabel, visibleFirstTake } from './responseStreamAdapter';
+import { STAND_IN_PHRASES, answerBody, initialStreamState, looksLikeAnswer, reduceStream, reduceAll, standInPhrase, stepDisplayLabel, truncateLabel, visibleFirstTake } from './responseStreamAdapter';
 
 const ASK = {
   type: 'response.ask_user',
@@ -455,6 +455,40 @@ describe('narration becomes steps, the answer area switches once (ENG-1108, ENG-
       "Now I'll build the game and write it to the artifact folder:",
     ]);
     expect(answerBody(state).trim()).toBe("Perfect! I've created the game.\n\n## How it works");
+  });
+
+  it("shows a stand-in for Anton's opening line while the first take is on screen", () => {
+    const state = reduceAll([
+      { ...created(), response: { id: 'resp_42' } }, take('Building your solar system.'),
+      text("I'll create an interactive solar system."), padStart,
+      text("Now I'll add the orbits."), toolStart,
+    ], initialStreamState(), now);
+    const [opening, later] = notes(state);
+    // The opening line keeps its own text; it just shows a stand-in phrase.
+    expect(opening.label).toBe("I'll create an interactive solar system.");
+    expect(STAND_IN_PHRASES).toContain(opening.standIn);
+    expect(opening.standIn).toBe(standInPhrase('resp_42'));
+    expect(stepDisplayLabel(opening)).toBe(opening.standIn);
+    // Later narration is shown as written.
+    expect(later.standIn).toBeUndefined();
+    expect(stepDisplayLabel(later)).toBe("Now I'll add the orbits.");
+  });
+
+  it('keeps the opening line as written when no first take is showing', () => {
+    const noTake = reduceAll([created(), text("I'll create the game."), padStart], initialStreamState(), now);
+    expect(notes(noTake)[0].standIn).toBeUndefined();
+    // A reload replays saved events, which never include the take.
+    const replayed = [created(), take('On it.'), text("I'll create the game."), padStart]
+      .filter((e) => !e.type.startsWith('response.first_take'))
+      .reduce((s, e) => reduceStream(s, e, now, { replay: true }), initialStreamState());
+    expect(notes(replayed)[0].standIn).toBeUndefined();
+  });
+
+  it('has twenty distinct stand-in phrases, picked the same way every time', () => {
+    expect(new Set(STAND_IN_PHRASES).size).toBe(20);
+    expect(standInPhrase('a')).toBe(standInPhrase('a'));
+    const picks = new Set(Array.from({ length: 200 }, (_, i) => standInPhrase(`resp_${i}`)));
+    expect(picks.size).toBeGreaterThan(10);
   });
 
   it('seals the reasoning burst on a tool start when there is no narration (next burst starts fresh)', () => {

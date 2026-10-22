@@ -267,13 +267,60 @@ export function answerBody(state) {
   return state?.bodyIsAnswer ? state.bodyText : '';
 }
 
+// Anton's opening line says what it is about to do, which is what the first
+// take on screen has just said. While the take shows, that opening Note reads
+// as one of these instead, so the turn doesn't say the same thing twice. Each
+// is generic on purpose: it must never claim progress that hasn't happened.
+// Live only: the take is never saved, so a reloaded turn shows Anton's own
+// line, which is then the only acknowledgement there is (ENG-3554).
+export const STAND_IN_PHRASES = Object.freeze([
+  'Getting started…',
+  'Working on it…',
+  'On it…',
+  'Getting things ready…',
+  'Setting things up…',
+  'Gathering what I need…',
+  'Lining up the first steps…',
+  'Planning the approach…',
+  'Sorting out the details…',
+  'Laying the groundwork…',
+  'Thinking it through…',
+  'Mapping out the steps…',
+  'Getting the pieces together…',
+  'Starting on the first part…',
+  'Taking a first pass…',
+  'Working through it…',
+  'Rolling up my sleeves…',
+  'Warming up…',
+  'Getting oriented…',
+  'First things first…',
+]);
+
+/** One phrase per turn, chosen from its id: random to the reader, stable for
+ *  the turn (the reducer stays pure, and the phrase never flickers). */
+export function standInPhrase(seed) {
+  const text = String(seed ?? '');
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  return STAND_IN_PHRASES[hash % STAND_IN_PHRASES.length];
+}
+
+/** What a step shows: a Note's stand-in phrase when it has one, else its label. */
+export function stepDisplayLabel(step) {
+  return step?.standIn || step?.label || '';
+}
+
 const NOTE_BADGE = 'Note';
 const isLiveNote = (step) => step?.badge === NOTE_BADGE && step.status === 'in_progress';
 
-/** Steps with the round's narration as the trailing live Note. */
-function withLiveNote(steps, text, eventTs) {
+/** Steps with the round's narration as the trailing live Note. The turn's
+ *  opening Note, written while the first take is on screen, carries a
+ *  stand-in phrase to show instead (see STAND_IN_PHRASES). */
+function withLiveNote(state, text, eventTs) {
+  const { steps } = state;
   const last = steps.at(-1);
   if (isLiveNote(last)) return [...steps.slice(0, -1), { ...last, label: text.trim() }];
+  const opening = steps.length === 0 && visibleFirstTake(state.firstTake) !== null;
   return [...steps, {
     id: `note-${steps.length + 1}`,
     label: text.trim(),
@@ -282,6 +329,7 @@ function withLiveNote(steps, text, eventTs) {
     status: 'in_progress',
     startedAt: eventTs,
     completedAt: null,
+    ...(opening ? { standIn: standInPhrase(state.responseId || state.conversationId || state.startedAt) } : {}),
   }];
 }
 
@@ -542,7 +590,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       return promoteToAnswer(next);
     }
     if (!next.bodyText.trim()) return next;
-    return { ...next, steps: withLiveNote(state.steps, next.bodyText, eventTs) };
+    return { ...next, steps: withLiveNote(state, next.bodyText, eventTs) };
   }
 
   // The instant first take. Once Anton has spoken, asked the user, or the

@@ -8,6 +8,8 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { StepIcon } from './StepIcon';
+import { useTypedText } from './FirstTake';
+import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
 function TextDots() {
@@ -31,6 +33,11 @@ function formatStepDuration(startedAt, completedAt) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s}s`;
+}
+
+// The opening Note's stand-in phrase types out like streamed text would.
+function TypedStandIn({ text }) {
+  return useTypedText(text);
 }
 
 export function ThinkingStep({
@@ -80,9 +87,9 @@ export function ThinkingStep({
               'text-[12.5px]',
               isInProgress ? 'text-ink' : 'text-ink-3'
             )}
-            title={step.label}
+            title={stepDisplayLabel(step)}
           >
-            {step.label}
+            {step.standIn ? <TypedStandIn text={step.standIn} /> : step.label}
           </span>
           {isInProgress && <TextDots />}
         </div>
