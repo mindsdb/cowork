@@ -252,6 +252,22 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
   });
 
+  it.each([429, 503])('retains HTTP %s in the safe refresh failure diagnostic', async (status) => {
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockFetchOnce(async () => jsonResponse(status, { error: 'private-provider-value' }));
+    try {
+      expect(await refreshTokensOnly()).toEqual({ status: 'transient' });
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({
+        event: 'minds_auth_token_refresh_failed_transiently_http_keeping_tokens',
+        status_code: status,
+      });
+      expect(JSON.stringify(output.mock.calls)).not.toContain('private-provider-value');
+      expect(clearTokens).not.toHaveBeenCalled();
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it('treats a Keycloak 5xx as transient (keeps tokens, retries)', async () => {
     mockFetchOnce(async () => jsonResponse(503, {}));
     const result = await refreshTokensOnly();

@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 /*
  * The sidecar restart that sign-out runs, off the awaited path.
  *
@@ -74,7 +75,7 @@ async function runFlush(deps: SignOutFlushDeps): Promise<SignOutFlushOutcome> {
       await deps.startServer();
     });
   } catch (err) {
-    console.warn('[logout] server restart failed:', err);
+    diagnostic("main.sign-out-restart", "WARNING", "logout_server_restart_failed", '[logout] server restart failed:', err);
     return { attempted: true, restarted: false, configReadyAfter: null, failure: String(err) };
   }
   let configReadyAfter: boolean | null = null;
@@ -85,9 +86,9 @@ async function runFlush(deps: SignOutFlushDeps): Promise<SignOutFlushOutcome> {
     // cannot answer yet, which is not a sign-out failure.
   }
   if (configReadyAfter) {
-    console.error('[logout] BUG: config_ready is still true after logout — credentials survived in DB');
+    diagnostic("main.sign-out-restart", "ERROR", "logout_bug_config_ready_is_still_true_after_logout_credentials_survived_in_db", '[logout] BUG: config_ready is still true after logout — credentials survived in DB');
   } else if (configReadyAfter === false) {
-    console.log('[logout] verified: config_ready is false after restart');
+    diagnostic("main.sign-out-restart", "INFO", "logout_verified_config_ready_is_false_after_restart", '[logout] verified: config_ready is false after restart');
   }
   return { attempted: true, restarted: true, configReadyAfter, failure: null };
 }

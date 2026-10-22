@@ -1,7 +1,7 @@
 # Text the xlsx preview must never hold. Each `pattern` is a JavaScript regular
 # expression source, and `flags` its optional flags. A check may list examples:
-# bundle.test.ts asserts that the pattern matches each of `matches` and none of
-# `skips`.
+# the test that runs the check asserts that the pattern matches each of
+# `matches` and none of `skips`.
 #
 # bundle: matched against the whole built IIFE, by bundle.test.ts.
 # source: matched against render.ts, by render.test.ts.
@@ -30,8 +30,18 @@ bundle:
       - n.Utf8DecodeWorker
       - FlateWorker.prototype
       - var e = `Worker ` + this.name
-  - name: an eval call
-    pattern: '\beval\s*\('
+  # Any mention of eval, so an indirect call or a copy of eval called later
+  # counts as well as a direct call.
+  - name: eval
+    pattern: '\beval\b'
+    matches:
+      - eval(src)
+      - (0, eval)(src)
+      - const run = eval
+      - globalThis['eval'](src)
+    skips:
+      - evaluate(x)
+      - medieval
   - name: the Function constructor
     pattern: '\bFunction\s*\('
   # The bundle generator's own bans: the frame runs one inline script by hash.
@@ -70,6 +80,15 @@ source:
   # Nothing in the grid is a link.
   - name: a read of a cell's hyperlink (cell.l)
     pattern: '\.l\b'
+  - name: a bracket read of a cell's HTML or hyperlink (cell['h'], cell['l'])
+    pattern: "\\[\\s*['\"`][hl]['\"`]\\s*\\]"
+    matches:
+      - cell['h']
+      - cell["l"].Target
+      - cell[ `l` ]
+    skips:
+      - sheet['!data']
+      - row['hl']
   # Covers document.createElement('a') and the renderer's own element('a').
   - name: an anchor or area element
     pattern: "\\(\\s*['\"](?:a|area)['\"]"

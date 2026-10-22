@@ -81,7 +81,13 @@ describe('the bundle checks in code-checks.yaml', () => {
 });
 
 describe('build.config.mjs', () => {
-  async function dropNodeCheck(): Promise<TransformPlugin> {
+  const SHEETJS = join(REPO_ROOT, 'node_modules/xlsx/xlsx.mjs');
+  /* The two lines the format and error-text edits change, as SheetJS 0.20.3
+     writes them. */
+  const CELL_FORMAT = 'if(opts.cellNF) p.z = table_fmt[fmtid];';
+  const ERROR_TEXT = 'if(!opts || opts.cellText !== false) p.w = p.v;';
+
+  async function editSheetjs(): Promise<TransformPlugin> {
     const { plugins } = await buildConfig();
     expect(plugins).toHaveLength(1);
     return plugins[0] as unknown as TransformPlugin;
@@ -92,20 +98,33 @@ describe('build.config.mjs', () => {
   });
 
   it("replaces SheetJS's Node check with false", async () => {
-    const plugin = await dropNodeCheck();
-    const id = join(REPO_ROOT, 'node_modules/xlsx/xlsx.mjs');
-    const out = plugin.transform(readFileSync(id, 'utf8'), id);
+    const plugin = await editSheetjs();
+    const out = plugin.transform(readFileSync(SHEETJS, 'utf8'), SHEETJS);
     expect(out?.code).not.toMatch(/\bprocess\./);
     expect(out?.code).toMatch(/var has_buf = \/\*#__PURE__\*\/\(function\(\) \{ return false; \}\)\(\);/);
   });
 
-  it('fails the build when SheetJS no longer holds its Node check once', async () => {
-    const plugin = await dropNodeCheck();
-    expect(() => plugin.transform('var has_buf = false;', '/repo/node_modules/xlsx/xlsx.mjs')).toThrow(/found it 0 times/);
+  /* render.test.ts checks what the two edits make SheetJS do. */
+  it('loads a built-in format before SheetJS keeps a cell\'s format, and keeps an error cell\'s text, with cell text off', async () => {
+    const plugin = await editSheetjs();
+    const out = plugin.transform(readFileSync(SHEETJS, 'utf8'), SHEETJS)?.code ?? '';
+    expect(out.split(`if(table_fmt[fmtid] == null) SSF__load(SSFImplicit[fmtid] || "General", fmtid); ${CELL_FORMAT}`)).toHaveLength(2);
+    expect(out).not.toContain(ERROR_TEXT);
+    expect(out).toMatch(/case 'e':\s+p\.w = p\.v;\s+p\.v = RBErr\[p\.v\]; break;/);
+  });
+
+  it.each([
+    { label: 'its Node check', remove: "!!process.versions.node", message: /Node check .* found it 0 times/ },
+    { label: 'the line that keeps a cell\'s format', remove: CELL_FORMAT, message: /number format for a cell .* found it 0 times/ },
+    { label: 'the line that keeps an error cell\'s text', remove: ERROR_TEXT, message: /text for an error cell .* found it 0 times/ },
+  ])('fails the build when SheetJS no longer holds $label once', async ({ remove, message }) => {
+    const plugin = await editSheetjs();
+    const code = readFileSync(SHEETJS, 'utf8').replace(remove, '');
+    expect(() => plugin.transform(code, SHEETJS)).toThrow(message);
   });
 
   it('leaves every other module alone', async () => {
-    const plugin = await dropNodeCheck();
+    const plugin = await editSheetjs();
     expect(plugin.transform('process.versions', '/repo/src/other.ts')).toBeNull();
   });
 });

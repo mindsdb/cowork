@@ -1,8 +1,9 @@
 /*
  * The committed xlsx preview fixtures are exactly what make-fixtures.mjs
- * writes, so the script beside them stays the record of how they were made,
- * and fixtures.yaml lists each of them once. The hostile fixture aims one link
- * at the harness origin, which must stay the one the browser spec serves.
+ * writes, but for the four make-python-fixtures.py writes, so the scripts
+ * beside them stay the record of how they were made, and fixtures.yaml lists
+ * each of them once. The hostile fixture aims one link at the harness origin,
+ * which must stay the one the browser spec serves.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,6 +21,11 @@ import documentPreviewConfig from '../../../../../../playwright.document-preview
 vi.mock('@playwright/test', () => ({ defineConfig: <T>(config: T): T => config, devices: {} }));
 
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/xlsx');
+/* The fixtures make-python-fixtures.py writes with openpyxl and XlsxWriter.
+   make-fixtures.mjs doesn't write them, so the byte check leaves them out, and
+   rerunning that Python script with the library versions it names is how
+   they are made again. */
+const PYTHON_FIXTURES: readonly string[] = ['openpyxl-total.xlsx', 'xlsxwriter-total.xlsx', 'openpyxl-report.xlsx', 'xlsxwriter-report.xlsx'];
 
 describe('xlsx preview fixtures', () => {
   it('match what make-fixtures.mjs writes, byte for byte', async () => {
@@ -32,7 +38,8 @@ describe('xlsx preview fixtures', () => {
     const listed = load(readFileSync(join(FIXTURES, 'fixtures.yaml'), 'utf8')) as PreviewFixture[];
     const written = (await xlsxFixtureFiles()).map(({ file }) => file);
 
-    expect(listed.map(({ file }) => file)).toEqual(written);
+    expect(listed.map(({ file }) => file).filter((file) => !PYTHON_FIXTURES.includes(file))).toEqual(written);
+    expect(listed.filter(({ file }) => PYTHON_FIXTURES.includes(file)).map(({ file }) => file)).toEqual(PYTHON_FIXTURES);
     expect(new Set(listed.map(({ name }) => name)).size).toBe(listed.length);
     expect(listed.filter(({ kind }) => kind !== 'clean' && kind !== 'hostile')).toEqual([]);
     expect(listed.map(({ kind }) => kind)).toContain('hostile');
