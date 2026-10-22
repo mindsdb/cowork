@@ -62,6 +62,7 @@ npm test                     # unit + component (fast, no Electron/network)
 npm run test:watch           # local TDD loop
 npm run test:coverage        # + enforces coverage floors (vitest.config.ts)
 npm run test:e2e             # Playwright Electron boot smoke (needs npm run build)
+npx playwright test --config playwright.document-preview.config.ts  # document preview suite (web harness + Electron; electron project needs npm run build)
 npm run check:cowork-purity  # no direct window.antontron outside platform/host.ts
 ```
 

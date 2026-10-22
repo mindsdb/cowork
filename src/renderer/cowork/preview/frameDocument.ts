@@ -2,6 +2,8 @@
  * The document preview frame's source. Nothing here imports anything Vite-only,
  * so Node and the Electron spec can import this module as it is.
  */
+import { isPreviewToken, PREVIEW_TOKEN_META_NAME } from './runtime/protocol';
+
 export { PREVIEW_FRAME_NAME } from '../../../shared/document-preview';
 
 export const PREVIEW_SANDBOX = 'allow-scripts' as const;
@@ -39,6 +41,36 @@ export function previewFramePolicy(scriptSha256: string): string {
   ].join('; ');
 }
 
+/* Text that would end the inline script early, or that the HTML parser would
+   rewrite so the script no longer matches its hash. */
+const UNSAFE_SCRIPT_TEXT = /<\/?script|[\0\r]/i;
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/*
+ * The one place a document preview's frame document is written. It holds, in
+ * this order, the frame policy, a DNS prefetch opt-out, the token meta and the
+ * script whose hash the policy names. The policy must be exactly
+ * previewFramePolicy(scriptSha256), so no caller can widen it, and a token or
+ * script text the frame can't use throws instead of building a frame.
+ */
 export function buildPreviewSrcdoc(input: PreviewSrcdocInput): string {
-  throw new Error('buildPreviewSrcdoc is not implemented yet');
+  const { policy, token, scriptText, scriptSha256 } = input;
+  if (policy !== previewFramePolicy(scriptSha256)) {
+    throw new Error('buildPreviewSrcdoc takes only the frame policy for its script');
+  }
+  if (!isPreviewToken(token)) {
+    throw new Error('buildPreviewSrcdoc needs a 128-bit hex token');
+  }
+  if (UNSAFE_SCRIPT_TEXT.test(scriptText)) {
+    throw new Error('buildPreviewSrcdoc needs script text without script tags, NUL or CR');
+  }
+  return [
+    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`,
+    '<meta http-equiv="x-dns-prefetch-control" content="off">',
+    `<meta name="${PREVIEW_TOKEN_META_NAME}" content="${token}">`,
+    `<script>${scriptText}</script>`,
+  ].join('');
 }

@@ -83,3 +83,15 @@ export function endpointHost(base: string): string {
   if (!url) return '';
   return url.port ? `${url.hostname}:${url.port}` : url.hostname;
 }
+
+/**
+ * The MindsHub API root for a stored `minds_url`: no trailing slash, no `/v1`.
+ *
+ * Both spellings are stored — sign-in writes the bare host, the server's
+ * default carries `/v1` — and Anthropic-style clients append `/v1/...`
+ * themselves, so passing `/v1` through would request `/v1/v1/...`.
+ * '' when nothing usable is given.
+ */
+export function mindsApiRoot(mindsUrl: string | null | undefined): string {
+  return (mindsUrl || '').trim().replace(/\/+$/, '').replace(/\/v1$/, '');
+}

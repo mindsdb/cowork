@@ -183,8 +183,17 @@ describe('pushMindsCredential', () => {
     const send = vi.fn();
     getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
     installFetch(503);
-    await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
-    expect(send).not.toHaveBeenCalled();
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
+      expect(send).not.toHaveBeenCalled();
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({
+        event: 'minds_credential_hand_over_returned', status_code: 503,
+      });
+      expect(String(output.mock.calls[0][0])).not.toContain('private-credential');
+    } finally {
+      output.mockRestore();
+    }
   });
 
   it('PUTs the value to the sidecar carrying the server bearer token', async () => {

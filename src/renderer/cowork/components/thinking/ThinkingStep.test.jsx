@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { ThinkingStep } from './ThinkingStep';
 
 // An in-progress step row must be the same height as a settled one, or the
@@ -49,5 +49,24 @@ describe('ThinkingStep badges (ENG-2981)', () => {
       <ThinkingStep step={{ id: 'question-q1', label: 'Prompt', badge: 'AskUser', status: 'in_progress' }} />,
     );
     expect(container.textContent).not.toContain('question');
+  });
+});
+
+describe('ThinkingStep — opening Note stand-in (ENG-3554)', () => {
+  it("types out the stand-in phrase instead of Anton's opening line", async () => {
+    const step = {
+      id: 'note-1', badge: 'Note', icon: 'note', status: 'completed',
+      label: "I'll create an interactive solar system.", standIn: 'Getting started…',
+      startedAt: 0, completedAt: 0,
+    };
+    render(<ThinkingStep step={step} />);
+    expect(await screen.findByText('Getting started…')).toBeInTheDocument();
+    expect(screen.queryByText("I'll create an interactive solar system.")).not.toBeInTheDocument();
+  });
+
+  it("shows a Note without a stand-in as written", () => {
+    const step = { id: 'note-2', badge: 'Note', icon: 'note', status: 'completed', label: "Now I'll add the orbits.", startedAt: 0, completedAt: 0 };
+    render(<ThinkingStep step={step} />);
+    expect(screen.getByText("Now I'll add the orbits.")).toBeInTheDocument();
   });
 });
