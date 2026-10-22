@@ -34,13 +34,19 @@
  * spec also requires every harness-origin request to be the fixture's own URL
  * or one of the harness's own module paths.
  */
-import type { Page } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+import type { Frame, Page, Route } from '@playwright/test';
+import yaml from 'js-yaml';
 
 import type {
   DocumentPreviewType,
   PreviewErrorCode,
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
+import { isPreviewErrorCode, PREVIEW_ERROR_CODES } from '../../src/renderer/cowork/preview/runtime/errors';
+import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
 
@@ -66,10 +72,151 @@ export interface PreviewRun {
   text: string; requests: string[]; frameUrlAfterClicks: string;
 }
 
+/* What the harness page's open(set, file) resolves with. main.tsx sets
+   window.coworkPreviewHarness. */
+export type HarnessOutcome = Pick<PreviewRun, 'outcome' | 'errorCode' | 'summary'>;
+
+declare global {
+  interface Window {
+    coworkPreviewHarness?: { open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcome> };
+  }
+}
+
+const FIXTURES_DIR = path.join(__dirname, 'fixtures');
+/* A fixture file name: no separators and no leading dot. */
+const FIXTURE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const FIXTURE_KEYS = new Set(['name', 'file', 'kind', 'expect']);
+const EXPECTATION_KEYS = new Set([
+  'outcome', 'errorCode', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion',
+]);
+const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
+/* How long a click gets to start a navigation or a request before the frame's
+   URL is read. */
+const CLICK_SETTLE_MS = 500;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function checkKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, where: string): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) throw new Error(`${where}: unknown keys ${unknown.join(', ')}`);
+}
+
+function readRegion(value: unknown, where: string): CanvasRegion {
+  if (!isRecord(value)) throw new Error(`${where}: paintedRegion must be a mapping`);
+  checkKeys(value, REGION_KEYS, where);
+  const { page, left, top, width, height } = value;
+  if (typeof page !== 'number' || typeof left !== 'number' || typeof top !== 'number'
+    || typeof width !== 'number' || typeof height !== 'number') {
+    throw new Error(`${where}: paintedRegion needs a number for each of page, left, top, width and height`);
+  }
+  return { page, left, top, width, height };
+}
+
+function readExpectation(value: unknown, where: string): FixtureExpectation {
+  if (!isRecord(value)) throw new Error(`${where}: expect must be a mapping`);
+  checkKeys(value, EXPECTATION_KEYS, where);
+  const { outcome, errorCode, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion } = value;
+  if (outcome !== 'rendered' && outcome !== 'error') throw new Error(`${where}: outcome must be rendered or error`);
+  if (errorCode !== undefined && !isPreviewErrorCode(errorCode)) {
+    throw new Error(`${where}: errorCode must be one of ${PREVIEW_ERROR_CODES.join(', ')}`);
+  }
+  if (units !== undefined && typeof units !== 'number') throw new Error(`${where}: units must be a number`);
+  if (minUnits !== undefined && typeof minUnits !== 'number') throw new Error(`${where}: minUnits must be a number`);
+  if (truncated !== undefined && typeof truncated !== 'boolean') throw new Error(`${where}: truncated must be true or false`);
+  if (textIncludes !== undefined && !isStringList(textIncludes)) throw new Error(`${where}: textIncludes must be a list of text`);
+  if (textExcludes !== undefined && !isStringList(textExcludes)) throw new Error(`${where}: textExcludes must be a list of text`);
+  return {
+    outcome,
+    ...(errorCode === undefined ? {} : { errorCode }),
+    ...(units === undefined ? {} : { units }),
+    ...(minUnits === undefined ? {} : { minUnits }),
+    ...(truncated === undefined ? {} : { truncated }),
+    ...(textIncludes === undefined ? {} : { textIncludes }),
+    ...(textExcludes === undefined ? {} : { textExcludes }),
+    ...(paintedRegion === undefined ? {} : { paintedRegion: readRegion(paintedRegion, where) }),
+  };
+}
+
+function readFixture(value: unknown, setDir: string, where: string): PreviewFixture {
+  if (!isRecord(value)) throw new Error(`${where}: each fixture must be a mapping`);
+  checkKeys(value, FIXTURE_KEYS, where);
+  const { name, file, kind } = value;
+  if (typeof name !== 'string' || !name) throw new Error(`${where}: name must be text`);
+  if (typeof file !== 'string' || !FIXTURE_FILE.test(file)) throw new Error(`${where}: file must be a file name in its set's folder`);
+  if (!existsSync(path.join(setDir, file))) throw new Error(`${where}: ${file} is not in ${setDir}`);
+  if (kind !== 'clean' && kind !== 'hostile') throw new Error(`${where}: kind must be clean or hostile`);
+  return { name, file, kind, expect: readExpectation(value.expect, where) };
+}
+
 export function loadFixtures(set: PreviewFixtureSet): PreviewFixture[] {
-  throw new Error(`loadFixtures is not implemented yet (fixtures/${set}/fixtures.yaml)`);
+  const setDir = path.join(FIXTURES_DIR, set);
+  const listFile = path.join(setDir, 'fixtures.yaml');
+  const list: unknown = yaml.load(readFileSync(listFile, 'utf8'));
+  if (!Array.isArray(list) || list.length === 0) throw new Error(`${listFile} must hold a list of fixtures`);
+  const fixtures = list.map((entry, index) => readFixture(entry, setDir, `${listFile} entry ${index + 1}`));
+  const names = new Set(fixtures.map((fixture) => fixture.name));
+  if (names.size !== fixtures.length) throw new Error(`${listFile}: fixture names must be unique`);
+  return fixtures;
+}
+
+/* Clicks inside the frame: every link-like element, and for a hostile fixture
+   every element in the body too. An HTML element gets click(), which runs its
+   activation behavior; an SVG element gets a dispatched click event. */
+async function clickEverything(frame: Frame, everyElement: boolean): Promise<void> {
+  await frame.evaluate((all) => {
+    const links = Array.from(document.querySelectorAll('a, area, [href], [*|href]'));
+    const rest = all ? Array.from(document.body.querySelectorAll('*')) : [];
+    for (const element of new Set([...links, ...rest])) {
+      if (element instanceof HTMLElement) element.click();
+      else element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+  }, everyElement);
 }
 
 export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
-  throw new Error(`openPreview is not implemented yet (${set}: ${fixture.name})`);
+  if (!/^https?:/.test(page.url())) await page.goto('/');
+  await page.waitForFunction(() => !!window.coworkPreviewHarness);
+  const harnessOrigin = new URL(page.url()).origin;
+  const requests: string[] = [];
+  const navigations: string[] = [];
+  /* Requests are recorded where they reach the network layer, so a load the
+     browser refused under the frame policy, which never left the page, is not
+     one. A request for another origin is recorded and then stopped, so a
+     failing spec never reaches a real outside host. */
+  const record = (route: Route) => {
+    const url = route.request().url();
+    requests.push(url);
+    return new URL(url).origin === harnessOrigin ? route.fallback() : route.abort('blockedbyclient');
+  };
+  /* DocumentPreviewFrame rebuilds a frame that loads again, which would put
+     it back at about:srcdoc, so every navigation away from it is kept. */
+  const noteNavigation = (frame: Frame) => {
+    if (frame.name() === PREVIEW_FRAME_NAME && frame.url() !== 'about:srcdoc') navigations.push(frame.url());
+  };
+  page.on('framenavigated', noteNavigation);
+  await page.route('**/*', record);
+  try {
+    const outcome = await page.evaluate(
+      ([fixtureSet, file]) => window.coworkPreviewHarness!.open(fixtureSet, file),
+      [set, fixture.file] as const,
+    );
+    const frame = page.frame({ name: PREVIEW_FRAME_NAME });
+    const text = frame ? await frame.evaluate(() => document.body.innerText) : '';
+    if (frame) await clickEverything(frame, fixture.kind === 'hostile');
+    await page.waitForTimeout(CLICK_SETTLE_MS);
+    /* A frame the watchdog removed never left about:srcdoc unless a
+       navigation was seen. */
+    const current = page.frame({ name: PREVIEW_FRAME_NAME });
+    const frameUrlAfterClicks = navigations[0] ?? current?.url() ?? 'about:srcdoc';
+    return { ...outcome, text, requests: [...requests], frameUrlAfterClicks };
+  } finally {
+    page.off('framenavigated', noteNavigation);
+    await page.unroute('**/*', record);
+  }
 }
