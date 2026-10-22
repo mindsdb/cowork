@@ -1,15 +1,17 @@
 /*
  * The Word renderer, run on the real docx-preview with the harness's .docx
- * fixtures. Single tests swap one docx-preview step for a failure, or wrap it
- * to look at what render() hands it.
+ * fixtures. Every fixture renders, except the ones render.test.yaml lists as
+ * parse-failed. Single tests swap one docx-preview step for a failure, or wrap
+ * it to look at what render() hands it.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import * as docxPreview from 'docx-preview';
+import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { PreviewError, RendererContext } from '../../contract';
+import type { RendererContext } from '../../contract';
 import { previewLimits } from '../../limits';
 import renderer, { DOCX_OPTIONS } from './render';
 
@@ -18,8 +20,12 @@ vi.mock('docx-preview', async (importOriginal) => {
   return { ...actual, parseAsync: vi.fn(actual.parseAsync), renderDocument: vi.fn(actual.renderDocument) };
 });
 
+interface RenderCases { parseFailed: string[] }
+
+const CASES = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/docx');
 const DOCX_FILES = readdirSync(FIXTURES).filter((name) => name.endsWith('.docx'));
+const RENDERED_FILES = DOCX_FILES.filter((name) => !CASES.parseFailed.includes(name));
 
 /* A CSS url() of anything but a data: URL or an in-page #fragment. */
 const LOADING_URL = /url\(\s*["']?(?!\s*(?:data:|#))/i;
@@ -84,14 +90,20 @@ describe('the docx renderer', () => {
     expect(vi.mocked(ctx.progress).mock.calls).toEqual([[0, 3], [1, 3], [2, 3], [3, 3]]);
   });
 
-  it.each(DOCX_FILES)('leaves nothing in %s that loads or opens a URL, or fails it as parse-failed', async (name) => {
+  it('finds every file render.test.yaml lists as parse-failed among the fixtures', () => {
+    expect(DOCX_FILES).toEqual(expect.arrayContaining(CASES.parseFailed));
+  });
+
+  it.each(RENDERED_FILES)('renders %s and leaves nothing in it that loads or opens a URL', async (name) => {
     const ctx = context();
-    const ending = await renderer.render(fixtureBytes(name), ctx).then(
-      () => 'rendered',
-      (error: PreviewError) => error.code,
-    );
-    if (ending === 'rendered') expect(leftoverTargets(ctx.root)).toEqual([]);
-    else expect([ending, ctx.root.childNodes.length]).toEqual(['parse-failed', 0]);
+    await renderer.render(fixtureBytes(name), ctx);
+    expect(leftoverTargets(ctx.root)).toEqual([]);
+  });
+
+  it.each(CASES.parseFailed)('fails %s with parse-failed and inserts nothing', async (name) => {
+    const ctx = context();
+    await expect(renderer.render(fixtureBytes(name), ctx)).rejects.toMatchObject({ code: 'parse-failed' });
+    expect(ctx.root.childNodes).toHaveLength(0);
   });
 
   it('cleans the nodes and holds links before the frame document adopts them', async () => {
