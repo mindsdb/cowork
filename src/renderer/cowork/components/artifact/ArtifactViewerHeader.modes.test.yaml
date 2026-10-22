@@ -30,6 +30,9 @@ modes:
     download: header
     moreActions: false
     tabRule: true
+    # A tab loads a URL without the bearer, which org mode's draft route
+    # refuses, so the arrow shows only for a published artifact's shared page.
+    tabNeedsShare: true
   - name: desktop on macOS
     web: false
     org: false
@@ -161,3 +164,24 @@ export:
     artifact: { exportFormats: [docx] }
     shows: []
     download: true
+
+# Why Edit and Review are unavailable, as each tab's aria-label says it. The
+# workspace hook sets `previewOnly` for a file the viewer only previews, and
+# that reason comes first even on a card too old for the workspace. Without
+# the flag, such a card still asks for a refresh.
+reasons:
+  - name: a preview-only file on a card too old for the workspace
+    workspace:
+      supported: false
+      status: unsupported
+      previewOnly: true
+      unsupportedReason: "Preview only: Cowork can't edit this file type."
+    edit: "Edit unavailable \u2014 Preview only: Cowork can't edit this file type."
+    review: "Review unavailable \u2014 Preview only: Cowork can't edit this file type."
+  - name: the same card without the preview-only flag
+    workspace:
+      supported: false
+      status: unsupported
+      unsupportedReason: "Preview only: Cowork can't edit this file type."
+    edit: "Edit unavailable \u2014 Refresh the artifact to load editing tools"
+    review: "Review unavailable \u2014 Refresh the artifact to load review tools"

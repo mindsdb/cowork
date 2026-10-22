@@ -37,3 +37,30 @@ describe('FirstTake', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('FirstTake — leaving (ENG-3554)', () => {
+  it('folds away with its last text instead of vanishing, then unmounts', () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<FirstTake take={{ text: 'Building it.', done: true }} />);
+    advance(2000);
+    rerender(<FirstTake take={null} />);
+    // Still on screen, folding.
+    expect(screen.getByTestId('first-take').textContent).toBe('Building it.');
+    expect(screen.getByTestId('first-take-fold').className).toContain('is-folded');
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(screen.queryByTestId('first-take')).toBeNull();
+  });
+});
+
+describe('FirstTake — leaving on the finished message (ENG-3554)', () => {
+  it('mounts whole, folds away at once, and does not type out again', async () => {
+    vi.useFakeTimers();
+    render(<FirstTake take={null} leavingText="Building it." />);
+    expect(screen.getByTestId('first-take').textContent).toBe('Building it.');
+    act(() => { vi.advanceTimersByTime(20); });
+    await act(async () => { vi.runOnlyPendingTimers(); });
+    expect(screen.queryByTestId('first-take-fold')?.className ?? 'is-folded').toContain('is-folded');
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(screen.queryByTestId('first-take')).toBeNull();
+  });
+});

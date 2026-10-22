@@ -139,17 +139,15 @@ describe('the page-load brand', () => {
     expect(mod.BRAND_LOAD).toEqual({ status: 'failed' });
     expect(mod.DEPLOYMENT_BRAND).toBeNull();
     expect(error).toHaveBeenCalledOnce();
-    expect(error.mock.calls[0][0]).toContain('/brand/brand.js');
+    expect(JSON.parse(String(error.mock.calls[0][0]))).toMatchObject({ event: 'deployment_brand_missing', config_source: '/brand/brand.js' });
   });
 
   it('warns once per field it ignored', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const mod = await loadWith(false, { productName: 'Acme Cowork', theme: 'sepia', logoUrl: 'https://x' });
     expect(mod.DEPLOYMENT_BRAND?.productName).toBe('Acme Cowork');
-    expect(warn.mock.calls.map((call) => call[0])).toEqual([
-      "The deployment brand's theme is not valid and was ignored.",
-      "The deployment brand's logoUrl is not valid and was ignored.",
-    ]);
+    expect(warn.mock.calls.map((call) => JSON.parse(String(call[0])).config_field)).toEqual(['theme', 'logoUrl']);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('https://x');
   });
 
   it('stays silent and reads nothing with the platform UI on', async () => {

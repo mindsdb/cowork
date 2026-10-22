@@ -121,7 +121,7 @@ describe.each(cases.modes)('the viewer header on $name', (mode) => {
     const user = userEvent.setup();
     render(<ArtifactViewerHeader {...headerProps(mode, file)} />);
     const downloadable = file.downloadable !== false;
-    const showsTab = (!mode.tabRule || file.showsInTab) && file.hasUrls !== false;
+    const showsTab = !mode.tabNeedsShare && (!mode.tabRule || file.showsInTab) && file.hasUrls !== false;
 
     const headerDownload = screen.queryByRole('button', { name: 'Download' });
     expect(!!headerDownload).toBe(mode.download === 'header' && downloadable);
@@ -206,6 +206,18 @@ describe('the viewer header controls', () => {
     render(<ArtifactViewerHeader {...props} />);
 
     expect(screen.getByRole('button', { name: /^Open$/ })).toBeDisabled();
+  });
+});
+
+describe.each(cases.reasons)('Edit and Review for $name', (reasonCase) => {
+  it('names the reason in each tab', () => {
+    useMode(modeNamed('local web'));
+    const props = headerProps(modeNamed('local web'), { path: 'model.xlsx' });
+    props.workspace = { ...props.workspace, ...reasonCase.workspace };
+    render(<ArtifactViewerHeader {...props} />);
+
+    expect(screen.getByRole('tab', { name: reasonCase.edit })).toBeDisabled();
+    expect(screen.getByRole('tab', { name: reasonCase.review })).toBeDisabled();
   });
 });
 

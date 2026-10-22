@@ -20,6 +20,22 @@
 // neither see nor enforce that cross-repo contract, so an earlier unanswered
 // card is treated as expired rather than trusted to still be answerable.
 //
+// `reopenable` marks a finished turn the user can still reply to (the latest
+// one, with nothing in flight). Its last question is `reopened` when it timed
+// out or was never retired: anton ends the turn instead of guessing, so the
+// answer goes out as a normal message. Only `ask:` questions reopen. A refused
+// write approval (`write:`) or limit hand-back (`limit:`) stays closed, so a
+// late Approve can't arrive as text the model reads as approval. A question
+// the user skipped stays closed too.
+//
+// `reply` is the user message that followed a finished turn. It answered that
+// turn's open question, so the card shows it as the answer rather than the
+// timeout: a pick from the card arrives as its option labels, anything else as
+// typed text. The reply is only text, so the picks are read back from it: a
+// single-select reply must be one whole label, and a multi-select reply must
+// split into labels exactly one way. Anything ambiguous shows as typed text
+// rather than highlighting options the user may not have picked.
+//
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
 // as an agent message between the work before and after it.
 
@@ -29,18 +45,27 @@ const isMessage = (step) => step?.badge === 'Message';
 /**
  * Returns, in event order:
  *   { kind: 'steps', key, steps, startedAt }
- *   { kind: 'question', key, step, expired }
+ *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
  * between any two boundaries (questions or messages), so callers can always
  * pick the live one.
  */
-export function splitTurnSegments(steps, { startedAt = null, conversationLive = false } = {}) {
+export function splitTurnSegments(steps, { startedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
   const list = Array.isArray(steps) ? steps : [];
   let lastUnansweredId = null;
+  let lastQuestion = null;
   for (const step of list) {
-    if (isQuestion(step) && !step.data?.answer) lastUnansweredId = step.id;
+    if (!isQuestion(step)) continue;
+    lastQuestion = step;
+    if (!step.data?.answer) lastUnansweredId = step.id;
   }
+  const openId = String(lastQuestion?.data?.question_id || '').startsWith('ask:')
+    && (!lastQuestion.data.answer || lastQuestion.data.answer.status === 'timeout')
+    ? lastQuestion.id
+    : null;
+  const reopenedId = reopenable ? openId : null;
+  const lateAnswer = openId && reply ? replyAsAnswer(lastQuestion.data, reply) : null;
 
   const segments = [];
   // Work after a question starts when the user answered it; without an
@@ -63,12 +88,38 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
         kind: 'question',
         key: step.id,
         step,
-        expired: !step.data?.answer && !(conversationLive && step.id === lastUnansweredId),
+        expired: step.id !== reopenedId
+          && !step.data?.answer && !(conversationLive && step.id === lastUnansweredId),
+        reopened: step.id === reopenedId,
+        lateAnswer: step.id === openId ? lateAnswer : null,
       });
     current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
   }
   pushSteps(current);
   return segments;
+}
+
+function replyAsAnswer({ options, select }, reply) {
+  const byLabel = new Map((options || []).map((o) => [o.label || o.value, o.value]));
+  const values = select === 'many' ? onlySplit(reply, byLabel) : byLabel.has(reply) && [byLabel.get(reply)];
+  return values
+    ? { status: 'answered', values, text: '' }
+    : { status: 'answered', values: [], text: reply };
+}
+
+// The values `reply` names when it splits into ", "-joined labels exactly one
+// way, else null. Labels may themselves contain ", ".
+function onlySplit(reply, byLabel) {
+  const found = [];
+  const walk = (rest, values) => {
+    if (found.length > 1) return;
+    for (const [label, value] of byLabel) {
+      if (rest === label) found.push([...values, value]);
+      else if (rest.startsWith(`${label}, `)) walk(rest.slice(label.length + 2), [...values, value]);
+    }
+  };
+  walk(reply, []);
+  return found.length === 1 ? found[0] : null;
 }
 
 /**

@@ -77,8 +77,12 @@ export function ArtifactViewerHeader({
      is its static shell, not the app, so it offers none. */
   const canDownload = !isBackendArtifact && !!(artifact?.serveUrl || artifact?.draftUrl);
   /* The tab-only rule is a web rule: on desktop an unpublished file opens in
-     its default app instead, as it always has. */
-  const canOpenAsTab = !host.isWeb || showsInBrowserTab(artifact, isPublished);
+     its default app instead, as it always has. Org mode serves no file a tab
+     can load without the bearer, so there a tab opens only the shared page,
+     as Live Artifacts' arrow does. */
+  const canOpenAsTab = orgMode
+    ? isPublished
+    : (!host.isWeb || showsInBrowserTab(artifact, isPublished));
   const exportFormats = artifactExportFormats(workspace, artifact);
   const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
   const openMenuItems = [
@@ -94,21 +98,28 @@ export function ArtifactViewerHeader({
     }] : []),
   ];
   const workspaceLoading = workspace.status === 'idle' || workspace.status === 'loading';
-  const editDisabledReason = !workspace.supported
-    ? 'Refresh the artifact to load editing tools'
-    : workspaceLoading
-      ? 'Loading editing tools…'
-      : workspace.capabilities?.canEdit === false
-        ? 'Only the artifact owner can edit'
-        // "Too old to edit" and "never shared with you" both land in the
-        // `unsupported` status; the hook names which one so the tooltip doesn't
-        // send the user looking in the wrong place.
-        : workspace.unsupportedReason || 'This artifact cannot be edited here';
-  const reviewDisabledReason = !workspace.supported
-    ? 'Refresh the artifact to load review tools'
-    : workspaceLoading
-      ? 'Loading review tools…'
-      : workspace.unsupportedReason || 'Review is not available for this artifact';
+  /* A file the viewer only previews says so first: a card too old for the
+     workspace would otherwise read "Refresh", and a refresh never makes it
+     editable. The workspace hook sets `previewOnly` with its reason. */
+  const editDisabledReason = workspace.previewOnly
+    ? workspace.unsupportedReason || 'This artifact cannot be edited here'
+    : !workspace.supported
+      ? 'Refresh the artifact to load editing tools'
+      : workspaceLoading
+        ? 'Loading editing tools…'
+        : workspace.capabilities?.canEdit === false
+          ? 'Only the artifact owner can edit'
+          // "Too old to edit" and "never shared with you" both land in the
+          // `unsupported` status; the hook names which one so the tooltip doesn't
+          // send the user looking in the wrong place.
+          : workspace.unsupportedReason || 'This artifact cannot be edited here';
+  const reviewDisabledReason = workspace.previewOnly
+    ? workspace.unsupportedReason || 'Review is not available for this artifact'
+    : !workspace.supported
+      ? 'Refresh the artifact to load review tools'
+      : workspaceLoading
+        ? 'Loading review tools…'
+        : workspace.unsupportedReason || 'Review is not available for this artifact';
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
