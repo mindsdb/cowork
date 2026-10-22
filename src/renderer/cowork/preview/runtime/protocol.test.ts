@@ -52,6 +52,7 @@ describe('message shapes', () => {
   it('drops a summary with a type outside the four, or units that are not a count', () => {
     for (const summary of [
       { type: 'html', units: 1, truncated: false },
+      { type: 'toString', units: 1, truncated: false },
       { type: 'pdf', units: -1, truncated: false },
       { type: 'pdf', units: 1.5, truncated: false },
       { type: 'pdf', units: 1, truncated: 'no' },

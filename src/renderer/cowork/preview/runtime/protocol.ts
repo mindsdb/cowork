@@ -21,7 +21,9 @@ export const PREVIEW_TOKEN_META_NAME = 'cowork-preview-token';
 /* 128 bits, as 32 lowercase hex characters. */
 const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
 
-const DOCUMENT_PREVIEW_TYPES: readonly DocumentPreviewType[] = ['xlsx', 'docx', 'pptx', 'pdf'];
+/* Every DocumentPreviewType. A Record rather than a list, so tsc fails here when
+   the union gains or loses a type. */
+const DOCUMENT_PREVIEW_TYPES: Readonly<Record<DocumentPreviewType, true>> = { xlsx: true, docx: true, pptx: true, pdf: true };
 
 /* Longer asset names are refused unread; real names are short file names. */
 export const MAX_ASSET_NAME_LENGTH = 256;
@@ -39,7 +41,7 @@ export function isPreviewToken(value: unknown): value is string {
 }
 
 export function isDocumentPreviewType(value: unknown): value is DocumentPreviewType {
-  return typeof value === 'string' && (DOCUMENT_PREVIEW_TYPES as readonly string[]).includes(value);
+  return typeof value === 'string' && Object.hasOwn(DOCUMENT_PREVIEW_TYPES, value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
