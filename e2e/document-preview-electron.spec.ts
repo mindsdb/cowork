@@ -235,6 +235,8 @@ test.describe('the server token', () => {
 
     await expect.poll(() => pathsUnder(folder)).toEqual([`${folder}image.png`, `${folder}nested.txt`, `${folder}renamed.txt`]);
     expect(requestsUnder(folder).filter((request) => request.authorized)).toEqual([]);
+    /* Electron named the nested frame, so the guard's parent walk, not the no-frame rule, kept the token off. */
+    expect((await host.record()).listenerCalls).toContainEqual({ path: `${folder}nested.txt`, hadFrame: true });
   });
 
   test('stays off a request with no frame', async () => {
@@ -307,5 +309,56 @@ test.describe('the navigation guard', () => {
 
     await expect.poll(() => frame.url()).toBe(`${folder}next.txt`);
     expect(requestsUnder('/viewer/next.txt')).toEqual([{ path: '/viewer/next.txt', authorized: true }]);
+  });
+
+  test('holds an unmarked srcdoc frame in place', async () => {
+    const frame = await mountFrame(host.page, { id: 'unmarked', sandbox: 'allow-scripts', srcdoc: '<p>unmarked</p>' });
+    const url = `${server.origin}/nav/unmarked`;
+
+    await frame.evaluate((href) => { location.href = href; }, url);
+    await expect.poll(async () => (await host.record()).navigations.filter((navigation) => navigation.url === url))
+      .toEqual([{ url, cancelled: true }]);
+
+    expect(await frame.evaluate(() => location.href)).toBe('about:srcdoc');
+    expect(pathsUnder('/nav/unmarked')).toEqual([]);
+  });
+
+  test('holds a frame nested in the preview frame when the window navigates it', async () => {
+    /* No content policy, so the nested frame's load reaches the guard. The
+       host page starts the load, so only the rule for frames inside the
+       preview can cancel it. */
+    const frame = await mountFrame(host.page, { id: 'preview-nest', name: PREVIEW_FRAME_NAME, sandbox: 'allow-scripts', srcdoc: '<p>preview</p>' });
+    await frame.evaluate(() => { document.body.append(document.createElement('iframe')); });
+    /* The preview runs in its own process, so the window sees the new child a moment later. */
+    await expect.poll(() => host.page.evaluate(() => document.querySelector<HTMLIFrameElement>('#preview-nest')?.contentWindow?.frames.length ?? 0)).toBe(1);
+    const url = `${server.origin}/nav/nested`;
+
+    await host.page.evaluate((href) => {
+      const preview = document.querySelector<HTMLIFrameElement>('#preview-nest');
+      const nested = preview?.contentWindow?.frames[0];
+      if (!nested) throw new Error('the nested frame did not attach');
+      nested.location.href = href;
+    }, url);
+    await expect.poll(async () => (await host.record()).navigations.filter((navigation) => navigation.url === url))
+      .toEqual([{ url, cancelled: true }]);
+
+    expect((await host.record()).initiated.filter((record) => record.url === url).map((record) => record.initiator)).not.toContain(PREVIEW_FRAME_NAME);
+    expect(pathsUnder('/nav/nested')).toEqual([]);
+  });
+
+  test('cancels a load the preview frame starts, which Electron credits to the preview', async () => {
+    const frame = await mountFrame(host.page, { id: 'preview-start', name: PREVIEW_FRAME_NAME, sandbox: 'allow-scripts', srcdoc: '<p>preview</p>' });
+    const url = `${server.origin}/nav/started`;
+
+    await frame.evaluate((href) => {
+      const nested = document.createElement('iframe');
+      nested.src = href;
+      document.body.append(nested);
+    }, url);
+    await expect.poll(async () => (await host.record()).navigations.filter((navigation) => navigation.url === url))
+      .toEqual([{ url, cancelled: true }]);
+
+    expect((await host.record()).initiated.filter((record) => record.url === url)).toEqual([{ url, initiator: PREVIEW_FRAME_NAME }]);
+    expect(pathsUnder('/nav/started')).toEqual([]);
   });
 });

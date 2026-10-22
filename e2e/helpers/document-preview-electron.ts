@@ -75,12 +75,16 @@ export async function startTokenServer(): Promise<TokenServer> {
 /* One subframe will-frame-navigate, and whether the guard cancelled it. */
 export interface NavigationRecord { url: string; cancelled: boolean }
 
+/* One subframe will-frame-navigate, and the name of the frame Electron says started it, or null. */
+export interface InitiatorRecord { url: string; initiator: string | null }
+
 /* One request the token listener saw, and whether Electron named a frame for it. */
 export interface ListenerCall { path: string; hadFrame: boolean }
 
 /* What the host's main process records (globalThis.previewHost in the .cjs host). */
 export interface HostRecord {
   navigations: NavigationRecord[];
+  initiated: InitiatorRecord[];
   openedExternally: string[];
   windowsCreated: number;
   /* The name each frame had when frame-created fired, or null when it couldn't be read. */

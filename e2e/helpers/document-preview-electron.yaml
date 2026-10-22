@@ -11,8 +11,12 @@
 #                the HTML viewer loads an artifact on desktop.
 #                srcdoc: the frame's document is written in. Its image and
 #                fetch come first in the document, ahead of any other script.
-#   base         the srcdoc document carries a <base> at the folder and asks
-#                for relative URLs, the way the Edit-mode visual editor does.
+#   base         the srcdoc document carries an absolute <base> at the folder
+#                and asks for relative URLs. It stands in for the Edit-mode
+#                visual editor's frame as the main process sees it: no name,
+#                srcdoc, allow-scripts. The real editor's base is the
+#                server-relative draft URL under the shell's own policy, so
+#                this row checks the token rule, not the editor's images.
 #   sandbox      the frame's sandbox attribute, as each surface sets it.
 tokenFrames:
   - id: preview

@@ -417,9 +417,9 @@ function createWindow() {
     webPreferences: mainWindowWebPreferences(getServerPort()),
   });
 
-  /* Marks the document preview frame and holds srcdoc subframes in place.
-     Registered before the window loads anything, so no frame is created
-     unseen. */
+  // Marks the document preview frame, cancels navigations it starts, and
+  // holds srcdoc subframes in place. Registered before the window loads
+  // anything, so no frame is created unseen.
   const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
   // Inject the server's bearer token into every request the renderer makes to
@@ -432,10 +432,10 @@ function createWindow() {
   // so it can't leak elsewhere. No-op when the server runs without auth.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
-    /* The document preview frame, any frame inside it and a request with no
-       frame get no token (server-token-listener.ts, document-preview-guard.ts).
-       The Minds gate holds response-creation requests until the resumed
-       credential is ready, and cancels them when it never is. */
+    // The document preview frame, any frame inside it and a request with no
+    // frame get no token (server-token-listener.ts, document-preview-guard.ts).
+    // The Minds gate holds response-creation requests until the resumed
+    // credential is ready, and cancels them when it never is.
     serverTokenListener({
       guard: previewGuard,
       serverPort: getServerPort,

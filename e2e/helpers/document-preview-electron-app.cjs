@@ -18,7 +18,7 @@ const serverPort = process.env.PREVIEW_HOST_SERVER_PORT;
 const token = process.env.PREVIEW_HOST_TOKEN;
 
 /* What the spec reads back through electronApp.evaluate (HostRecord in document-preview-electron.ts). */
-globalThis.previewHost = { navigations: [], openedExternally: [], windowsCreated: 0, framesCreated: [], listenerCalls: [] };
+globalThis.previewHost = { navigations: [], initiated: [], openedExternally: [], windowsCreated: 0, framesCreated: [], listenerCalls: [] };
 
 /* Stands in for the OS browser, so the spec sees anything sent there. */
 const recordExternalOpen = async (url) => { globalThis.previewHost.openedExternally.push(url); };
@@ -44,7 +44,11 @@ app.whenReady().then(async () => {
     globalThis.previewHost.framesCreated.push(name);
   });
   win.webContents.on('will-frame-navigate', (event) => {
-    if (!event.isMainFrame) globalThis.previewHost.navigations.push({ url: event.url, cancelled: event.defaultPrevented });
+    if (event.isMainFrame) return;
+    globalThis.previewHost.navigations.push({ url: event.url, cancelled: event.defaultPrevented });
+    let initiator = null;
+    try { initiator = event.initiator ? event.initiator.name : null; } catch { /* a disposed initiator stays null */ }
+    globalThis.previewHost.initiated.push({ url: event.url, initiator });
   });
 
   const addServerToken = serverTokenListener({

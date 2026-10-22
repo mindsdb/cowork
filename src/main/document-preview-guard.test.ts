@@ -172,10 +172,70 @@ describe('the subframe navigation guard', () => {
     expect(navigate({ url: 'https://example.com/', isMainFrame: false, frame: nested })).toBe(true);
   });
 
-  it('lets the parent replace a srcdoc frame\'s document', () => {
+  /* Electron reports no about: navigation today, so this pins the guard's
+     answer for a later Electron that does. */
+  it('would let the parent replace a srcdoc frame\'s document if Electron reported it', () => {
     const { navigate, preview } = setup();
     expect(navigate({ url: 'about:srcdoc', isMainFrame: false, frame: frame({ url: 'about:srcdoc' }) })).toBe(false);
     expect(navigate({ url: 'about:srcdoc', isMainFrame: false, frame: preview(frame()) })).toBe(false);
+  });
+
+  it('cancels a srcdoc frame inside a page loaded by URL, such as Code mode\'s preview, and lets that page navigate', () => {
+    const { create, navigate } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    const devApp = frame({ parent: main, url: 'http://127.0.0.1:4173/' });
+    const child = frame({ parent: devApp, url: 'about:srcdoc' });
+    for (const created of [main, devApp, child]) create(created);
+
+    expect(navigate({ url: 'http://127.0.0.1:4173/page2', isMainFrame: false, frame: child })).toBe(true);
+    expect(navigate({ url: 'http://127.0.0.1:4173/about', isMainFrame: false, frame: devApp })).toBe(false);
+  });
+
+  it('cancels a navigation the preview frame or a frame inside it starts, whatever frame it targets', () => {
+    const { create, navigate, preview } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    create(main);
+    const started = preview(main);
+    const nested = frame({ parent: started });
+    const sibling = frame({ parent: main, url: 'http://localhost:5173/' });
+    for (const created of [nested, sibling]) create(created);
+
+    expect(navigate({ url: `${SERVER}/api/v1/conversations`, isMainFrame: false, frame: sibling, initiator: started })).toBe(true);
+    expect(navigate({ url: 'https://example.com/', isMainFrame: true, frame: main, initiator: started })).toBe(true);
+    expect(navigate({ url: 'https://example.com/', isMainFrame: true, frame: main, initiator: nested })).toBe(true);
+  });
+
+  it('lets a navigation another frame starts through, as before', () => {
+    const { create, navigate, preview } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    create(main);
+    preview(main);
+    const sibling = frame({ parent: main, url: 'http://localhost:5173/' });
+    create(sibling);
+
+    expect(navigate({ url: `${SERVER}/api/v1/conversations`, isMainFrame: false, frame: sibling, initiator: main })).toBe(false);
+    expect(navigate({ url: 'https://example.com/', isMainFrame: true, frame: main, initiator: main })).toBe(false);
+    expect(navigate({ url: 'https://example.com/', isMainFrame: true, frame: main, initiator: null })).toBe(false);
+  });
+
+  it('cancels a navigation whose initiator\'s frame chain it cannot read', () => {
+    const { navigate } = setup();
+    expect(navigate({ url: 'https://example.com/', isMainFrame: true, frame: frame(), initiator: disposedFrame() })).toBe(true);
+  });
+
+  it('cancels a navigation whose initiator it cannot read at all', () => {
+    const contents = new EventEmitter();
+    guardDocumentPreviewFrames(contents);
+    const preventDefault = vi.fn();
+    /* Emitted directly: a spread would read the getter in the test. */
+    contents.emit('will-frame-navigate', {
+      url: 'https://example.com/',
+      isMainFrame: true,
+      frame: frame(),
+      get initiator(): GuardedFrame | null { throw new Error(DISPOSED); },
+      preventDefault,
+    });
+    expect(preventDefault).toHaveBeenCalled();
   });
 
   it.each([

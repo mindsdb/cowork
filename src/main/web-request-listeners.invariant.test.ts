@@ -7,9 +7,10 @@ import { describe, expect, it } from 'vitest';
  * Electron keeps only the last listener registered for each webRequest event
  * (docs/api/web-request.md: "Only the last attached listener will be used").
  * A second registration of the same kind anywhere in the main process quietly
- * replaces the first, and with it the server token listener in app.ts and the
- * rules inside it. This counts the registrations in the main-process sources
- * and fails on a second one of any kind.
+ * replaces the first, and with it the server token listener app.ts registers
+ * (server-token-listener.ts) and the rules inside it. This counts the
+ * registrations in the main-process sources and fails on a second one of any
+ * kind.
  */
 
 const REPO = path.resolve(__dirname, '../..');
@@ -30,10 +31,12 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/* Every `<label>:<line>` in this text that registers a listener for the event. */
+/* Every `<label>:<line>` in this text that names the event as a member or a
+   quoted string: a call, a .call or .bind, a bracket key and a line split all
+   do. The line is where the match starts. */
 function registrationsIn(label: string, text: string, event: string): string[] {
-  const call = new RegExp(`\\.${event}\\s*\\(`);
-  return text.split('\n').flatMap((line, index) => (call.test(line) ? [`${label}:${index + 1}`] : []));
+  const named = new RegExp(`(?:\\.\\s*|\\[\\s*['"\`])${event}\\b|['"\`]${event}['"\`]`, 'g');
+  return [...text.matchAll(named)].map((match) => `${label}:${text.slice(0, match.index).split('\n').length}`);
 }
 
 function registrations(event: string): string[] {
@@ -49,6 +52,11 @@ describe('webRequest listeners', () => {
   it('sees a second registration, however it is reached', () => {
     const second = 'session.webRequest.onBeforeSendHeaders(filter, a);\nconst { webRequest } = session;\nwebRequest\n  .onBeforeSendHeaders(b);';
     expect(registrationsIn('sample.ts', second, 'onBeforeSendHeaders')).toEqual(['sample.ts:1', 'sample.ts:4']);
+  });
+
+  it('sees a second registration in any call form', () => {
+    const forms = "webRequest['onBeforeSendHeaders'](a);\nwebRequest.onBeforeSendHeaders.call(webRequest, a);\nconst register = webRequest.onBeforeSendHeaders.bind(webRequest);\nwebRequest.\n  onBeforeSendHeaders(a);";
+    expect(registrationsIn('sample.ts', forms, 'onBeforeSendHeaders')).toEqual(['sample.ts:1', 'sample.ts:2', 'sample.ts:3', 'sample.ts:4']);
   });
 
   it.each(WEB_REQUEST_EVENTS)('registers at most one %s listener', (event) => {

@@ -59,7 +59,8 @@ describe('the main window wiring in app.ts', () => {
   });
 
   it('registers the guard on the main window before the window loads anything', () => {
-    const registered = createWindow.indexOf('guardDocumentPreviewFrames(mainWindow.webContents)');
+    /* The whole declaration, so the listener's `guard: previewGuard` below is the real guard. */
+    const registered = createWindow.indexOf('const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);');
     expect(registered).toBeGreaterThan(-1);
     for (const load of ['mainWindow.loadURL(', 'mainWindow.loadFile(']) {
       expect(createWindow.indexOf(load)).toBeGreaterThan(registered);

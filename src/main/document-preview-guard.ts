@@ -13,18 +13,32 @@ import { PREVIEW_FRAME_NAME } from '../shared/document-preview';
  *   frameTreeNodeId, which Electron fixes when it creates the frame and keeps
  *   when the frame renames itself, changes process or navigates.
  *   mayCarryServerToken answers false for a marked frame, for any frame inside
- *   it, and for a request with no frame, and the server-token listener in
- *   app.ts then sends those requests without the Authorization header.
- * - It cancels a subframe's navigation when the frame is missing, sits at
- *   about:srcdoc, or sits inside a marked frame. That decision never reads a
- *   frame's name, so a frame that renames itself is still held. A cancelled
- *   navigation opens nothing anywhere else either. The one navigation it lets
- *   a srcdoc frame make is to about:srcdoc, which is the parent replacing the
- *   frame's srcdoc attribute, as the HTML comparison view does.
+ *   it, and for a request with no frame, and the server-token listener
+ *   (server-token-listener.ts, which app.ts registers) then adds no token to
+ *   those requests.
+ * - It cancels every navigation that a marked frame, or a frame inside one,
+ *   starts, whichever frame it targets, the main frame included. It also
+ *   cancels a subframe's navigation when the frame is missing, sits at
+ *   about:srcdoc, or sits inside a marked frame. None of these decisions reads
+ *   a frame's name, so a frame that renames itself is still held. A cancelled
+ *   navigation opens nothing anywhere else either.
+ *
+ * The about:srcdoc rule holds every srcdoc subframe in the window, not only
+ * the preview frame: the HTML comparison panes, the visual editor, and srcdoc
+ * frames inside a page loaded by URL, such as an HTML artifact or the task's
+ * own app in Code mode's preview.
+ *
+ * Electron reports a navigation here only when it loads a URL. about: URLs
+ * (about:blank, and the parent replacing a frame's srcdoc), javascript: URLs
+ * and same-document navigations never reach the guard, so the about:srcdoc
+ * early return matters only if a later Electron reports them. A frame that
+ * goes to about:blank keeps its mark and gets no token. The initiator rule
+ * trusts the initiator the renderer reports, so a renderer that leaves it out
+ * isn't caught here.
  *
  * Electron throws when a property of a frame whose render frame is gone is
  * read. Each such read here fails closed: an unreadable frame is marked, gets
- * no token, and may not navigate.
+ * no token, and may not navigate to a URL that loads.
  */
 
 /* The parts of Electron's WebFrameMain the guard reads. */
@@ -40,6 +54,7 @@ export interface FrameNavigation {
   readonly url: string;
   readonly isMainFrame: boolean;
   readonly frame: GuardedFrame | null;
+  readonly initiator?: GuardedFrame | null;
   preventDefault(): void;
 }
 
@@ -98,7 +113,27 @@ export function guardDocumentPreviewFrames(contents: GuardedContents): DocumentP
     if (frame && isPreviewFrame(frame)) previewFrameIds.add(frame.frameTreeNodeId);
   });
 
+  /* Whether a marked frame, or a frame inside one, started this navigation.
+     An initiator it can't read counts as one. */
+  const startedInPreview = (event: FrameNavigation): boolean => {
+    try {
+      const { initiator } = event;
+      return !!initiator && isInPreview(initiator);
+    } catch {
+      return true;
+    }
+  };
+
+  /* event.frame comes from the frame host Chromium creates for the
+     navigation. Electron maps it back to the WebFrameMain that the
+     frame-created handler above made when it read the frame, so frame.url is
+     the frame's current address. Without that read, frame.url would be '' and
+     the srcdoc rule would never fire. */
   contents.on('will-frame-navigate', (event) => {
+    if (startedInPreview(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.isMainFrame || event.url === 'about:srcdoc') return;
     if (!event.frame || isSrcdocFrame(event.frame) || isInPreview(event.frame)) event.preventDefault();
   });
