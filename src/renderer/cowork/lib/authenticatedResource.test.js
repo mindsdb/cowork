@@ -129,12 +129,12 @@ describe('authenticated private file resources', () => {
     mocks.authFetch.mockResolvedValue({ ok: true, status: 200, blob: async () => blob });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
-    await expect(downloadAuthenticatedResource('http://127.0.0.1:26866/api/v1/artifacts/drafts/local/a/data.zip', 'data.zip'))
+    await expect(downloadAuthenticatedResource('http://127.0.0.1:26866/api/v1/artifacts/drafts/local/a/data.parquet', 'data.parquet'))
       .resolves.toBe(true);
 
     expect(mocks.authFetch).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledOnce();
-    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'data.zip' });
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'data.parquet' });
     expect(mocks.host.openExternal).not.toHaveBeenCalled();
   });
 
