@@ -64,35 +64,31 @@ COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-COPY scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
+COPY scripts/install-cowork-server.sh scripts/install_locked_server.py scripts/install_release_server.py /tmp/
+COPY server-lock/ /tmp/server-lock/
 ARG COWORK_SERVER_VERSION
 ARG COWORK_SERVER_REF=
+ARG ANTON_REF=
+# Opt in to server-lock/requirements.lock and sources.json supplied in the build context.
+ARG COWORK_SERVER_LOCK=false
 ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION} \
     COWORK_SERVER_REF=${COWORK_SERVER_REF}
-RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
+RUN chmod +x /tmp/install-cowork-server.sh && \
+    case "$COWORK_SERVER_LOCK" in \
+        true) COWORK_SERVER_LOCK=/tmp/server-lock /tmp/install-cowork-server.sh ;; \
+        false) COWORK_SERVER_LOCK= /tmp/install-cowork-server.sh ;; \
+        *) echo 'COWORK_SERVER_LOCK must be true or false' >&2; exit 1 ;; \
+    esac
 
 # Security floor for transitive Python deps. PyJWT < 2.13.0 (pulled in
 # by the cowork-server closure) accepts forged JWTs (CVE-2026-48526,
 # HIGH). Re-check on every version bump and drop the floor once the
 # closure's own pins move past it.
-RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
+# The locked installer checks this floor without resolving or replacing its selected version.
+RUN /opt/venv/bin/python -c 'from importlib.metadata import version; from packaging.version import Version; assert Version(version("PyJWT")) >= Version("2.13.0"), "Update the reviewed lock to satisfy the PyJWT security floor"'
 
-# Staging builds override anton-agent with a git ref instead of the PyPI
-# release that cowork-server pins. Declared *after* the cowork-server and
-# pyjwt RUNs so a moving anton branch only invalidates this layer — the
-# cowork-server install layer survives (same post-install-override-as-a-
-# separate-RUN pattern as the pyjwt floor above). Empty ANTON_REF → no-op
-# (prod path, anton stays on PyPI). The direct-URL requirement
-# (anton-agent @ git+...) is what forces replacement of the already-installed
-# PyPI anton regardless of resolver order; a broken-pin warning from uv is
-# harmless.
-ARG ANTON_REF=
-RUN if [ -n "$ANTON_REF" ]; then \
-        echo "→ Overriding anton-agent with git ref '$ANTON_REF'" >&2; \
-        uv pip install --python /opt/venv/bin/python \
-            "anton-agent @ git+https://github.com/mindsdb/anton.git@${ANTON_REF}" && \
-        /opt/venv/bin/python -c "import anton; import importlib.metadata as m; print('✓ anton-agent', m.version('anton-agent'))"; \
-    fi
+# An explicit ANTON_REF is checked and installed with the server above. It can
+# change Anton's code, but cannot change the reviewed registry dependency set.
 
 # ── Stage 3: runtime — minimal, no compilers, no git, no source tree ─────
 FROM python:3.12-slim AS runtime
@@ -124,6 +120,9 @@ WORKDIR /app
 # App payload — SPA bundle from the builder + the SPA wrapper entrypoint.
 COPY --chown=anton:anton --from=spa-builder /build/dist/renderer-web/ /app/dist/renderer-web/
 COPY --chown=anton:anton scripts/spa_wrapper.py /app/spa_wrapper.py
+# Require the paired server release at build time: its config protects Uvicorn
+# diagnostics before importing the SPA or API application.
+RUN python -c "from importlib.resources import files; import shutil; shutil.copyfile(files('cowork') / 'logging.json', '/app/logging.json')"
 
 # Persistent state lives under /home/anton/.cowork — operators bind-mount
 # this to keep database/vault/settings across container restarts.
@@ -179,7 +178,10 @@ USER anton
 ENV COWORK_SPA_DIR=/app/dist/renderer-web \
     COWORK_SERVER_HOST=0.0.0.0 \
     COWORK_SERVER_PORT=26866 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    LOG_LEVEL=WARNING \
+    LOG_FORMAT=json \
+    ACCESS_LOG_MODE=errors
 
 EXPOSE 26866
 
@@ -192,4 +194,4 @@ sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:26866/api/v1/health/',tim
 # Bound active-response draining so cowork.server.lifespan can cancel and
 # persist interrupted turns within its five-second budget before Docker's
 # default ten-second stop deadline. Leave the remaining time for teardown.
-CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866", "--timeout-graceful-shutdown", "2"]
+CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866", "--timeout-graceful-shutdown", "2", "--log-config", "/app/logging.json"]

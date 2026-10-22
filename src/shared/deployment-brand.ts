@@ -14,7 +14,7 @@ export const BRAND_STYLESHEET_PATH = '/brand/brand.css';
 /** The global the brand's config sets. */
 export const BRAND_GLOBAL = 'COWORK_DEPLOYMENT_BRAND';
 
-/** The longest product name a brand may set, after trimming. */
+/** The longest product name in Unicode code points, after trimming. */
 export const PRODUCT_NAME_MAX_LENGTH = 64;
 
 /**
@@ -26,31 +26,48 @@ export const PRODUCT_NAME_MAX_LENGTH = 64;
 export const TITLE_SNIPPET =
   `(function(){var b=window.${BRAND_GLOBAL};` +
   `var n=b&&typeof b==='object'&&typeof b.productName==='string'?b.productName.trim():'';` +
-  `if(n&&n.length<=${PRODUCT_NAME_MAX_LENGTH})document.title=n;})();`;
+  `if(n&&Array.from(n).length<=${PRODUCT_NAME_MAX_LENGTH})document.title=n;})();`;
 
 const TITLE_END = '</title>';
 const HEAD_END = '</head>';
+const TITLE_START = '<title>';
+const ICON = '<link rel="icon" type="image/svg+xml" href="/minds-icon.svg" />';
+const TOUCH_ICON = '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />';
+const BRAND_SHELL_START = '<!-- cowork-deployment-brand:start -->';
+const BRAND_SHELL_END = '<!-- cowork-deployment-brand:end -->';
 
 /**
- * Adds the brand's tags to a web page: the config script and the title line
- * right after `<title>`, so both run before the bundle, and the stylesheet
- * last in the head, after the bundle's CSS. The script must stay a blocking
- * classic script: the style list is built when the bundle loads, so a brand
- * that arrived later would miss it.
+ * Marks the stock title, comment and icons as one region a deployment server
+ * can replace before sending the page. Without a replacement they stay stock.
+ * The blocking config script and title line follow the region, before the
+ * bundle; the stylesheet goes last in the head, after the bundle's CSS.
+ * The script must stay a blocking classic script: the style list is built
+ * when the bundle loads, so a brand that arrived later would miss it.
  *
- * Throws when the page lacks exactly one `</title>` and one `</head>`, so a
- * reworked page fails the build instead of silently dropping the brand.
+ * Refuses missing, duplicate or reordered anchors and existing markers, so a
+ * changed template fails the build instead of marking the wrong content.
  */
 export function withDeploymentBrand(html: string): string {
-  for (const anchor of [TITLE_END, HEAD_END]) {
+  if (html.includes(BRAND_SHELL_START) || html.includes(BRAND_SHELL_END)) {
+    throw new Error('The web page must not already contain deployment brand markers.');
+  }
+  let previous = -1;
+  for (const anchor of ['<head>', TITLE_START, TITLE_END, ICON, TOUCH_ICON, HEAD_END]) {
     if (html.split(anchor).length !== 2) {
       throw new Error(`The web page needs exactly one ${anchor} to take the deployment brand.`);
     }
+    const position = html.indexOf(anchor);
+    if (position <= previous) {
+      throw new Error('The web page needs its head, title and icons in order to take the deployment brand.');
+    }
+    previous = position;
   }
+
   return html
+    .replace(TITLE_START, `${BRAND_SHELL_START}\n    ${TITLE_START}`)
     .replace(
-      TITLE_END,
-      `${TITLE_END}\n    <script src="${BRAND_SCRIPT_PATH}"></script>\n    <script>${TITLE_SNIPPET}</script>`,
+      TOUCH_ICON,
+      `${TOUCH_ICON}\n    ${BRAND_SHELL_END}\n    <script src="${BRAND_SCRIPT_PATH}"></script>\n    <script>${TITLE_SNIPPET}</script>`,
     )
     .replace(HEAD_END, `  <link rel="stylesheet" href="${BRAND_STYLESHEET_PATH}" />\n  ${HEAD_END}`);
 }

@@ -26,7 +26,7 @@ vi.mock('@base-ui/react/tooltip', async (importOriginal) => {
 vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
 import { FigureMark } from './FigureMark';
-import { NO_SOURCE_TEXT } from '../../lib/figureSources';
+import { NO_SOURCE_TEXT, REPEATED_TEXT } from '../../lib/figureSources';
 import { copyText } from '../../lib/clipboard';
 
 /* A source the way linkFigureSteps hands it over. */
@@ -53,6 +53,7 @@ const API = source('toolu_04', 'query', 'Read the ERP', {
 
 const sourced = (text, sources) => ({ start: 0, end: text.length, text, origin: 'step', sources });
 const unsourced = (text) => ({ start: 0, end: text.length, text, origin: 'none', sources: [] });
+const repeated = (text) => ({ start: 0, end: text.length, text, origin: 'earlier_answer', sources: [] });
 
 const mark = (figure, props = {}) => (
   <FigureMark figure={figure} {...props}>{figure.text}</FigureMark>
@@ -76,6 +77,14 @@ describe('FigureMark accessible name', () => {
   it('keeps "no source" in an unsourced figure\'s name', () => {
     render(<p>{mark(unsourced('$30'))}</p>);
     expect(screen.getByRole('button', { name: '$30, no source' })).toHaveAccessibleDescription(NO_SOURCE_TEXT);
+  });
+
+  it('names a repeated figure as repeated from an earlier answer, with the grey underline', () => {
+    render(<p>{mark(repeated('4,600'))}</p>);
+    const button = screen.getByRole('button', { name: '4,600, repeated from an earlier answer' });
+    expect(button).toHaveAccessibleDescription(REPEATED_TEXT);
+    expect(button).toHaveClass('anton-figure');
+    expect(button).not.toHaveClass('anton-figure--unsourced');
   });
 });
 
@@ -208,7 +217,7 @@ describe('FigureMark in a table', () => {
 describe('FigureMark popover', () => {
   const openPopover = async (figure, props) => {
     render(<p>{mark(figure, props)}</p>);
-    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${figure.text.replace('$', '\\$')},`) }));
+    await userEvent.click(screen.getByRole('button', { name: (name) => name.startsWith(`${figure.text}, `) }));
     return screen.findByRole('dialog');
   };
 
@@ -253,6 +262,12 @@ describe('FigureMark popover', () => {
     expect(sql.style.whiteSpace).toBe('pre');
     expect(request.style.whiteSpace).toBe('pre-wrap');
     expect(request.style.overflowWrap).toBe('anywhere');
+  });
+
+  it('says a repeated figure is repeated from an earlier answer and lists no source', async () => {
+    const popup = await openPopover(repeated('4,600'));
+    expect(popup).toHaveTextContent(REPEATED_TEXT);
+    expect(within(popup).queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it('names a source the server sent no label for by its kind alone', async () => {

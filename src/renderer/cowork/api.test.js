@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -239,6 +239,21 @@ describe('testProviders', () => {
     const result = await testProviders([{ type: 'minds-cloud' }]);
     expect(result).toMatchObject({ providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {} });
     expect(result.error).toBeTruthy();
+  });
+});
+
+/* The server's `relUrl` is relative to `/api/v1`; dropping `/v1` 404s the iframe. */
+describe('mountProjectFilePreview', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('points the iframe url at the preview-asset route under /api/v1', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({
+      token: 'tok', entry: 'report.html', relUrl: '/projects/preview-asset/tok/report.html',
+    })));
+    const res = await mountProjectFilePreview('acme', 'report.html');
+    expect(res.url).toBe('http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/report.html');
   });
 });
 

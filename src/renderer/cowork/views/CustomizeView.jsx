@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Connect Apps and Data — the page that lists everything the user has
 // hooked Anton up with. Mirrors the Projects page layout (header +
 // filter row + grid of cards + empty state). The "+ Connect" CTA
@@ -27,7 +28,7 @@ import {
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -59,6 +60,21 @@ function ConnectionsCounts({ search, total, filtered }) {
 }
 
 // ─── Connection detail panel ──────────────────────────────────────────────
+
+/* The UI note beside a connection someone else shares with the caller.
+   cowork-server answers this same sentence (SHARED_CONNECTION_REFUSAL in
+   cowork/services/connectors/layered_vault.py) when it refuses a change to any
+   connection the caller can't change, one the operator provides included; the
+   operator's own gets OPERATOR_CONNECTION_NOTE in the UI below. */
+const SHARED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
+
+/* The same read-only note for a connection the operator provides, which no
+   person created or shared. */
+const OPERATOR_CONNECTION_NOTE = "Your operator provides this connection, and it can't be changed here.";
+
+/* Told to the creator of a shared connection beside a setting others pick up:
+   each turn reads the connection live from its creator's vault. */
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -131,6 +147,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
   if (!connection) return null;
 
+  /* Read-only when either the list row or the detail response says
+     `managed: true`; a connection without the field, or the caller's own
+     shared connection (`shared: true` alone), keeps every control. */
+  const managed = connection.managed === true || saved?.managed === true;
+  /* With `managed` false, the caller's own connection that others use. */
+  const shared = connection.shared === true || saved?.shared === true;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -303,7 +325,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Drive file access — drive.file only grants the app files
                   it creates itself; picking files here grants access to
                   existing ones without widening the OAuth scope. */}
-              {connection.engine === 'google_drive' && (
+              {connection.engine === 'google_drive' && !managed && (
                 <>
                   <div className="section-label mb-2">
                     Drive files
@@ -382,7 +404,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {saved?.method === 'mcp' && (
+              {saved?.method === 'mcp' && !managed && (
                 <>
                   <div className="section-label mb-2">
                     Tool access
@@ -391,6 +413,9 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                     <div className="text-[12px] leading-normal text-ink-3">
                       What Anton can do with this connection's tools. Changing this doesn't require reconnecting.
                     </div>
+                    {shared && (
+                      <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+                    )}
                     <Select
                       value={vaultFields._access_mode || 'read'}
                       onValueChange={handleChangeAccessMode}
@@ -413,37 +438,58 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
         {/* Footer */}
         <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
+          {/* A managed connection has no Reconnect or Remove here, so its
+              alert names who can reconnect it instead: whoever shared it, or
+              the operator for one no person shared. */}
           {saved?.fields?.status === 'needs_reconnect' && (
             <Alert variant="warning" title="Reconnection required">
-              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
+              {!managed
+                ? 'Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.'
+                : shared
+                  ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
+                  : 'Access for this connection has expired or was revoked. Your operator can reconnect it.'}
             </Alert>
           )}
-          {spec && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
-                onReconnect?.(connection, spec);
-              }}
-              className="w-full justify-center"
-            >
-              Reconnect
-            </Button>
+          {managed ? (
+            <p className="m-0 text-[12px] text-ink-3" role="note">
+              {shared ? SHARED_CONNECTION_NOTE : OPERATOR_CONNECTION_NOTE}
+            </p>
+          ) : (
+            <>
+              {spec && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const label = spec.label || connection.engine;
+                    if (!window.confirm(shared
+                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
+                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
+                    )) return;
+                    onReconnect?.(connection, spec, { shared });
+                  }}
+                  className="w-full justify-center"
+                >
+                  Reconnect
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                block
+                onClick={() => {
+                  if (!window.confirm(disconnectPrompt({
+                    engine: connection.engine,
+                    name: connection.name,
+                    shared,
+                  }))) return;
+                  onDisconnect?.(connection, saved);
+                  onClose();
+                }}
+              >
+                {Ico.trash(14)}
+                Remove
+              </Button>
+            </>
           )}
-          <Button
-            variant="danger"
-            block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection, saved);
-              onClose();
-            }}
-          >
-            {Ico.trash(14)}
-            Remove
-          </Button>
         </div>
       </div>
     </>
@@ -497,7 +543,7 @@ export default function CustomizeView({
     // that silently does nothing.
     if (!onConnectNew) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_customizeview_rendered_without_onconnectnew_the_connect_cta_has_no_effect", '[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
       return;
     }
     onConnectNew();
@@ -533,6 +579,30 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  /* Re-reads the list after a delete. Best effort: the connection is already
+     gone, so a failed refresh must never turn the delete into a failure. */
+  const syncAfterDelete = async () => {
+    try {
+      const fresh = await fetchDatasources();
+      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+      setList(next);
+      onConnectionsSyncedRef.current?.(next);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      diagnostic("renderer.cowork.views.CustomizeView", "WARNING", "connectors_refresh_after_delete_failed", '[connectors] refresh after delete failed', e);
+    }
+    /* Project files' Context card holds its own Google Drive file list and has
+       no other way to learn a connection just vanished (and with it, that
+       connection's _picked_files grant). */
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
+  /* Resolves true once the connection is gone and false when the delete
+     failed, after telling the person why; a caller that goes on to reconnect
+     must stop on false. A 404 from the delete counts as gone. On desktop, an
+     OAuth or MCP connection resolves true once main's keychain:revoke handler
+     (src/main/app.ts) ran: that handler always answers ok and doesn't report
+     whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
       // For builtin OAuth connections in Electron, keychain:revoke stops the
@@ -548,28 +618,25 @@ export default function CustomizeView({
         // 'browser_oauth_builtin' checks found and fixed in app.ts.
         if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
-          const fresh = await fetchDatasources();
-          const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-          setList(next);
-          onConnectionsSyncedRef.current?.(next);
-          // Project files' Context card holds its own Google Drive file
-          // list and has no other way to learn a connection just vanished
-          // (and with it, that connection's _picked_files grant).
-          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-          return;
+          await syncAfterDelete();
+          return true;
         }
       }
-      await deleteDatasource(connection.engine, connection.name);
-      const fresh = await fetchDatasources();
-      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-      setList(next);
-      onConnectionsSyncedRef.current?.(next);
-      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      try {
+        await deleteDatasource(connection.engine, connection.name);
+      } catch (e) {
+        /* A 404 means someone already removed it, from another tab or, on a
+           shared vault, another person. That is the outcome asked for. */
+        if (e?.status !== 404) throw e;
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] delete failed', e);
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
       alert(`Could not disconnect: ${e?.message || e}`);
+      return false;
     }
+    await syncAfterDelete();
+    return true;
   };
 
   const visible = useMemo(() => {
@@ -664,10 +731,21 @@ export default function CustomizeView({
             await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
-          onReconnect={async (conn, spec) => {
-            await handleDelete(conn);
+          onReconnect={async (conn, spec, { shared = false } = {}) => {
+            /* The creator's own shared connection is never deleted first:
+               everyone it's shared with would lose it, and cowork-server
+               refuses a new connection under the name the operator still shares
+               (STILL_SHARED_CONNECTION_REFUSAL in
+               cowork/services/connectors/layered_vault.py). Connecting the same
+               account again updates it in place, so its name rides along: a
+               connector with no identity field would otherwise derive a fresh
+               random slug and save a second, private connection. Otherwise a
+               failed delete leaves the old connection in place, so don't start
+               a new connect flow for it; the panel stays open. A connection
+               that is already gone counts as deleted. */
+            if (!shared && !await handleDelete(conn)) return;
             setSelectedConn(null);
-            onReconnect?.(spec);
+            onReconnect?.(spec, shared ? { existingName: conn.name } : {});
           }}
         />
       )}

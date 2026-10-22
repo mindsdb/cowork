@@ -13,13 +13,25 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Mod
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
-import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
+import {
+  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync,
+} from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import {
   canUseSharedResource,
   sharedResourceAttribution,
 } from '../lib/sharedResourceAccess';
+import {
+  SKILL_SHARING_CREATE_HINT,
+  SKILL_SHARING_LABEL,
+  SKILL_SHARING_OPTIONS,
+  SKILL_SHARING_PRIVATE,
+  canShareSkill,
+  isSharedSkill,
+  sharedFromValue,
+  sharingValue,
+} from '../lib/skillSharing';
 
 // Sentinel for the "All projects" scope choice in the Scope <Select>. It must
 // be a non-empty string: Base UI's <Select.Value> treats an empty-string value
@@ -30,6 +42,40 @@ import {
 // collide with a real project name.
 const ALL_PROJECTS = '__all_projects__';
 
+/* The same sentence cowork-server answers when it refuses a change to a skill
+   someone else shares with the caller. */
+const SHARED_SKILL_NOTE = "This skill is shared with you and can't be changed here.";
+
+/* Why Edit or Uninstall is disabled, shown beside the menu item. Only an
+   explicit `shared: true` names sharing; a built-in keeps its own label. */
+function lockedActionHint(skill) {
+  if (skill.isBuiltin) return 'Built-in';
+  if (isSharedSkill(skill)) return 'Shared with you';
+  return 'Admin or creator';
+}
+
+/* The caller's own skill that others use: `shared: true` with the edit
+   capability granted, since cowork-server grants a shared skill's capabilities
+   only to its creator (_skill_response in cowork/api/v1/endpoints/skills.py).
+   Others read the creator's copy live, `enabled` included (shared_turn_skills
+   in cowork/services/skills.py), so the creator's switch and Uninstall reach
+   them too. */
+function isOwnSharedSkill(skill) {
+  return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
+}
+
+const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
+const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
+/* Shown in the detail view and the Edit modal, since an edit or the switch
+   reaches every reader at their next answer. */
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
+
+// The detail view's note for a skill the caller can't edit.
+function readOnlyNote(skill) {
+  if (skill.isBuiltin) return 'Built-in skills are read only.';
+  if (isSharedSkill(skill)) return SHARED_SKILL_NOTE;
+  return 'Read only — only the creator or an organization admin can change this skill.';
+}
 
 // A kit row: name, description, and inline meta (project, stable creator,
 // last update).
@@ -38,16 +84,20 @@ function SkillRow({ skill, onClick, projects = [] }) {
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
   const author = sharedResourceAttribution(skill)?.createdBy;
+  /* `shared: true` marks the creator's own shared skill and one someone else
+     shares alike; the detail view's actions tell the two apart. */
+  const shared = isSharedSkill(skill);
   return (
     <ListItem
       as="article"
       aria-label={skill.label}
       leading={<span className="font-mono text-sm font-medium">/</span>}
       title={skill.label}
-      badges={(skill.enabled === false || skill.isBuiltin) && (
+      badges={(skill.enabled === false || skill.isBuiltin || shared) && (
         <>
           {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
           {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
+          {shared && <Badge variant="muted" size="sm">Shared</Badge>}
         </>
       )}
       description={skill.description || skill.declarative?.slice(0, 120) || '—'}
@@ -84,17 +134,22 @@ const fieldStyle = {
   boxSizing: 'border-box',
 };
 
-function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [] }) {
+function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [], canShare = false }) {
   const isEdit = initial !== null;
-  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
+  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
+  /* Who can use the skill: a create asks where the list grants sharing, the
+     creator's own edit where this skill's own capabilities do. A create sends
+     the answer as `shared`; an edit applies a changed choice through the
+     sharing route after the save, and surfaces its refusal. */
+  const asksSharing = isEdit ? canShareSkill(initial) : canShare;
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS, sharing: sharingValue(initial) });
     } else {
-      setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
+      setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
   }, [open]);
 
@@ -115,11 +170,21 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     setBusy(true);
     try {
       const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
-      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: scopedProject }, isEdit);
+      const payload = { label, description: draft.description, declarative: draft.declarative, projects: scopedProject };
+      const sharedChoice = sharedFromValue(draft.sharing);
+      /* A create sends the sharing choice inline. The edit PUT never carries
+         it, so an edit applies a changed choice through the sharing route. */
+      if (asksSharing && !isEdit) payload.shared = sharedChoice;
+      const sharingChanged = isEdit && asksSharing && draft.sharing !== sharingValue(initial);
+      const saved = await saveSkillAndSync(payload, isEdit);
+      if (sharingChanged) await setSkillSharingAndSync(label, sharedChoice);
       handleClose();
-      await onSaved(saved);
+      await onSaved(saved, {
+        shared: (!isEdit && payload.shared === true) || (sharingChanged && sharedChoice),
+        stoppedSharing: sharingChanged && !sharedChoice,
+      });
     } catch (err) {
-      onError?.(`Error: ${err.message}.`);
+      onError?.(err?.message || 'Could not save skill.');
     } finally {
       setBusy(false);
     }
@@ -137,6 +202,9 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-3">
+          {isEdit && isOwnSharedSkill(initial) && (
+            <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+          )}
           <Field label="Label">
             <Input
               aria-label="Label"
@@ -166,6 +234,17 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               ]}
             />
           </Field>
+          {asksSharing && (
+            <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
+              <Select
+                ariaLabel={SKILL_SHARING_LABEL}
+                value={draft.sharing}
+                onValueChange={(v) => setField('sharing', v)}
+                style={{ ...fieldStyle, height: 34 }}
+                options={SKILL_SHARING_OPTIONS}
+              />
+            </Field>
+          )}
           <Field label="Description">
             <Textarea
               aria-label="Description"
@@ -197,13 +276,16 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
   );
 }
 
-function UploadSkillModal({ open, onClose, onSaved, onError }) {
+function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile]         = useState(null);
   const [busy, setBusy]         = useState(false);
+  const [sharing, setSharing]   = useState(SKILL_SHARING_PRIVATE);
   const inputRef                = useRef(null);
 
-  useEffect(() => { if (!open) { setFile(null); setBusy(false); } }, [open]);
+  useEffect(() => {
+    if (!open) { setFile(null); setBusy(false); setSharing(SKILL_SHARING_PRIVATE); }
+  }, [open]);
 
   const pickFile = (f) => { if (f) setFile(f); };
 
@@ -211,9 +293,9 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
     if (!file) return;
     setBusy(true);
     try {
-      const saved = await uploadSkillFile(file);
+      const saved = await uploadSkillFile(file, canShare ? { shared: sharedFromValue(sharing) } : {});
       onClose();
-      await onSaved(saved);
+      await onSaved(saved, { shared: canShare && sharedFromValue(sharing) });
     } catch (err) {
       onError?.(err.message || 'Could not upload skill.');
     } finally {
@@ -288,6 +370,19 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
             </ul>
           </div>
 
+          {canShare && (
+            <Field label={SKILL_SHARING_LABEL} help={SKILL_SHARING_CREATE_HINT}>
+              <Select
+                ariaLabel={SKILL_SHARING_LABEL}
+                value={sharing}
+                onValueChange={setSharing}
+                disabled={busy}
+                style={{ ...fieldStyle, height: 34 }}
+                options={SKILL_SHARING_OPTIONS}
+              />
+            </Field>
+          )}
+
         </div>
       </ModalBody>
       <ModalFooter align="space-between">
@@ -332,7 +427,7 @@ const SORT_OPTIONS = [
 export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   // Skills come from the shared store so saves/deletes here sync the composer
   // "/" menu (and skill-card saves sync back to this page) with no reload.
-  const { skills, reload }            = useSkills();
+  const { skills, reload, canShare }  = useSkills();
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
@@ -344,6 +439,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   // rows too.
   // Skill awaiting the remove confirmation.
   const [removing, setRemoving]       = useState(null);
+  /* "Who can use it" changes still in flight: skill label → the value each
+     one asks for. A skill reopened while its change runs shows that value,
+     held, rather than the list's older one. */
+  const [pendingSharing, setPendingSharing] = useState(() => new Map());
   const searchRef = useRef(null);
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
@@ -366,11 +465,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      lock the creator out of the skill they just saved. The effect above
      re-points `selected` at the reloaded entry; a save response only names
      the skill for the toast. */
-  const onSkillSaved = (saved) => {
-    showToast(`Saved ${saved?.label}.`, 'success');
+  const onSkillSaved = (saved, { shared = false, stoppedSharing = false } = {}) => {
+    const label = saved?.label;
+    if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
+    else if (stoppedSharing) showToast(`Saved ${label} and stopped sharing it.`, 'success');
+    else showToast(`Saved ${label}.`, 'success');
   };
 
-  const onSkillUploaded = async (saved) => {
+  const onSkillUploaded = async (saved, options) => {
     const refreshed = await reload({ afterCurrent: true });
     // An upload bypasses the store, so re-point the open skill from the list
     // this reload verified rather than from the upload response.
@@ -380,7 +482,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     if (fresh) {
       setSelected((current) => (current?.label === fresh.label ? fresh : current));
     }
-    onSkillSaved(saved);
+    onSkillSaved(saved, options);
   };
 
   const remove = (skill) => {
@@ -397,6 +499,33 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       showToast(`Removed ${skill.label}.`, 'success');
     } catch (err) {
       showToast(err.message || 'Could not remove skill.');
+    }
+  };
+
+  /* Applies on change, like the enabled switch: the control moves at once,
+     and a refusal moves it back and shows the server's sentence. The reload
+     inside the write re-points the open skill through the effect above. */
+  const changeSharing = async (skill, value) => {
+    const targetLabel = skill.label;
+    const shared = sharedFromValue(value);
+    if (sharingValue(skill) === value) return;
+    const setShared = (next) => setSelected((current) => (
+      current?.label === targetLabel ? { ...current, shared: next } : current
+    ));
+    setPendingSharing((current) => new Map(current).set(targetLabel, value));
+    setShared(shared);
+    try {
+      await setSkillSharingAndSync(targetLabel, shared);
+      showToast(shared ? `Shared ${targetLabel} with everyone.` : `Stopped sharing ${targetLabel}.`, 'success');
+    } catch (err) {
+      setShared(!shared);
+      showToast(err.message || 'Could not change who can use this skill.');
+    } finally {
+      setPendingSharing((current) => {
+        const next = new Map(current);
+        next.delete(targetLabel);
+        return next;
+      });
     }
   };
 
@@ -438,7 +567,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                   checked={selected.enabled ?? true}
                   aria-label="Skill enabled"
                   disabled={!canUseSharedResource(selected, 'canDisable')}
-                  title={!canUseSharedResource(selected, 'canDisable') ? 'You do not have permission to enable or disable this skill.' : undefined}
+                  title={!canUseSharedResource(selected, 'canDisable')
+                    ? 'You do not have permission to enable or disable this skill.'
+                    : isOwnSharedSkill(selected) ? OWN_SHARED_SWITCH_HINT : undefined}
                   onCheckedChange={async (next) => {
                     if (!canUseSharedResource(selected, 'canDisable')) return;
                     const targetLabel = selected.label;
@@ -470,7 +601,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                       id: 'edit', label: 'Edit', icon: Ico.edit(14),
                       disabled: !canUseSharedResource(selected, 'canEdit'),
                       hint: !canUseSharedResource(selected, 'canEdit')
-                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        ? lockedActionHint(selected)
                         : undefined,
                       title: !canUseSharedResource(selected, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
                       onClick: () => startEdit(selected),
@@ -480,7 +611,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                       id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
                       disabled: !canUseSharedResource(selected, 'canDelete'),
                       hint: !canUseSharedResource(selected, 'canDelete')
-                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        ? lockedActionHint(selected)
                         : undefined,
                       title: !canUseSharedResource(selected, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
                       onClick: () => remove(selected),
@@ -494,13 +625,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           <SharedResourceAttribution
             resource={selected}
-            className={canUseSharedResource(selected, 'canEdit') ? 'mb-4' : 'mb-2'}
+            className={canUseSharedResource(selected, 'canEdit') && !isOwnSharedSkill(selected) ? 'mb-4' : 'mb-2'}
           />
           {!canUseSharedResource(selected, 'canEdit') && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
-              {selected.isBuiltin
-                ? 'Built-in skills are read only.'
-                : 'Read only — only the creator or an organization admin can change this skill.'}
+              {readOnlyNote(selected)}
+            </p>
+          )}
+          {isOwnSharedSkill(selected) && (
+            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
+              {OWN_SHARED_CHANGE_NOTE}
             </p>
           )}
 
@@ -511,6 +645,24 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               {projectLabelByName(projects, selected.projects?.[0]) || 'All projects'}
             </p>
           </div>
+
+          {/* Who can use it: only on the caller's own skill, where the server
+              lets them share it. */}
+          {canShareSkill(selected) && (
+            <div className="mb-4">
+              <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
+              <Select
+                ariaLabel={SKILL_SHARING_LABEL}
+                options={SKILL_SHARING_OPTIONS}
+                value={pendingSharing.get(selected.label) ?? sharingValue(selected)}
+                onValueChange={(value) => changeSharing(selected, value)}
+                disabled={pendingSharing.has(selected.label)}
+                size="sm"
+                width={260}
+                menuMinWidth={300}
+              />
+            </div>
+          )}
 
           {/* Description */}
           {selected.description && (
@@ -573,10 +725,12 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onClose={() => setUploadOpen(false)}
         onSaved={onSkillUploaded}
         onError={showToast}
+        canShare={canShare}
       />
       <ConfirmModal
         open={!!removing}
         title={removing ? `Remove skill "${removing.label}"?` : ''}
+        message={removing && isOwnSharedSkill(removing) ? OWN_SHARED_REMOVE_NOTE : undefined}
         confirmLabel="Remove"
         destructive
         onClose={() => setRemoving(null)}
@@ -589,6 +743,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onError={showToast}
         initial={modalSkill ?? null}
         projects={projects}
+        canShare={canShare}
       />
     </div>
   );
