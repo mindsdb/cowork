@@ -26,6 +26,7 @@ import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
+import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
@@ -41,6 +42,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -90,6 +92,12 @@ export function ArtifactViewer({
   const draftPreviewUrl = artifact?.draftUrl || '';
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  /* An .xlsx, .docx, .pptx or .pdf file with a renderer is read-only here:
+     no editable source, no comments and no agent repair. It previews in the
+     sandboxed document frame only where canPreviewDocument says this shell
+     may mount that frame. */
+  const documentType = documentPreviewType(artifact);
+  const showDocumentPreview = !!documentType && canPreviewDocument(artifact, host);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -171,7 +179,11 @@ export function ArtifactViewer({
     onChangeRef.current?.(updated);
   }, []);
   const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
+  const workspace = useArtifactWorkspace(artifact, {
+    open,
+    onChange: reportChange,
+    previewOnly: !!documentType,
+  });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -202,14 +214,14 @@ export function ArtifactViewer({
   const artifactKey = artifact?.artifactKey
     || pub.artifactKey
     || artifactCommentsKey(artifactIdentity(artifact));
-  const commentsEnabled = !!artifactKey && (
+  const commentsEnabled = !documentType && !!artifactKey && (
     workspace.commentsReady
     || (!!pub.publishedUrl && pub.accessMode === 'restricted')
   );
   // Injecting the inert marker bridge only needs the stable comment identity;
   // it does not need to wait for the comments transport to finish provisioning.
   // Waiting used to remount the whole HTML artifact as commentsReady flipped.
-  const commentLayerRequested = !!artifactKey;
+  const commentLayerRequested = !documentType && !!artifactKey;
   // Read by the load effect below rather than listed as its dependency. The key
   // can arrive from the status refresh after the preview painted — late on a
   // slow connection — and swapping `src` then reloads the page the user is
@@ -502,6 +514,13 @@ export function ArtifactViewer({
       setLoading(false);
       return () => { cancelled = true; };
     }
+    if (showDocumentPreview) {
+      /* DocumentPreview fetches the file and renders it in its own frame. No
+         preview URL or document is set and iframeRef stays unattached, so
+         usePreviewDiagnostics and the comment bridge never see that frame. */
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     // Cache-buster for the iframe so a content change (or just reopening /
     // a manual reload) fetches fresh content instead of the webview's
     // first-loaded copy. Prefer the server's content `mtime` — it changes
@@ -630,7 +649,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, showDocumentPreview, reloadNonce]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -865,8 +884,26 @@ export function ArtifactViewer({
     onDownload,
     onTrash,
   };
+  /* The document preview's plain source and callbacks. The draft URL is made
+     absolute here and versioned like the image URL, so a reload or a new
+     mtime remounts the preview with a new frame and token. */
+  const documentPreview = showDocumentPreview ? {
+    source: {
+      url: withArtifactVersion(
+        isAbsoluteArtifactPreviewUrl(draftPreviewUrl) ? draftPreviewUrl : `${host.getApiOrigin()}${draftPreviewUrl}`,
+        `${artifact.mtime ?? 0}.${reloadNonce}`,
+      ),
+      previewType: documentType,
+      filename: title || 'file',
+    },
+    fetchFile: fetchAuthenticatedResponse,
+    download: () => downloadArtifactFile(artifact, { actionPath }),
+    openInDefaultApp: onOpenOS,
+    onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, 'Could not load this file')),
+  } : null;
   const previewModel = {
     draftUrl: draftPreviewUrl,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -904,7 +941,7 @@ export function ArtifactViewer({
     reportId: commentReportId,
     controller: comments,
     onStatus: setCommentStatus,
-    onAddressWithAgent: addressCommentWithAgent,
+    onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
     onCreate: createArtifactComment,
     textSelection,
     setTextSelection,

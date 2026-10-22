@@ -8,6 +8,7 @@ import { CommentsPanel, CommentsToolbar } from './comments';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { DocumentPreview } from '../../preview/DocumentPreview';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -47,6 +48,7 @@ export function ArtifactViewerBody({
 }) {
   const {
     draftUrl: draftPreviewUrl,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -137,6 +139,8 @@ export function ArtifactViewerBody({
     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />

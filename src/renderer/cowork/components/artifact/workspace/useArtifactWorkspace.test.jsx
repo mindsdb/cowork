@@ -35,7 +35,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
 }));
 
 import { requestAgentRepair } from '../../../lib/artifactWorkspaceApi';
-import { useArtifactWorkspace } from './useArtifactWorkspace';
+import { PREVIEW_ONLY, useArtifactWorkspace } from './useArtifactWorkspace';
 
 const artifact = {
   id: '11111111111141118111111111111111',
@@ -770,3 +770,31 @@ describe('useArtifactWorkspace addressWithAgent preview errors', () => {
     );
   });
 });
+
+/* An .xlsx, .docx, .pptx or .pdf file previews read-only. The server can still
+   answer the source request with a text sibling of the primary file, which the
+   editor would otherwise open. */
+describe('useArtifactWorkspace previewOnly', () => {
+  const sibling = { ...source, path: 'notes.md', content: '# notes' };
+
+  it.each([false, true])('loads no editable source and names the preview-only reason (web: %s)', async (isWeb) => {
+    platform.isWeb = isWeb;
+    api.loadArtifactSource.mockResolvedValue(sibling);
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('unsupported'));
+    expect(result.current.unsupportedReason).toBe(PREVIEW_ONLY);
+    expect(result.current.source).toBeNull();
+    expect(result.current.currentRevision).toBeNull();
+    await act(() => result.current.load());
+    expect(result.current.source).toBeNull();
+    expect(api.loadArtifactSource).not.toHaveBeenCalled();
+    expect(api.loadArtifactReview).not.toHaveBeenCalled();
+    expect(api.enableDraftComments).not.toHaveBeenCalled();
+  });
+
+  it('reads Preview only: Cowork can\'t edit this file type.', () => {
+    expect(PREVIEW_ONLY).toBe("Preview only: Cowork can't edit this file type.");
+  });
+});
+
