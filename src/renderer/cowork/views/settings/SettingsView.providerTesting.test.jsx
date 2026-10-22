@@ -106,16 +106,9 @@ function setProviderTesting(value) {
   document.head.append(meta);
 }
 
-// Save and Validate start a confirmation timer that outlasts the test. Run
-// it before teardown so it can't fire after the environment is gone.
-afterEach(() => {
-  act(() => { vi.runOnlyPendingTimers(); });
-  vi.useRealTimers();
-  setProviderTesting(undefined);
-});
+afterEach(() => setProviderTesting(undefined));
 
 beforeEach(() => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
   setProviderTesting('false');
   mocks.deployment.PLATFORM_UI = false;
   mocks.host.isWeb = true;
@@ -138,6 +131,27 @@ it('saves a retained setting without changing an unnamed hidden provider', async
   await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ actFirst: false }));
   expect(latest.current).toEqual({ ...initial, actFirst: false });
   expectNoProviderCheck();
+});
+
+it('clears the tested confirmation timer when the view unmounts', async () => {
+  const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  try {
+    const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+    const { unmount } = renderSettings(settingsFor(provider));
+    fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(mocks.validateSettings).toHaveBeenCalledOnce());
+    await waitFor(() => expect(setTimeoutSpy.mock.calls.some(([, ms]) => ms === 2400)).toBe(true));
+    const index = setTimeoutSpy.mock.calls.findIndex(([, ms]) => ms === 2400);
+    const timer = setTimeoutSpy.mock.results[index].value;
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+  } finally {
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  }
 });
 
 it('requires a name before saving an editable custom provider', async () => {
