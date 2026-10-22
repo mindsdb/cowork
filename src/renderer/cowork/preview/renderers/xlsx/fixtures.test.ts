@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { load } from 'js-yaml';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { PreviewFixture } from '../../../../../../e2e/document-preview/harness';
 import { HARNESS_ORIGIN, xlsxFixtureFiles } from '../../../../../../e2e/document-preview/fixtures/xlsx/make-fixtures.mjs';
@@ -26,19 +26,29 @@ const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixture
    rerunning that Python script with the library versions it names is how
    they are made again. */
 const PYTHON_FIXTURES: readonly string[] = ['openpyxl-total.xlsx', 'xlsxwriter-total.xlsx', 'openpyxl-report.xlsx', 'xlsxwriter-report.xlsx'];
+/* Writing every fixture builds three workbooks at the caps, which takes a few
+   seconds alone and more on a loaded CI runner. So the files are written once
+   for both checks, with a timeout of their own. */
+const WRITE_TIMEOUT_MS = 60_000;
 
 describe('xlsx preview fixtures', () => {
-  it('match what make-fixtures.mjs writes, byte for byte', async () => {
-    for (const { file, bytes } of await xlsxFixtureFiles()) {
+  let written: Awaited<ReturnType<typeof xlsxFixtureFiles>>;
+
+  beforeAll(async () => {
+    written = await xlsxFixtureFiles();
+  }, WRITE_TIMEOUT_MS);
+
+  it('match what make-fixtures.mjs writes, byte for byte', () => {
+    for (const { file, bytes } of written) {
       expect(Buffer.from(bytes).equals(readFileSync(join(FIXTURES, file))), `${file} differs; rerun make-fixtures.mjs`).toBe(true);
     }
   });
 
-  it('are each listed once in fixtures.yaml, as clean or hostile', async () => {
+  it('are each listed once in fixtures.yaml, as clean or hostile', () => {
     const listed = load(readFileSync(join(FIXTURES, 'fixtures.yaml'), 'utf8')) as PreviewFixture[];
-    const written = (await xlsxFixtureFiles()).map(({ file }) => file);
+    const files = written.map(({ file }) => file);
 
-    expect(listed.map(({ file }) => file).filter((file) => !PYTHON_FIXTURES.includes(file))).toEqual(written);
+    expect(listed.map(({ file }) => file).filter((file) => !PYTHON_FIXTURES.includes(file))).toEqual(files);
     expect(listed.filter(({ file }) => PYTHON_FIXTURES.includes(file)).map(({ file }) => file)).toEqual(PYTHON_FIXTURES);
     expect(new Set(listed.map(({ name }) => name)).size).toBe(listed.length);
     expect(listed.filter(({ kind }) => kind !== 'clean' && kind !== 'hostile')).toEqual([]);
