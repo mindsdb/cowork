@@ -491,6 +491,46 @@ describe('narration becomes steps, the answer area switches once (ENG-1108, ENG-
     expect(picks.size).toBeGreaterThan(10);
   });
 
+  it("keeps a long, two-paragraph opening narration a step and the first take on screen (Pac-Man turn)", () => {
+    const opening = 'I\'ll build you a hybrid Pac-Man and Tetris game — a puzzle game where Tetris pieces fall down the screen, '
+      + 'you rotate and place them strategically, and clearing rows makes "food pellets" appear that you collect with a '
+      + 'moving Pac-Man character for bonus points.\n\nLet me start by registering the artifact and then building the game.';
+    const progress = (extra) => ({ type: 'response.in_progress', thought_role: 'thought.progress', ...extra });
+    const seen = [];
+    let state = initialStreamState();
+    for (const ev of [
+      created(), take("I'll build that Pac-Man and Tetris hybrid."), text(opening),
+      progress({ content: 'tool_start: create_artifact', phase: 'tool_start', tool_use_id: '' }),
+      text("\n\nNow I'll build the game in the scratchpad and write it to the artifact folder."), padStart,
+    ]) {
+      state = reduceStream(state, ev, now);
+      seen.push(answerBody(state) ? 'answer' : visibleFirstTake(state.firstTake) ? 'take' : 'empty');
+    }
+    expect(seen.slice(1)).toEqual(['take', 'take', 'take', 'take', 'take']);
+    const [first, second] = notes(state);
+    expect(first.label).toBe(opening);
+    expect(STAND_IN_PHRASES).toContain(first.standIn);
+    expect(second.standIn).toBeUndefined();
+  });
+
+  it('gives the first take back when text taken for the answer was narration after all', () => {
+    const state = reduceAll([
+      created(), take('On it.'), text('Here is the plan:\n- register the artifact\n- build the game'), padStart,
+    ], initialStreamState(), now);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('On it.');
+    expect(answerBody(state)).toBe('');
+    expect(notes(state)[0]).toEqual(expect.objectContaining({ status: 'completed' }));
+    expect(STAND_IN_PHRASES).toContain(notes(state)[0].standIn);
+  });
+
+  it('after a tool, a paragraph or a few sentences already reads as the answer', () => {
+    expect(looksLikeAnswer('Done.\n\nIt works.')).toBe(true);
+    expect(looksLikeAnswer('Done.\n\nIt works.', { opening: true })).toBe(false);
+    expect(looksLikeAnswer('x'.repeat(300), { opening: true })).toBe(false);
+    expect(looksLikeAnswer('x'.repeat(900), { opening: true })).toBe(true);
+    expect(looksLikeAnswer('## Result', { opening: true })).toBe(true);
+  });
+
   it('seals the reasoning burst on a tool start when there is no narration (next burst starts fresh)', () => {
     const state = reduceAll([
       created(),

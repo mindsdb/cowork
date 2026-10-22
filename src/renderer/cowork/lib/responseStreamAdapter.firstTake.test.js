@@ -20,9 +20,9 @@ describe('responseStreamAdapter — instant first take', () => {
     expect(visibleFirstTake(narrating.firstTake)?.text).toBe('Checking.');
     expect(answerBody(narrating)).toBe('');
     // An answer takes its place.
-    const answering = reduceAll([created, take('Checking.'), text('Revenue rose 4%.\n\nMostly in Q3.')]);
+    const answering = reduceAll([created, take('Checking.'), text('Revenue rose 4%:\n- Q3 +6%\n- Q4 +2%')]);
     expect(visibleFirstTake(answering.firstTake)).toBeNull();
-    expect(answerBody(answering)).toBe('Revenue rose 4%.\n\nMostly in Q3.');
+    expect(answerBody(answering)).toBe('Revenue rose 4%:\n- Q3 +6%\n- Q4 +2%');
   });
 
   it('a blank delta is not Anton speaking', () => {

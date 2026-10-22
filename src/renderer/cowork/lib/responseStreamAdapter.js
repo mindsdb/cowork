@@ -81,6 +81,9 @@ export function initialStreamState() {
      *  once it looks like an answer, the gate wrote it, or the turn
      *  completed; a tool starting after it turns it back into a Note. */
     bodyIsAnswer: false,
+    /** The first take that the answer replaced, kept until the round ends so
+     *  a wrong guess (a tool starts after the text) can bring it back. */
+    takeBeforeAnswer: null,
     /** Retained ranges into the server's answer, including text hidden at
      *  tool starts in sourceLength. Reset replaces that source; restore
      *  prepends to it. This keeps the live offsets exact even when its body
@@ -252,14 +255,29 @@ export function truncateLabel(text) {
 
 /** Past this, a round's text reads as an answer, not a one-line note. */
 const ANSWER_MIN_CHARS = 280;
-/** Structure narration never has: a paragraph break, a list, a heading, a
- *  table, a quote or a code fence. */
-const ANSWER_SHAPE = /\n\s*\n|(^|\n)\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|\||>|```)/;
+/** Structure narration never has: a list, a heading, a table, a quote or a
+ *  code fence. */
+const ANSWER_STRUCTURE = /(^|\n)\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|\||>|```)/;
+const PARAGRAPH_BREAK = /\n\s*\n/;
+/** Before any tool has run, Anton's opening narration can run to a couple of
+ *  sentences or two short paragraphs ("I'll build you X — …\n\nLet me start
+ *  by…"), so length alone needs to be far longer there. */
+const OPENING_ANSWER_MIN_CHARS = 800;
 
-/** Whether a round's text so far is plainly the answer. */
-export function looksLikeAnswer(text) {
+/** Whether a round's text so far is plainly the answer. In the opening round
+ *  (no tool has run yet) only structure or real length counts; after a tool,
+ *  narration is a line, so a paragraph or a few sentences already reads as
+ *  the answer. */
+export function looksLikeAnswer(text, { opening = false } = {}) {
   const t = (text || '').trim();
-  return t.length >= ANSWER_MIN_CHARS || ANSWER_SHAPE.test(t);
+  if (ANSWER_STRUCTURE.test(t)) return true;
+  if (opening) return t.length >= OPENING_ANSWER_MIN_CHARS;
+  return t.length >= ANSWER_MIN_CHARS || PARAGRAPH_BREAK.test(t);
+}
+
+/** Whether no tool has run yet this turn: every step so far is a Note. */
+function inOpeningRound(steps) {
+  return steps.every((step) => step.badge === NOTE_BADGE);
 }
 
 /** The text to show as the answer: none while it is still narration. */
@@ -339,10 +357,19 @@ function withoutLiveNote(steps) {
 }
 
 /** The round's text becomes the answer: its Note goes, the first take
- *  steps aside. The one switch the answer area makes. */
+ *  steps aside. The one switch the answer area makes. The take is kept
+ *  aside, so a guess that turns out wrong (a tool starts after the text) can
+ *  give it back. */
 function promoteToAnswer(state) {
   if (state.bodyIsAnswer || !state.bodyText.trim()) return state;
-  return { ...state, bodyIsAnswer: true, steps: withoutLiveNote(state.steps), firstTake: CLEARED_TAKE };
+  const shown = visibleFirstTake(state.firstTake);
+  return {
+    ...state,
+    bodyIsAnswer: true,
+    steps: withoutLiveNote(state.steps),
+    firstTake: CLEARED_TAKE,
+    takeBeforeAnswer: shown ? state.firstTake : null,
+  };
 }
 
 /** The round's text while it is still a Note, for the live row to carry: if
@@ -390,17 +417,27 @@ function startsTool(event) {
  *  than appending to the pre-tool one (ENG-1108). */
 function sealRoundOnToolStart(state, eventTs) {
   const narration = (state.bodyText || '').trim();
-  if (!narration) return { currentThought: null, bodyIsAnswer: false };
+  if (!narration) return { currentThought: null, bodyIsAnswer: false, takeBeforeAnswer: null };
+  // Text taken for the answer was narration after all: the first take it
+  // replaced comes back, and the line reads as a step like any other.
+  const restored = state.bodyIsAnswer && state.takeBeforeAnswer ? state.takeBeforeAnswer : null;
+  const steps = withoutLiveNote(state.steps);
   const live = state.steps.at(-1);
+  const opening = steps.length === 0 && (restored !== null || (isLiveNote(live) && live.standIn));
+  const standIn = isLiveNote(live) && live.standIn
+    ? live.standIn
+    : opening ? standInPhrase(state.responseId || state.conversationId || state.startedAt) : null;
   const note = isLiveNote(live)
     ? { ...live, label: narration, status: 'completed', completedAt: eventTs }
     : { id: `note-${state.steps.length + 1}`, label: narration, badge: NOTE_BADGE, icon: 'note', status: 'completed', startedAt: eventTs, completedAt: eventTs };
   return {
-    steps: [...withoutLiveNote(state.steps), note],
+    steps: [...steps, standIn ? { ...note, standIn } : note],
     currentThought: null,
     bodyText: '',
     bodyIsAnswer: false,
     bodyTextMap: { ...state.bodyTextMap, ranges: [] },
+    takeBeforeAnswer: null,
+    ...(restored ? { firstTake: restored } : {}),
   };
 }
 
@@ -586,7 +623,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null,
       bodyTextMap: { sourceLength: end, ranges: nextRanges },
     };
-    if (next.bodyIsAnswer || state.harness === 'cowork-direct' || looksLikeAnswer(next.bodyText)) {
+    if (next.bodyIsAnswer || state.harness === 'cowork-direct'
+      || looksLikeAnswer(next.bodyText, { opening: inOpeningRound(state.steps) })) {
       return promoteToAnswer(next);
     }
     if (!next.bodyText.trim()) return next;
