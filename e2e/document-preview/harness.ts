@@ -201,9 +201,10 @@ async function clickEverything(frame: Frame, everyElement: boolean): Promise<voi
 
 /* Runs inside the preview frame, through frame.evaluate. It returns the outer
    HTML of each meta with http-equiv and each base element in the document,
-   other than the two metas with http-equiv the frame document starts with in
-   its head. frame.evaluate sends the function's source text, so it reads
-   nothing but the document. */
+   except a meta in the head whose http-equiv is content-security-policy or
+   x-dns-prefetch-control, the two kinds the frame document starts with.
+   frame.evaluate sends the function's source text, so it reads nothing but
+   the document. */
 export function strayFrameDirectives(): string[] {
   const frameHeadDirectives = ['content-security-policy', 'x-dns-prefetch-control'];
   return Array.from(document.querySelectorAll('meta[http-equiv], base'))
