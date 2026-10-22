@@ -9,7 +9,9 @@ import {
   readParentPort,
   readParentToFrame,
 } from './protocol';
+import { documentPreviewData } from '../../../../../tests/helpers/documentPreviewData';
 
+const data = documentPreviewData();
 const TOKEN = newPreviewToken();
 const OTHER = newPreviewToken();
 
@@ -20,7 +22,12 @@ describe('preview tokens', () => {
     expect(OTHER).not.toBe(TOKEN);
   });
 
-  it.each([undefined, '', 'x', TOKEN.toUpperCase(), `${TOKEN}0`, 42])('rejects %s', (value) => {
+  it.each(data.malformedTokens)('rejects a token that is $label', ({ token }) => {
+    expect(isPreviewToken(token)).toBe(false);
+  });
+
+  /* Values that aren't text at all. YAML has no undefined, so these stay here. */
+  it.each([undefined, null, 42])('rejects %s', (value) => {
     expect(isPreviewToken(value)).toBe(false);
   });
 });

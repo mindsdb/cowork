@@ -69,6 +69,23 @@ refusedBuildConfigs:
     source: "export default { notices: [] };\n"
     error: must export a plugins array
 
+# Token text that neither buildPreviewSrcdoc nor the message readers accept: a
+# token is 32 lowercase hex characters.
+malformedTokens:
+  - { label: empty, token: "" }
+  - { label: too short, token: abc }
+  - { label: upper case, token: 0123456789ABCDEF0123456789ABCDEF }
+  - { label: quoted, token: '0123456789abcdef0123456789abcde"' }
+  - { label: one character too long, token: 0123456789abcdef0123456789abcdef0 }
+
+# Script text buildPreviewSrcdoc refuses: it would end the inline script early,
+# or the HTML parser would change it so it no longer matches its hash.
+unsafeSrcdocScriptText:
+  - { label: a closing script tag, text: 'a="</script><img src=x>"' }
+  - { label: an opening script tag, text: 'a="<script>"' }
+  - { label: a NUL character, text: "a=\"\0\"" }
+  - { label: a carriage return, text: "a=1;\r\nb=2;" }
+
 # Error codes whose reason the failure note names, one sentence each.
 reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]
 

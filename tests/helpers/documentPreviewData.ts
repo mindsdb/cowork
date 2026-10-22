@@ -28,6 +28,11 @@ export interface RefusedBuildConfig {
   error: string;
 }
 
+export interface MalformedToken {
+  label: string;
+  token: string;
+}
+
 /* A zipBytes entry as the data states it: `size` zero bytes in place of its
    data. */
 export type ArchiveEntryData = Omit<ZipEntryInput, 'data'> & { size: number };
@@ -118,6 +123,8 @@ export interface DocumentPreviewData {
   allowedScriptText: string[];
   bundleNodeEnvs: string[];
   refusedBuildConfigs: RefusedBuildConfig[];
+  malformedTokens: MalformedToken[];
+  unsafeSrcdocScriptText: ForbiddenScriptText[];
   reasonCodes: PreviewErrorCode[];
   windowSizeReads: string[];
   archiveGuard: {

@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { buildPreviewSrcdoc, previewFramePolicy } from './frameDocument';
 import { newPreviewToken } from './runtime/protocol';
 import { scriptSha256 } from '../../../../scripts/preview-bundles.mjs';
+import { documentPreviewData } from '../../../../tests/helpers/documentPreviewData';
 
+const data = documentPreviewData();
 const SCRIPT = 'document.body.dataset.ran = "1";';
 const HASH = scriptSha256(SCRIPT);
 const TOKEN = '0123456789abcdef0123456789abcdef';
@@ -45,12 +47,7 @@ describe('buildPreviewSrcdoc', () => {
     expect(() => srcdocFor({ scriptSha256: 'unsafe-inline' })).toThrow('base64 sha256');
   });
 
-  it.each([
-    ['empty', ''],
-    ['too short', 'abc'],
-    ['upper case', TOKEN.toUpperCase()],
-    ['quoted', `${TOKEN.slice(0, 31)}"`],
-  ])('refuses a %s token', (_label, token) => {
+  it.each(data.malformedTokens)('refuses a token that is $label', ({ token }) => {
     expect(() => srcdocFor({ token })).toThrow('128-bit hex token');
   });
 
@@ -58,13 +55,8 @@ describe('buildPreviewSrcdoc', () => {
     expect(() => srcdocFor({ token: newPreviewToken() })).not.toThrow();
   });
 
-  it.each([
-    ['a closing script tag', 'a="</script><img src=x>"'],
-    ['an opening script tag', 'a="<script>"'],
-    ['a NUL character', 'a="\0"'],
-    ['a carriage return', 'a=1;\r\nb=2;'],
-  ])('refuses script text with %s', (_label, scriptText) => {
-    expect(() => srcdocFor({ scriptText, scriptSha256: scriptSha256(scriptText), policy: previewFramePolicy(scriptSha256(scriptText)) }))
+  it.each(data.unsafeSrcdocScriptText)('refuses script text with $label', ({ text }) => {
+    expect(() => srcdocFor({ scriptText: text, scriptSha256: scriptSha256(text), policy: previewFramePolicy(scriptSha256(text)) }))
       .toThrow('script text');
   });
 
