@@ -185,7 +185,7 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
   });
 });
 
-// ENG-3682 — every page load fired all 50 warm-up reads at once. On 22 October
+// Every page load fired all 50 warm-up reads at once. On 22 October
 // one browser reloaded staging up to 13 times a minute; each load sent a burst
 // of exactly 50 `/items` reads, 6,555 of the 7,152 in fifteen minutes, and
 // starved cowork-server's single process until both pods failed readiness.
