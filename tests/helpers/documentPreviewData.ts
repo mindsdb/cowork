@@ -6,6 +6,7 @@ import path from 'node:path';
 import yaml from 'js-yaml';
 
 import type { DocumentPreviewType, PreviewErrorCode } from '../../src/renderer/cowork/preview/contract';
+import type { ZipEntryInput } from './zipBytes';
 
 export interface DocumentArtifactData {
   type: DocumentPreviewType;
@@ -20,6 +21,26 @@ export interface ForbiddenScriptText {
   text: string;
 }
 
+/* A zipBytes entry as the data states it: `size` zero bytes in place of its
+   data. */
+export type ArchiveEntryData = Omit<ZipEntryInput, 'data'> & { size: number };
+
+/* zipBytes archive options as the data states them, with `lead` as text. */
+export interface ArchiveOptionsData {
+  lead?: string;
+  endRecordCopy?: number;
+}
+
+export interface ArchiveCaseData {
+  case: string;
+  entries: ArchiveEntryData[];
+  archive?: ArchiveOptionsData;
+}
+
+export interface AcceptedArchiveData extends ArchiveCaseData {
+  names: string[];
+}
+
 export interface DocumentPreviewData {
   documentArtifacts: DocumentArtifactData[];
   forbiddenSandboxKeywords: string[];
@@ -27,6 +48,7 @@ export interface DocumentPreviewData {
   allowedScriptText: string[];
   reasonCodes: PreviewErrorCode[];
   windowSizeReads: string[];
+  archiveGuard: { accepted: AcceptedArchiveData[]; refused: ArchiveCaseData[] };
 }
 
 const DATA_FILE = path.resolve(__dirname, '../../src/renderer/cowork/preview/documentPreview.test.yaml');

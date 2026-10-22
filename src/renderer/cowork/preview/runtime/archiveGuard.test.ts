@@ -1,14 +1,23 @@
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { documentPreviewData, type ArchiveCaseData } from '../../../../../tests/helpers/documentPreviewData';
 import { zipBytes } from '../../../../../tests/helpers/zipBytes';
 import { previewLimits } from '../limits';
 import { guardArchive, type ArchiveLimits } from './archiveGuard';
 
 const MIB = 1024 * 1024;
 const LIMITS = previewLimits({ touch: false });
+const ARCHIVES = documentPreviewData().archiveGuard;
 const text = (value: string) => new TextEncoder().encode(value);
 const zeros = (size: number) => new Uint8Array(size);
+
+function archiveFrom({ entries, archive = {} }: ArchiveCaseData): ArrayBuffer {
+  return zipBytes(
+    entries.map(({ size, ...entry }) => ({ ...entry, data: zeros(size) })),
+    { ...archive, lead: archive.lead === undefined ? undefined : text(archive.lead) },
+  );
+}
 
 function guard(bytes: ArrayBuffer, limits: ArchiveLimits = LIMITS, signal = new AbortController().signal) {
   return guardArchive(bytes, { limits, signal });
@@ -108,5 +117,15 @@ describe('guardArchive', () => {
     controller.abort();
     const bytes = zipBytes([{ name: 'a', data: zeros(1000) }]);
     expect(await failure(guard(bytes, LIMITS, controller.signal))).toMatchObject({ code: 'internal' });
+  });
+});
+
+describe('guardArchive on archives zip readers read differently', () => {
+  it.each(ARCHIVES.accepted)('lets through $case', async (archive) => {
+    expect((await guard(archiveFrom(archive)))?.names()).toEqual(archive.names);
+  });
+
+  it.each(ARCHIVES.refused)('ends in parse-failed for $case', async (archive) => {
+    expect(await failure(guard(archiveFrom(archive)))).toMatchObject({ code: 'parse-failed' });
   });
 });

@@ -55,3 +55,61 @@ reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal
 
 # Ways a component could read the window's size; the preview reads none.
 windowSizeReads: [innerWidth, innerHeight, outerWidth, outerHeight, matchMedia, screen.]
+
+# Archives for the archive guard, built at test time by tests/helpers/zipBytes.ts.
+# Each entry holds `size` zero bytes and takes the other zipBytes entry options
+# it lists. `archive` holds zipBytes archive options, with `lead` as text.
+archiveGuard:
+  # Shapes zip writers make, which the guard lets through. `names` are the
+  # entries the checked archive lists.
+  accepted:
+    - case: directory entries that hold no data
+      entries:
+        - { name: xl/, size: 0, store: true }
+        - { name: docProps/, size: 0 }
+        - { name: media, size: 0, store: true, externalAttributes: 16 }
+        - { name: xl/workbook.xml, size: 1024 }
+      names: [xl/workbook.xml]
+    - case: an entry whose sizes follow its data in a data descriptor
+      entries:
+        - { name: xl/workbook.xml, size: 1024, dataDescriptor: true }
+      names: [xl/workbook.xml]
+  # Shapes two zip readers read differently: SheetJS's own zip reader inflates
+  # data that JSZip drops, cuts short or never finds. The guard refuses each
+  # with parse-failed before a renderer reads it.
+  refused:
+    - case: a directory entry, by its DOS attribute, that holds data
+      entries:
+        - { name: xl/bomb.xml, size: 1024, externalAttributes: 16 }
+    - case: a directory entry, by its trailing slash, that holds data
+      entries:
+        - { name: xl/bomb.xml/, size: 1024 }
+    - case: an entry that states it inflates to 0 bytes and holds data
+      entries:
+        - { name: xl/bomb.xml, size: 1024, centralSizes: { uncompressed: 0 } }
+    - case: an entry whose directory record states 0 for both sizes and whose data descriptor holds them
+      entries:
+        - { name: xl/bomb.xml, size: 1024, dataDescriptor: true, centralSizes: { compressed: 0, uncompressed: 0 } }
+    - case: a deflate stream that runs past the entry's stated compressed size
+      # JSZip inflates the first 200 bytes of the stream to 180,224 bytes.
+      entries:
+        - { name: xl/bomb.xml, size: 1048576, dataDescriptor: true, centralSizes: { compressed: 200, uncompressed: 180224 } }
+    - case: a local header that states another method
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localMethod: 0 }
+    - case: a local header that states other sizes
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { uncompressed: 104857600 } }
+    - case: a local header that states another name
+      entries:
+        - { name: xl/workbook.xml, size: 1024, localName: xl/bomb.xml }
+    - case: a ZIP64 extra field in the local header
+      entries:
+        - { name: xl/bomb.xml, size: 1024, zip64Extra: local }
+    - case: a ZIP64 extra field in the directory record
+      entries:
+        - { name: xl/bomb.xml, size: 1024, zip64Extra: central }
+    - case: a file that starts with PK but not PK\x03\x04 and ends in a cut-short end record
+      entries:
+        - { name: xl/bomb.xml, size: 1024 }
+      archive: { lead: "PK\x07\x08", endRecordCopy: 20 }
