@@ -37,26 +37,45 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
 }
 
-/* Where the sheet tab bar sits in the frame's viewport. */
+/* Where a sheet tab bar sits in the frame's viewport. */
 interface TabBarBox { top: number; bottom: number; viewportHeight: number }
+
+/* What the spec reads of the frame: the sheet tabs, every sheet tab bar, the
+   link-like elements in the body, and the rows and first-row cells of the open
+   panel. */
+interface GridFacts { tabs: number; tabBars: TabBarBox[]; linkLike: number; rows: number; columns: number }
+
+/* Runs inside the preview frame through frame.evaluate, so it reads nothing
+   but the document. One evaluate reads every fact: while Playwright records a
+   trace, each action over a grid at the caps also snapshots its 400,000 cells. */
+function readGrid(): GridFacts {
+  const rows = document.querySelectorAll('[role="tabpanel"]:not([hidden]) tbody tr');
+  return {
+    tabs: document.querySelectorAll('body [role="tab"]').length,
+    tabBars: Array.from(document.querySelectorAll('[role="tablist"]'), (node) => {
+      const box = node.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, viewportHeight: window.innerHeight };
+    }),
+    linkLike: document.querySelectorAll('body a, body [href], body [src], body [xlink\\:href]').length,
+    rows: rows.length,
+    columns: rows[0]?.querySelectorAll('td').length ?? 0,
+  };
+}
 
 async function expectGrid(page: Page, summary: RenderSummary, fixture: PreviewFixture): Promise<void> {
   const frame = await previewFrame(page);
-  await expect(frame.locator('body [role="tab"]')).toHaveCount(summary.units);
-  const tabBar = await frame.locator('[role="tablist"]').evaluate((node): TabBarBox => {
-    const box = node.getBoundingClientRect();
-    return { top: box.top, bottom: box.bottom, viewportHeight: window.innerHeight };
-  });
-  expect(tabBar.top, 'the sheet tabs are in view without scrolling').toBeGreaterThanOrEqual(0);
-  expect(tabBar.bottom, 'the sheet tabs are in view without scrolling').toBeLessThanOrEqual(tabBar.viewportHeight);
-  await expect(frame.locator('body a, body [href], body [src], body [xlink\\:href]')).toHaveCount(0);
-  const rows = frame.locator('[role="tabpanel"]:not([hidden]) tbody tr');
-  const rowCount = await rows.count();
-  const columnCount = rowCount > 0 ? await rows.first().locator('td').count() : 0;
-  expect(rowCount).toBeLessThanOrEqual(LIMITS.maxSheetRows);
-  expect(columnCount).toBeLessThanOrEqual(LIMITS.maxSheetColumns);
+  const grid = await frame.evaluate(readGrid);
+  expect(grid.tabs).toBe(summary.units);
+  expect(grid.tabBars, 'the frame holds one sheet tab bar').toHaveLength(1);
+  for (const tabBar of grid.tabBars) {
+    expect(tabBar.top, 'the sheet tabs are in view without scrolling').toBeGreaterThanOrEqual(0);
+    expect(tabBar.bottom, 'the sheet tabs are in view without scrolling').toBeLessThanOrEqual(tabBar.viewportHeight);
+  }
+  expect(grid.linkLike, 'the frame holds no link or loaded resource').toBe(0);
+  expect(grid.rows).toBeLessThanOrEqual(LIMITS.maxSheetRows);
+  expect(grid.columns).toBeLessThanOrEqual(LIMITS.maxSheetColumns);
   if (fixture.expect.truncated) {
-    expect(rowCount === LIMITS.maxSheetRows || columnCount === LIMITS.maxSheetColumns, 'a truncated sheet fills a cap').toBe(true);
+    expect(grid.rows === LIMITS.maxSheetRows || grid.columns === LIMITS.maxSheetColumns, 'a truncated sheet fills a cap').toBe(true);
   }
 }
 
