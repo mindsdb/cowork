@@ -31,7 +31,7 @@ export interface DocumentPreviewFrameProps {
   bytes: ArrayBuffer;
   bundle: LoadedPreviewBundle;
   title: string;
-  limits?: PreviewParentLimits;
+  limits?: Readonly<PreviewParentLimits>;
   onRendered(summary: RenderSummary): void;
   onError(code: PreviewErrorCode, detail?: string): void;
 }
