@@ -57,7 +57,7 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
     expect(tasks).toHaveLength(60);
     expect(tasks[0].title).toBe('Task 0');
     // The warm-up still fires, just not awaited. Its first wave is bounded
-    // (ENG-3682, below), so reads that never settle hold back the rest.
+    // so reads that never settle hold back the rest.
     expect(itemsRequested).toBe(4);
   });
 
