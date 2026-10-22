@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Background updater for the cowork-server Python backend.
 //
 // Source-aware: it inspects how cowork-server was actually installed (via
@@ -26,6 +27,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildKind } from './cowork-home';
 import { authHeader } from './server-auth';
+import { lockedServerInstallArgs } from './server-release-install';
 import { forgetServerCapability, startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
@@ -42,12 +44,7 @@ import {
   decidePypiUpdate,
   decideStreamRepair,
   looksLikeBrokenInstall,
-  parseAntonPin,
-  parseAntonConstraint,
-  satisfiesAntonConstraint,
   selectLatestPypiVersion,
-  selectLatestConstrainedPypiVersion,
-  type StreamRepairDecision,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -60,14 +57,8 @@ import {
 } from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
-// PyPI project name (hyphenated) and the installed dist-info name (underscored)
-// for anton-agent — the desktop tracks it as a second PyPI-channel component so
-// an anton-only release reaches users without a cowork-server release (ENG-1094).
-const ANTON_PACKAGE_NAME = 'anton-agent';
 const ANTON_DIST_NAME = 'anton_agent';
-const COWORK_DIST_NAME = 'cowork_server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
-const ANTON_PYPI_JSON_URL = `https://pypi.org/pypi/${ANTON_PACKAGE_NAME}/json`;
 const PYPI_TIMEOUT_MS = 5000;
 const DISABLE_VAR = 'COWORK_SERVER_DISABLE_AUTOUPDATE';
 
@@ -163,26 +154,6 @@ function readInstalledDistVersion(distName: string, toolsDir?: string): string |
   return base.slice(distName.length + 1, base.length - '.dist-info'.length) || null;
 }
 
-/** The `Requires-Dist:` values from an installed dist's METADATA — the actual
- *  dependency constraints uv will honor on a `--reinstall`. Reading the local
- *  wheel metadata (rather than re-fetching from PyPI) reflects exactly what is
- *  installed. Empty array when the dist or its METADATA can't be read. */
-function readInstalledRequiresDist(distName: string, toolsDir?: string): string[] {
-  const dir = findDistInfoDir(distName, toolsDir);
-  if (!dir) return [];
-  try {
-    const meta = fs.readFileSync(path.join(dir, 'METADATA'), 'utf-8');
-    const out: string[] = [];
-    for (const line of meta.split('\n')) {
-      const m = line.match(/^Requires-Dist:\s*(.+?)\s*$/);
-      if (m) out.push(m[1]);
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
 /** The HEAD commit a remote ref currently points at. A 40-hex ref is
  *  returned as-is (it IS the commit). Null on any failure. */
 function lsRemote(repo: string, ref: string): Promise<string | null> {
@@ -199,7 +170,7 @@ function lsRemote(repo: string, ref: string): Promise<string | null> {
 // uv install / upgrade commands
 // ---------------------------------------------------------------------------
 
-function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<{ ok: boolean; stderr: string }> {
+function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<{ ok: boolean; stderr: string; unchanged?: boolean }> {
   // Every runUv call is a `uv tool install/upgrade/reinstall` that rewrites the
   // tool venv on disk. Hold a maintenance window for its duration so
   // startServer() can't spawn python against a half-written environment (a
@@ -212,16 +183,19 @@ function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promis
         forgetServerCapability();
         execFile(
           uv,
-          args,
+          lockedServerInstallArgs(uv, args),
           { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed', ...extraEnv }, timeout: 180000 },
-          (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
+          (err, _stdout, stderr) => resolve({
+            ok: !err, stderr: stderr || err?.message || '',
+            unchanged: !process.env.COWORK_SERVER_PACKAGE && err?.code === 2,
+          }),
         );
       }),
   );
 }
 
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
-function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
+function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string; unchanged?: boolean }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
   return runUv(
     uv,
@@ -235,9 +209,9 @@ function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<
  *  direct_url.json. `--reinstall` rebuilds the environment from scratch, so it
  *  repairs a corrupt or half-written venv — never clobbering one source onto
  *  the other. Shared by the unsupported-Python recreate and the boot repair. */
-async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
-  const onGit = !!readVcsInfo('cowork_server', toolsDir);
-  if (onGit) return installGit(uv, getCoworkRef(), getAntonRef());
+async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string; unchanged?: boolean }> {
+  const installedGit = readVcsInfo('cowork_server', toolsDir);
+  if (installedGit) return installGit(uv, installedGit.commit, readVcsInfo('anton_agent', toolsDir)?.commit ?? 'main');
   // Repair the version that IS installed, not whatever resolves today: a
   // bare package name resolves the latest stable, which on the staging rc
   // stream is a silent downgrade — and a downgraded server can face a
@@ -246,11 +220,9 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
   // This deliberately re-pins an off-stream pre-release on prod too: this
   // path has no health check, so the stream repair in _pypiUpdate owns that.
   const installed = await getInstalledVersion(uv);
-  const withArgs = installed ? await antonWithArgs(installed) : [];
   return runUv(uv, [
     'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
     installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME,
-    ...withArgs,
   ]);
 }
 
@@ -299,7 +271,7 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
     if (disable === '1' || disable === 'true') return false;
     const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found on the system; skipping venv Python check');
+      diagnostic("main.server-updater", "WARNING", "server_updater_uv_not_found_on_the_system_skipping_venv_python_check", '[server-updater] uv not found on the system; skipping venv Python check');
       return false;
     }
     return await withServerMaintenance(async () => {
@@ -309,7 +281,7 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
       if (!before) return false;                                // can't tell — don't touch it
       if (isSupportedPython(before.major, before.minor)) return false;
 
-      console.warn(`[server-updater] cowork-server venv on unsupported Python ${before.major}.${before.minor}; recreating`);
+      diagnostic("main.server-updater", "WARNING", "server_updater_cowork_server_venv_on_unsupported_python_recreating", `[server-updater] cowork-server venv on unsupported Python ${before.major}.${before.minor}; recreating`);
       if (isServerRunning()) await stopServer();
 
       // Reinstall on the source the venv was actually installed from — the git
@@ -320,7 +292,7 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
       // the heuristic misses would be wrongly reinstalled from PyPI.
       const { ok, stderr } = await reinstallFromSource(uv, toolsDir);
       if (!ok) {
-        console.error('[server-updater] venv recreate reinstall failed:', stderr);
+        diagnostic("main.server-updater", "ERROR", "server_updater_venv_recreate_reinstall_failed", '[server-updater] venv recreate reinstall failed:', stderr);
         return false;
       }
 
@@ -329,10 +301,10 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
       // caller retry against the same broken interpreter.
       const after = readVenvPython(toolsDir);
       if (after && !isSupportedPython(after.major, after.minor)) {
-        console.error(`[server-updater] reinstall left venv on Python ${after.major}.${after.minor}; uv did not re-select the interpreter`);
+        diagnostic("main.server-updater", "ERROR", "server_updater_reinstall_left_venv_on_python_uv_did_not_re_select_the_interpreter", `[server-updater] reinstall left venv on Python ${after.major}.${after.minor}; uv did not re-select the interpreter`);
         return false;
       }
-      console.log(`[server-updater] venv recreated on Python ${after ? `${after.major}.${after.minor}` : '(supported)'}`);
+      diagnostic("main.server-updater", "INFO", "server_updater_venv_recreated_on_python", `[server-updater] venv recreated on Python ${after ? `${after.major}.${after.minor}` : '(supported)'}`);
       return true;
     });
   } catch {
@@ -351,7 +323,7 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
  * and `maybeUpdateServer` (only acts on a version *change*) both miss: the
  * installed version is current, the interpreter is fine, the environment is
  * simply corrupt. A `--force --reinstall` on the same source rebuilds the venv
- * from scratch and re-resolves every dependency cleanly. Returns true only when
+ * from its saved or packaged dependency selection. Returns true only when
  * uv reported success, so the caller knows a retry is worthwhile; the caller
  * owns the restart. Never throws.
  *
@@ -373,12 +345,12 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
     // Only a broken/partial install is fixable by a reinstall. Anything else
     // (Alembic "database ahead", port in use, missing env) must NOT trigger one.
     if (!looksLikeBrokenInstall(failureLog)) {
-      console.log('[server-updater] start failure is not a broken install; skipping repair reinstall');
+      diagnostic("main.server-updater", "INFO", "server_updater_start_failure_is_not_a_broken_install_skipping_repair_reinstall", '[server-updater] start failure is not a broken install; skipping repair reinstall');
       return false;
     }
     const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found on the system; cannot repair the server install');
+      diagnostic("main.server-updater", "WARNING", "server_updater_uv_not_found_on_the_system_cannot_repair_the_server_install", '[server-updater] uv not found on the system; cannot repair the server install');
       return false;
     }
     return await withServerMaintenance(async () => {
@@ -386,15 +358,15 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
       // null is fine — reinstallFromSource falls back to the platform heuristic.
       const toolsDir = await uvToolsDir(uv);
 
-      console.warn('[server-updater] start failure looks like a broken install; attempting a clean reinstall to repair the environment');
+      diagnostic("main.server-updater", "WARNING", "server_updater_start_failure_looks_like_a_broken_install_attempting_a_clean_reinstall_to_repair_the_", '[server-updater] start failure looks like a broken install; attempting a clean reinstall to repair the environment');
       if (isServerRunning()) await stopServer();
 
       const { ok, stderr } = await reinstallFromSource(uv, toolsDir ?? undefined);
       if (!ok) {
-        console.error('[server-updater] repair reinstall failed:', stderr);
+        diagnostic("main.server-updater", "ERROR", "server_updater_repair_reinstall_failed", '[server-updater] repair reinstall failed:', stderr);
         return false;
       }
-      console.log('[server-updater] repair reinstall completed; retrying server start');
+      diagnostic("main.server-updater", "INFO", "server_updater_repair_reinstall_completed_retrying_server_start", '[server-updater] repair reinstall completed; retrying server start');
       return true;
     });
   } catch {
@@ -474,78 +446,11 @@ async function fetchLatestVersion(): Promise<string | null> {
   });
 }
 
-/** The extra `--with` args a given cowork-server version needs. Staging rc
- *  wheels pin `anton-agent==<rc>`; uv honors pre-release markers only in
- *  DIRECT requirements, so the pin must be restated on the command line or
- *  the resolution fails. Stable wheels (loose anton constraint) need
- *  nothing. Fail-open on fetch errors: without the restated pin an rc
- *  install aborts cleanly at resolution and is retried on the next poll. */
-async function antonWithArgs(version: string): Promise<string[]> {
-  const json = (await fetchPypiJson(`https://pypi.org/pypi/${PACKAGE_NAME}/${version}/json`)) as {
-    info?: { requires_dist?: unknown };
-  } | null;
-  const pin = parseAntonPin(json?.info?.requires_dist);
-  return pin ? ['--with', `anton-agent==${pin}`] : [];
-}
-
-/** Exact install target for a pypi-channel install: the newest version for
- *  this build's stream plus the direct anton pin its wheel requires. Used by
- *  the installer so fresh staging installs resolve rc wheels exactly like
- *  the updater does. */
-export async function resolvePypiInstallTarget(): Promise<{ version: string; withArgs: string[] } | null> {
+/** Select a server release for this build's stream. Its packaged contract
+ *  selects Anton and all registry dependencies, including exact prereleases. */
+export async function resolvePypiInstallTarget(): Promise<{ version: string } | null> {
   const version = await fetchLatestVersion();
-  if (!version) return null;
-  return { version, withArgs: await antonWithArgs(version) };
-}
-
-/** PyPI channel, anton-only (ENG-1094): is there a newer anton-agent on PyPI
- *  that the installed cowork-server's Requires-Dist still permits?
- *
- *  The desktop used to check only cowork-server on the PyPI channel, so an
- *  anton-only release (e.g. a completion-verifier hotfix shipped as a new
- *  anton-agent with cowork-server's version unchanged) never reached a
- *  PyPI-channel install until cowork-server happened to publish. cowork-server's
- *  own `Requires-Dist: anton-agent<3,>=…` already permits the newer anton, so
- *  no cowork-server release or pin edit is needed — only the detection was
- *  missing.
- *
- *  Returns `{ update, error }`. `update` is `{ from, to }` when an anton-only
- *  update is warranted, else null. `error` is true only when the anton PyPI
- *  lookup was INCONCLUSIVE (the request failed) — kept distinct from a completed
- *  lookup that simply found nothing, so the check path can report "couldn't
- *  check" instead of "up to date" (a missing installed anton isn't an error,
- *  just nothing to offer). The apply path ignores `error` and skips.
- *
- *  Fails closed (no update) when the constraint can't be read — never offers an
- *  anton a `--with anton-agent==X` reinstall couldn't resolve against the
- *  installed cowork-server (which would loop the banner). Shared by BOTH the
- *  check and the apply so the two can't disagree.
- *
- *  Callers must pass the tools dir resolved via `uvToolsDir(uv)` — the on-disk
- *  install layout diverges across uv versions/OSes, and the `getUvToolsDir()`
- *  heuristic this falls back to can miss it (notably on Windows). A miss makes
- *  the installed anton unreadable, which reads as "nothing to offer" and
- *  silently disables the ENG-1094 detection. */
-async function resolveAntonPypiUpdate(
-  toolsDir?: string,
-): Promise<{ update: { from: string; to: string } | null; error: boolean }> {
-  const installedAnton = readInstalledDistVersion(ANTON_DIST_NAME, toolsDir);
-  if (!installedAnton) return { update: null, error: false };
-  const constraint = parseAntonConstraint(readInstalledRequiresDist(COWORK_DIST_NAME, toolsDir));
-  const json = (await fetchPypiJson(ANTON_PYPI_JSON_URL)) as {
-    releases?: Record<string, Array<{ yanked?: boolean }>>;
-  } | null;
-  if (!json) return { update: null, error: true };
-  const latest = selectLatestConstrainedPypiVersion({
-    releases: json.releases ?? null,
-    includePrereleases: includePrereleases(),
-    satisfies: (v) => satisfiesAntonConstraint(v, constraint),
-  });
-  const decision = decidePypiUpdate(installedAnton, latest);
-  return {
-    update: decision.action === 'update' ? { from: decision.from, to: decision.to } : null,
-    error: false,
-  };
+  return version ? { version } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -586,7 +491,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
 
     const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found on the system; update check unavailable');
+      diagnostic("main.server-updater", "WARNING", "server_updater_uv_not_found_on_the_system_update_check_unavailable", '[server-updater] uv not found on the system; update check unavailable');
       return { updateAvailable: false, error: true };
     }
 
@@ -628,11 +533,12 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     // the one where the check could NOT conclude, and it must say so.
     const kind = currentBuildKind();
     const repair = decideStreamRepair({ buildKind: kind, currentVersion, latestVersion });
-    console.log(
-      `[server-updater] stream check: build=${kind ?? 'unknown'} ` +
-      `cowork-server=${currentVersion ?? 'unknown'} ` +
-      `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME, toolsDir ?? undefined) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
-    );
+    diagnostic("main.server-updater", "INFO", "server_version_check", {
+      build_channel: kind ?? 'unknown', server_version: currentVersion,
+      agent_version: readInstalledDistVersion(ANTON_DIST_NAME, toolsDir ?? undefined),
+      target_version: repair.action === 'repair' ? repair.to : latestVersion,
+      outcome: repair.action === 'repair' ? 'repair' : repair.reason,
+    });
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
     // A stream repair counts as an available update: the boot flow gates the
     // apply path on this check, so an off-stream install must surface here.
@@ -645,24 +551,15 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
         ...(repair.action === 'repair' ? { repair: true } : {}),
       };
     }
-    // cowork-server is current — an anton-only release may still be pending.
-    // Detected the SAME way maybeUpdateServer applies it, so the banner and the
-    // action can never disagree.
-    const anton = await resolveAntonPypiUpdate(toolsDir ?? undefined);
-    if (anton.update) {
-      return { updateAvailable: true, currentVersion: anton.update.from, latestVersion: anton.update.to, component: 'anton-agent' };
-    }
-    // A failed anton lookup is inconclusive, not "up to date" — flag it so the
-    // on-demand UI says "couldn't check" rather than reporting no update.
+    // Anton moves with the reviewed dependency selection of a server release.
     return {
       updateAvailable: false,
       currentVersion,
       latestVersion,
       component: 'cowork-server',
-      ...(anton.error ? { error: true } : {}),
     };
   } catch (err: any) {
-    console.error('[server-updater] check failed:', err);
+    diagnostic("main.server-updater", "ERROR", "server_updater_check_failed", '[server-updater] check failed:', err);
     return { updateAvailable: false, error: true };
   }
 }
@@ -671,12 +568,12 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') {
-      console.log('[server-updater] disabled via', DISABLE_VAR);
+      diagnostic("main.server-updater", "INFO", "server_updater_disabled_via", '[server-updater] disabled via', DISABLE_VAR);
       return { updated: false };
     }
     const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found on the system; skipping server update');
+      diagnostic("main.server-updater", "WARNING", "server_updater_uv_not_found_on_the_system_skipping_server_update", '[server-updater] uv not found on the system; skipping server update');
       return { updated: false, error: 'uv not found' };
     }
     // Source-aware: a git install updates on git; otherwise PyPI.
@@ -686,7 +583,7 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
     }
     return await _pypiUpdate(uv);
   } catch (err: any) {
-    console.error('[server-updater] unexpected error:', err);
+    diagnostic("main.server-updater", "ERROR", "server_updater_unexpected_error", '[server-updater] unexpected error:', err);
     _notify?.({ phase: 'error', error: err.message });
     return { updated: false, error: err.message };
   }
@@ -732,11 +629,11 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
   });
 
   if (!needsUpdate) {
-    console.log(`[server-updater] up to date (git: cowork@${coworkRef}=${coworkVcs.commit.slice(0, 7)}, anton@${antonRef}=${antonVcs?.commit.slice(0, 7) ?? '?'})`);
+    diagnostic("main.server-updater", "INFO", "server_updater_up_to_date_git_cowork_anton", `[server-updater] up to date (git: cowork@${coworkRef}=${coworkVcs.commit.slice(0, 7)}, anton@${antonRef}=${antonVcs?.commit.slice(0, 7) ?? '?'})`);
     return { updated: false };
   }
 
-  console.log(`[server-updater] git update available — cowork:${coworkChanged ? `${coworkVcs.commit.slice(0, 7)}→${coworkRemote!.slice(0, 7)}` : 'same'} anton:${antonChanged ? `${antonVcs!.commit.slice(0, 7)}→${antonRemote!.slice(0, 7)}` : 'same'}`);
+  diagnostic("main.server-updater", "INFO", "server_updater_git_update_available_cowork_anton", `[server-updater] git update available — cowork:${coworkChanged ? `${coworkVcs.commit.slice(0, 7)}→${coworkRemote!.slice(0, 7)}` : 'same'} anton:${antonChanged ? `${antonVcs!.commit.slice(0, 7)}→${antonRemote!.slice(0, 7)}` : 'same'}`);
 
   return withServerMaintenance(async () => {
     const prevCowork = coworkVcs.commit;
@@ -746,27 +643,34 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     if (wasRunning) await stopServer();
 
     _notify?.({ phase: 'downloading', to: (coworkRemote || prevCowork).slice(0, 7) }); // sidecar goes down (ENG-749)
-    const upgrade = await installGit(uv, coworkRef, antonRef);
+    const upgrade = await installGit(uv, coworkRemote || prevCowork, antonVcs ? antonRemote || prevAnton : antonRef);
+    let reason: string | undefined;
     if (!upgrade.ok) {
-      console.error('[server-updater] git reinstall failed:', upgrade.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: upgrade.stderr };
+      if (upgrade.unchanged) {
+        if (wasRunning) await startServer();
+        return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
+      }
+      // The installer can fail its final inventory check after replacing the
+      // environment. Restore the prior selection before starting any process.
+      reason = `release installation failed: ${upgrade.stderr}`;
+    } else {
+      _notify?.({ phase: 'restarting' });
+      const result = await startServer();
+      const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
+      if (!result.ok || authMismatch) {
+        reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason ?? 'health check failed';
+      }
     }
-
-    _notify?.({ phase: 'restarting' });
-    const result = await startServer();
-    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
-    if (!result.ok || authMismatch) {
-      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
-      console.error(`[server-updater] new commit failed health check (${reason}), rolling back...`);
+    if (reason !== undefined) {
+      diagnostic("main.server-updater", "ERROR", "server_updater_new_commit_failed_health_check_rolling_back", `[server-updater] new commit failed health check (${reason}), rolling back...`);
       // Rollback by pinning the exact prior commits.
-      const rollback = await installGit(uv, prevCowork, prevAnton);
+      const rollback = await installGit(uv, prevCowork, prevAnton ?? 'main');
       let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
           outcome = 'rolled-back';
-          console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
+          diagnostic("main.server-updater", "INFO", "server_updater_rolled_back_to_cowork", `[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
         } else {
           outcome = 'restore-failed';
           _notify?.({ phase: 'error', critical: true, error: `Server update failed; rolled back to cowork@${prevCowork.slice(0, 7)} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
@@ -777,24 +681,12 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       return { updated: false, previousVersion: prevCowork, newVersion: (coworkRemote || prevCowork).slice(0, 7), error: `New commit failed to start: ${reason}`, outcome };
     }
 
-    console.log('[server-updater] git update applied successfully');
+    diagnostic("main.server-updater", "INFO", "server_updater_git_update_applied_successfully", '[server-updater] git update applied successfully');
     return { updated: true, previousVersion: prevCowork.slice(0, 7), newVersion: (coworkRemote || prevCowork).slice(0, 7) };
   });
 }
 
 // ---- PyPI channel (release) ------------------------------------------------
-
-/** The one-line stream verdict for the boot log, keyed by the repair decision. */
-function streamCheckOutcome(repair: StreamRepairDecision): string {
-  if (repair.action === 'repair') return `off stream, repairing to ${repair.to}`;
-  switch (repair.reason) {
-    case 'not-prod': return 'not a prod build, repair not applicable';
-    case 'unknown-installed-version': return 'installed version unknown';
-    case 'on-stream': return 'on stream, nothing to repair';
-    case 'no-latest-version': return 'off stream, but PyPI was unreachable; repair deferred';
-    case 'latest-not-stable': return "off stream, but PyPI's latest is a pre-release; repair deferred";
-  }
-}
 
 async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   const [currentVersion, latestVersion] = await Promise.all([
@@ -814,59 +706,49 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       : { updated: false };
   }
   if (decision.action === 'up-to-date') {
-    // cowork-server is current — but an anton-only release may still be pending
-    // (ENG-1094). The cowork-update path above already pulls the right anton via
-    // the target wheel, so this only matters when cowork itself is unchanged.
-    // Apply path ignores an inconclusive anton lookup — skip silently rather
-    // than surface it; the next check/poll retries.
-    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
-    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
-    console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
+    diagnostic("main.server-updater", "INFO", "server_updater_up_to_date_installed_latest", `[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
 
   // decision.action === 'update' — from/to are the non-null versions.
   const { from, to } = decision;
   const repairFlag = repair.action === 'repair' ? { repair: true as const } : {};
-  console.log(`[server-updater] update available: ${from} → ${to}`);
+  diagnostic("main.server-updater", "INFO", "server_updater_update_available", `[server-updater] update available: ${from} → ${to}`);
   return withServerMaintenance(async () => {
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
-    // Install the exact version the decision compared against — a bare
-    // `--upgrade PACKAGE` re-resolves and can diverge from that target, and
-    // it can never reach a pre-release, which the staging rc stream needs
-    // (an exact `==X` specifier enables pre-releases per PEP 440, scoped to
-    // this one package; the wheel's anton rc pin is restated as a direct
-    // requirement via antonWithArgs, so no resolution-wide prerelease flag
-    // is ever set).
-    // The rollback pin is resolved up front: fetching it mid-failure would
-    // fail open on a flaky network and leave the rollback unresolvable.
-    const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
+    // The consumer installs this exact release and snapshots the existing
+    // environment before replacement, so repair and rollback retain its pins.
     _notify?.({ phase: 'downloading', to }); // sidecar goes down (ENG-749)
     const upgrade = await runUv(
       uv,
-      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
+      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`],
     );
+    let reason: string | undefined;
     if (!upgrade.ok) {
-      console.error('[server-updater] upgrade failed:', upgrade.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: from, newVersion: to, error: upgrade.stderr, ...repairFlag };
+      if (upgrade.unchanged) {
+        if (wasRunning) await startServer();
+        return { updated: false, previousVersion: from, newVersion: to, error: upgrade.stderr, ...repairFlag };
+      }
+      reason = `release installation failed: ${upgrade.stderr}`;
+    } else {
+      _notify?.({ phase: 'restarting' });
+      const result = await startServer();
+      const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
+      if (!result.ok || authMismatch) {
+        reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason ?? 'health check failed';
+      }
     }
-
-    _notify?.({ phase: 'restarting' });
-    const result = await startServer();
-    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
-    if (!result.ok || authMismatch) {
-      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
-      console.error(`[server-updater] new version failed health check (${reason}), rolling back...`);
-      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
+    if (reason !== undefined) {
+      diagnostic("main.server-updater", "ERROR", "server_updater_new_version_failed_health_check_rolling_back", `[server-updater] new version failed health check (${reason}), rolling back...`);
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`]);
       let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
           outcome = 'rolled-back';
-          console.log(`[server-updater] rolled back to ${from}`);
+          diagnostic("main.server-updater", "INFO", "server_updater_rolled_back_to", `[server-updater] rolled back to ${from}`);
         } else {
           outcome = 'restore-failed';
           _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed; rolled back to ${from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
@@ -877,61 +759,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${reason}`, outcome, ...repairFlag };
     }
 
-    console.log(`[server-updater] successfully updated to ${to}`);
+    diagnostic("main.server-updater", "INFO", "server_updater_successfully_updated_to", `[server-updater] successfully updated to ${to}`);
     return { updated: true, previousVersion: from, newVersion: to, ...repairFlag };
-  });
-}
-
-/** Apply an anton-only update (ENG-1094): reinstall the SAME cowork-server
- *  version while forcing the newer anton-agent as a direct requirement. The
- *  installed cowork-server's Requires-Dist already permits `anton.to`
- *  (resolveAntonPypiUpdate verified this), so uv resolves cleanly; pinning it
- *  with `--with anton-agent==<to>` makes the applied version deterministic
- *  rather than "whatever a bare re-resolution happens to pick". Rolls back to
- *  the prior anton on a health-check failure, mirroring _pypiUpdate. */
-async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }): Promise<ServerUpdateResult> {
-  console.log(`[server-updater] anton-only update available: anton-agent ${anton.from} → ${anton.to} (cowork-server ${coworkVersion} unchanged)`);
-  return withServerMaintenance(async () => {
-    const wasRunning = isServerRunning();
-    if (wasRunning) await stopServer();
-
-    const coworkSpec = `${PACKAGE_NAME}==${coworkVersion}`;
-    const install = await runUv(uv, [
-      'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
-      coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.to}`,
-    ]);
-    if (!install.ok) {
-      console.error('[server-updater] anton upgrade failed:', install.stderr);
-      if (wasRunning) await startServer();
-      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: install.stderr, component: 'anton-agent' };
-    }
-
-    const result = await startServer();
-    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
-    if (!result.ok || authMismatch) {
-      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
-      console.error(`[server-updater] new anton failed health check (${reason}), rolling back...`);
-      const rollback = await runUv(uv, [
-        'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
-        coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.from}`,
-      ]);
-      let outcome: ServerUpdateResult['outcome'] = 'rollback-failed';
-      if (rollback.ok) {
-        const restored = await startServer();
-        if (restored.ok) {
-          outcome = 'rolled-back';
-          console.log(`[server-updater] rolled back to anton-agent ${anton.from}`);
-        } else {
-          outcome = 'restore-failed';
-          _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed; rolled back to ${anton.from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
-        }
-      } else {
-        _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed and rollback to ${anton.from} also failed. Restart the app to recover.` });
-      }
-      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${reason}`, outcome, component: 'anton-agent' };
-    }
-
-    console.log(`[server-updater] successfully updated anton-agent to ${anton.to}`);
-    return { updated: true, previousVersion: anton.from, newVersion: anton.to, component: 'anton-agent' };
   });
 }

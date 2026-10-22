@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
@@ -2029,7 +2030,7 @@ export default function SettingsView({
         // Errors don't auto-fade — they stay until the next attempt so a
         // failed save can't go unnoticed.
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
-        console.warn(`Auto-save failed for ${key}:`, err);
+        diagnostic("renderer.cowork.views.settings.SettingsView", "WARNING", "auto_save_failed_for", `Auto-save failed for ${key}:`, err);
       }
     };
 
