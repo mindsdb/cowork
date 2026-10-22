@@ -104,8 +104,6 @@ const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
 /* How long a click gets to start a navigation or a request before the frame's
    URL is read. */
 const CLICK_SETTLE_MS = 500;
-/* The http-equiv values of the metas the frame document starts with. */
-const FRAME_HEAD_DIRECTIVES = ['content-security-policy', 'x-dns-prefetch-control'];
 /* The outcomes that end with no preview frame mounted: the parent refuses a
    too-large file before it mounts one, and its watchdog unmounts the frame on
    a timeout. */
@@ -201,13 +199,17 @@ async function clickEverything(frame: Frame, everyElement: boolean): Promise<voi
   }, everyElement);
 }
 
-/* The outer HTML of each meta with http-equiv and each base element in the
-   frame, other than the metas the frame document starts with in its head. */
-async function strayDirectives(frame: Frame): Promise<string[]> {
-  return frame.evaluate((ownDirectives) => Array.from(document.querySelectorAll('meta[http-equiv], base'))
+/* Runs inside the preview frame, through frame.evaluate. It returns the outer
+   HTML of each meta with http-equiv and each base element in the document,
+   other than the two metas with http-equiv the frame document starts with in
+   its head. frame.evaluate sends the function's source text, so it reads
+   nothing but the document. */
+export function strayFrameDirectives(): string[] {
+  const frameHeadDirectives = ['content-security-policy', 'x-dns-prefetch-control'];
+  return Array.from(document.querySelectorAll('meta[http-equiv], base'))
     .filter((element) => element.parentElement !== document.head
-      || !ownDirectives.includes((element.getAttribute('http-equiv') ?? '').toLowerCase()))
-    .map((element) => element.outerHTML), FRAME_HEAD_DIRECTIVES);
+      || !frameHeadDirectives.includes((element.getAttribute('http-equiv') ?? '').toLowerCase()))
+    .map((element) => element.outerHTML);
 }
 
 export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: PreviewFixture): Promise<PreviewRun> {
@@ -247,7 +249,7 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
       return { ...outcome, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc' };
     }
     const frame = await previewFrame(page);
-    const stray = await strayDirectives(frame);
+    const stray = await frame.evaluate(strayFrameDirectives);
     if (stray.length) throw new Error(`The preview frame holds ${stray.join(', ')}, which acts with no click.`);
     const text = await frame.evaluate(() => document.body.innerText);
     await clickEverything(frame, fixture.kind === 'hostile');

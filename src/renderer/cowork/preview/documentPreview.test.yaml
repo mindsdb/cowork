@@ -113,3 +113,85 @@ archiveGuard:
       entries:
         - { name: xl/bomb.xml, size: 1024 }
       archive: { lead: "PK\x07\x08", endRecordCopy: 20 }
+  # Archives that real zip writers make at test time, which the guard lets
+  # through. `workbook` lists each sheet's rows for SheetJS's XLSX.write, which
+  # writes it once with each `workbookCompression`. `files` lists the entries
+  # for a JSZip archive, which JSZip writes once with each of `jszipOptions`;
+  # streamFiles puts each entry's sizes in a data descriptor. A file without
+  # `text` is a folder.
+  written:
+    workbook:
+      - { sheet: Summary, rows: [[Region, Units], [North, 1204], [South, 980]] }
+      - { sheet: Detail, rows: [[Item, Count], [Bolts, 40]] }
+    workbookCompression: [false, true]
+    files:
+      - { name: "[Content_Types].xml", text: "<Types/>" }
+      - { name: word/ }
+      - { name: word/document.xml, text: "<w:document><w:body><w:p/></w:body></w:document>" }
+      - { name: word/media/ }
+      - { name: word/media/notes.txt, text: "Quarterly notes" }
+    jszipOptions:
+      - { compression: DEFLATE, streamFiles: true }
+      - { compression: DEFLATE, streamFiles: false }
+      - { compression: STORE, streamFiles: true }
+
+# The document preview harness's own rules, from e2e/document-preview/harness.ts.
+harness:
+  # Requests checked by strayRequests for one navigation fixture, with what each
+  # rule set says of it. `<root>` stands for the checkout's real path. For a
+  # clean fixture only another origin breaks the rules.
+  origin: http://127.0.0.1:5210
+  set: navigation
+  file: hostile-docs-google.html
+  requests:
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-docs-google.html", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/main.tsx", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@vite/client", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@react-refresh", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@id/__x00__virtual:navigation-preview-bundle", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>/node_modules/.vite/deps/react-dom_client.js?v=1a2b3c4d", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>/src/renderer/cowork/preview/limits.ts", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>-copy/src/main.ts", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs/etc/hosts", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-drive-google.html", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-docs-google.html?again=1", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/main.tsx?import", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/api/v1/artifacts/drafts/local/x/report.xlsx", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/files/notes.js", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/assets/x/@vite/client", hostile: stray, clean: allowed }
+    - { url: "http://localhost:5210/", hostile: stray, clean: stray }
+    - { url: "http://127.0.0.1:26866/api/v1/artifacts/", hostile: stray, clean: stray }
+    - { url: "https://127.0.0.1:5210/", hostile: stray, clean: stray }
+    - { url: "https://docs.google.com/document/d/x/edit", hostile: stray, clean: stray }
+    - { url: "https://drive.google.com/drive/folders/x", hostile: stray, clean: stray }
+    - { url: "data:text/plain,notes", hostile: ignored, clean: ignored }
+    - { url: "blob:http://127.0.0.1:5210/0b6c4a3e-0000-4000-8000-000000000000", hostile: ignored, clean: ignored }
+    - { url: "about:srcdoc", hostile: ignored, clean: ignored }
+  # Markup a renderer could leave in the frame, with the elements
+  # strayFrameDirectives reports for it, as outer HTML. The frame document's
+  # own head comes first, as buildPreviewSrcdoc writes it.
+  directives:
+    - case: a fragment link
+      body: '<p><a href="#totals">Jump to the totals</a></p>'
+      stray: []
+    - case: a meta refresh in the body
+      body: '<div><meta http-equiv="refresh" content="30;url=https://docs.google.com/"></div>'
+      stray: ['<meta http-equiv="refresh" content="30;url=https://docs.google.com/">']
+    - case: a base element in the body
+      body: '<base href="https://docs.google.com/"><a href="x">x</a>'
+      stray: ['<base href="https://docs.google.com/">']
+    - case: a meta refresh added to the head
+      head: '<meta http-equiv="Refresh" content="30">'
+      stray: ['<meta http-equiv="Refresh" content="30">']
+    - case: a second policy meta in the body
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src *">'
+      stray: ['<meta http-equiv="Content-Security-Policy" content="default-src *">']
+    - case: a meta with a name, not http-equiv
+      body: '<meta name="viewport" content="width=device-width">'
+      stray: []
+    # The navigation set keeps this file unlisted, because its refresh leaves
+    # the frame with no click.
+    - case: the navigation set's meta refresh file
+      bodyFile: hostile-meta-refresh.html
+      stray: ['<meta http-equiv="refresh" content="0;url=https://docs.google.com/document/d/x/edit?refresh=1">']

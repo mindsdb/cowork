@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as XLSX from 'xlsx';
 
 import { documentPreviewData, type ArchiveCaseData } from '../../../../../tests/helpers/documentPreviewData';
 import { zipBytes } from '../../../../../tests/helpers/zipBytes';
@@ -7,6 +8,9 @@ import { previewLimits } from '../limits';
 import { guardArchive, type ArchiveLimits } from './archiveGuard';
 
 const MIB = 1024 * 1024;
+/* The cap cases inflate 64 MiB and 256 MiB. Under coverage, as CI runs them,
+   the larger takes about 4 s alone, so both get more than Vitest's 5 s default. */
+const INFLATE_CASE_TIMEOUT_MS = 30_000;
 const LIMITS = previewLimits({ touch: false });
 const ARCHIVES = documentPreviewData().archiveGuard;
 const text = (value: string) => new TextEncoder().encode(value);
@@ -76,14 +80,14 @@ describe('guardArchive', () => {
     const bytes = zipBytes([{ name: 'big.xml', data: zeros(LIMITS.maxZipEntryInflatedBytes + 1) }]);
     expect(bytes.byteLength).toBeLessThan(MIB);
     expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('An entry') });
-  });
+  }, INFLATE_CASE_TIMEOUT_MS);
 
   it(`ends in zip-limit when the archive inflates past ${LIMITS.maxInflatedBytes / MIB} MiB in total`, async () => {
     const entry = zeros(60 * MIB);
     const bytes = zipBytes(Array.from({ length: 5 }, (_, index) => ({ name: `part${index}.xml`, data: entry })));
     expect(bytes.byteLength).toBeLessThan(2 * MIB);
     expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('The archive') });
-  });
+  }, INFLATE_CASE_TIMEOUT_MS);
 
   it('lets an archive exactly at each cap through', async () => {
     const limits = { maxInflatedBytes: 10, maxZipEntryInflatedBytes: 6, maxZipEntries: 2 };
@@ -127,5 +131,29 @@ describe('guardArchive on archives zip readers read differently', () => {
 
   it.each(ARCHIVES.refused)('ends in parse-failed for $case', async (archive) => {
     expect(await failure(guard(archiveFrom(archive)))).toMatchObject({ code: 'parse-failed' });
+  });
+});
+
+describe('guardArchive on archives real zip writers make', () => {
+  const { written } = ARCHIVES;
+
+  it.each(written.workbookCompression)('lets through a workbook SheetJS writes, compression %s', async (compression) => {
+    const book = XLSX.utils.book_new();
+    for (const { sheet, rows } of written.workbook) XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), sheet);
+    const bytes: ArrayBuffer = XLSX.write(book, { type: 'array', bookType: 'xlsx', compression });
+    const names = (await guard(bytes))?.names();
+    expect(names).toContain('xl/workbook.xml');
+    expect(names).toEqual(expect.arrayContaining(written.workbook.map((_, index) => `xl/worksheets/sheet${index + 1}.xml`)));
+  });
+
+  it.each(written.jszipOptions)('lets through a JSZip archive, $compression with streamFiles $streamFiles', async (options) => {
+    const archive = new JSZip();
+    for (const { name, text } of written.files) {
+      if (text === undefined) archive.folder(name);
+      else archive.file(name, text);
+    }
+    const bytes = await archive.generateAsync({ type: 'arraybuffer', ...options });
+    const files = written.files.filter((file) => file.text !== undefined).map((file) => file.name);
+    expect((await guard(bytes))?.names()).toEqual(files);
   });
 });
