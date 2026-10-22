@@ -797,4 +797,3 @@ describe('useArtifactWorkspace previewOnly', () => {
     expect(PREVIEW_ONLY).toBe("Preview only: Cowork can't edit this file type.");
   });
 });
-
