@@ -48,6 +48,7 @@ try {
 // Default behavior is unchanged when BUILD_TARGET is unset, so existing
 // `npm run build` and `npm run dev` paths are byte-identical to before.
 const IS_WEB = process.env.BUILD_TARGET === 'web';
+const WEB_ENTRY = 'index-web.html';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 
@@ -72,7 +73,7 @@ const webSpaFallback = {
   name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
     server.middlewares.use((req: any, _res: any, next: any) => {
-      if (isSpaNavigation(req)) req.url = '/index-web.html';
+      if (isSpaNavigation(req)) req.url = `/${WEB_ENTRY}`;
       next();
     });
   },
@@ -80,10 +81,15 @@ const webSpaFallback = {
 
 // A web build with the platform UI off loads a deployment brand at run time
 // (shared/deployment-brand.ts). The tags go in at build time, so hosted web
-// and desktop pages stay byte-identical and never request the brand.
+// and desktop pages stay byte-identical and never request the brand. Only the
+// web entry has the brand's anchors; the dev server also serves other pages.
 const deploymentBrand = {
   name: 'cowork-deployment-brand',
-  transformIndexHtml: { order: 'post' as const, handler: withDeploymentBrand },
+  transformIndexHtml: {
+    order: 'post' as const,
+    handler: (html: string, ctx: { filename: string }) =>
+      path.basename(ctx.filename) === WEB_ENTRY ? withDeploymentBrand(html) : html,
+  },
 };
 
 // The build's platform switch: on for desktop, and for web only when
@@ -129,7 +135,7 @@ export default defineConfig(({ mode }) => ({
     ),
     emptyOutDir: true,
     rollupOptions: IS_WEB
-      ? { input: path.resolve(__dirname, 'index-web.html') }
+      ? { input: path.resolve(__dirname, WEB_ENTRY) }
       : undefined,
   },
   server: {

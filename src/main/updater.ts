@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Unified update orchestrator for the Electron desktop app.
 // Coordinates UI bundle (OTA) and server (cowork-server) updates.
 // Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
@@ -73,11 +74,11 @@ async function applyServerUpdate(trigger: UpdateJournalTrigger): Promise<boolean
   const record = serverOutcomeRecord(result, trigger, Date.now() - startedAt);
   if (record) recordUpdatePhase(record);
   if (result.updated) {
-    console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
+    diagnostic("main.updater", "INFO", "updater_server_updated", `[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
     return true;
   }
   if (result.error) {
-    console.error(`[updater] server update failed: ${result.error}`);
+    diagnostic("main.updater", "ERROR", "updater_server_update_failed", `[updater] server update failed: ${result.error}`);
     return false;
   }
   return true; // already current
@@ -151,7 +152,7 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
   win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
   if (await loadAndVerify(win, getRendererPath())) return 'applied';
 
-  console.error('[updater] new UI bundle failed to load — rolling back');
+  diagnostic("main.updater", "ERROR", "updater_new_ui_bundle_failed_to_load_rolling_back", '[updater] new UI bundle failed to load — rolling back');
   // Don't let an exhausted-retry rollback error skip the fallback reload below —
   // the user would be stranded on a broken renderer with no status (Medium 4).
   let outcome: UiReloadOutcome = 'rolled-back';
@@ -159,7 +160,7 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<UiReloadOu
     await rollbackUI();
   } catch (err) {
     outcome = 'rollback-failed';
-    console.error('[updater] UI rollback failed — falling back anyway', err);
+    diagnostic("main.updater", "ERROR", "updater_ui_rollback_failed_falling_back_anyway", '[updater] UI rollback failed — falling back anyway', err);
   }
   const win2 = liveWindow(getWindow);
   if (!win2) return outcome;
@@ -201,7 +202,7 @@ async function applyUpdatesUnlocked(
   // server is current. Defer the UI to the next pass.
   const uiFrom = servedUiVersion();
   if (applyUi && !serverOk) {
-    console.warn('[updater] server update failed — deferring UI update this pass');
+    diagnostic("main.updater", "WARNING", "updater_server_update_failed_deferring_ui_update_this_pass", '[updater] server update failed — deferring UI update this pass');
     if (lastUiOffer !== null) recordUpdatePhase({ channel: 'ui', phase: 'skipped', trigger, errorCode: 'server-update-failed', from: uiFrom, to: lastUiOffer || null });
   }
   const uiStartedAt = Date.now();
@@ -330,7 +331,7 @@ async function settleConstrainedCache(getWindow: GetWindow): Promise<void> {
   const startedAt = Date.now();
   const outcome = await verifyServedUiCompat();
   if (outcome === 'verified' && isServingOta()) {
-    console.log('[updater] constrained OTA cache verified against server — activating with health check');
+    diagnostic("main.updater", "INFO", "updater_constrained_ota_cache_verified_against_server_activating_with_health_check", '[updater] constrained OTA cache verified against server — activating with health check');
     await activateUiAndJournal(getWindow, from, 'boot', startedAt);
   }
 }
@@ -391,7 +392,7 @@ export function initUpdater(
     // fail-safe checks, so a down manifest host must only skip the UI check —
     // never suppress a server update (which may be the fix a user needs).
     const manifestReachable = await hasInternet();
-    if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
+    if (!manifestReachable) diagnostic("main.updater", "INFO", "updater_manifest_host_unreachable_checking_server_only", '[updater] manifest host unreachable — checking server only');
 
     const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false };
     const [ui, server] = await Promise.all([
@@ -410,7 +411,7 @@ export function initUpdater(
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
       lastShellStatus = shell;
       if (shell.available) {
-        console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
+        diagnostic("main.updater", "INFO", "updater_shell_update_available", `[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
         sendStatus(getWindow, {
           phase: 'shell-available',
           version: shell.latestVersion,
@@ -421,12 +422,12 @@ export function initUpdater(
     }
 
     if (!ui.updateAvailable && !server.updateAvailable) {
-      console.log('[updater] everything up to date');
+      diagnostic("main.updater", "INFO", "updater_everything_up_to_date", '[updater] everything up to date');
       return;
     }
 
-    if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
-    if (server.updateAvailable) console.log(`[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
+    if (ui.updateAvailable) diagnostic("main.updater", "INFO", "updater_ui_update_available", `[updater] UI update available: ${ui.newVersion}`);
+    if (server.updateAvailable) diagnostic("main.updater", "INFO", "updater_server_update", `[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
 
     // A UI held back only for server-compat is still a candidate when a server
     // update is also pending: the server-first apply brings the server current,
@@ -434,7 +435,7 @@ export function initUpdater(
     // coordinated release doesn't strand the UI until the next restart.
     const uiCandidate = ui.updateAvailable || (!!ui.skippedReason && server.updateAvailable);
     if (ui.skippedReason && server.updateAvailable) {
-      console.log(`[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
+      diagnostic("main.updater", "INFO", "updater_ui_deferred_for_compat_will_retry_after_the_server_update", `[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
     }
 
     // A down server turns an "available" server update into a recovery action:
@@ -449,14 +450,14 @@ export function initUpdater(
     });
 
     if (applyServer || applyUi) {
-      if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
+      if (applyServer && !isServerRunning()) diagnostic("main.updater", "INFO", "updater_server_is_down_applying_server_update_to_recover", '[updater] server is down — applying server update to recover');
       await applyUpdates(getWindow, applyServer, applyUi, trigger);
     } else {
       // The stream repair is boot-only: a downgrade pill mid-session reads as
       // the app being confused, so a pending repair is never surfaced here.
       const surfaceServer = server.updateAvailable && !server.repair;
       if (!ui.updateAvailable && !surfaceServer) {
-        console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
+        diagnostic("main.updater", "INFO", "updater_stream_repair_pending_applies_at_the_next_boot_not_surfaced_mid_session", '[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
         return;
       }
       // An anton-only server update (ENG-1094) shares cowork-server's version,
@@ -480,23 +481,23 @@ export function initUpdater(
 
   rendererReady.then(async () => {
     try {
-      console.log(`[updater] boot check (mode: ${getMode()})...`);
-      await poll(true).catch(err => console.error('[updater] boot check failed:', err));
+      diagnostic("main.updater", "INFO", "updater_boot_check_mode", `[updater] boot check (mode: ${getMode()})...`);
+      await poll(true).catch(err => diagnostic("main.updater", "ERROR", "updater_boot_check_failed", '[updater] boot check failed:', err));
 
       // The boot poll has now brought the server current (server-first). Re-verify
       // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
       // compatible, swap it in through the health-checked reload so a corrupt or
       // hanging bundle still self-heals.
-      await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
+      await settleConstrainedCache(getWindow).catch(err => diagnostic("main.updater", "ERROR", "updater_compat_settle_failed", '[updater] compat settle failed:', err));
     } finally {
       otaBootDone();
-      await shellBootSettled.catch(err => console.error('[updater] shell boot check failed:', err));
+      await shellBootSettled.catch(err => diagnostic("main.updater", "ERROR", "updater_shell_boot_check_failed", '[updater] shell boot check failed:', err));
       onBootPollComplete(); // release the loading gate, whatever the poll did
     }
 
     const timer = setInterval(() => {
-      console.log(`[updater] periodic check (mode: ${getMode()})...`);
-      poll(false).catch(err => console.error('[updater] periodic check failed:', err));
+      diagnostic("main.updater", "INFO", "updater_periodic_check_mode", `[updater] periodic check (mode: ${getMode()})...`);
+      poll(false).catch(err => diagnostic("main.updater", "ERROR", "updater_periodic_check_failed", '[updater] periodic check failed:', err));
     }, UPDATE_POLL_MS);
 
     // Don't let the interval keep the process alive, and stop polling on quit.

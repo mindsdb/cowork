@@ -46,7 +46,6 @@ const EVENT_STEPS = [
   step('toolu_05', 'query', 'Read inventory from the ERP API', {
     requests: ['GET {DS_ERP_URL}/inventory?site=S1&sku=blue-mug&fields=sku,qty,reserved,on_order&as_of={today}'],
   }),
-  step('toolu_06', 'memory', 'memory'),
   step('toolu_07', 'file', 'counts.csv', { attachment_id: 'file-123' }),
   step('toolu_08', 'file', 'q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv', {
     path: 'exports/q3-2026-inventory-snapshot-by-site-and-part-exported-from-the-planning-system.csv',
@@ -69,7 +68,7 @@ const MAIN = "You have **250** units of the blue mug in stock. The supplier's pr
 
 const SEVERAL = 'Sales came to 1,284 units last month, and the ERP agrees with the published rates.';
 
-const REMEMBERED = 'You asked to keep at least 40 units on hand.';
+const REPEATED = 'Site S1 sold 5,200 units in 2024, up from 4,600 in 2023.';
 
 const IN_CODE = 'The query `SELECT 250 FROM stock` returned 250.';
 
@@ -106,10 +105,10 @@ const CASES = [
     figureSources: sources([figure('1,284', SEVERAL, 'step', [from('toolu_05'), from('toolu_04')])]),
   },
   {
-    id: 'from-memory',
-    label: 'A figure from memory.',
-    text: REMEMBERED,
-    figureSources: sources([figure('40', REMEMBERED, 'step', [from('toolu_06')])]),
+    id: 'repeated',
+    label: 'A follow-up that repeats a figure an earlier answer gave: grey, "Repeated from an earlier answer", with no source listed.',
+    text: REPEATED,
+    figureSources: sources([figure('5,200', REPEATED, 'step', [from('toolu_02')]), figure('4,600', REPEATED, 'earlier_answer')]),
   },
   {
     id: 'figure-in-code',

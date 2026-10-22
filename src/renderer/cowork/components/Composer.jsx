@@ -27,6 +27,7 @@ import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
@@ -190,8 +191,8 @@ export default function Composer({
   draftKey = null,
   // Coding mode (MVP, ENG-1656 follow-up): when true, show a harness pill
   // (Anton / Claude Code) independent of `metaReadOnly` (which only locks
-  // the project pill). Model selection is a separate, always-on capability
-  // below — it applies to whichever harness is picked, Anton included.
+  // the project pill). Model selection is separate and requires platform UI;
+  // it applies to whichever harness is picked, Anton included.
   codingModeEnabled = false,
   // Whether onSend's 2nd argument carries {harness, model}. Must default to
   // false: ChatView's onSend is handleSendInTask(text, queuedAttachments,
@@ -1415,7 +1416,7 @@ export default function Composer({
                 lives in one place. `modelReadOnly` (defaults to
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
-            {modelReadOnly ? (
+            {PLATFORM_UI && (modelReadOnly ? (
               <span className="meta-pill" title="Model is fixed for this task">
                 <span>{model?.name ?? 'Model'}</span>
               </span>
@@ -1466,13 +1467,13 @@ export default function Composer({
                 ariaLabel="Choose model"
                 placeholder="Select model"
               />
-            )}
+            ))}
             {/* Reasoning effort as its own pill (ENG-2591), the same
                 <Select> Code mode's composer uses. Fixed with the model
                 once a task's model is read-only, and absent with no
                 provider connected, where the model pill is only a
                 shortcut to Settings. */}
-            {!modelReadOnly && !noRealModels && effortLevels && (
+            {PLATFORM_UI && !modelReadOnly && !noRealModels && effortLevels && (
               <Select
                 value={resolvedEffort}
                 onValueChange={onEffortChange}

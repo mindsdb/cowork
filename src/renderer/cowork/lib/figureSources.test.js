@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   NO_SOURCE_TEXT,
+  REPEATED_TEXT,
   carryFigure,
   figureSourceText,
   hasFigureMarks,
@@ -87,6 +88,11 @@ describe('parseFigureSources', () => {
     expect(out.tool_use_id).toBe('toolu_01');
   });
 
+  it('keeps a figure an earlier answer gave', () => {
+    const figure = { start: 0, end: 5, text: '4,600', origin: 'earlier_answer', sources: [] };
+    expect(parseFigureSources({ steps: [], figures: [figure] }).figures).toEqual([figure]);
+  });
+
   it('drops a figure it cannot place or explain', () => {
     const out = parseFigureSources({ steps: [], figures: [
       null,
@@ -171,7 +177,6 @@ describe('figureSourceText', () => {
     [source('file', 'rates.pdf', { page: 1 }), 'From rates.pdf, page 1'],
     [source('query', 'monthly_sales'), 'From a query: monthly_sales'],
     [source('web', 'https://example.com/prices'), 'From the web: https://example.com/prices'],
-    [source('memory', 'pricing note'), 'From memory'],
     [source('step', 'Compute totals'), 'From a step: Compute totals'],
     [source('step', ''), 'From a step'],
   ])('names a %o source', (s, text) => {
@@ -179,13 +184,18 @@ describe('figureSourceText', () => {
   });
 
   it('names the first source and counts the rest', () => {
-    const f = fig('250', 0, 'step', [source('query', 'q'), source('file', 'a.csv'), source('memory', '')]);
+    const f = fig('250', 0, 'step', [source('query', 'q'), source('file', 'a.csv'), source('web', '')]);
     expect(figureSourceText(f)).toBe('From a query: q and 2 more');
   });
 
   it('says "No source" for a figure no step returned', () => {
     expect(figureSourceText(fig('$30', 0, 'none', []))).toBe(NO_SOURCE_TEXT);
     expect(NO_SOURCE_TEXT.startsWith('No source')).toBe(true);
+  });
+
+  it('says "Repeated from an earlier answer" for a figure an earlier answer gave', () => {
+    expect(figureSourceText(fig('4,600', 0, 'earlier_answer', []))).toBe(REPEATED_TEXT);
+    expect(REPEATED_TEXT).toBe('Repeated from an earlier answer');
   });
 });
 
@@ -198,9 +208,10 @@ describe('hasFigureMarks', () => {
     expect(hasFigureMarks([fig('7', 0, 'step', [])])).toBe(false);
   });
 
-  it('is true for a sourced or an unsourced figure', () => {
+  it('is true for a sourced, an unsourced or a repeated figure', () => {
     expect(hasFigureMarks([fig('250', 0)])).toBe(true);
     expect(hasFigureMarks([fig('$30', 0, 'none', [])])).toBe(true);
+    expect(hasFigureMarks([fig('4,600', 0, 'earlier_answer', [])])).toBe(true);
   });
 });
 
@@ -336,11 +347,12 @@ describe('carryFigure', () => {
 
 describe('placeFigures', () => {
   it('places marked figures in source order and leaves question figures out', () => {
-    const text = '$42 for the 7 you asked about, was 250';
-    const figures = [fig('250', 35), fig('7', 12, 'question', []), fig('$42', 0, 'none', [])];
+    const text = '$42 for the 7 you asked about, was 250, up from 180';
+    const figures = [fig('250', 35), fig('7', 12, 'question', []), fig('$42', 0, 'none', []), fig('180', 48, 'earlier_answer', [])];
     expect(placeFigures(text, figures)).toEqual([
       { index: 2, start: 0, end: 3 },
       { index: 0, start: 35, end: 38 },
+      { index: 3, start: 48, end: 51 },
     ]);
   });
 

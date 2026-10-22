@@ -226,8 +226,15 @@ describe('performSignOutCleanup', () => {
       url.endsWith('/settings/logout') ? { status: 404, body: '' } : { status: 200, body: '' }
     ));
     const deps = makeDeps({ httpRequest });
-
-    await performSignOutCleanup(deps);
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await performSignOutCleanup(deps);
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({
+        event: 'logout_post_settings_logout_returned', status_code: 404,
+      });
+    } finally {
+      output.mockRestore();
+    }
 
     const deleted = vi.mocked(httpRequest).mock.calls
       .filter(([, options]) => options.method === 'DELETE')

@@ -75,6 +75,8 @@ test('a restored answer keeps its live source marks and source actions before re
   await expect(live.getByRole('button', { name: '99, no source' })).toHaveCount(1);
   await expect(reload.getByRole('button', { name: '99, no source' })).toHaveCount(2);
   await expect(live.getByRole('button', { name: '12, no source' })).toHaveCount(1);
+  await expect(live.getByRole('button', { name: '240, repeated from an earlier answer' })).toHaveCount(1);
+  await expect(reload.getByRole('button', { name: '240, repeated from an earlier answer' })).toHaveCount(1);
   await live.getByRole('button', { name: '250, from a file' }).first().click();
   const popup = page.getByRole('dialog', { name: 'Where 250 came from' });
   await expect(popup.getByText('stock.csv')).toBeVisible();

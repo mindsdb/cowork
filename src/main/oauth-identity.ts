@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Resolving "who is this account" after an OAuth token exchange completes —
 // needed as the OS keychain key and the vault record's display name. The
 // response shape genuinely differs per provider (REST userinfo vs GraphQL),
@@ -47,7 +48,7 @@ async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; 
     if (data.errors) return { id: '', name: '' };
     return { id: data.data?.organization?.id || '', name: data.data?.organization?.name || '' };
   } catch (err) {
-    console.warn('[oauth-identity] Could not fetch Linear workspace identity — falling back to bare email:', err);
+    diagnostic("main.oauth-identity", "WARNING", "oauth_identity_could_not_fetch_linear_workspace_identity_falling_back_to_bare_email", '[oauth-identity] Could not fetch Linear workspace identity — falling back to bare email:', err);
     return { id: '', name: '' };
   }
 }
