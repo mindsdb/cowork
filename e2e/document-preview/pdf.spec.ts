@@ -1,0 +1,258 @@
+/*
+ * The PDF preview in the harness. Each fixture in fixtures/pdf/fixtures.yaml
+ * ends as its expectation says, and the frame is back at about:srcdoc after the
+ * harness clicks through it. A clean fixture reaches only the harness origin. A
+ * hostile one reaches it only for its own file and for the harness page and its
+ * modules, since the harness origin stands in for the Cowork origin. Pages draw
+ * after the preview reports rendered, so the spec applies the same request
+ * check to every request of the whole test as well. A fixture with a
+ * paintedRegion must draw something other than the white page there, and a
+ * rendered fixture must start no Worker and compile no WebAssembly in the
+ * frame.
+ *
+ * The page-cap file then runs three more times, each in a view that would
+ * break one cap if the renderer ignored it: a tall, narrow view with more
+ * pages in sight than maxPdfCanvasesAlive, a wide view at a high pixel ratio
+ * whose page canvas would pass maxPdfCanvasPixels, and the same under touch
+ * emulation, where the frame reads a coarse pointer and gets the smaller touch
+ * budget.
+ *
+ * The harness page arrives with the preview frame change. Until
+ * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
+ */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { expect, test, type Frame, type Page } from '@playwright/test';
+
+import { previewLimits } from '../../src/renderer/cowork/preview/limits';
+import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
+import { loadFixtures, openPreview, type CanvasRegion, type PreviewFixture, type PreviewRun } from './harness';
+
+const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
+const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
+
+/* Paths of the harness page itself and of its own modules, which Vite serves
+   from the harness origin: source and dependency modules, and the text and
+   data files the preview imports as modules. */
+const HARNESS_PAGE_PATH = /^\/(?:index\.html)?$|^\/(?:@|node_modules\/)|\.(?:[cm]?[jt]sx?|css|json|txt)$/;
+
+/* The fixture one page past maxPdfPages, at the largest page size. */
+const PAGE_CAP_FIXTURE = '501 pages at the largest page size';
+
+/* How long a page may take to draw after it scrolls into view. */
+const DRAW_TIMEOUT_MS = 15_000;
+
+/* What the probe counts in a frame: Workers started and WebAssembly compiles. */
+interface WorkerWasmCounts { workers: number; wasm: number }
+
+function previewFrame(page: Page): Frame {
+  const frame = page.frame({ name: PREVIEW_FRAME_NAME });
+  if (!frame) throw new Error(`No frame named ${PREVIEW_FRAME_NAME} is mounted`);
+  return frame;
+}
+
+/* Every request the page or any of its frames makes from now on. */
+function recordRequests(page: Page): string[] {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  return requests;
+}
+
+function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
+  const want = fixture.expect;
+  expect(run.outcome).toBe(want.outcome);
+  if (want.outcome === 'rendered') expect(run.summary?.type).toBe('pdf');
+  if (want.errorCode !== undefined) expect(run.errorCode).toBe(want.errorCode);
+  if (want.units !== undefined) expect(run.summary?.units).toBe(want.units);
+  if (want.minUnits !== undefined) expect(run.summary?.units).toBeGreaterThanOrEqual(want.minUnits);
+  if (want.truncated !== undefined) expect(run.summary?.truncated).toBe(want.truncated);
+  for (const text of want.textIncludes ?? []) expect(run.text).toContain(text);
+  for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
+}
+
+function expectRequests(requests: readonly string[], fixture: PreviewFixture, harnessOrigin: string): void {
+  const urls = requests.map((request) => new URL(request));
+  expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
+  if (fixture.kind === 'hostile') {
+    const strays = urls.filter((url) => !url.pathname.endsWith(`/${fixture.file}`) && !HARNESS_PAGE_PATH.test(url.pathname));
+    expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
+  }
+}
+
+/* Runs in every frame before the frame's own scripts. Counts each Worker the
+   frame starts and each WebAssembly module it compiles, and keeps both
+   working as before. */
+function countWorkersAndWasm(): void {
+  const counts = { workers: 0, wasm: 0 };
+  Object.defineProperty(window, '__coworkPreviewProbe', { value: counts });
+  const NativeWorker = window.Worker;
+  window.Worker = class extends NativeWorker {
+    constructor(...args: ConstructorParameters<typeof Worker>) {
+      counts.workers += 1;
+      super(...args);
+    }
+  };
+  const wasm = WebAssembly as unknown as Record<string, (...args: unknown[]) => unknown>;
+  for (const name of ['compile', 'compileStreaming', 'instantiate', 'instantiateStreaming']) {
+    const native = wasm[name];
+    wasm[name] = (...args: unknown[]) => {
+      counts.wasm += 1;
+      return native.apply(WebAssembly, args);
+    };
+  }
+  const NativeModule = WebAssembly.Module;
+  WebAssembly.Module = class extends NativeModule {
+    constructor(bytes: BufferSource) {
+      counts.wasm += 1;
+      super(bytes);
+    }
+  };
+}
+
+function readProbe(): WorkerWasmCounts | undefined {
+  return (window as unknown as { __coworkPreviewProbe?: WorkerWasmCounts }).__coworkPreviewProbe;
+}
+
+/* Runs in the frame. Scrolls the region's page into view, then reports
+   whether the region on its canvas holds a pixel that isn't white. */
+function regionHasInk(region: CanvasRegion): boolean {
+  const slot = document.querySelector(`[data-page-number="${region.page}"]`);
+  slot?.scrollIntoView();
+  const canvas = slot?.querySelector('canvas');
+  const context = canvas && canvas.width > 0 ? canvas.getContext('2d') : null;
+  if (!canvas || !context) return false;
+  const x = Math.floor(region.left * canvas.width);
+  const y = Math.floor(region.top * canvas.height);
+  const width = Math.max(1, Math.floor(region.width * canvas.width));
+  const height = Math.max(1, Math.floor(region.height * canvas.height));
+  const pixels = context.getImageData(x, y, width, height).data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] > 0 && (pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250)) return true;
+  }
+  return false;
+}
+
+interface ScrollReport { mostCanvases: number; mostPagesInView: number }
+
+/* Runs in the frame. Scrolls every page into view in turn and reports the
+   most page canvases that existed at once, counted on every DOM change, and
+   the most pages that were in view at once. */
+async function scrollThroughPages(): Promise<ScrollReport> {
+  const slots = Array.from(document.querySelectorAll('[data-page-number]'));
+  const report: ScrollReport = { mostCanvases: 0, mostPagesInView: 0 };
+  const countCanvases = () => {
+    report.mostCanvases = Math.max(report.mostCanvases, document.querySelectorAll('canvas').length);
+  };
+  const observer = new MutationObserver(countCanvases);
+  observer.observe(document.body, { childList: true, subtree: true });
+  for (const slot of slots) {
+    slot.scrollIntoView({ block: 'start' });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const inView = slots.filter((other) => {
+      const box = other.getBoundingClientRect();
+      return box.bottom > 0 && box.top < window.innerHeight;
+    }).length;
+    report.mostPagesInView = Math.max(report.mostPagesInView, inView);
+    countCanvases();
+  }
+  observer.disconnect();
+  return report;
+}
+
+interface CanvasReport { pixels: number[]; coarsePointer: boolean; firstPageUncapped: number }
+
+/* Runs in the frame. Reports every page canvas's pixel count, whether the
+   frame sees a coarse pointer, and how many pixels page 1's canvas would hold
+   at its shown width and the screen's pixel ratio with no cap. */
+function canvasReport(): CanvasReport {
+  const first = document.querySelector('[data-page-number="1"]');
+  const shownWidth = (first?.clientWidth ?? 0) * window.devicePixelRatio;
+  const aspect = first ? first.clientHeight / Math.max(1, first.clientWidth) : 0;
+  return {
+    pixels: Array.from(document.querySelectorAll('canvas'), (canvas) => canvas.width * canvas.height),
+    coarsePointer: window.matchMedia('(pointer: coarse)').matches,
+    firstPageUncapped: shownWidth * shownWidth * aspect,
+  };
+}
+
+async function expectCanvasesWithin(page: Page, fixture: PreviewFixture, touch: boolean): Promise<void> {
+  const run = await openPreview(page, 'pdf', fixture);
+  expect(run.outcome).toBe('rendered');
+  const frame = previewFrame(page);
+  const region = fixture.expect.paintedRegion;
+  if (!region) throw new Error(`${fixture.name} has no paintedRegion to wait for`);
+  await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);
+  const cap = previewLimits({ touch }).maxPdfCanvasPixels;
+  const report = await frame.evaluate(canvasReport);
+  expect(report.coarsePointer).toBe(touch);
+  expect(report.firstPageUncapped, 'the view makes an uncapped page canvas pass the cap').toBeGreaterThan(cap);
+  expect(report.pixels.length).toBeGreaterThan(0);
+  for (const pixels of report.pixels) expect(pixels).toBeLessThanOrEqual(cap);
+}
+
+test.describe('pdf preview', () => {
+  if (!HARNESS_READY) {
+    test('every pdf fixture', () => {
+      test.skip(true, SKIP_REASON);
+    });
+    return;
+  }
+
+  const fixtures = loadFixtures('pdf');
+
+  for (const fixture of fixtures) {
+    test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
+      await page.addInitScript(countWorkersAndWasm);
+      const harnessOrigin = new URL(baseURL ?? '').origin;
+      const testRequests = recordRequests(page);
+      const run = await openPreview(page, 'pdf', fixture);
+      expectOutcome(run, fixture);
+      expectRequests(run.requests, fixture, harnessOrigin);
+      expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
+      if (run.outcome === 'rendered') {
+        const frame = previewFrame(page);
+        const region = fixture.expect.paintedRegion;
+        if (region) {
+          await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);
+        }
+        expect(await frame.evaluate(readProbe), 'Workers and WebAssembly compiles in the frame').toEqual({ workers: 0, wasm: 0 });
+      }
+      expectRequests(testRequests, fixture, harnessOrigin);
+    });
+  }
+
+  const pageCap = fixtures.find((fixture) => fixture.name === PAGE_CAP_FIXTURE);
+  if (!pageCap) throw new Error(`fixtures/pdf/fixtures.yaml has no fixture named ${PAGE_CAP_FIXTURE}`);
+
+  test.describe('in a tall, narrow view', () => {
+    test.use({ viewport: { width: 360, height: 3600 } });
+
+    test('the page-cap file never holds more than maxPdfCanvasesAlive page canvases while it scrolls', async ({ page }) => {
+      const run = await openPreview(page, 'pdf', pageCap);
+      expect(run.outcome).toBe('rendered');
+      const cap = previewLimits({ touch: false }).maxPdfCanvasesAlive;
+      const report = await previewFrame(page).evaluate(scrollThroughPages);
+      expect(report.mostPagesInView, 'more pages than the cap were in view at once').toBeGreaterThan(cap);
+      expect(report.mostCanvases).toBeGreaterThan(0);
+      expect(report.mostCanvases).toBeLessThanOrEqual(cap);
+      expect(await page.evaluate(() => document.readyState), 'the tab still answers').toBe('complete');
+    });
+  });
+
+  test.describe('in a wide view at a high pixel ratio', () => {
+    test.use({ viewport: { width: 2400, height: 1200 }, deviceScaleFactor: 4 });
+
+    test('the page-cap file keeps every page canvas within maxPdfCanvasPixels', async ({ page }) => {
+      await expectCanvasesWithin(page, pageCap, false);
+    });
+  });
+
+  test.describe('under touch emulation', () => {
+    test.use({ viewport: { width: 1200, height: 900 }, deviceScaleFactor: 4, hasTouch: true });
+
+    test('the page-cap file keeps every page canvas within the touch pixel budget', async ({ page }) => {
+      await expectCanvasesWithin(page, pageCap, true);
+    });
+  });
+});
