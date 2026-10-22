@@ -45,7 +45,7 @@ describe.each([
   it('is true for a 200, and saves the fetched bytes', async () => {
     mocks.authFetch.mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['zip']) });
     await expect(downloadArtifactFile(card)).resolves.toBe(true);
-    expect(mocks.authFetch).toHaveBeenCalledWith(`${window.location.origin}${DRAFT}?download=1`);
+    expect(mocks.authFetch).toHaveBeenCalledWith(`${window.location.origin}${DRAFT}?download=1`, { signal: undefined });
     expect(click).toHaveBeenCalledOnce();
     expect(click.mock.instances[0]).toMatchObject({ href: 'blob:artifact-file', download: 'data.zip' });
   });

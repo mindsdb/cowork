@@ -40,7 +40,7 @@ describe('authenticated private file resources', () => {
 
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).resolves.toBe(blob);
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).rejects.toThrow('426');
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: undefined });
   });
 
   it('carries the HTTP status on a failure, so a caller can tell a missing file apart', async () => {
@@ -53,6 +53,21 @@ describe('authenticated private file resources', () => {
     mocks.authFetch.mockResolvedValueOnce(response);
     await expect(fetchAuthenticatedResponse('/api/v1/files/f1/content')).resolves.toBe(response);
     expect(response.blob).not.toHaveBeenCalled();
+  });
+
+  it('hands its signal to authFetch, so an abort while the request waits rejects it', async () => {
+    /* Settles the way fetch does: never on its own, and with the signal's
+       reason once the signal it was given aborts. */
+    mocks.authFetch.mockImplementationOnce((_url, { signal } = {}) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const controller = new AbortController();
+
+    const response = fetchAuthenticatedResponse('/api/v1/private/raw', { signal: controller.signal });
+    controller.abort();
+
+    await expect(response).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: controller.signal });
   });
 
   it('rejects a failed response with its status, and a URL outside the Cowork API before sending', async () => {
@@ -76,7 +91,7 @@ describe('authenticated private file resources', () => {
 
     await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'report.bin')).resolves.toBe(true);
 
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: undefined });
     expect(click).toHaveBeenCalledOnce();
     expect(click.mock.instances[0]).toMatchObject({
       href: 'blob:private-file',

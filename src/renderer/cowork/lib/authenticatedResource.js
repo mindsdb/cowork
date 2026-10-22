@@ -39,11 +39,13 @@ function assertPrivateApiUrl(url) {
 /**
  * Fetch a private file through the same bearer and organization boundary as
  * JSON APIs, and hand back the response with its body unread, so a caller can
- * read its headers (its Content-Length) before it downloads the body.
+ * read its headers (its Content-Length) before it downloads the body. An
+ * aborted `signal` rejects it, during the wait for an access token too
+ * (authFetch passes it on to both).
  */
-export async function fetchAuthenticatedResponse(url) {
+export async function fetchAuthenticatedResponse(url, { signal } = {}) {
   assertPrivateApiUrl(url);
-  const response = await authFetch(url);
+  const response = await authFetch(url, { signal });
   if (!response.ok) throw fileRequestError(response);
   return response;
 }
