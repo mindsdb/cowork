@@ -250,7 +250,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         label: 'Preview',
         icon: (Ico.eye?.(13) || Ico.sparkle(14)),
         disabled: busy,
-        onClick: () => setPreviewArt(a),
+        onClick: () => {
+          setRowError('');
+          setRowNote('');
+          setPreviewArt(a);
+        },
       },
       canOpenLocalFile && {
         label: 'Open in OS',
@@ -268,7 +272,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         label: 'Download',
         icon: Ico.download(14),
         disabled: busy,
+        /* Clears both lines as it starts, like a row click, so an earlier
+           error never sits above a download that worked. */
         onClick: async () => {
+          setRowError('');
           setRowNote('');
           if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
         },

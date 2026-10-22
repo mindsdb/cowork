@@ -668,6 +668,41 @@ describe.each(FIXTURES.webModes)('artifacts rail on %s', (mode) => {
     expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
   });
 
+  it('drops the last click\'s error once the menu Download succeeds', async () => {
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const row = await renderRail(fileRow(FIXTURES.noPreviewExtensions[0]));
+
+    fireEvent.click(row);
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    fireEvent.click(within(await openKebab()).getByText('Download'));
+
+    await vi.waitFor(() => expect(downloadArtifactFile).toHaveBeenCalledTimes(2));
+    expect(await downloadArtifactFile.mock.results[1].value).toBe(true);
+    expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+  });
+
+  it('drops the last click\'s error once the menu opens a preview', async () => {
+    const [noPreviewExt] = FIXTURES.noPreviewExtensions;
+    const [documentExt] = FIXTURES.documentPreviewExtensions;
+    canPreviewDocument.mockImplementation((a) => a?.ext === documentExt);
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    fetchArtifacts.mockResolvedValue([
+      fileRow(noPreviewExt, { title: 'Data A', path: `/proj/.anton/artifacts/a/a${noPreviewExt}` }),
+      fileRow(documentExt, { title: 'Data B', path: `/proj/.anton/artifacts/b/b${documentExt}` }),
+    ]);
+    render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    const rowA = (await screen.findByText('Data A')).closest('[role="button"]');
+    const rowB = screen.getByText('Data B').closest('[role="button"]');
+
+    fireEvent.click(rowA);
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+    fireEvent.click(within(rowB).getByLabelText('More actions'));
+    fireEvent.click(within(await screen.findByRole('menu')).getByText('Preview'));
+
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Data B');
+    expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+  });
+
   it('keeps an error raised while an earlier click was still downloading', async () => {
     /*
      * Row A's click download resolves only after row B's menu Download has
