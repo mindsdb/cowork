@@ -413,18 +413,20 @@ function useArtifactOpen(artifact, onOpenViewer) {
     else if (published) openUrl(artifact.publishedUrl);
     else if (target === 'os') openArtifactFile(artifact);
   };
-  // ↗ skips the viewer: published URL, else served URL, else file.
+  /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
+     Org mode has no serve URL and no local file, so there ↗ opens only the
+     shared page. */
   const openOutside = async () => {
     const url = published ? artifact.publishedUrl : privateUrl;
-    // Org mode has no local file or serve URL to fall back to — but the
-    // authenticated draft URL still delivers the bytes as a download.
     if (url) await openUrl(url);
-    else if (orgMode && canDownloadOrgDraft(artifact)) await downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
-  /* On web a tab shows only what canShowInBrowserTab allows and saves anything
-     else without a word, so ↗ is offered for those alone. */
-  const canOpenOutside = !host.isWeb || canShowInBrowserTab(artifact);
+  /* Org mode offers ↗ only once a shared link exists, the same rule as its
+     "Open shared link" menu item; an unshared file saves from the menu's
+     Download. On web a tab shows only what canShowInBrowserTab allows and
+     saves anything else without a word, so ↗ is offered for those alone. */
+  const canOpenOutside = isArtifactActionAvailable('open', { orgMode, published })
+    && (!host.isWeb || canShowInBrowserTab(artifact));
   return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 

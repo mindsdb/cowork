@@ -563,12 +563,20 @@ describe.each([
    * file downloaded in Grid and silently did nothing in List. Same fixture,
    * both view modes, so they cannot drift again.
    */
+  /* An org deployment is always a web host, so these run on one and hand the
+     file-wide desktop host back afterwards. */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
+    host.isWeb = true;
+    host.isElectron = false;
     downloadAuthenticatedResource.mockClear();
     downloadAuthenticatedResource.mockImplementation(async () => true);
     toastAdd.mockClear();
+  });
+  afterEach(() => {
+    host.isWeb = false;
+    host.isElectron = true;
   });
 
   it('body click downloads instead of doing nothing, then says why', async () => {
@@ -591,10 +599,24 @@ describe.each([
     expect(toastAdd).not.toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE });
   });
 
-  it('the ↗ Open button downloads too', async () => {
-    render(<ArtifactsView artifacts={[cloudZip]} />);
-    fireEvent.click(screen.getByLabelText('Open'));
+  /* ↗ opens only the shared page in org mode, so an unshared file shows none,
+     even a .pdf, which keeps ↗ on web once shared. The menu's Download saves
+     it instead. */
+  it('shows no ↗ before anything is shared, and the menu Download saves the file', async () => {
+    const cloudPdf = {
+      ...cloudZip,
+      path: '/proj/.anton/artifacts/model/model.pdf',
+      ext: '.pdf',
+      draftUrl: '/api/v1/artifacts/drafts/project/id5/model.pdf',
+    };
+    render(<ArtifactsView artifacts={[cloudPdf]} />);
+    expect(screen.queryByLabelText('Open')).toBeNull();
+
+    openKebab();
+    fireEvent.click(screen.getByText('Download'));
+
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.pdf');
   });
 
   it('the kebab Download item reports through a toast when the fetch fails', async () => {

@@ -1,9 +1,9 @@
 /*
  * The Live Artifacts page's click rules on each host. A file with no preview
  * downloads and then says why. A document type follows the shared preview
- * gate. ↗ opens a tab only for what a tab shows, and desktop keeps the shared
- * page ahead of the default app. Extensions, surfaces and modes come from
- * ../lib/artifactSurfaces.yaml.
+ * gate. ↗ opens a tab only for what a tab shows, org mode offers it only once
+ * a file is shared, and desktop keeps the shared page ahead of the default
+ * app. Extensions, surfaces and modes come from ../lib/artifactSurfaces.yaml.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -186,10 +186,6 @@ describe.each(FIXTURES.webModes)('Live Artifacts on %s', (mode) => {
       expect(screen.queryByLabelText('Open')).toBeNull();
     });
 
-    it.each(FIXTURES.browserTab.opens)('shows ↗ for %s', (ext) => {
-      renderView(surface, card(ext, mode));
-      expect(screen.getByLabelText('Open')).toBeInTheDocument();
-    });
   });
 });
 
@@ -216,6 +212,34 @@ describe.each(FIXTURES.clickSurfaces.liveArtifacts)('Live Artifacts %s on local 
     expect(mocks.downloadArtifactFile).not.toHaveBeenCalled();
     expect(screen.queryByText('Download')).toBeNull();
     expect(noteShown()).toBe(false);
+  });
+
+  it.each(FIXTURES.browserTab.opens)('shows ↗ for %s', (ext) => {
+    renderView(surface, card(ext, 'local web'));
+    expect(screen.getByLabelText('Open')).toBeInTheDocument();
+  });
+});
+
+describe.each(FIXTURES.clickSurfaces.liveArtifacts)('Live Artifacts %s on org web', (surface) => {
+  beforeEach(() => enter('org web'));
+
+  /* ↗ opens only the shared page here, so it waits for a share, and the
+     menu's Download is the route to an unshared file. */
+  it.each(FIXTURES.browserTab.opens)('shows no ↗ for an unshared %s, and the menu offers Download', (ext) => {
+    renderView(surface, card(ext, 'org web'));
+
+    expect(screen.queryByLabelText('Open')).toBeNull();
+    openKebab();
+    expect(menuLabels()).toContain('Download');
+  });
+
+  it.each(FIXTURES.browserTab.opens)('shows ↗ for a shared %s, which opens the shared page', (ext) => {
+    renderView(surface, card(ext, 'org web', { publishedUrl: SHARED_URL }));
+
+    fireEvent.click(screen.getByLabelText('Open'));
+
+    expect(mocks.host.openExternal).toHaveBeenCalledWith(SHARED_URL);
+    expect(mocks.downloadArtifactFile).not.toHaveBeenCalled();
   });
 });
 
