@@ -27,13 +27,14 @@
  * styles across the whole DOM, are spec code over that frame. The data they
  * compare against, such as `paintedRegion`, stays in fixtures.yaml.
  *
- * Every spec asserts three things: clean fixtures reach only the harness host,
- * hostile fixtures reach nothing external, and frameUrlAfterClicks is about:srcdoc.
- * Specs compare `new URL(request).origin` with the origin of baseURL, never
- * hostnames, because 127.0.0.1 on another port is a hostile target too. The
- * harness origin stands in for the Cowork origin, so for hostile fixtures a
- * spec also requires every harness-origin request to be the fixture's own URL
- * or one of the harness's own module paths.
+ * Every spec asserts three things: clean fixtures reach only the harness
+ * origin, hostile fixtures reach nothing external, and frameUrlAfterClicks is
+ * about:srcdoc. strayRequests holds the request rules for the first two, so no
+ * spec writes its own: a spec asserts that strayRequests finds nothing in
+ * run.requests, and in any list of the whole test's requests it records. The
+ * harness origin is the origin of baseURL. It stands in for the Cowork origin,
+ * so a hostile fixture may reach it only for its own file and for the harness
+ * page and its modules.
  */
 import type { Frame, Page } from '@playwright/test';
 
@@ -85,4 +86,26 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
    throws when no preview frame is mounted. */
 export async function previewFrame(page: Page): Promise<Frame> {
   throw new Error(`previewFrame is not implemented yet (iframe[name="${PREVIEW_FRAME_NAME}"])`);
+}
+
+/* The URLs in `requests` that break the request rules, as given and in order.
+   `requests` is run.requests, or a list of the whole test's requests that a
+   spec records, page load included. harnessOrigin is the origin of baseURL.
+   - A URL that is not http or https is ignored.
+   - A request to any other origin breaks the rules. Origins are compared,
+     never hostnames, because 127.0.0.1 on another port is another origin.
+   - For a hostile fixture, every harness-origin request breaks the rules
+     too, except exactly <harnessOrigin>/fixtures/<set>/<fixture.file>; a
+     Vite module URL whose path starts with /@fs<repository root>/ (the
+     checkout's absolute path), /@id/, /@vite/ or /@react-refresh; and exactly
+     <harnessOrigin>/ and <harnessOrigin>/main.tsx, which the page load
+     requests.
+   No rule matches a path by its suffix. */
+export function strayRequests(
+  set: PreviewFixtureSet,
+  fixture: PreviewFixture,
+  requests: readonly string[],
+  harnessOrigin: string,
+): string[] {
+  throw new Error(`strayRequests is not implemented yet (${set}: ${fixture.name})`);
 }
