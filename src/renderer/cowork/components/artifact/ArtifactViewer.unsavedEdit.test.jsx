@@ -4,9 +4,11 @@
  * "Keep editing" leaves the viewer open with the text, and "Discard changes"
  * closes it and drops the text. With nothing unsaved, both close at once.
  *
- * The workspace hook, the modal and the confirm dialog are the real ones, so
- * the draft lives where the app keeps it and Esc goes through the dialog's own
- * dismissal.
+ * The header, the mode tabs, the body with its Markdown editor, the workspace
+ * hook, the modal and the confirm dialog are the real ones, so the Close button
+ * is the one people click, the draft lives where the app keeps it, and Esc goes
+ * through the dialog's own dismissal. Only the network, the host and the
+ * comment and publish controllers are stubbed.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,6 +37,7 @@ vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isWeb: false,
+    isMac: () => false,
     isLocalApiOrigin: () => true,
     getApiOrigin: () => 'http://127.0.0.1:26866',
     openExternal: vi.fn(),
@@ -44,7 +47,8 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({ publishedUrl: '', accessMode: 'public', artifactKey: '', busy: false }),
 }));
-vi.mock('./comments', () => ({
+vi.mock('./comments', async (importOriginal) => ({
+  ...(await importOriginal()),
   useArtifactComments: () => ({
     threads: [], viewer: null, unreadCount: 0,
     create: vi.fn(), reply: vi.fn(), setStatus: vi.fn(),
@@ -53,28 +57,6 @@ vi.mock('./comments', () => ({
   }),
   useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
 }));
-vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ workspace, onClose }) => (
-    <div>
-      <button type="button" onClick={() => workspace.setMode('edit')}>Edit</button>
-      <button type="button" onClick={onClose}>Close</button>
-    </div>
-  ),
-}));
-vi.mock('./ArtifactViewerBody', async () => {
-  const { ArtifactSourceEditor } = await vi.importActual('./workspace/ArtifactSourceEditor');
-  return {
-    ArtifactViewerBody: ({ workspace }) => (workspace.mode === 'edit' && workspace.source ? (
-      <ArtifactSourceEditor
-        source={workspace.source}
-        value={workspace.draft}
-        onChange={workspace.setDraft}
-        onSave={(content) => workspace.save('Edited artifact', content)}
-      />
-    ) : null),
-  };
-});
-
 import { ArtifactViewer } from './ArtifactViewer';
 import { previewArtifact } from '../../api';
 import { loadArtifactSource, saveArtifactSource } from '../../lib/artifactWorkspaceApi';
@@ -87,9 +69,9 @@ const ARTIFACT = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
   title: 'Notes',
   type: 'document',
-  ext: '.txt',
-  path: '/artifacts/notes/notes.txt',
-  canonicalPath: '/artifacts/notes/notes.txt',
+  ext: '.md',
+  path: '/artifacts/notes/notes.md',
+  canonicalPath: '/artifacts/notes/notes.md',
 };
 
 const REVISION = { id: 'rev-1', number: 1 };
@@ -97,7 +79,7 @@ const REVISION = { id: 'rev-1', number: 1 };
 function savedSource() {
   return {
     artifactId: ARTIFACT.id,
-    path: 'notes.txt',
+    path: 'notes.md',
     content: SAVED_TEXT,
     revision: REVISION,
     revisions: [],
@@ -118,12 +100,12 @@ function Host() {
 
 let user;
 
-const editor = () => screen.queryByLabelText('Edit notes.txt');
+const editor = () => screen.queryByLabelText('Edit notes.md');
 const discardPrompt = () => screen.queryByRole('dialog', { name: 'Discard changes?' });
 
 async function openEditor() {
-  await user.click(await screen.findByRole('button', { name: 'Edit' }));
-  return screen.findByLabelText('Edit notes.txt');
+  await user.click(await screen.findByRole('tab', { name: 'Edit' }));
+  return screen.findByLabelText('Edit notes.md');
 }
 
 /* Leaves focus in the editor, where a person's Esc starts. */
