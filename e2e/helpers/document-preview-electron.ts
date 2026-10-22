@@ -72,16 +72,20 @@ export async function startTokenServer(): Promise<TokenServer> {
   };
 }
 
+/* One subframe will-frame-navigate, and whether the guard cancelled it. */
+export interface NavigationRecord { url: string; cancelled: boolean }
+
+/* One request the token listener saw, and whether Electron named a frame for it. */
+export interface ListenerCall { path: string; hadFrame: boolean }
+
 /* What the host's main process records (globalThis.previewHost in the .cjs host). */
 export interface HostRecord {
-  /* Each subframe will-frame-navigate, and whether the guard cancelled it. */
-  navigations: { url: string; cancelled: boolean }[];
+  navigations: NavigationRecord[];
   openedExternally: string[];
   windowsCreated: number;
   /* The name each frame had when frame-created fired, or null when it couldn't be read. */
   framesCreated: (string | null)[];
-  /* Each request the token listener saw, and whether Electron named a frame for it. */
-  listenerCalls: { path: string; hadFrame: boolean }[];
+  listenerCalls: ListenerCall[];
 }
 
 export interface PreviewHost {
@@ -152,7 +156,26 @@ export interface TokenFrame {
   token: boolean;
 }
 
+function isTokenFrame(value: unknown): value is TokenFrame {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.id === 'string'
+    && typeof entry.sandbox === 'string'
+    && (entry.load === 'src' || entry.load === 'srcdoc')
+    && typeof entry.token === 'boolean'
+    && (entry.previewName === undefined || typeof entry.previewName === 'boolean')
+    && (entry.base === undefined || typeof entry.base === 'boolean');
+}
+
+/* Reads tokenFrames from the YAML file. Throws when the list is missing or
+   empty, or when an entry is not a TokenFrame, so a bad file fails the spec
+   instead of leaving it with no token checks. */
 export function loadTokenFrames(): TokenFrame[] {
   const file = path.resolve('e2e/helpers/document-preview-electron.yaml');
-  return (yaml.load(fs.readFileSync(file, 'utf8')) as { tokenFrames: TokenFrame[] }).tokenFrames;
+  const parsed: unknown = yaml.load(fs.readFileSync(file, 'utf8'));
+  const frames: unknown = typeof parsed === 'object' && parsed !== null && 'tokenFrames' in parsed ? parsed.tokenFrames : undefined;
+  if (!Array.isArray(frames) || frames.length === 0 || !frames.every(isTokenFrame)) {
+    throw new Error(`${file} needs a non-empty tokenFrames list whose entries match TokenFrame`);
+  }
+  return frames;
 }

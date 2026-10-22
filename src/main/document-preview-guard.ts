@@ -43,9 +43,14 @@ export interface FrameNavigation {
   preventDefault(): void;
 }
 
+/* The part of Electron's frame-created details the guard reads. */
+export interface FrameCreatedDetails {
+  readonly frame: GuardedFrame | null;
+}
+
 /* The two WebContents events the guard listens to. Electron's WebContents fits it. */
 export interface GuardedContents {
-  on(event: 'frame-created', listener: (event: unknown, details: { frame: GuardedFrame | null }) => void): unknown;
+  on(event: 'frame-created', listener: (event: unknown, details: FrameCreatedDetails) => void): unknown;
   on(event: 'will-frame-navigate', listener: (event: FrameNavigation) => void): unknown;
 }
 

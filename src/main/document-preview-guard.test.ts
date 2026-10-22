@@ -19,9 +19,16 @@ interface FakeFrame extends GuardedFrame {
   url: string;
 }
 
+/* What a test sets on a fake frame; the rest takes the defaults below. */
+interface FakeFrameInit {
+  name?: string;
+  url?: string;
+  parent?: GuardedFrame | null;
+}
+
 let nextFrameId = 1;
 
-function frame(init: { name?: string; url?: string; parent?: GuardedFrame | null } = {}): FakeFrame {
+function frame(init: FakeFrameInit = {}): FakeFrame {
   return { frameTreeNodeId: nextFrameId++, name: init.name ?? '', url: init.url ?? '', parent: init.parent ?? null };
 }
 

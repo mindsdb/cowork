@@ -125,37 +125,55 @@ test.describe('the preview frame', () => {
     expect(sandboxed).toBe(true);
   });
 
+  /* One way out of the frame: `run` tries it from `frame` toward `url`. */
+  interface Escape {
+    label: string;
+    run(frame: Frame, url: string): Promise<void>;
+  }
+
   /* Each way out of the frame, run on a fresh preview frame against its own URL. */
-  const escapes: [string, (frame: Frame, url: string) => Promise<void>][] = [
-    ['a link click', async (frame, url) => {
-      await frame.evaluate((href) => {
-        const link = document.createElement('a');
-        link.id = 'escape';
-        link.href = href;
-        link.textContent = 'escape';
-        document.body.append(link);
-      }, url);
-      await frame.click('#escape');
-    }],
-    ['location.href to the loopback server', (frame, url) => frame.evaluate((href) => { location.href = href; }, url)],
-    ['a meta refresh', (frame, url) => frame.evaluate((href) => {
-      const refresh = document.createElement('meta');
-      refresh.httpEquiv = 'refresh';
-      refresh.content = `0;url=${href}`;
-      document.head.append(refresh);
-    }, url)],
-    ['location.href after the frame renames itself', (frame, url) => frame.evaluate((href) => {
-      window.name = 'renamed';
-      location.href = href;
-    }, url)],
+  const escapes: Escape[] = [
+    {
+      label: 'a link click',
+      run: async (frame, url) => {
+        await frame.evaluate((href) => {
+          const link = document.createElement('a');
+          link.id = 'escape';
+          link.href = href;
+          link.textContent = 'escape';
+          document.body.append(link);
+        }, url);
+        await frame.click('#escape');
+      },
+    },
+    {
+      label: 'location.href to the loopback server',
+      run: (frame, url) => frame.evaluate((href) => { location.href = href; }, url),
+    },
+    {
+      label: 'a meta refresh',
+      run: (frame, url) => frame.evaluate((href) => {
+        const refresh = document.createElement('meta');
+        refresh.httpEquiv = 'refresh';
+        refresh.content = `0;url=${href}`;
+        document.head.append(refresh);
+      }, url),
+    },
+    {
+      label: 'location.href after the frame renames itself',
+      run: (frame, url) => frame.evaluate((href) => {
+        window.name = 'renamed';
+        location.href = href;
+      }, url),
+    },
   ];
 
-  for (const [label, escape] of escapes) {
+  for (const { label, run } of escapes) {
     test(`stays at about:srcdoc through ${label}, and opens nothing`, async () => {
       const frame = await mountPreviewFrame();
       const url = `${server.origin}/nav/${label.replace(/\W+/g, '-')}`;
 
-      await escape(frame, url);
+      await run(frame, url);
       await expect.poll(async () => (await host.record()).navigations.filter((navigation) => navigation.url === url))
         .toEqual([{ url, cancelled: true }]);
 
