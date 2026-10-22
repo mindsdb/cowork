@@ -29,6 +29,27 @@ links:
   - name: an image map area loses its href
     html: '<map name="m"><area href="http://localhost:9/x"></map>'
     absent: ['localhost', 'href']
+  - name: an SVG image keeps a data href, as docx-preview draws a VML picture
+    html: '<svg><image href="data:image/png;base64,iVBORw0KGgo=" width="100%" height="100%"></image></svg>'
+    present: ['href="data:image/png;base64,iVBORw0KGgo="']
+  - name: an SVG image keeps a blob xlink:href
+    html: '<svg><image xlink:href="blob:null/1234"></image></svg>'
+    present: ['href="blob:null/1234"']
+  - name: an SVG image loses a data href after a no-break space
+    html: '<svg><image href="&#xA0;data:image/png;base64,iVBORw0KGgo="></image></svg>'
+    present: ['<image']
+    absent: ['data:', 'href']
+  - name: an SVG image loses an href to another host
+    html: '<svg><image href="https://lh3.googleusercontent.com/a/x"></image></svg>'
+    present: ['<image']
+    absent: ['googleusercontent', 'href']
+  - name: a link loses a data href
+    html: '<a href="data:text/html,Hello">Data</a><svg><a href="data:image/png;base64,iVBORw0KGgo="><text>Shape</text></a></svg>'
+    present: ['<a>Data</a>', '<text>Shape</text>']
+    absent: ['data:', 'href']
+  - name: an SVG use loses a data href
+    html: '<svg><use href="data:image/svg+xml,%3Csvg%2F%3E"></use></svg>'
+    absent: ['data:', 'href']
 
 sources:
   - name: an image from another host loses its src
@@ -45,6 +66,17 @@ sources:
   - name: a blob image keeps its src
     html: '<img src="blob:null/1234" alt="blob">'
     present: ['src="blob:null/1234"']
+  - name: a data image source after spaces, a tab or a line break keeps its src, as the URL parser strips them
+    html: '<img src=" &#9;&#10;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="spaced">'
+    present: ['src=', 'data:image/gif;base64,R0lGODlhAQABAAAAACw="']
+  - name: a data image source after a no-break space loses its src, as the URL parser reads it as a path on the frame's origin
+    html: '<img src="&#xA0;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="no-break space">'
+    present: ['alt="no-break space"']
+    absent: ['src=', 'data:']
+  - name: a data image source after a byte order mark loses its src
+    html: '<img src="&#xFEFF;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="byte order mark">'
+    present: ['alt="byte order mark"']
+    absent: ['src=', 'data:']
   - name: srcset, ping, background and poster go
     html: '<img srcset="https://x/a.png 2x"><a ping="https://x/p">p</a><table background="https://x/b.png"></table><video poster="https://x/v.png"></video>'
     absent: ['srcset', 'ping', 'background', 'poster', 'https']
@@ -142,6 +174,13 @@ customProperties:
   - name: a picture bullet keeps its data image, as docx-preview writes it
     html: '<style>p.docx-num-1-0:before { content: " "; display: inline-block; background: var(--docx-rid1); width: 9pt; height: 9pt } .docx-wrapper { --docx-rid1: url(data:image/png;base64,AA==) }</style>'
     present: ['var(--docx-rid1)', '--docx-rid1', 'data:image/png;base64,AA==']
+  - name: a picture bullet keeps its blob picture, as render.ts gives it to docx-preview
+    html: '<style>p.docx-num-1-0:before { content: " "; display: inline-block; background: var(--docx-rid1); width: 9pt; height: 9pt } .docx-wrapper { --docx-rid1: url(blob:null/6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f) }</style>'
+    present: ['var(--docx-rid1)', '--docx-rid1', 'url(blob:null/6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f)']
+  - name: a blob url() followed by a remote url() goes
+    html: '<style>.docx-wrapper { --b: url(blob:null/x) url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--b', 'https']
   - name: a url() to another host goes and the rule stays
     html: '<style>.docx-wrapper { --h: url(https://x/a.png); color: red }</style>'
     present: ['color']
@@ -158,3 +197,52 @@ customProperties:
     html: '<style>.docx-wrapper { --d: url(data:x) url(https://x/a.png); color: red }</style>'
     present: ['color']
     absent: ['--d', 'https']
+
+# A value that holds var(), env() or attr() keeps its text as written, escapes
+# included, until the frame's document substitutes it. Only bare var(--name)
+# references, as docx-preview writes them, may stay in one. happy-dom drops a
+# background-image it can't parse, where Chromium keeps it as written, so the
+# hostile cases use cursor and list-style-image, which load an image too and
+# which happy-dom keeps as written.
+substitutions:
+  - name: an env() fallback that spells url() with an escape goes, in a VML style
+    html: '<svg style="width: 100pt; list-style-image: env(a, \75rl(http://127.0.0.1:9/vml-env))"></svg>'
+    present: ['width']
+    absent: ['list-style-image', '127.0.0.1', 'env(']
+  - name: an env() fallback that spells url() with an escape goes, in a style rule
+    html: '<style>.docx span { color: #000;cursor:env(a,\75rl(http://127.0.0.1:9/styles-env)) }</style>'
+    present: ['.docx span', 'color']
+    absent: ['cursor', '127.0.0.1', 'env(']
+  - name: a var() fallback that spells url() with an escape goes
+    html: '<p style="color: red; cursor: var(--u, \75rl(http://127.0.0.1:9/var-fallback))">Text</p>'
+    present: ['color']
+    absent: ['cursor', '127.0.0.1']
+  - name: a var() with a plain fallback goes
+    html: '<p style="color: red; cursor: var(--docx-cursor, pointer)">Text</p>'
+    present: ['color']
+    absent: ['cursor', 'var(']
+  - name: an attr() goes
+    html: '<p style="color: red; list-style-image: attr(data-picture)">Text</p>'
+    present: ['color']
+    absent: ['list-style-image', 'attr(']
+  - name: a var() next to another function goes
+    html: '<p style="color: red; cursor: calc(var(--w) * 2)">Text</p>'
+    present: ['color']
+    absent: ['cursor', 'calc(']
+  - name: a var() whose name is escaped goes
+    html: '<p style="color: red; list-style-image: v\61r(--x, \75rl(http://127.0.0.1:9/escaped-var))">Text</p>'
+    present: ['color']
+    absent: ['list-style-image', '127.0.0.1']
+  - name: a comment that hides a quote around an escaped url() goes
+    html: '<style>.docx p { color: red; cursor: none /* " */ v\61r(--x, \75rl(http://127.0.0.1:9/comment)) /* " */ }</style>'
+    present: ['color']
+    absent: ['cursor', '127.0.0.1']
+  - name: a theme color, a bare var() as docx-preview writes it, stays
+    html: '<style>.docx span { color: var(--docx-accent1-color) }</style>'
+    present: ['color: var(--docx-accent1-color)']
+  - name: a theme font after a named font, as docx-preview writes it, stays
+    html: '<p style="font-family: Calibri, var(--docx-minorHAnsi-font)">Text</p>'
+    present: ['font-family: Calibri, var(--docx-minorHAnsi-font)']
+  - name: a list number keeps the escaped tab inside its content string
+    html: '<style>p.docx-num-1-0:before { content: "1." counter(docx-num-1-0, decimal) "\9"; counter-increment: docx-num-1-0 }</style>'
+    present: ['content: "1." counter(docx-num-1-0']

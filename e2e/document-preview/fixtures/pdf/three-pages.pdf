@@ -1,5 +1,4 @@
 %PDF-1.7
-%‚„œ”
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
 endobj
@@ -13,7 +12,7 @@ endobj
 << /Type /Page /Parent 2 0 R /Contents 5 0 R >>
 endobj
 5 0 obj
-<<  /Length 77 >>
+<< /Length 77 >>
 stream
 BT /F1 36 Tf 72 680 Td (Page 1 of 3) Tj ET
 0.2 0.4 0.8 rg 72 400 468 200 re f
@@ -23,7 +22,7 @@ endobj
 << /Type /Page /Parent 2 0 R /Contents 7 0 R >>
 endobj
 7 0 obj
-<<  /Length 77 >>
+<< /Length 77 >>
 stream
 BT /F1 36 Tf 72 680 Td (Page 2 of 3) Tj ET
 0.2 0.4 0.8 rg 72 400 468 200 re f
@@ -33,7 +32,7 @@ endobj
 << /Type /Page /Parent 2 0 R /Contents 9 0 R >>
 endobj
 9 0 obj
-<<  /Length 77 >>
+<< /Length 77 >>
 stream
 BT /F1 36 Tf 72 680 Td (Page 3 of 3) Tj ET
 0.2 0.4 0.8 rg 72 400 468 200 re f
@@ -42,17 +41,17 @@ endobj
 xref
 0 10
 0000000000 65535 f 
-0000000015 00000 n 
-0000000064 00000 n 
-0000000196 00000 n 
-0000000266 00000 n 
-0000000329 00000 n 
-0000000457 00000 n 
-0000000520 00000 n 
-0000000648 00000 n 
-0000000711 00000 n 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000190 00000 n 
+0000000260 00000 n 
+0000000323 00000 n 
+0000000450 00000 n 
+0000000513 00000 n 
+0000000640 00000 n 
+0000000703 00000 n 
 trailer
 << /Size 10 /Root 1 0 R >>
 startxref
-839
+830
 %%EOF

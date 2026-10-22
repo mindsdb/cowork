@@ -1,10 +1,11 @@
 /*
  * The PDF build settings. The transform rewrites pdfjs-dist's own files so no
- * module loader syntax is left, and fails when a target matches no time or
- * twice. A Vite library build of render.ts with these plugins gives one IIFE
- * chunk that holds nothing build.config.test.yaml lists. The notices name the
- * license files that ship with the no-wasm decoders, the CMaps and the
- * standard fonts.
+ * module loader syntax is left and the JPEG and JPEG 2000 decoders check the
+ * image cap, and fails when a target matches no time or twice. A Vite
+ * library build of render.ts with these plugins gives one IIFE chunk that
+ * holds nothing build.config.test.yaml lists. The notices name the license
+ * files that ship with the no-wasm decoders, the CMaps and the standard
+ * fonts, and the license of the core-js release pdfjs-dist inlines.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -17,6 +18,7 @@ import { build } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 import type { RendererBuildConfig } from '../../hooks';
+import { IMAGE_CAP_GLOBAL } from './render';
 
 interface BundleCheck { name: string; pattern: string; flags?: string }
 
@@ -28,6 +30,9 @@ interface PdfBuildConfigModule {
 }
 
 const REPO_ROOT = join(__dirname, '../../../../../..');
+/* The core-js release whose license LICENSE_CORE_JS holds. */
+const CORE_JS_LICENSE_URL = 'https://github.com/zloirock/core-js/blob/v3.50.0/LICENSE';
+const CORE_JS_NOTICE = './src/renderer/cowork/preview/renderers/pdf/LICENSE_CORE_JS';
 const PDFJS = join(REPO_ROOT, 'node_modules/pdfjs-dist');
 const WORKER_FILE = 'legacy/build/pdf.worker.mjs';
 const MAIN_FILE = 'legacy/build/pdf.mjs';
@@ -53,7 +58,7 @@ describe('the pdf build config', () => {
     expect(Object.keys(config).sort()).toEqual(['notices', 'plugins']);
   });
 
-  it('names every wasm license, both standard-font licenses and the CMap license, each resolvable from the repository root', async () => {
+  it('names every wasm license, both standard-font licenses, the CMap license and core-js\'s, each resolvable from the repository root', async () => {
     const { default: config } = await buildConfig();
     const require = createRequire(join(REPO_ROOT, 'package.json'));
     const wasmLicenses = readdirSync(join(PDFJS, 'wasm')).filter((name) => name.startsWith('LICENSE_')).map((name) => `pdfjs-dist/wasm/${name}`);
@@ -62,8 +67,19 @@ describe('the pdf build config', () => {
       'pdfjs-dist/cmaps/LICENSE',
       'pdfjs-dist/standard_fonts/LICENSE_FOXIT',
       'pdfjs-dist/standard_fonts/LICENSE_LIBERATION',
+      CORE_JS_NOTICE,
     ].sort());
     for (const notice of config.notices ?? []) expect(() => require.resolve(notice)).not.toThrow();
+  });
+
+  it('carries the MIT license of the core-js release that pdf.mjs and pdf.worker.mjs inline', () => {
+    for (const file of [MAIN_FILE, WORKER_FILE]) {
+      expect(pdfjsSource(file).match(/https:\/\/github\.com\/zloirock\/core-js\/blob\/v[\d.]+\/LICENSE/g)).toEqual([CORE_JS_LICENSE_URL]);
+    }
+    const license = readFileSync(createRequire(join(REPO_ROOT, 'package.json')).resolve(CORE_JS_NOTICE), 'utf8');
+    expect(license).toContain('Denis Pushkarev (zloirock.ru)');
+    expect(license).toContain('CoreJS Company (core-js.io)');
+    expect(license).toContain('The above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.');
   });
 
   it.each([WORKER_FILE, MAIN_FILE])('rewrites %s with no module loader syntax left', async (file) => {
@@ -77,6 +93,34 @@ describe('the pdf build config', () => {
     const worker = rewritePdfjsSource(pdfjsSource(WORKER_FILE), WORKER_FILE);
     expect(worker).toContain('from "../../wasm/jbig2_nowasm_fallback.js"');
     expect(worker).toContain('from "../../wasm/openjpeg_nowasm_fallback.js"');
+  });
+
+  it('guards the JPEG and JPEG 2000 decoders with the cap render.ts sets, before each allocates', async () => {
+    const { rewritePdfjsSource } = await buildConfig();
+    const source = pdfjsSource(WORKER_FILE);
+    const worker = rewritePdfjsSource(source, WORKER_FILE);
+    expect(source).not.toContain(IMAGE_CAP_GLOBAL);
+    expect(worker).toContain([
+      `if (frame.components.length > 4 || frame.samplesPerLine * frame.scanLines > (globalThis.${IMAGE_CAP_GLOBAL} ?? Infinity)) {`,
+      '  throw new JpegError("The JPEG frame is past the preview\'s image cap or has more than 4 components.");',
+      '}',
+      'prepareComponents(frame);',
+    ].join('\n'));
+    expect(worker).toContain([
+      '} = JpxImage.parseImageProperties(image.stream));',
+      `if (image.width * image.height > (globalThis.${IMAGE_CAP_GLOBAL} ?? Infinity)) {`,
+      '  throw new JpxError("The JPEG 2000 image is larger than the preview\'s image cap.");',
+      '}',
+    ].join('\n'));
+  });
+
+  it('fails when the JPEG or JPEG 2000 decoder\'s allocation point moved', async () => {
+    const { rewritePdfjsSource } = await buildConfig();
+    const source = pdfjsSource(WORKER_FILE);
+    const jpegMoved = source.replace('prepareComponents(frame);', 'prepareComponents(frame)\n;');
+    const jpxMoved = source.replace('} = JpxImage.parseImageProperties(image.stream));', '} = JpxImage.parseImageProperties(image.stream))\n;');
+    expect(() => rewritePdfjsSource(jpegMoved, WORKER_FILE)).toThrow(/prepareComponents\(frame\);, found 0/);
+    expect(() => rewritePdfjsSource(jpxMoved, WORKER_FILE)).toThrow(/parseImageProperties\(image\.stream\)\);, found 0/);
   });
 
   it('fails when a target matches no time', async () => {

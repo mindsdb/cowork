@@ -1,7 +1,8 @@
 # PDF fixtures for the document preview harness (e2e/document-preview/harness.ts).
-# Each entry names a .pdf file in this folder. A paintedRegion is a box on one
-# page's canvas, in fractions of its width and height from the top-left corner,
-# that must hold pixels other than the white page background.
+# Each entry names a .pdf file in this folder, and make-fixtures.mjs writes
+# every one of them. A paintedRegion is a box on one page's canvas, in
+# fractions of its width and height from the top-left corner, that must hold
+# pixels other than the white page background.
 
 # Three Letter pages, each with a line of Helvetica text, which pdf.js draws
 # from the bundled standard fonts. The region is page 1's text line.
@@ -89,6 +90,14 @@
   expect:
     outcome: rendered
     units: 1
+
+# A catalog whose page tree holds no page: /Count 0 and an empty /Kids.
+- name: no pages
+  file: no-pages.pdf
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
 
 # A PDF header followed by nothing a PDF reader can parse.
 - name: not a PDF document

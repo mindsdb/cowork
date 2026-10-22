@@ -18,8 +18,15 @@ const DROPPED_ELEMENTS = [
 /* Attributes, other than href and src, that name a URL to load or open. */
 const URL_ATTRIBUTES = new Set(['srcset', 'poster', 'ping', 'action', 'formaction', 'background', 'data']);
 
-/* An image source the frame may load. */
-const INLINE_SOURCE = /^\s*(?:data|blob):/i;
+/* An image source the frame may load. Before the scheme it allows only what
+   the URL parser strips, the control characters and space up to U+0020. A
+   wider \s would also allow a no-break space or a byte order mark, which
+   the parser keeps, so it would read the source as a path on the frame's
+   own origin. */
+const INLINE_SOURCE = /^[\x00-\x20]*(?:data|blob):/i;
+
+/* The namespace of SVG elements, an SVG <image> among them. */
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 /* A CSS function that loads a resource, whatever its argument. */
 const CSS_LOADS = /(?:url|image-set|image|src)\(/i;
@@ -30,10 +37,22 @@ const CSS_DATA_URL = /url\(\s*["']?\s*data:[^)]*\)/gi;
 /* An SVG paint or clip reference to an element in the same document. */
 const FRAGMENT_REFERENCE = /url\(\s*["']?#[^)]*\)/gi;
 
-/* A custom property value that is one unquoted url() of a data: URL and
-   nothing else, such as the picture bullet docx-preview writes from the
-   file's numbering image. */
-const ONLY_CSS_DATA_URL = /^url\(data:[^()"'\\\s]*\)$/i;
+/* A custom property value that is one unquoted url() of a data: or blob: URL
+   and nothing else, such as the picture bullet docx-preview writes from the
+   blob: URL render.ts gives the file's numbering image. */
+const ONLY_CSS_INLINE_URL = /^url\((?:data|blob):[^()"'\\\s]*\)$/i;
+
+/* A function whose value the browser keeps as written until it substitutes it
+   in the live document. */
+const CSS_SUBSTITUTION = /(?:var|env|attr)\(/i;
+
+/* A var() of a custom property with no fallback, as docx-preview writes for
+   theme colors and theme fonts. */
+const BARE_VAR = /var\(\s*--[\w-]+\s*\)/gi;
+
+/* A quoted CSS string, escapes included. A raw line break ends a CSS string,
+   so a match never spans one. */
+const CSS_STRING = /"(?:[^"\\\n\r\f]|\\[\s\S])*"|'(?:[^'\\\n\r\f]|\\[\s\S])*'/g;
 
 /* Rule types docx-preview writes: style rules, @font-face and @media. Any
    other rule in its CSS came from the file, so it goes. */
@@ -41,15 +60,39 @@ function isKeptRule(rule: CSSRule): rule is CSSStyleRule | CSSFontFaceRule | CSS
   return rule instanceof CSSStyleRule || rule instanceof CSSFontFaceRule || rule instanceof CSSMediaRule;
 }
 
+/* An SVG <image>. docx-preview draws a VML picture as one, with the
+   picture's blob: URL from render.ts as its href. */
+function isSvgImage(element: Element): boolean {
+  return element.namespaceURI === SVG_NAMESPACE && element.localName === 'image';
+}
+
 function loadsInCss(value: string): boolean {
   return CSS_LOADS.test(value.replace(CSS_DATA_URL, ''));
 }
 
 /*
+ * Whether a property's value could spell a url() once the browser substitutes
+ * it. A value that holds var(), env() or attr() keeps its text as written,
+ * escapes and comments included, so an escaped url name such as \75rl( passes
+ * loadsInCss and still loads in the frame. Such a value may hold bare
+ * var(--name) references and no other function. Any value goes that holds a
+ * comment or a backslash outside its quoted strings, which also covers an
+ * escaped function name such as v\61r(. A value the browser parsed keeps a
+ * backslash only inside a string, such as the tab after a list number
+ * (content: "1.\9 "), and keeps no comment.
+ */
+function substitutesUnsafely(value: string): boolean {
+  const outsideStrings = value.replace(CSS_STRING, '""');
+  if (outsideStrings.includes('\\') || outsideStrings.includes('/*')) return true;
+  return CSS_SUBSTITUTION.test(outsideStrings) && outsideStrings.replace(BARE_VAR, '').includes('(');
+}
+
+/*
  * Removes each declaration that would load a resource from a host. A custom
- * property keeps only plain tokens, or a lone url() of a data: URL, since the
- * browser keeps its text as written and a var() can place it where a url()
- * loads.
+ * property keeps only plain tokens, or a lone url() of a data: or blob: URL,
+ * since the browser keeps its text as written and a var() can place it where
+ * a url() loads. Any other property goes when its value loads, or could load
+ * once the browser substitutes it (substitutesUnsafely).
  *
  * A shorthand that holds a var() also keeps its text as written, escapes
  * included, and the browser reports each of its longhands as ''. Those
@@ -61,8 +104,8 @@ function cleanDeclarations(style: CSSStyleDeclaration): void {
   for (const name of names) {
     const value = style.getPropertyValue(name);
     const loads = name.startsWith('--')
-      ? /[\\(]/.test(value) && !ONLY_CSS_DATA_URL.test(value.trim())
-      : loadsInCss(value);
+      ? /[\\(]/.test(value) && !ONLY_CSS_INLINE_URL.test(value.trim())
+      : loadsInCss(value) || substitutesUnsafely(value);
     if (loads) style.removeProperty(name);
   }
   const pending = Array.from({ length: style.length }, (_, index) => style.item(index))
@@ -103,7 +146,7 @@ function cleanAttributes(element: Element): void {
   for (const attribute of [...element.attributes]) {
     const name = attribute.localName.toLowerCase();
     let keep: boolean;
-    if (name === 'href') keep = attribute.value.startsWith('#');
+    if (name === 'href') keep = attribute.value.startsWith('#') || (isSvgImage(element) && INLINE_SOURCE.test(attribute.value));
     else if (name === 'src') keep = INLINE_SOURCE.test(attribute.value);
     else if (name === 'style') keep = true;
     else if (name.startsWith('on') || URL_ATTRIBUTES.has(name)) keep = false;
@@ -127,10 +170,11 @@ function cleanAttributes(element: Element): void {
 
 /*
  * Cleans everything inside container: drops embedding and script elements,
- * removes every href but an in-page #fragment (xlink:href too, matched by
- * local name), every src that isn't data: or blob:, every event handler and
- * every other attribute that names a URL to load, and every CSS rule or
- * declaration, in <style> text or a style attribute, that loads from a host.
+ * removes every href but an in-page #fragment or an SVG image's data: or
+ * blob: source (xlink:href too, matched by local name), every src that isn't
+ * data: or blob:, every event handler and every other attribute that names a
+ * URL to load, and every CSS rule or declaration, in <style> text or a style
+ * attribute, that loads from a host.
  */
 export function cleanRenderedNodes(container: Element): void {
   for (const element of container.querySelectorAll(DROPPED_ELEMENTS)) element.remove();
@@ -144,6 +188,13 @@ export function cleanRenderedNodes(container: Element): void {
  * Stops every link activation inside root in the capture phase, before the
  * link sees it. A #fragment link scrolls to its target inside root instead, so
  * the frame's URL never changes.
+ *
+ * The frame runtime's stayInFrame (runtime/frame.ts) cancels link clicks at
+ * the document as well, and its listener runs first. This one is the
+ * renderer's own layer, as the Word preview's design asks, so links stay
+ * inert whatever the runtime's guard does. It looks the id up as written,
+ * with no percent-decoding, because docx-preview writes a bookmark's name
+ * verbatim both as the target's id and after the '#' of the link to it.
  */
 export function keepLinksInPage(root: HTMLElement): void {
   const hold = (event: Event) => {

@@ -130,3 +130,23 @@ describe('ThinkingBlock', () => {
     expect(collapsedHeader()).toHaveTextContent(/^Running code$/);
   });
 });
+
+describe('ThinkingBlock — folding (ENG-3554)', () => {
+  const tool = { id: 's1', label: 'Running code', badge: 'Script', icon: 'code', status: 'completed', _isScratchpad: true, startedAt: 0, completedAt: 1000 };
+
+  it('a just-finished turn starts open and folds shut', async () => {
+    render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={0} collapseOnMount />);
+    // Painted open first, so the fold has somewhere to start from…
+    expect(screen.getByText('Running code')).toBeInTheDocument();
+    // …then it folds.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
+  });
+
+  it('an older turn mounts folded, with nothing to animate', () => {
+    render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={0} />);
+    expect(screen.queryByText('Running code')).toBeNull();
+    expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
+  });
+});

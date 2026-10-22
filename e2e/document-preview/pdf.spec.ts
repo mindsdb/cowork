@@ -9,6 +9,12 @@
  * there, and a rendered fixture must start no Worker and compile no
  * WebAssembly in the frame.
  *
+ * The CJK fixtures name fonts they don't embed, so the browser's own fonts
+ * draw their text. With no CJK font installed it draws missing-glyph boxes,
+ * which pass a paint check too. So before their paint checks, the frame must
+ * draw 日 differently from a code point no font covers, and a runner without
+ * CJK fonts fails there.
+ *
  * The page-cap file then runs three more times, each in a view that would
  * break one cap if the renderer ignored it: a tall, narrow view with more
  * pages in sight than maxPdfCanvasesAlive, a wide view at a high pixel ratio
@@ -43,6 +49,14 @@ const PAGE_CAP_FIXTURE = '501 pages at the largest page size';
 
 /* How long a page may take to draw after it scrolls into view. */
 const DRAW_TIMEOUT_MS = 15_000;
+
+/* The fixtures whose text is in a CJK font the file doesn't embed. */
+const CJK_FIXTURES = ['UniJIS-UCS2-H text', 'unembedded UniGB-UCS2-H text'];
+
+/* A CJK ideograph, U+65E5, and U+0378, a code point Unicode leaves
+   unassigned, which no font draws. */
+const CJK_GLYPH = '\u65e5';
+const UNASSIGNED = '\u0378';
 
 /* What the probe counts in a frame: Workers started and WebAssembly compiles. */
 interface WorkerWasmCounts { workers: number; wasm: number }
@@ -107,6 +121,25 @@ function countWorkersAndWasm(): void {
 
 function readProbe(): WorkerWasmCounts | undefined {
   return (window as unknown as { __coworkPreviewProbe?: WorkerWasmCounts }).__coworkPreviewProbe;
+}
+
+/* Runs in the frame. Whether the browser draws `glyph` differently from
+   `unassigned` in the generic serif family, the one pdf.js falls back to for
+   these fixtures' fonts, whose descriptor flags mark them serif. When no
+   installed font covers `glyph`, both come out as the same missing-glyph
+   box. */
+function drawsGlyph({ glyph, unassigned }: { glyph: string; unassigned: string }): boolean {
+  const draw = (text: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    if (!context) return '';
+    context.font = '48px serif';
+    context.fillText(text, 4, 52);
+    return canvas.toDataURL();
+  };
+  return draw(glyph) !== draw(unassigned);
 }
 
 /* Runs in the frame. Scrolls the region's page into view, then reports
@@ -195,6 +228,8 @@ test.describe('pdf preview', () => {
   }
 
   const fixtures = loadFixtures('pdf');
+  const missingCjk = CJK_FIXTURES.filter((name) => !fixtures.some((fixture) => fixture.name === name));
+  if (missingCjk.length > 0) throw new Error(`fixtures/pdf/fixtures.yaml has no fixture named ${missingCjk.join(', ')}`);
 
   for (const fixture of fixtures) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
@@ -207,6 +242,10 @@ test.describe('pdf preview', () => {
       expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
       if (run.outcome === 'rendered') {
         const frame = await previewFrame(page);
+        if (CJK_FIXTURES.includes(fixture.name)) {
+          const drawn = await frame.evaluate(drawsGlyph, { glyph: CJK_GLYPH, unassigned: UNASSIGNED });
+          expect(drawn, `the browser has a font that draws ${CJK_GLYPH}, so the paint check sees glyphs, not boxes`).toBe(true);
+        }
         const region = fixture.expect.paintedRegion;
         if (region) {
           await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);

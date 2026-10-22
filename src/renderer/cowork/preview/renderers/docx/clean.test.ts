@@ -81,4 +81,20 @@ describe('keepLinksInPage', () => {
     expect(scrollIntoView).toHaveBeenCalledOnce();
     root.remove();
   });
+
+  it('scrolls to the id exactly as the link writes it, with no percent-decoding', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<a id="jump" href="#Mark%41">Jump</a><span id="Mark%41">As written</span><span id="MarkA">Decoded</span>';
+    document.body.append(root);
+    keepLinksInPage(root);
+    const asWritten = vi.fn();
+    const decoded = vi.fn();
+    Object.assign(root.querySelector('[id="Mark%41"]')!, { scrollIntoView: asWritten });
+    Object.assign(root.querySelector('#MarkA')!, { scrollIntoView: decoded });
+
+    dispatch(root.querySelector('#jump')!, new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(asWritten).toHaveBeenCalledOnce();
+    expect(decoded).not.toHaveBeenCalled();
+    root.remove();
+  });
 });

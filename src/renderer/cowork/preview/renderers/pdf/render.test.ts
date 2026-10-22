@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type { PreviewLimits, RendererContext } from '../../contract';
 import { previewLimits } from '../../limits';
-import renderer, { pdfDocumentParams } from './render';
+import renderer, { IMAGE_CAP_GLOBAL, pdfDocumentParams } from './render';
 
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('pdfjs-dist/legacy/build/pdf.mjs')>();
@@ -123,8 +123,25 @@ describe('the pdf renderer', () => {
     expect(pageSlots(ctx.root)).toHaveLength(2);
   });
 
+  it('hands the worker\'s JPEG and JPEG 2000 guards the image cap from ctx.limits before pdf.js opens the file', async () => {
+    const actual = await vi.importActual<typeof import('pdfjs-dist/legacy/build/pdf.mjs')>('pdfjs-dist/legacy/build/pdf.mjs');
+    let capAtOpen: unknown;
+    vi.mocked(pdfjs.getDocument).mockImplementationOnce((params) => {
+      capAtOpen = Reflect.get(globalThis, IMAGE_CAP_GLOBAL);
+      return actual.getDocument(params);
+    });
+    await renderer.render(fixtureBytes('three-pages.pdf'), context({ ...previewLimits({ touch: false }), maxInflatedBytes: 4 * 1000 }));
+    expect(capAtOpen).toBe(1000);
+  });
+
   it('fails with parse-failed for a file pdf.js cannot read', async () => {
     await expect(renderer.render(fixtureBytes('not-a-document.pdf'), context())).rejects.toMatchObject({ code: 'parse-failed' });
+  });
+
+  it('fails with parse-failed for a PDF whose page tree holds no page, and lays out nothing', async () => {
+    const ctx = context();
+    await expect(renderer.render(fixtureBytes('no-pages.pdf'), ctx)).rejects.toMatchObject({ code: 'parse-failed' });
+    expect(ctx.root.childNodes).toHaveLength(0);
   });
 
   it('fails with unsupported for a PDF that needs a password', async () => {

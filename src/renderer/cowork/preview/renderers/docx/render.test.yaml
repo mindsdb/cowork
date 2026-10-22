@@ -1,5 +1,14 @@
 # Cases for render.test.ts. Every .docx in e2e/document-preview/fixtures/docx
 # must render with nothing left that loads or opens a URL, except the files
-# listed here, which must fail with parse-failed and insert nothing.
+# listed here, which must fail with the code they are listed under and insert
+# nothing.
 parseFailed:
   - not-a-document.docx
+  - missing-document-part.docx
+unsupported:
+  - compound-file.docx
+  - header-per-page.docx
+  - footnote-per-reference.docx
+  - grid-columns-per-page.docx
+  - endnote-in-footnote.docx
+  - nested-superscript.docx
