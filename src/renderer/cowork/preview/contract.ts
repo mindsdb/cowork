@@ -31,9 +31,10 @@ export interface RenderSummary { type: DocumentPreviewType; units: number; trunc
      progressTimeoutMs.
    - zip-limit: the runtime's archive guard, past maxInflatedBytes,
      maxZipEntryInflatedBytes or maxZipEntries.
-   - parse-failed: a renderer, for a file it can't read. The runtime also
-     raises it for a file that starts with PK\x03\x04 but doesn't open as an
-     archive.
+   - parse-failed: a renderer, for a file it can't read. The runtime's
+     archive guard also raises it for a file that starts with PK but doesn't
+     open as an archive, for an archive two zip readers could read
+     differently, and for an archive entry with a ZIP64 extra field.
    - unsupported: a renderer, for a valid file it can't show.
    - internal: the runtime, for any other throw. */
 export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'unsupported' | 'timeout' | 'internal';
@@ -61,9 +62,19 @@ export interface RendererContext {
 }
 
 /* Before render(), the runtime runs its archive guard on every file that
-   starts with PK\x03\x04 and on every other file JSZip opens as an archive,
-   because JSZip also opens an archive with bytes prepended to it. A file past
-   the caps ends with zip-limit and never reaches render(). So render()
+   starts with PK and on every other file JSZip opens as an archive, because
+   JSZip also opens an archive with bytes prepended to it. The guard reads the
+   end record, the central directory and each local header itself, and
+   inflates every entry to count its bytes. It raises parse-failed for a file
+   that starts with PK but doesn't open as an archive, and for an archive two
+   zip readers could read differently, such as one with bytes prepended that
+   its offsets don't count, a name listed twice, a local header that differs
+   from its directory record, or an entry that inflates to another size than
+   it states. It also raises parse-failed for an entry with a ZIP64 extra
+   field, and zip-limit past the caps. In any file with an end record,
+   whatever the file starts with, it counts the central directory signatures
+   before JSZip reads the file, and more than maxZipEntries of them ends it
+   with zip-limit. A file the guard ends never reaches render(). So render()
    receives only bytes that passed the guard, a library that unzips them
    itself reads only checked entries, and ctx.openZip(bytes) returns that
    checked archive. */

@@ -40,6 +40,15 @@
  * hostile fixture may reach it only on the paths strayRequests allows: its own
  * file, the harness page, and the Vite dev server's module URLs, which cover
  * any file under the checkout through /@fs.
+ *
+ * A renderer never leaves a meta element with http-equiv or a base element in
+ * the preview frame. openPreview throws when the frame holds one, other than a
+ * meta in the head whose http-equiv is content-security-policy or
+ * x-dns-prefetch-control, the two kinds the frame document starts with.
+ * Nothing in the frame stops a meta refresh: it navigates the frame as soon as
+ * it is in the DOM, with no click. A delayed one can fire after openPreview
+ * has stopped recording requests and read the frame's URL, so it can get past
+ * both strayRequests and frameUrlAfterClicks.
  */
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
