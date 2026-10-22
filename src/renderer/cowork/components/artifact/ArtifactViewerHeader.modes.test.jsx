@@ -46,12 +46,16 @@ function useMode(mode) {
 function headerProps(mode, {
   path = 'notes.md',
   type,
+  hasUrls = true,
+  hasDraftUrl = hasUrls,
   workspaceCapabilities,
   artifactCapabilities,
   authorship = null,
   isPublished = false,
 } = {}) {
   const publishedUrl = isPublished ? 'https://pages.example/storefront' : '';
+  const serveUrl = hasUrls && mode.serveUrl ? `${SERVE_URL}${path}` : '';
+  const draftUrl = hasDraftUrl ? `${DRAFT_URL}${path}` : '';
   return {
     title: path,
     authorship: authorship && artifactAuthorship(authorship),
@@ -74,15 +78,16 @@ function headerProps(mode, {
       disabledReason: '',
     },
     actions: {
-      canOpenInBrowserTab: true,
+      /* ArtifactViewer opens a browser tab on the first of these it holds. */
+      canOpenInBrowserTab: !!(publishedUrl || serveUrl || draftUrl),
       canOpenLocalFile: mode.localFiles,
       isBackendArtifact: type === 'fullstack-stateless-app',
       backendPort: 5050,
       artifact: {
         path,
         type,
-        draftUrl: `${DRAFT_URL}${path}`,
-        serveUrl: mode.serveUrl ? `${SERVE_URL}${path}` : '',
+        draftUrl,
+        serveUrl,
         capabilities: artifactCapabilities,
       },
       deleteBusy: false,
@@ -116,7 +121,7 @@ describe.each(cases.modes)('the viewer header on $name', (mode) => {
     const user = userEvent.setup();
     render(<ArtifactViewerHeader {...headerProps(mode, file)} />);
     const downloadable = file.downloadable !== false;
-    const showsTab = !mode.tabRule || file.showsInTab;
+    const showsTab = (!mode.tabRule || file.showsInTab) && file.hasUrls !== false;
 
     const headerDownload = screen.queryByRole('button', { name: 'Download' });
     expect(!!headerDownload).toBe(mode.download === 'header' && downloadable);
@@ -214,6 +219,7 @@ describe.each(cases.export)('Export for $name', (exportCase) => {
       workspaceCapabilities: exportCase.workspace,
       artifactCapabilities: exportCase.artifact,
       authorship: exportCase.authorship,
+      hasDraftUrl: exportCase.hasDraftUrl,
     })} />);
 
     if (exportCase.shows.length === 0) {

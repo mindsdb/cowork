@@ -91,6 +91,12 @@ files:
     type: fullstack-stateless-app
     showsInTab: true
     downloadable: false
+  # A card with neither a serve nor a draft URL has no file to save, and no
+  # URL for a browser tab.
+  - path: pending.md
+    hasUrls: false
+    showsInTab: true
+    downloadable: false
 
 # Which formats Export lists. `workspace` and `artifact` are the capabilities
 # of the workspace answer and of the card; null means not loaded yet. `shows`
@@ -146,3 +152,12 @@ export:
     workspace: { role: owner, canEdit: true, exportFormats: [docx, epub] }
     artifact: {}
     shows: [Word]
+  # The route is addressed by the card's draft URL. The serve URL still gives
+  # a Download.
+  - name: a card without a draft URL
+    mode: local web
+    hasDraftUrl: false
+    workspace: { role: owner, canEdit: true, exportFormats: [docx] }
+    artifact: { exportFormats: [docx] }
+    shows: []
+    download: true
