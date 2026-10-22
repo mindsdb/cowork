@@ -128,10 +128,29 @@ describe('xlsx renderer module', () => {
 describe('xlsx renderer', () => {
   it('parses with SheetJS dense, with HTML and styles off, cut at ctx.limits.maxSheetRows', async () => {
     await renderer.render(fixture('two-sheets.xlsx'), context({ maxSheetRows: 1234 }));
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(read).toHaveBeenCalledWith(expect.any(Uint8Array), {
-      type: 'array', dense: true, cellHTML: false, cellStyles: false, sheetRows: 1234,
-    });
+    const options = { type: 'array', dense: true, cellHTML: false, cellStyles: false, sheetRows: 1234 };
+    expect(vi.mocked(read).mock.calls).toEqual([
+      [expect.any(Uint8Array), { ...options, sheets: [0] }],
+      [expect.any(Uint8Array), { ...options, sheets: [1] }],
+    ]);
+  });
+
+  /* Each read inflates the whole archive again, so the reads are capped. */
+  it.each([
+    { sheetCount: 4, runs: [[0], [1], [2], [3]] },
+    { sheetCount: 15, runs: [[0], [1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14]] },
+  ])('reads $sheetCount sheets in $runs.length reads, and every tab shows its own sheet', async ({ sheetCount, runs }) => {
+    const names = Array.from({ length: sheetCount }, (_, i) => `S${i + 1}`);
+    const ctx = context();
+    const summary = await renderer.render(await workbook(...names.map((name) => ({ name, rows: [[name]] }))), ctx);
+
+    expect(summary.units).toBe(sheetCount);
+    expect(vi.mocked(read).mock.calls.map(([, options]) => options?.sheets)).toEqual(runs);
+    expect(tabs(ctx).map((tab) => tab.textContent)).toEqual(names);
+    for (const [i, name] of names.entries()) {
+      tabs(ctx)[i].click();
+      expect(cellTexts(ctx)).toEqual([[name]]);
+    }
   });
 
   it('shows the two-sheet workbook as two tabs, and the second tab shows its cells', async () => {
@@ -154,7 +173,28 @@ describe('xlsx renderer', () => {
     tabs(ctx)[0].click();
 
     expect(cellTexts(ctx)[1]).toEqual(['North', '120']);
-    expect(ctx.root.querySelectorAll('[role="tabpanel"]')).toHaveLength(2);
+  });
+
+  it('keeps only the first grid and the open tab\'s grid, and builds a left tab again when it reopens', async () => {
+    const ctx = context();
+    await renderer.render(await workbook({ name: 'One', rows: [['one']] }, { name: 'Two', rows: [['two']] }, { name: 'Three', rows: [['three']] }), ctx);
+    const firstPanel = visiblePanel(ctx);
+    const panelIds = (): string[] => [...ctx.root.querySelectorAll('[role="tabpanel"]')].map((panel) => panel.id);
+
+    tabs(ctx)[1].click();
+    tabs(ctx)[2].click();
+
+    expect(panelIds()).toEqual(['xlsx-panel-0', 'xlsx-panel-2']);
+
+    tabs(ctx)[1].click();
+
+    expect(panelIds()).toEqual(['xlsx-panel-0', 'xlsx-panel-1']);
+    expect(cellTexts(ctx)).toEqual([['two']]);
+
+    tabs(ctx)[0].click();
+
+    expect(panelIds()).toEqual(['xlsx-panel-0']);
+    expect(visiblePanel(ctx)).toBe(firstPanel);
   });
 
   it('opens no archive of its own and asks for no asset', async () => {
@@ -209,6 +249,18 @@ describe('xlsx renderer', () => {
     expect(visiblePanel(ctx).querySelectorAll('thead th')).toHaveLength(columns + 1);
   });
 
+  /* With no <dimension>, SheetJS keeps no trace of the rows past sheetRows, so
+     only a cell in the row at the cap shows the sheet is cut. */
+  it.each([
+    { label: 'a cell in the row at the cap', rows: [['top'], [null], [null], ['at cap'], [null], ['late']], truncated: true },
+    { label: 'no cell in the row at the cap, the known limit', rows: [['top'], [null], [null], [null], [null], ['late']], truncated: false },
+  ])('reports a sparse sheet with no <dimension> and $label as truncated: $truncated', async ({ rows, truncated }) => {
+    const ctx = context({ maxSheetRows: 4 });
+    const summary = await renderer.render(await workbook({ name: 'Sparse', rows, omitDimension: true }), ctx);
+    expect(summary).toEqual<RenderSummary>({ type: 'xlsx', units: 1, truncated });
+    expect(shownText(ctx.root)).not.toContain('late');
+  });
+
   it('names the columns past Z the way a spreadsheet does', async () => {
     const ctx = context();
     await renderer.render(await workbook(grid('Letters', 1, 28)), ctx);
@@ -230,6 +282,26 @@ describe('xlsx renderer', () => {
     const ctx = context();
     await renderer.render(await workbook(grid('Rows', 250, 1)), ctx);
     expect(ctx.progress.mock.calls).toEqual([[0, null], [100, 250], [200, 250], [250, 250]]);
+  });
+
+  it('reports the sheets read before each later read', async () => {
+    const ctx = context();
+    await renderer.render(await workbook(grid('Rows', 250, 1), grid('B', 1, 1), grid('C', 1, 1)), ctx);
+    expect(ctx.progress.mock.calls).toEqual([[0, null], [1, 3], [2, 3], [100, 250], [200, 250], [250, 250]]);
+  });
+
+  it('stops before the next read once the signal aborts, and mounts nothing', async () => {
+    const controller = new AbortController();
+    const ctx = context({}, controller.signal);
+    ctx.progress.mockImplementation((done, total) => {
+      if (done === 1 && total === 3) controller.abort();
+    });
+
+    const error = await renderFailure(await workbook(grid('A', 1, 1), grid('B', 1, 1), grid('C', 1, 1)), ctx);
+
+    expect(error).toBe(controller.signal.reason);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(ctx.root.childElementCount).toBe(0);
   });
 
   it('stops at the next batch once the signal aborts, and mounts nothing', async () => {

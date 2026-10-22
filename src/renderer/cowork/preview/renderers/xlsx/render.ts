@@ -2,15 +2,17 @@
  * The .xlsx preview: a read-only grid for each sheet, with one tab per sheet.
  *
  * SheetJS parses the workbook with HTML and styles off and stops each sheet at
- * maxSheetRows. The grid starts at A1 and shows at most maxSheetRows rows and
- * maxSheetColumns columns. Every cell goes in through textContent, so markup in
- * a cell shows as text and no cell becomes a link. The grid reads each cell's
- * value and formatted text only, never its formula, hyperlink, comment or
- * rich-text runs.
+ * maxSheetRows. It reads the first sheet alone and the other sheets in a few
+ * runs, reporting progress and checking the abort signal between reads, and
+ * each sheet keeps only the rows and columns within the caps. The grid starts
+ * at A1 and shows at most maxSheetRows rows and maxSheetColumns columns. Every
+ * cell goes in through textContent, so markup in a cell shows as text and no
+ * cell becomes a link. The grid reads each cell's value and formatted text
+ * only, never its formula, hyperlink, comment or rich-text runs.
  *
  * The first sheet's grid is built before render() resolves, in batches that
  * report progress and check the abort signal. Every other sheet's grid is
- * built when its tab is first opened.
+ * built when its tab is opened and removed when its tab is left.
  */
 import { read, type CellObject, type WorkBook, type WorkSheet } from 'xlsx';
 
@@ -18,6 +20,10 @@ import type { PreviewError, PreviewErrorCode, PreviewLimits, RenderSummary, Rend
 import type { RendererModule } from '../../hooks';
 
 const ROWS_PER_BATCH = 100;
+/* Each SheetJS read inflates the whole archive and parses its shared strings
+   again, so a workbook takes at most this many reads: the first sheet alone,
+   then the other sheets in runs of equal length. */
+const MAX_WORKBOOK_READS = 8;
 const ROW_HEADER_WIDTH_PX = 48;
 const COLUMN_WIDTH_PX = 96;
 
@@ -54,8 +60,9 @@ const STYLES = `
 
 type SheetRow = readonly (CellObject | undefined)[] | undefined;
 
-/* One sheet as the grid shows it. rowCount and columnCount are already cut to
-   the caps; truncated says the file may hold more than that (see sheetView). */
+/* One sheet as the grid shows it. rows, rowCount and columnCount are already
+   cut to the caps; truncated says the file may hold more than that (see
+   sheetView). */
 interface SheetView {
   name: string;
   hidden: boolean;
@@ -78,7 +85,7 @@ function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
   return magic.every((byte, i) => bytes[i] === byte);
 }
 
-function parseWorkbook(bytes: Uint8Array, limits: PreviewLimits): WorkBook {
+function checkFormat(bytes: Uint8Array): void {
   if (startsWith(bytes, COMPOUND_FILE_MAGIC)) {
     throw previewError('unsupported', 'The workbook is encrypted or in the older .xls format.');
   }
@@ -88,29 +95,56 @@ function parseWorkbook(bytes: Uint8Array, limits: PreviewLimits): WorkBook {
   if (!startsWith(bytes, ZIP_MAGIC)) {
     throw previewError('parse-failed', 'The file is not an .xlsx workbook.');
   }
-  try {
-    return read(bytes, { type: 'array', dense: true, cellHTML: false, cellStyles: false, sheetRows: limits.maxSheetRows });
-  } catch {
-    throw previewError('parse-failed', "SheetJS couldn't read the workbook.");
-  }
 }
 
-/* A sheet counts as cut when SheetJS sets !fullref, which it does when the
-   sheet's <dimension> reaches past sheetRows; when its rows fill the row cap;
-   or when a row runs past the column cap, a row's length being one past its
-   last cell. SheetJS stops at sheetRows without a word when the file has no
-   <dimension> or a short one, so a sheet that ends exactly at the row cap
-   counts as cut too. */
+/* A sheet counts as cut in three cases. SheetJS sets !fullref, which it does
+   when the sheet's <dimension> reaches past sheetRows. A cell sits in the last
+   row the cap shows. Or a row runs past the column cap, a row's length being
+   one past its last cell.
+
+   The last-row rule is there because SheetJS drops the rows past sheetRows
+   without a trace when the file's <dimension> is missing, has no range (such
+   as "A1") or is shorter than the data. Such a sheet whose row at the cap
+   holds no cell, while later rows do, reports truncated: false. That is a
+   known limit: telling it apart would mean reading the sheet part again.
+
+   The view keeps only the rows and columns within the caps, so the parsed
+   workbook can be dropped. */
 function sheetView(name: string, sheet: WorkSheet | undefined, hidden: boolean, limits: PreviewLimits): SheetView {
-  const rows: readonly SheetRow[] = sheet?.['!data'] ?? [];
-  const widest = rows.reduce((max, row) => Math.max(max, row?.length ?? 0), 0);
+  const parsed: readonly SheetRow[] = sheet?.['!data'] ?? [];
+  const widest = parsed.reduce((max, row) => Math.max(max, row?.length ?? 0), 0);
+  const rowCount = Math.min(parsed.length, limits.maxSheetRows);
+  const columnCount = Math.min(widest, limits.maxSheetColumns);
   return {
     name,
     hidden,
-    rows,
-    rowCount: Math.min(rows.length, limits.maxSheetRows),
-    columnCount: Math.min(widest, limits.maxSheetColumns),
-    truncated: typeof sheet?.['!fullref'] === 'string' || rows.length >= limits.maxSheetRows || widest > limits.maxSheetColumns,
+    rows: parsed.slice(0, rowCount).map((row) => row?.slice(0, columnCount)),
+    rowCount,
+    columnCount,
+    truncated: typeof sheet?.['!fullref'] === 'string' || parsed.length >= limits.maxSheetRows || widest > limits.maxSheetColumns,
+  };
+}
+
+/* What one read gives: every sheet's name, and a view of each sheet it parsed. */
+interface SheetRun {
+  names: readonly string[];
+  views: SheetView[];
+}
+
+/* Reads the workbook with SheetJS, parsing only the sheets at the given
+   indexes. */
+function readRun(bytes: Uint8Array, sheets: number[], limits: PreviewLimits): SheetRun {
+  let workbook: WorkBook;
+  try {
+    workbook = read(bytes, { type: 'array', dense: true, cellHTML: false, cellStyles: false, sheetRows: limits.maxSheetRows, sheets });
+  } catch {
+    throw previewError('parse-failed', "SheetJS couldn't read the workbook.");
+  }
+  const names = workbook.SheetNames;
+  if (names.length === 0) throw previewError('parse-failed', 'The workbook has no sheets.');
+  return {
+    names,
+    views: sheets.map((i) => sheetView(names[i], workbook.Sheets[names[i]], !!workbook.Workbook?.Sheets?.[i]?.Hidden, limits)),
   };
 }
 
@@ -192,6 +226,23 @@ function nextTask(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/* Reads every sheet into a view: the first sheet alone, since that read also
+   gives every sheet's name, then the others in at most MAX_WORKBOOK_READS - 1
+   runs. Before each later read it reports the sheets read so far and stops
+   once the signal aborts. */
+async function readViews(bytes: Uint8Array, ctx: RendererContext): Promise<SheetView[]> {
+  const { names, views } = readRun(bytes, [0], ctx.limits);
+  const runLength = Math.ceil((names.length - 1) / (MAX_WORKBOOK_READS - 1));
+  for (let from = 1; from < names.length; from += runLength) {
+    ctx.progress(from, names.length);
+    await nextTask();
+    ctx.signal.throwIfAborted();
+    const run = Array.from({ length: Math.min(runLength, names.length - from) }, (_, k) => from + k);
+    views.push(...readRun(bytes, run, ctx.limits).views);
+  }
+  return views;
+}
+
 /* Builds the first sheet's grid in batches of rows, reporting rows done and
    stopping at the next batch once the signal aborts. */
 async function buildFirstGrid(view: SheetView, ctx: RendererContext): Promise<HTMLElement> {
@@ -254,10 +305,20 @@ function sheetTabs(views: readonly SheetView[], firstGrid: HTMLElement): HTMLEle
     return node;
   }
 
+  /* The first panel stays in the document, hidden while another tab is open.
+     Any other panel is removed when its tab is left and built again if the tab
+     is opened again, so at most two grids are alive at once. */
   function select(selected: number): void {
     const shown = panel(selected);
     tabs.forEach((tab, i) => tab.setAttribute('aria-selected', String(i === selected)));
-    for (const node of builtPanels.values()) node.hidden = node !== shown;
+    for (const [i, node] of builtPanels) {
+      if (i === 0 || i === selected) {
+        node.hidden = node !== shown;
+      } else {
+        node.remove();
+        builtPanels.delete(i);
+      }
+    }
   }
 
   tabList.append(...tabs);
@@ -269,12 +330,10 @@ function sheetTabs(views: readonly SheetView[], firstGrid: HTMLElement): HTMLEle
 async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderSummary> {
   ctx.progress(0, null);
   ctx.signal.throwIfAborted();
-  const workbook = parseWorkbook(new Uint8Array(bytes), ctx.limits);
+  const data = new Uint8Array(bytes);
+  checkFormat(data);
+  const views = await readViews(data, ctx);
   ctx.signal.throwIfAborted();
-  const views = workbook.SheetNames.map((name, i) => (
-    sheetView(name, workbook.Sheets[name], !!workbook.Workbook?.Sheets?.[i]?.Hidden, ctx.limits)
-  ));
-  if (views.length === 0) throw previewError('parse-failed', 'The workbook has no sheets.');
   const firstGrid = await buildFirstGrid(views[0], ctx);
   ctx.root.append(sheetTabs(views, firstGrid));
   return { type: 'xlsx', units: views.length, truncated: views.some((view) => view.truncated) };

@@ -27,6 +27,9 @@ export interface FixtureWorkbook { sheets: readonly FixtureSheet[]; externalLink
 
 export interface FixtureFile { file: string; bytes: Uint8Array }
 
+/* The origin the hostile fixture's harness-origin hyperlink aims at. */
+export declare const HARNESS_ORIGIN: string;
+
 export declare function buildWorkbook(workbook: FixtureWorkbook): Promise<Uint8Array>;
 
 export declare function xlsxFixtureFiles(): Promise<FixtureFile[]>;

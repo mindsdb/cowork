@@ -26,9 +26,10 @@ const REL_TYPE = `${NS_REL}/`;
 const CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml';
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
-/* The harness page's origin (HARNESS_URL in playwright.document-preview.config.ts),
-   which stands in for the Cowork origin. */
-const HARNESS_ORIGIN = 'http://127.0.0.1:5210';
+/* The harness page's origin, which stands in for the Cowork origin.
+   fixtures.test.ts checks it against the web project's baseURL in
+   playwright.document-preview.config.ts. */
+export const HARNESS_ORIGIN = 'http://127.0.0.1:5210';
 
 function escapeXml(text) {
   return String(text)
