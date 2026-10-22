@@ -150,7 +150,7 @@ cases:
       images: 0
 
   - name: a deck past maxSlides
-    deck: { numberedSlides: 301 }
+    file: past-slide-cap.pptx
     expect:
       units: 300
       truncated: true

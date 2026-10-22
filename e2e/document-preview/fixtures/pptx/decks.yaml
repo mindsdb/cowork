@@ -106,6 +106,12 @@
             box: [6324600, 1825625, 1828800, 1828800]
             embedded: sound.m4a
 
+# One slide more than the preview's slide cap draws, each slide reading
+# "Slide <n>".
+- file: past-slide-cap.pptx
+  deck:
+    numberedSlides: 301
+
 # A presentation part cut off mid-element, so it isn't well-formed XML.
 - file: corrupt.pptx
   deck:

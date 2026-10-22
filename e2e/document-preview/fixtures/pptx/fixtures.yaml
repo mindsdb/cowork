@@ -51,6 +51,16 @@
     truncated: false
     textIncludes: [Preview may differ from PowerPoint, Video and audio, Video not shown in preview, Audio not shown in preview]
 
+- name: a deck one slide past the slide cap
+  file: past-slide-cap.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 300
+    truncated: true
+    textIncludes: [Preview may differ from PowerPoint, Slide 1, Slide 300]
+    textExcludes: [Slide 301]
+
 - name: a presentation part cut off mid-element
   file: corrupt.pptx
   kind: clean
