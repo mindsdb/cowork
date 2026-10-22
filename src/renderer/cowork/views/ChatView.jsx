@@ -660,7 +660,14 @@ const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) 
   );
 });
 
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '' }) {
+/** A message that finished live a moment ago (ENG-3554): its steps fold
+ *  shut on screen. Past that, it renders folded like any older turn. */
+const JUST_FINISHED_MS = 2000;
+function justFinished(message) {
+  return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
+}
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive }),
     [steps, startedAt, conversationLive],
@@ -750,6 +757,8 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         startedAt={seg.startedAt}
         isActive={false}
         onActivateStep={onActivateStep}
+        // Only the last block was open on screen while the turn ran.
+        collapseOnMount={collapseOnMount && idx === segments.length - 1}
       />,
     );
     prevWasCard = false;
@@ -3128,6 +3137,9 @@ export default function ChatView({
                     onAnswered={onQuestionAnswered}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
+                    // Only right after it finished live: reopening the task
+                    // later shows the steps already folded.
+                    collapseOnMount={justFinished(m)}
                   />
                   <TextBlock
                     text={m.content}

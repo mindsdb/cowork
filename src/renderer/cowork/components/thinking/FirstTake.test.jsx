@@ -37,3 +37,17 @@ describe('FirstTake', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('FirstTake — leaving (ENG-3554)', () => {
+  it('folds away with its last text instead of vanishing, then unmounts', () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<FirstTake take={{ text: 'Building it.', done: true }} />);
+    advance(2000);
+    rerender(<FirstTake take={null} />);
+    // Still on screen, folding.
+    expect(screen.getByTestId('first-take').textContent).toBe('Building it.');
+    expect(screen.getByTestId('first-take-fold').className).toContain('is-folded');
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.queryByTestId('first-take')).toBeNull();
+  });
+});

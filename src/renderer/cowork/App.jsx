@@ -2400,6 +2400,9 @@ function AppCore() {
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -3721,6 +3724,9 @@ function AppCore() {
             ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -4180,6 +4186,9 @@ function AppCore() {
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
@@ -4509,6 +4518,9 @@ function AppCore() {
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
