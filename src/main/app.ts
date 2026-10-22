@@ -12,7 +12,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, isServerRestartPending, serverStartGeneration, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
@@ -733,7 +733,9 @@ function setupIPC() {
   // Renderer can ask main where the server lives.
   ipcMain.handle('server:get-info', () => ({
     running: isServerRunning(),
-    starting: isServerStarting(),
+    // A backend that died on its own and is about to come back reads as starting.
+    starting: isServerStarting() || isServerRestartPending(),
+    startGeneration: serverStartGeneration(),
     port: getServerPort(),
     origin: `http://127.0.0.1:${getServerPort()}`,
   }));
@@ -742,7 +744,7 @@ function setupIPC() {
   // Returns the new state so the renderer can reflect it without polling.
   // "Already starting" counts as up — stop it instead of double-spawning.
   ipcMain.handle('server:toggle', async () => {
-    if (isServerRunning() || isServerStarting()) {
+    if (isServerRunning() || isServerStarting() || isServerRestartPending()) {
       await stopServer();
       return { running: false, port: getServerPort() };
     }

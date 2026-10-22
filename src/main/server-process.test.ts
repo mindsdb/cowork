@@ -9,6 +9,7 @@
 // same reason: killTree's POSIX branch signals a process GROUP, and the fake
 // child's pid is not ours to signal.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { AsyncResource } from 'async_hooks';
 import { EventEmitter } from 'events';
 import * as cp from 'child_process';
 import * as fs from 'fs';
@@ -86,8 +87,13 @@ import {
   serverClearsPendingCredentials,
   forgetServerCapability,
   activeStoreRoot,
+  isServerRestartPending,
+  serverStartGeneration,
+  resetAutoRestartsForTests,
+  withServerMaintenance,
 } from './server-process';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
+import { AUTO_RESTART_DELAYS_MS } from './server-restart-logic';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
@@ -1273,5 +1279,185 @@ describe('a store with a pending credential clear', () => {
 
     await stopServer();
     expect(activeStoreRoot()).toBeNull();
+  });
+});
+
+describe('a backend that dies on its own', () => {
+  // Before: a crash after start left the app pointing at a dead port until the
+  // person's next action failed; only the backend panel's Start fixed it.
+  //
+  // Each child's events run in the async context it was spawned in, as a real
+  // ChildProcess's do: that context is the lifecycle scope of the start.
+  const spawnHealthy = () => {
+    const children: ReturnType<typeof makeChild>[] = [];
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      const child = makeChild();
+      child.emit = AsyncResource.bind(child.emit.bind(child));
+      children.push(child);
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    return children;
+  };
+  /** The process is gone: it stops answering /health until the next spawn does. */
+  const die = (child: ReturnType<typeof makeChild>) => {
+    healthOwner = null;
+    child.emit('exit', null, 'SIGKILL');
+  };
+  // Fake time for a mocked start to answer: zero-delay mocks and one 250 ms
+  // health poll, with room to spare.
+  const START_MS = 1_500;
+  // Long enough for the first restart to fire and its start to finish, so
+  // "nothing respawned" can't pass just because the wait was too short.
+  const pastFirstRestart = () => vi.advanceTimersByTimeAsync(AUTO_RESTART_DELAYS_MS[0] + START_MS);
+  /** Run the fake clock until `p` settles: a start's health polls, a stop's grace waits. */
+  const settle = async <T>(p: Promise<T>): Promise<T> => {
+    let done = false;
+    void p.then(() => { done = true; }, () => { done = true; });
+    for (let waited = 0; !done && waited < 60_000; waited += 50) await vi.advanceTimersByTimeAsync(50);
+    if (!done) throw new Error('still pending after 60 s of fake time');
+    return p;
+  };
+  // Released after each case as well, so one that fails while holding it
+  // doesn't leave every later case queued behind it.
+  let releaseHeld = () => {};
+  const holdLifecycle = () => {
+    let release!: () => void;
+    const held = withServerMaintenance(() => new Promise<void>((r) => { release = r; }));
+    releaseHeld = () => release();
+    return { held, release: () => release() };
+  };
+  let quiet: ReturnType<typeof vi.spyOn>;
+  let realTimers: () => void;
+  beforeEach(() => {
+    resetAutoRestartsForTests(); // each case starts with no recent restarts, so the first waits AUTO_RESTART_DELAYS_MS[0]
+    quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.useFakeTimers();
+    // A real timer runs in the async context it was set in; the fake clock runs
+    // every timer in the context of whoever advances it. Bind each one, so a
+    // timer set inside a lifecycle scope still runs inside it, and a restart
+    // that forgets to leave the scope still jumps the lock here as it would
+    // for real.
+    const fakeSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+      fakeSetTimeout(AsyncResource.bind(fn), ms, ...args)) as unknown as typeof setTimeout;
+    realTimers = () => {
+      globalThis.setTimeout = fakeSetTimeout; // the clock restores only what it installed
+      vi.useRealTimers();
+    };
+  });
+  afterEach(async () => {
+    quiet.mockRestore();
+    releaseHeld();
+    releaseHeld = () => {};
+    try {
+      await settle(stopServer());
+    } finally {
+      realTimers();
+    }
+  });
+
+  it('is brought back a moment later', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    const firstGeneration = serverStartGeneration();
+    die(children[0]);
+    expect(isServerRunning()).toBe(false);
+    expect(isServerRestartPending()).toBe(true);
+    await pastFirstRestart();
+    expect(isServerRunning()).toBe(true);
+    expect(children).toHaveLength(2);
+    expect(isServerRestartPending()).toBe(false);
+    // What lets the renderer see a restart that came and went between its reads.
+    expect(serverStartGeneration()).toBe(firstGeneration + 1);
+  });
+
+  it('is not respawned when a stop the app asked for ends it', async () => {
+    const children = spawnHealthy();
+    vi.mocked(process.kill).mockImplementation((() => {
+      setTimeout(() => die(children.at(-1)!), 0);
+      return true;
+    }) as never);
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    await settle(stopServer());
+    expect(isServerRestartPending()).toBe(false);
+    await pastFirstRestart();
+    expect(children).toHaveLength(1);
+  });
+
+  it('stays down when the person stops it while the restart is still waiting', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    die(children[0]);
+    expect(isServerRestartPending()).toBe(true);
+    await settle(stopServer());
+    expect(isServerRestartPending()).toBe(false);
+    await pastFirstRestart();
+    expect(children).toHaveLength(1);
+    expect(isServerRunning()).toBe(false);
+  });
+
+  it('waits its turn behind an update or sign-out that holds the lifecycle', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    const lock = holdLifecycle();
+    die(children[0]);
+    await pastFirstRestart();
+    expect(children).toHaveLength(1); // no python spawned beside the transaction
+    lock.release();
+    await lock.held;
+    await vi.advanceTimersByTimeAsync(START_MS);
+    expect(isServerRunning()).toBe(true);
+    expect(children).toHaveLength(2);
+  });
+
+  // Before: once the timer fired, nothing read as coming back until the start
+  // reached its spawn, so server info said offline and the toggle started a
+  // second backend instead of stopping this one.
+  it('still reads as coming back after its timer fires, until the restart fails', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    const lock = holdLifecycle();
+    die(children[0]);
+    await vi.advanceTimersByTimeAsync(AUTO_RESTART_DELAYS_MS[0]); // fired, and queued behind the held lifecycle
+    expect(isServerRestartPending()).toBe(true);
+    vi.mocked(fs.existsSync).mockReturnValue(false); // the binary is gone: the restart fails before it spawns
+    lock.release();
+    await lock.held;
+    await vi.advanceTimersByTimeAsync(START_MS);
+    expect(children).toHaveLength(1);
+    expect(isServerRestartPending()).toBe(false);
+  });
+
+  it('reads as up, not coming back, while the restarted backend is handed its credential', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    let handOver!: () => void;
+    setServerStartedHook(() => new Promise<void>((r) => { handOver = r; }));
+    try {
+      die(children[0]);
+      await pastFirstRestart();
+      expect(children).toHaveLength(2);
+      expect(isServerRunning()).toBe(true);
+      expect(isServerRestartPending()).toBe(false);
+    } finally {
+      handOver?.();
+      setServerStartedHook(null);
+    }
+  });
+
+  it('stands down for a quit queued while it waited for the lifecycle', async () => {
+    const children = spawnHealthy();
+    expect((await settle(startServer({ port: PORT, readyTimeoutMs: 5_000 }))).ok).toBe(true);
+    const lock = holdLifecycle();
+    die(children[0]);
+    await pastFirstRestart(); // fired, and queued behind the held lifecycle
+    const quitting = stopServer();
+    lock.release();
+    await lock.held;
+    await settle(quitting);
+    await pastFirstRestart();
+    expect(children).toHaveLength(1);
+    expect(isServerRunning()).toBe(false);
   });
 });

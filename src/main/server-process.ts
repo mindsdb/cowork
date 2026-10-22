@@ -32,8 +32,9 @@ import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
-import { withServerLifecycle } from './server-lifecycle';
+import { outsideServerLifecycle, withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
+import { decideAutoRestart, recentRestartsAfter } from './server-restart-logic';
 import {
   hasPendingCredentialClear,
   installedServerClearsPendingCredentials,
@@ -323,6 +324,97 @@ let lastStopIntentional: boolean | null = null;
 // can attribute the death correctly. Reset to false in the exit
 // handler.
 let _stopRequested = false;
+// A restart scheduled after the backend died on its own (see
+// server-restart-logic), and when earlier ones ran, for the crash-loop window.
+let _autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
+let _autoRestarts: number[] = [];
+// Restarts whose timer fired and that have not finished. Between the two,
+// nothing else says one is coming: the timer is gone, and isServerStarting()
+// stays false while the restart waits for the lifecycle and resolves the port.
+// A count, because a second can fire while the first still waits for the lock.
+let _autoRestartsUnderway = 0;
+// Counts the stops the app asked for. A restart that fired and is queued behind
+// the lifecycle lock when one arrives sees the count move and stands down, so a
+// quit, sign-out or update queued ahead of it is never followed by a respawn.
+let _stopsRequested = 0;
+
+/** A stop the app asked for wins over a restart, waiting or already queued. */
+function standDownAutoRestart(): void {
+  if (_autoRestartTimer) clearTimeout(_autoRestartTimer);
+  _autoRestartTimer = null;
+  _stopsRequested += 1;
+}
+
+function maybeRestartAfterExit(wasRunning: boolean): void {
+  const decision = decideAutoRestart({
+    intentional: lastStopIntentional === true,
+    wasRunning,
+    recentRestarts: _autoRestarts,
+    now: Date.now(),
+  });
+  if (decision.action === 'restart') {
+    scheduleAutoRestart(decision.delayMs);
+  } else if (decision.reason === 'crash-loop') {
+    diagnostic("main.server-process", "ERROR", "backend_auto_restart_stopped", { restarts: _autoRestarts.length });
+  }
+}
+
+function scheduleAutoRestart(delayMs: number): void {
+  if (_autoRestartTimer) clearTimeout(_autoRestartTimer);
+  const stops = _stopsRequested;
+  // The exit handler runs in the lifecycle scope the child was spawned in, and a
+  // timer set from it inherits that scope (see outsideServerLifecycle).
+  _autoRestartTimer = outsideServerLifecycle(() => setTimeout(() => {
+    _autoRestartTimer = null;
+    _autoRestartsUnderway += 1;
+    void restartAfterCrash(stops);
+  }, delayMs));
+  _autoRestartTimer.unref?.();
+}
+
+async function restartAfterCrash(stopsWhenScheduled: number): Promise<void> {
+  try {
+    const result = await withServerLifecycle(async () => {
+      // Under the lock: a stop asked for while this waited wins, and a start
+      // that got here first has already brought the backend back.
+      if (_stopsRequested !== stopsWhenScheduled || isServerRunning()) return null;
+      _autoRestarts = recentRestartsAfter(_autoRestarts, Date.now());
+      diagnostic("main.server-process", "INFO", "backend_auto_restart", { attempt: _autoRestarts.length });
+      return startServerUnlocked({});
+    });
+    if (!result) return;
+    await runStartedHook(result);
+    if (!result.ok) diagnostic("main.server-process", "WARNING", "backend_auto_restart_failed", { reason: result.reason ?? null });
+  } catch (error) {
+    diagnostic("main.server-process", "WARNING", "backend_auto_restart_failed", error);
+  } finally {
+    _autoRestartsUnderway -= 1;
+  }
+}
+
+/** Test seam: forget earlier automatic restarts and any pending one. */
+export function resetAutoRestartsForTests(): void {
+  if (_autoRestartTimer) clearTimeout(_autoRestartTimer);
+  _autoRestartTimer = null;
+  _autoRestarts = [];
+}
+
+/**
+ * The backend died on its own and is coming back: a restart is scheduled or
+ * underway, and the backend is not up yet.
+ *
+ * Deliberately not part of `isServerStarting()`. Main-process callers read a
+ * starting server as one about to come up on the current account's root (so
+ * `ensureSidecarOnCurrentAccountRoot` reports it untrusted, failing a sign-in),
+ * while a pending restart is a dead server that any of them may start sooner;
+ * the restart then finds it running and stands down.
+ *
+ * False once the backend is up, though the restart is still handing it the
+ * credential: a start reads as running, not starting, at that point too.
+ */
+export function isServerRestartPending(): boolean {
+  return (_autoRestartTimer !== null || _autoRestartsUnderway > 0) && !isServerRunning();
+}
 
 function appendStderr(chunk: string) {
   recentStderr = (recentStderr + chunk).slice(-STDERR_BUFFER_BYTES);
@@ -683,29 +775,37 @@ export function setServerStartedHook(hook: (() => Promise<unknown>) | null): voi
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
   const result = await withServerLifecycle(() => startServerUnlocked(opts));
-  /* Awaited, not fired off. Callers read `/health` as soon as this resolves, so
-   * a push still in flight at that point reads as an unconfigured install.
-   *
-   * It runs after the lifecycle scope is released rather than inside it, because
-   * the hand-over waits on a loopback request for up to 10 seconds and holding
-   * the lifecycle lock for that long would block a concurrent stop or an app
-   * quit. That reasoning covers a top-level start only. `withServerLifecycle` is
-   * re-entrant, so a start nested inside a `withServerMaintenance` transaction
-   * (the update paths and the installer) runs this while the outer scope still
-   * holds the lock. It costs little there, because that transaction already
-   * holds the lock for far longer than the push takes.
-   *
-   * A stop that interleaves costs nothing: `pushMindsCredential` checks that the
-   * sidecar is up before it sends, and the next start pushes again. */
-  if (result.ok && _startedHook) {
-    try {
-      await _startedHook();
-    } catch (error) {
-      // A start that worked is still a start. The hook reports its own failures.
-      diagnostic("main.server-process", "WARNING", "server_post_start_hook_failed", '[server] post-start hook failed', error);
-    }
-  }
+  await runStartedHook(result);
   return result;
+}
+
+/**
+ * Hand the started server what it needs (the MindsHub credential) before the
+ * start reports back.
+ *
+ * Awaited, not fired off. Callers read `/health` as soon as this resolves, so
+ * a push still in flight at that point reads as an unconfigured install.
+ *
+ * It runs after the lifecycle scope is released rather than inside it, because
+ * the hand-over waits on a loopback request for up to 10 seconds and holding
+ * the lifecycle lock for that long would block a concurrent stop or an app
+ * quit. That reasoning covers a top-level start only. `withServerLifecycle` is
+ * re-entrant, so a start nested inside a `withServerMaintenance` transaction
+ * (the update paths and the installer) runs this while the outer scope still
+ * holds the lock. It costs little there, because that transaction already
+ * holds the lock for far longer than the push takes.
+ *
+ * A stop that interleaves costs nothing: `pushMindsCredential` checks that the
+ * sidecar is up before it sends, and the next start pushes again.
+ */
+async function runStartedHook(result: StartServerResult): Promise<void> {
+  if (!result.ok || !_startedHook) return;
+  try {
+    await _startedHook();
+  } catch (error) {
+    // A start that worked is still a start. The hook reports its own failures.
+    diagnostic("main.server-process", "WARNING", "server_post_start_hook_failed", '[server] post-start hook failed', error);
+  }
 }
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
@@ -753,6 +853,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_its_store_has_a_pending_credential_clear", '[server] not adopting the running instance: its store has a pending credential clear');
     } else if (ours) {
       serverStarted = true;
+      _startGeneration += 1;
       _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
       // the account, so an adopted server is on this session's root by definition.
@@ -987,6 +1088,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
     child.on('exit', (code, signal) => {
+      // Serving when it died: a start that never answered fails through its own path.
+      const wasRunning = serverStarted && serverProcess === child;
       childExited = true;
       childExitCode = code;
       serverStarted = false;
@@ -1012,6 +1115,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       }
       logStream?.end();
       logStream = null;
+      maybeRestartAfterExit(wasRunning);
     });
 
     serverProcess = child;
@@ -1086,6 +1190,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       };
     }
     serverStarted = true;
+    _startGeneration += 1;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
     noteServerClearsPendingCredentials(clearsPendingCredentials);
@@ -1146,6 +1251,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 //   3. Clear the slot regardless — if the OS truly orphaned the child,
 //      we'd rather lose track of it than block app quit forever.
 export async function stopServer(): Promise<void> {
+  // Before queueing, not once the lock is ours: a restart that fires meanwhile
+  // must not slip in ahead of this stop.
+  standDownAutoRestart();
   return withServerLifecycle(stopServerUnlocked);
 }
 
@@ -1242,6 +1350,7 @@ async function stopServerUnlocked(): Promise<void> {
 // exists to prevent. This kills what we have a handle on and whatever holds the
 // port, and is only for the path where stopServer() has already timed out.
 export async function forceReapServer(): Promise<void> {
+  standDownAutoRestart();
   const proc = serverProcess;
   if (proc) {
     _stopRequested = true; // the death is ours; don't report it as a crash
@@ -1273,6 +1382,15 @@ export function isServerRunning(): boolean {
 // uses this to show "starting…" without firing a duplicate start.
 export function isServerStarting(): boolean {
   return pendingStart !== null;
+}
+
+// Goes up each time a backend comes up, spawned or adopted. The renderer reads
+// server info every few seconds; a backend that died and came back between two
+// reads only shows as a different number here.
+let _startGeneration = 0;
+
+export function serverStartGeneration(): number {
+  return _startGeneration;
 }
 
 /**

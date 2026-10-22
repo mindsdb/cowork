@@ -28,3 +28,15 @@ export async function withServerLifecycle<T>(fn: () => Promise<T>): Promise<T> {
     release();
   }
 }
+
+/**
+ * Run `fn` outside any lifecycle scope the caller inherited.
+ *
+ * Async context flows into callbacks: a child process's `exit` handler, and a
+ * timer set from it, still see the scope the child was spawned in. A start made
+ * from there would run at once as part of that long-finished transaction,
+ * instead of queueing behind whatever holds the lock now.
+ */
+export function outsideServerLifecycle<T>(fn: () => T): T {
+  return activeLifecycle.exit(fn);
+}

@@ -29,6 +29,8 @@ export default defineConfig({
         'src/main/provider-validation.ts': { statements: 86, branches: 80 },
         'src/main/minds-urls.ts': { statements: 96, branches: 89 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
+        // Whether a backend that died comes back: decided in one place, pinned.
+        'src/main/server-restart-logic.ts': { statements: 100, branches: 100 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
         // The deployment brand's reader and page tags. A field check that stops
