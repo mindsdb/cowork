@@ -28,13 +28,21 @@
  * directory record, directories and empty entries included, counts the bytes
  * that come out, and stops with zip-limit as soon as a count passes a cap. So a
  * renderer library that unzips the file itself, such as SheetJS, inflates only
- * bytes this guard counted. An end record whose 16-bit entry count is past
- * maxZipEntries, which includes the ZIP64 marker 0xFFFF, ends in zip-limit
- * before JSZip reads the directory.
+ * bytes this guard counted.
+ *
+ * Nor does it trust the entry count an end record states. JSZip reads central
+ * records for as long as their signature follows, and shifts its start when
+ * the offsets skip bytes before the archive. So a file with an end record and
+ * more than maxZipEntries central directory signatures anywhere in it ends in
+ * zip-limit before JSZip reads the directory, whatever the file starts with.
+ * In a file that starts with PK, an end record whose 16-bit entry count is
+ * past maxZipEntries, which includes the ZIP64 marker 0xFFFF, also ends in
+ * zip-limit before JSZip reads it. JSZip refuses any other file whose end
+ * record states 0xFFFF without a ZIP64 record, so the guard returns null.
  */
 import JSZip from 'jszip';
 
-import type { GuardedZip, PreviewLimits } from '../contract';
+import type { GuardedZip, PreviewError, PreviewLimits } from '../contract';
 import { isPreviewError, previewError } from '../errors';
 
 export type ArchiveLimits = Pick<PreviewLimits, 'maxInflatedBytes' | 'maxZipEntryInflatedBytes' | 'maxZipEntries'>;
@@ -98,6 +106,24 @@ function endRecordOffset(bytes: Uint8Array): number {
     }
   }
   return -1;
+}
+
+/* How many central directory signatures the file holds anywhere, counting no
+   further than one past `stopAfter`. Each record JSZip reads starts with this
+   signature at its own offset, so the count bounds how many entries JSZip
+   builds, wherever it starts reading. */
+function centralSignatureCount(bytes: Uint8Array, stopAfter: number): number {
+  let count = 0;
+  for (let offset = 0; offset + 4 <= bytes.length && count <= stopAfter; offset += 1) {
+    if (bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x01 && bytes[offset + 3] === 0x02) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function tooManyEntries(limits: ArchiveLimits): PreviewError {
+  return previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`);
 }
 
 /* Reads the central directory records from `offset` to `end`, the way JSZip
@@ -202,16 +228,12 @@ function checkedEntries(buffer: ArrayBuffer, limits: ArchiveLimits): CheckedEntr
   const entries = view.getUint16(end + 10, true);
   const directorySize = view.getUint32(end + 12, true);
   const directoryOffset = view.getUint32(end + 16, true);
-  if (Math.max(entriesOnDisk, entries) > limits.maxZipEntries) {
-    throw previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`);
-  }
+  if (Math.max(entriesOnDisk, entries) > limits.maxZipEntries) throw tooManyEntries(limits);
   if (directoryOffset + directorySize !== end) {
     throw previewError('parse-failed', "The archive's directory isn't where its end record says.");
   }
   const records = readDirectory(bytes, directoryOffset, end, limits.maxZipEntries);
-  if (records && records.length > limits.maxZipEntries) {
-    throw previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`);
-  }
+  if (records && records.length > limits.maxZipEntries) throw tooManyEntries(limits);
   if (!records || records.length !== entries || records.length !== entriesOnDisk) {
     throw previewError('parse-failed', "The archive's end record miscounts its entries.");
   }
@@ -279,10 +301,16 @@ function guardedZip(zip: JSZip): GuardedZip {
  * through the GuardedZip inflates the same bounded bytes again.
  */
 export async function guardArchive(bytes: ArrayBuffer, { limits, signal, onEntry }: ArchiveGuardOptions): Promise<GuardedZip | null> {
+  /* Both checks run before JSZip reads the directory, so a huge entry count
+     fails before JSZip builds every entry. The signature count runs on every
+     file with an end record, because JSZip reads the directory of any such
+     file, whatever it starts with. A file that starts like an archive also
+     has its directory and local headers checked. */
+  const view = new Uint8Array(bytes);
+  if (endRecordOffset(view) >= 0 && centralSignatureCount(view, limits.maxZipEntries) > limits.maxZipEntries) {
+    throw tooManyEntries(limits);
+  }
   const archiveStart = startsLikeArchive(bytes);
-  /* A file that starts like an archive has its directory and local headers
-     checked before JSZip reads it, so a huge entry count fails before JSZip
-     builds every entry. */
   let entries = archiveStart ? checkedEntries(bytes, limits) : null;
   let zip: JSZip;
   try {

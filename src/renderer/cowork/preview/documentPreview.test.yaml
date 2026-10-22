@@ -58,7 +58,8 @@ windowSizeReads: [innerWidth, innerHeight, outerWidth, outerHeight, matchMedia, 
 
 # Archives for the archive guard, built at test time by tests/helpers/zipBytes.ts.
 # Each entry holds `size` zero bytes and takes the other zipBytes entry options
-# it lists. `archive` holds zipBytes archive options, with `lead` as text.
+# it lists. `archive` holds zipBytes archive options, with `lead` and `prefix`
+# as text.
 archiveGuard:
   # Shapes zip writers make, which the guard lets through. `names` are the
   # entries the checked archive lists.
@@ -113,6 +114,19 @@ archiveGuard:
       entries:
         - { name: xl/bomb.xml, size: 1024 }
       archive: { lead: "PK\x07\x08", endRecordCopy: 20 }
+  # Archive options for a directory of one more record than maxZipEntries, each
+  # an empty stored entry. JSZip reads central records for as long as their
+  # signature follows, whatever the end record counts, and shifts its start
+  # when the offsets don't count the bytes before the archive. The two %PDF
+  # files' end records state 5 entries. The guard ends each in zip-limit before
+  # JSZip reads the directory.
+  pastEntryCap:
+    - case: a file that starts with PK
+      archive: {}
+    - case: a %PDF lead the offsets count
+      archive: { lead: "%PDF-1.4\n", statedEntries: 5 }
+    - case: a %PDF prefix the offsets skip
+      archive: { prefix: "%PDF-1.4\n", statedEntries: 5 }
   # Archives that real zip writers make at test time, which the guard lets
   # through. `workbook` lists each sheet's rows for SheetJS's XLSX.write, which
   # writes it once with each `workbookCompression`. `files` lists the entries

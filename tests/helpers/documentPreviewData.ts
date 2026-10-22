@@ -25,9 +25,12 @@ export interface ForbiddenScriptText {
    data. */
 export type ArchiveEntryData = Omit<ZipEntryInput, 'data'> & { size: number };
 
-/* zipBytes archive options as the data states them, with `lead` as text. */
+/* zipBytes archive options as the data states them, with `lead` and `prefix`
+   as text. */
 export interface ArchiveOptionsData {
   lead?: string;
+  prefix?: string;
+  statedEntries?: number;
   endRecordCopy?: number;
 }
 
@@ -39,6 +42,12 @@ export interface ArchiveCaseData {
 
 export interface AcceptedArchiveData extends ArchiveCaseData {
   names: string[];
+}
+
+/* Archive options alone, for a case whose entries the test builds. */
+export interface ArchiveOptionsCaseData {
+  case: string;
+  archive: ArchiveOptionsData;
 }
 
 /* One sheet for SheetJS's XLSX.write: its name and its rows of cells. */
@@ -102,7 +111,12 @@ export interface DocumentPreviewData {
   allowedScriptText: string[];
   reasonCodes: PreviewErrorCode[];
   windowSizeReads: string[];
-  archiveGuard: { accepted: AcceptedArchiveData[]; refused: ArchiveCaseData[]; written: WrittenArchivesData };
+  archiveGuard: {
+    accepted: AcceptedArchiveData[];
+    refused: ArchiveCaseData[];
+    pastEntryCap: ArchiveOptionsCaseData[];
+    written: WrittenArchivesData;
+  };
   harness: HarnessData;
 }
 

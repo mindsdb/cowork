@@ -17,9 +17,10 @@ const text = (value: string) => new TextEncoder().encode(value);
 const zeros = (size: number) => new Uint8Array(size);
 
 function archiveFrom({ entries, archive = {} }: ArchiveCaseData): ArrayBuffer {
+  const { lead, prefix, ...options } = archive;
   return zipBytes(
     entries.map(({ size, ...entry }) => ({ ...entry, data: zeros(size) })),
-    { ...archive, lead: archive.lead === undefined ? undefined : text(archive.lead) },
+    { ...options, lead: lead === undefined ? undefined : text(lead), prefix: prefix === undefined ? undefined : text(prefix) },
   );
 }
 
@@ -64,10 +65,10 @@ describe('guardArchive', () => {
     expect(onEntry.mock.calls).toEqual([[1, 2], [2, 2]]);
   });
 
-  it(`ends in zip-limit past ${LIMITS.maxZipEntries} entries, before JSZip reads the directory`, async () => {
+  it.each(ARCHIVES.pastEntryCap)(`ends in zip-limit past ${LIMITS.maxZipEntries} entries for $case, before JSZip reads the directory`, async ({ case: name, archive }) => {
     const load = vi.spyOn(JSZip, 'loadAsync');
-    const entries = Array.from({ length: LIMITS.maxZipEntries + 1 }, (_, index) => ({ name: `f${index}`, data: zeros(0), store: true }));
-    expect(await failure(guard(zipBytes(entries)))).toMatchObject({ code: 'zip-limit' });
+    const entries = Array.from({ length: LIMITS.maxZipEntries + 1 }, (_, index) => ({ name: `f${index}`, size: 0, store: true }));
+    expect(await failure(guard(archiveFrom({ case: name, entries, archive })))).toMatchObject({ code: 'zip-limit' });
     expect(load).not.toHaveBeenCalled();
   });
 
