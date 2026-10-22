@@ -14,12 +14,15 @@ const frameStub = vi.hoisted(() => ({
   mounts: [] as Array<{ previewType: string; bytes: ArrayBuffer; onRendered: DocumentPreviewFrameProps['onRendered']; onError: DocumentPreviewFrameProps['onError'] }>,
 }));
 
+/* Each test's bundle script loader, which a test can make reject. */
+const bundleStub = vi.hoisted(() => ({ loadScript: vi.fn<() => Promise<string>>() }));
+
 vi.mock('../../platform/host', () => ({ host: platform }));
 vi.mock('./generated/registry', () => ({
   previewBundles: ['xlsx', 'docx', 'pptx'].map((type) => ({
     type,
     scriptSha256: '47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=',
-    loadScript: async () => '',
+    loadScript: () => bundleStub.loadScript(),
     loadAssets: null,
   })),
 }));
@@ -82,6 +85,8 @@ beforeEach(() => {
   platform.isWeb = true;
   frameStub.crash = false;
   frameStub.mounts = [];
+  bundleStub.loadScript.mockReset();
+  bundleStub.loadScript.mockResolvedValue('');
 });
 
 afterEach(() => {
@@ -133,6 +138,26 @@ describe('loading a file', () => {
   it('fails as unsupported when the build has no bundle for the type', async () => {
     mount({ source: { ...SOURCE, previewType: 'pdf' } });
     expect(await screen.findByText(PREVIEW_FAILURE_REASONS.unsupported)).toBeInTheDocument();
+  });
+
+  it('fails as internal, and on web downloads the file, when the bundle does not load', async () => {
+    bundleStub.loadScript.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    const { props } = mount();
+    expect(await screen.findByText(PREVIEW_FAILURE_REASONS.internal)).toBeInTheDocument();
+    await waitFor(() => expect(props.download).toHaveBeenCalledTimes(1));
+    expect(props.onLoadError).not.toHaveBeenCalled();
+    expect(frameStub.mounts).toHaveLength(0);
+  });
+
+  it('hands a failed fetch to the caller even when the bundle failed first', async () => {
+    const error = new TypeError('Failed to fetch');
+    bundleStub.loadScript.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    const fetchFile = vi.fn(() => new Promise<Response>((_, reject) => { setTimeout(() => reject(error), 0); }));
+    const { props } = mount({ fetchFile });
+    await waitFor(() => expect(props.onLoadError).toHaveBeenCalledWith(error));
+    expect(bundleStub.loadScript).toHaveBeenCalledTimes(1);
+    expect(props.download).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
 

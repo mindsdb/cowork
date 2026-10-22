@@ -4,7 +4,9 @@
  *
  * It takes a plain source and its caller's callbacks, so it knows nothing
  * about artifacts. It fetches the file once through `fetchFile`, reading at
- * most maxBytes, loads the type's bundle, and mounts DocumentPreviewFrame.
+ * most maxBytes, loads the type's bundle, and mounts DocumentPreviewFrame. A
+ * file that can't be fetched goes to `onLoadError`; a bundle that doesn't load
+ * fails the preview with the internal reason.
  * Unmounting it, which a close or a file switch does, aborts the read and
  * removes the frame; the next file mounts a new frame with a new token.
  *
@@ -20,7 +22,7 @@ import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import type { DocumentPreviewType, PreviewErrorCode, RenderSummary } from './contract';
 import { DocumentPreviewFrame } from './DocumentPreviewFrame';
-import { isPreviewError } from './errors';
+import { isPreviewError, previewError } from './errors';
 import { previewBundles } from './generated/registry';
 import { PREVIEW_PARENT_LIMITS, previewLimits } from './limits';
 import { loadPreviewBundle, type LoadedPreviewBundle } from './runtime/bundle';
@@ -123,16 +125,26 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
   const onLoadErrorRef = useRef(onLoadError);
   onLoadErrorRef.current = onLoadError;
 
-  /* One file per mount: DocumentPreview keys this body by its source. */
+  /* One file per mount: DocumentPreview keys this body by its source. The
+     bundle loads beside the file, but the file decides first: a failed fetch
+     goes to onLoadError, and a bundle that didn't load fails the preview as
+     internal only once the file has arrived. */
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
-    const readFile = async () => {
+    const bundleLoad = loadPreviewBundle(previewBundles, source.previewType).catch((cause: unknown) => {
+      throw previewError('internal', "The preview's renderer bundle did not load.", { cause });
+    });
+    /* Marks the rejection handled for the time before load() awaits it, and
+       for when the file fails first and load() never does. */
+    bundleLoad.catch(() => undefined);
+    const load = async () => {
       const response = await fetchFile(source.url, signal);
-      return readPreviewBytes(response, PREVIEW_PARENT_LIMITS.maxBytes, signal);
+      const bytes = await readPreviewBytes(response, PREVIEW_PARENT_LIMITS.maxBytes, signal);
+      return { bytes, bundle: await bundleLoad };
     };
-    Promise.all([readFile(), loadPreviewBundle(previewBundles, source.previewType)]).then(
-      ([bytes, bundle]) => {
+    load().then(
+      ({ bytes, bundle }) => {
         if (signal.aborted) return;
         if (bundle) setLoaded({ bytes, bundle });
         else setFailure('unsupported');
