@@ -3,13 +3,24 @@
  * pages within the canvas cap, and PdfPages drawing and freeing canvases as
  * pages enter and leave the view. A stand-in IntersectionObserver lets each
  * test say which pages are in view, and a stand-in document hands out pages
- * of the largest PDF size.
+ * of the largest PDF size. The views the pixel cap case checks come from
+ * pages.test.yaml.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { load } from 'js-yaml';
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { previewLimits } from '../../limits';
 import { pageCanvasSize, PageWindow, PdfPages } from './pages';
+
+/* A shown page width in CSS pixels and a screen pixel ratio. */
+interface PageView { cssWidth: number; ratio: number }
+interface PagesCases { views: PageView[] }
+
+const CASES = load(readFileSync(join(__dirname, 'pages.test.yaml'), 'utf8')) as PagesCases;
 
 /* The largest page a PDF allows, in points. */
 const LARGEST_PAGE = 14_400;
@@ -19,8 +30,9 @@ describe('pageCanvasSize', () => {
     expect(pageCanvasSize({ width: 612, height: 792 }, 816, 2, 16_777_216)).toEqual({ width: 1632, height: 2112, scale: 1632 / 612 });
   });
 
-  it.each([16_777_216, 4_194_304])('keeps the largest page within %i pixels at any width and ratio', (maxPixels) => {
-    for (const [cssWidth, ratio] of [[360, 1], [2400, 4], [10_000, 3]]) {
+  it.each([false, true])('keeps the largest page within maxPdfCanvasPixels at every view (touch: %s)', (touch) => {
+    const maxPixels = previewLimits({ touch }).maxPdfCanvasPixels;
+    for (const { cssWidth, ratio } of CASES.views) {
       const size = pageCanvasSize({ width: LARGEST_PAGE, height: LARGEST_PAGE }, cssWidth, ratio, maxPixels);
       expect(size.width * size.height).toBeLessThanOrEqual(maxPixels);
       expect(size.width).toBeGreaterThan(0);
