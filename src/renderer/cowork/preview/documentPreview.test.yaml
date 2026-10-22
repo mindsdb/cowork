@@ -43,12 +43,19 @@ forbiddenScriptText:
   - { label: a leftover process., text: "a=process.env.HOME" }
   - { label: "import(", text: "a=import ('./other.js')" }
   - { label: import.meta, text: "a=import.meta.url" }
+  - label: Vite's development stand-in for a Node module
+    text: "console.warn('Module \"stream\" has been externalized for browser compatibility.')"
 
 # Script text the bundle generator keeps: look-alikes of the forbidden text.
 allowedScriptText:
   - "a=typeof process"
   - "a={important:1}"
   - "a='<style>'"
+
+# The NODE_ENV of each process that runs the bundle generator: the dev server
+# sets development and Vitest sets test. The npm hooks leave it unset, which
+# Vite takes as production. A frame bundle is the same text under each.
+bundleNodeEnvs: [development, test, production]
 
 # Error codes whose reason the failure note names, one sentence each.
 reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   buildPreviewBundle,
@@ -44,6 +44,7 @@ function readGenerated(outDir: string, name: string): string {
 afterEach(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
   tempDirs = [];
+  vi.unstubAllEnvs();
 });
 
 describe('script text checks', () => {
@@ -117,6 +118,21 @@ describe('frame bundle builds', () => {
     };
     await expect(buildPreviewBundle({ type: 'pdf', renderPath: path.join(dir, 'render.ts'), plugins: [emitsAsset] }))
       .rejects.toThrow('exactly one chunk');
+  });
+
+  /* The harness's dev server and Vitest build the bundles they load in their
+     own process, so a bundle that changed with NODE_ENV would ship bytes they
+     never tested. JSZip in the runtime pulls in Node's stream module, whose
+     Vite stand-in changes with it unless the generator resolves it. */
+  it('builds the same script text under every NODE_ENV that runs the generator', async () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, 'render.ts'), rendererSource('pdf'));
+    const texts = new Set<string>();
+    for (const nodeEnv of data.bundleNodeEnvs) {
+      vi.stubEnv('NODE_ENV', nodeEnv);
+      texts.add((await buildPreviewBundle({ type: 'pdf', renderPath: path.join(dir, 'render.ts') })).text);
+    }
+    expect(texts.size).toBe(1);
   });
 });
 

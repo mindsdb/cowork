@@ -109,6 +109,7 @@ export interface DocumentPreviewData {
   forbiddenSandboxKeywords: string[];
   forbiddenScriptText: ForbiddenScriptText[];
   allowedScriptText: string[];
+  bundleNodeEnvs: string[];
   reasonCodes: PreviewErrorCode[];
   windowSizeReads: string[];
   archiveGuard: {

@@ -14,7 +14,9 @@
  * assets.ts is wired into the registry when it exists. A bundle that isn't one
  * chunk, or whose text could end the inline script, change under the HTML
  * parser or reach for Node or a module loader, fails the build, so the frame
- * never runs a script without a hash.
+ * never runs a script without a hash. A bundle is the same text whatever
+ * NODE_ENV the calling process has, so the dev server and Vitest load the
+ * bytes a build ships.
  *
  * The package.json prebuild, predev and pretypecheck hooks and Vitest's
  * globalSetup run it. It sits outside the folders .dockerignore drops (build,
@@ -39,8 +41,10 @@ const BUILD_CONFIG_KEYS = new Set(['plugins', 'notices']);
 const NOTICE_FILE = /^(?:licen[cs]e|notice)/i;
 
 /* Text a frame bundle must not hold. The first two end or confuse the inline
-   <script>; NUL changes under the HTML parser; the rest reach for Node or a
-   module loader that the frame doesn't have. */
+   <script>; NUL changes under the HTML parser; the next three reach for Node or
+   a module loader that the frame doesn't have. The last is the stand-in Vite
+   gives a Node built-in module outside production builds, so a bundle holding
+   it would differ between the dev server or Vitest and the build that ships. */
 const FORBIDDEN_SCRIPT_TEXT = [
   { label: '</script', pattern: /<\/script/i },
   { label: '<script', pattern: /<script/i },
@@ -48,6 +52,7 @@ const FORBIDDEN_SCRIPT_TEXT = [
   { label: 'a leftover process.', pattern: /\bprocess\./ },
   { label: 'import(', pattern: /\bimport\s*\(/ },
   { label: 'import.meta', pattern: /\bimport\s*\.\s*meta\b/ },
+  { label: "Vite's development stand-in for a Node module", pattern: /has been externalized for browser compatibility/ },
 ];
 
 /* The HTML parser turns \r\n and lone \r into \n before the frame policy hashes
@@ -162,6 +167,14 @@ export async function buildPreviewBundle({
            that imports jszip shares the runtime's copy. */
         { find: /^jszip$/, replacement: require.resolve('jszip/lib/index.js') },
         { find: /^setimmediate$/, replacement: path.join(path.dirname(runtimeEntry), 'setImmediate.ts') },
+        /* JSZip's browser map sends readable-stream to a file that requires
+           Node's stream module. Vite's own stand-in for that module is an
+           empty object in a production build and a warning Proxy otherwise,
+           and Vite picks by the NODE_ENV of the process that runs the build:
+           unset (so production) in the npm hooks, development in the dev
+           server, test in Vitest. The runtime's empty module stands in for it
+           in every build, so they all give the same bundle. */
+        { find: /^stream$/, replacement: path.join(path.dirname(runtimeEntry), 'nodeStream.ts') },
       ],
     },
     build: {
