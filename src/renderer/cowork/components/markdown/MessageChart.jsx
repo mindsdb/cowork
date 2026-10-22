@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Per-instance Chart.js canvas. Adapted from mdb-ai's MessageChart +
 // ChartsService — kept as a self-contained component so we don't need a
 // global singleton: each MessageChart owns its Chart instance and tears
@@ -19,7 +20,7 @@ function parseConfig(str) {
     // eslint-disable-next-line no-eval
     return eval('(' + stripComments(str) + ')');
   } catch (e) {
-    console.error('[MessageChart] config parse error', e);
+    diagnostic("renderer.cowork.components.markdown.MessageChart", "ERROR", "messagechart_config_parse_error", '[MessageChart] config parse error', e);
     return null;
   }
 }
@@ -40,7 +41,7 @@ export function MessageChart({ id, text }) {
         chartRef.current = new Chart(canvasRef.current.getContext('2d'), config);
         requestAnimationFrame(() => chartRef.current?.resize());
       } catch (e) {
-        console.error('[MessageChart] render error', e);
+        diagnostic("renderer.cowork.components.markdown.MessageChart", "ERROR", "messagechart_render_error", '[MessageChart] render error', e);
       }
     })();
     return () => {

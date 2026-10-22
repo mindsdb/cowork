@@ -28,6 +28,26 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 
 ---
 
+### Docker builds with a supplied dependency lock
+
+For an exact server environment, put a hashed `requirements.lock` and Git source
+identities in [`server-lock/`](server-lock/README.md), then run:
+
+```bash
+docker build --build-arg COWORK_SERVER_LOCK=true -t cowork:locked .
+```
+
+The contract selects both server and anton, replacing the ordinary version/ref
+arguments. Registry packages install from exact hashed wheels before either app
+is imported. The installer checks the complete environment, source commits,
+dependency compatibility, and the PyJWT security floor. A missing artifact or a
+mismatch fails the build; it does not select a newer package. Change the supplied
+contract explicitly when updating dependencies.
+
+Builds without `COWORK_SERVER_LOCK=true` select a server version or Git ref and
+consume that release's dependency contract, as described below.
+Git build backends, apt packages, and the frontend have separate build inputs.
+
 ## Build Channels
 
 The *Environments* table above covers **how** you run the app. A build **channel** (or "kind") covers **which env it targets and where it stores its data**. Every launch resolves to one of four kinds. [`src/main/channels.ts`](src/main/channels.ts) is the source of truth: its `CHANNELS` table maps each kind to a data home, API host, and default sidecar branch, and every other layer derives from it.
@@ -1400,6 +1420,20 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 
 ---
 
+## Server release dependencies
+
+Fresh installs, updates, repairs and rollback use `scripts/install_release_server.py`. It reads the exact dependency contract embedded in the selected server wheel, or from the same resolved Git commit. It verifies the server wheel against PyPI's SHA-256, checks that the complete dependency set resolves without additions, then verifies the installed versions and source identity. An unavailable pin or missing contract fails the operation.
+
+Anton and registry dependencies move through a reviewed server release. A standalone Anton PyPI upload no longer changes an installed server. Normal application updates still select the build's stable or prerelease stream; selecting a release also selects its reviewed dependency set.
+
+Before replacing a healthy older installation that has no contract, the consumer retains its actual versions, official Git identities and server wheel for repair or rollback. This local snapshot is never used to invent a fresh installation. A healthy custom source that cannot be preserved stops migration before replacement. A broken installation keeps its last saved snapshot. Registry wheels and Git source still depend on uv's local cache for fully offline restoration.
+
+Desktop `uv tool install` enforces exact versions and checks the resulting inventory; it does not provide dependency-hash enforcement. Docker's native installer additionally uses `--require-hashes --no-deps --only-binary :all:` for registry packages. An explicit `ANTON_REF` selects code at one Git commit while retaining the server's registry versions. Preflight checks that source against the server's original Anton version requirement and the reviewed registry dependencies before replacing the environment. The supplied `server-lock/` Docker option continues to enforce its complete independent requirements and source contract.
+
+For a dependency update, review and publish the upstream server lock and its generated export, then select that server release. For a complete supplied Docker lock, regenerate and review it before rebuilding. Source-only releases never refresh either selection. Python, build backends, npm's existing lockfile and operating-system packages have their own update policies.
+
+`COWORK_SERVER_PACKAGE` and its optional `ANTON_PACKAGE` remain explicit development overrides. They bypass the release consumer and resolve the developer's custom source. Leave them unset for reviewed releases. The deprecated `scripts/install-anton.sh` refuses installation; use Anton's release installer or this application's server installer.
+
 ## Environment Variables
 
 | Variable | Source | Purpose |
@@ -1420,7 +1454,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
-| `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
+| `COWORK_SERVER_PACKAGE` | Manual | Development override with a literal `uv` spec; bypasses the release contract and channel/ref selection |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
 
 ---
@@ -1505,3 +1539,8 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 ---
 
 _Built by MindsDB._
+
+## Diagnostics
+
+See [structured logging](docs/structured-logging.md) for defaults, troubleshooting
+overrides, retained evidence streams and rollout requirements.

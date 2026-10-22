@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Which stores a sign-out asks the sidecar to clear before they serve again.
 //
 // Sign-out can only clear the provider keys of the store a sidecar is serving,
@@ -118,7 +119,7 @@ export function markStoresForCredentialClear(stores: string[], activeStore: stri
       if (root === activeStore) fs.mkdirSync(root, { recursive: true });
       fs.writeFileSync(path.join(root, PENDING_CLEAR_MARKER), '', { encoding: 'utf-8', mode: 0o600 });
     } catch (err) {
-      console.warn('[logout] could not mark a store for its credential clear: %s', root, err);
+      diagnostic("main.pending-credential-clear", "WARNING", "logout_could_not_mark_a_store_for_its_credential_clear_s", '[logout] could not mark a store for its credential clear: %s', root, err);
     }
   }
 }
@@ -141,7 +142,7 @@ export function recordServerClearsPendingCredentials(home: string, clears: boole
     fs.writeFileSync(path.join(home, keep), '', { encoding: 'utf-8', mode: 0o600 });
     fs.rmSync(path.join(home, drop), { force: true });
   } catch (err) {
-    console.warn('[server] could not record whether the backend clears a pending store', err);
+    diagnostic("main.pending-credential-clear", "WARNING", "server_could_not_record_whether_the_backend_clears_a_pending_store", '[server] could not record whether the backend clears a pending store', err);
   }
 }
 
@@ -170,7 +171,7 @@ export function holdUnconfirmedClears(home: string, stores: string[]): boolean {
     });
     return true;
   } catch (err) {
-    console.warn('[logout] could not record the stores marked before the backend answered', err);
+    diagnostic("main.pending-credential-clear", "WARNING", "logout_could_not_record_the_stores_marked_before_the_backend_answered", '[logout] could not record the stores marked before the backend answered', err);
     return false;
   }
 }
@@ -208,7 +209,7 @@ export function forgetServerClearsPendingCredentials(home: string): void {
     try {
       fs.rmSync(path.join(home, name), { force: true });
     } catch (err) {
-      console.warn('[server] could not forget what the replaced backend said about pending stores', err);
+      diagnostic("main.pending-credential-clear", "WARNING", "server_could_not_forget_what_the_replaced_backend_said_about_pending_stores", '[server] could not forget what the replaced backend said about pending stores', err);
     }
   }
 }
@@ -233,6 +234,6 @@ export function settleUnconfirmedClears(home: string, clears: boolean): void {
     }
     fs.rmSync(file, { force: true });
   } catch (err) {
-    console.warn('[server] could not settle the stores marked before the backend answered', err);
+    diagnostic("main.pending-credential-clear", "WARNING", "server_could_not_settle_the_stores_marked_before_the_backend_answered", '[server] could not settle the stores marked before the backend answered', err);
   }
 }
