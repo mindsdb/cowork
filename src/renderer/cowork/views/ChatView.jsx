@@ -968,7 +968,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     }
   };
   /*
-   * `canAct` is a desktop notion — a canonical local path. A download is
+   * `canAct` is a desktop notion: a canonical local path. A download is
    * addressed by the draft or serve URL and only names the saved file after
    * the path, so gating on it would refuse the one action that works. `deleted`
    * still applies.

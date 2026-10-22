@@ -135,7 +135,7 @@ describe('artifactOpenTarget', () => {
 
   it('saves the file for an org draft the viewer cannot render and nobody shared', () => {
     /*
-     * A .zip or .parquet on web. No preview, no shared page — but
+     * A .zip or .parquet on web. No preview, no shared page, but
      * the draft URL streams the bytes, so the click downloads rather than dies.
      * `canPreviewInline` is the desktop answer and must not leak in here.
      */

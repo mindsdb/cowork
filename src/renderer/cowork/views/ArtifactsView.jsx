@@ -384,7 +384,7 @@ function useArtifactOpen(artifact, onOpenViewer) {
   /*
    * A click means "show me this artifact" in both deployments: Desktop renders
    * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to the shared
+   * cannot render (a fullstack app, an image) falls through to the shared
    * page, then to a download. Desktop hands an image to the default app; with
    * no shell to hand it to, the viewer shows it, as the chat card does. The
    * document types join both previews wherever the shared document gate
@@ -1132,7 +1132,7 @@ export default function ArtifactsView({
           }
           /*
            * Org mode and web: the draft or serve URL is the one route to a
-           * file's bytes there. Desktop's grid keeps its existing menu — the
+           * file's bytes there. Desktop's grid keeps its existing menu, since the
            * list view already offers Download from `serveUrl`.
            */
           if ((orgMode || host.isWeb) && canDownloadArtifact(a)) {

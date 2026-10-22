@@ -187,7 +187,7 @@ describe('artifacts rail click in org mode', () => {
 
   it('saves a draft the viewer cannot render instead of dying (ENG-2044)', async () => {
     /*
-     * The case that shipped broken: no preview, nothing shared, no serve URL —
+     * The case that shipped broken: no preview, nothing shared, no serve URL,
      * but the draft URL streams the bytes. The rail used to print "This
      * artifact has no servable file yet." for a file on disk. It now says why
      * the click downloaded once the save went through.
