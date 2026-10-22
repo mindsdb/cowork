@@ -23,7 +23,8 @@ export interface SlideSize {
 }
 
 /* What every slide of one deck shares: the parts, the slide size, the
-   presentation's default text style and the caches. */
+   presentation's default text style and the caches. Each cache is keyed by
+   the archive's own spelling of a part name, from parts.entryName. */
 export interface DeckContext {
   doc: Document;
   parts: PartReader;
@@ -36,6 +37,7 @@ export interface DeckContext {
 
 /* One XML part in the slide's inheritance chain and its relationships. */
 interface Layer {
+  /* The part's name as the archive spells it. */
   part: string;
   root: Element;
   rels: Relationships;
@@ -124,7 +126,8 @@ export async function drawSlide(deck: DeckContext, slidePart: string | null, ind
   return section;
 }
 
-async function loadLayer(parts: PartReader, part: string | null, rootName: string): Promise<Layer | null> {
+async function loadLayer(parts: PartReader, name: string | null, rootName: string): Promise<Layer | null> {
+  const part = name ? parts.entryName(name) : null;
   if (!part) return null;
   const root = documentRoot(await parts.xml(part), rootName);
   return root ? { part, root, rels: await parts.relationships(part) } : null;
@@ -142,7 +145,8 @@ async function loadLayers(deck: DeckContext, slidePart: string): Promise<SlideLa
 }
 
 function themeFor(deck: DeckContext, master: Layer): Promise<Theme> {
-  const themePart = firstPartOfKind(master.part, master.rels, 'theme');
+  const named = firstPartOfKind(master.part, master.rels, 'theme');
+  const themePart = named ? deck.parts.entryName(named) : null;
   if (!themePart) return Promise.resolve(EMPTY_THEME);
   let theme = deck.themes.get(themePart);
   if (!theme) {
@@ -456,8 +460,10 @@ function dataUrl(bytes: Uint8Array, type: string): Promise<string | null> {
 }
 
 /* Each picture part is read and encoded once per deck, however many slides
-   show it. */
-function imageUrl(deck: DeckContext, part: string): Promise<string | null> {
+   and pictures show it and however their targets spell its name. */
+function imageUrl(deck: DeckContext, name: string): Promise<string | null> {
+  const part = deck.parts.entryName(name);
+  if (!part) return Promise.resolve(null);
   let url = deck.images.get(part);
   if (!url) {
     url = deck.parts.bytes(part).then((bytes) => {

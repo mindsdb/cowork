@@ -7,13 +7,16 @@
  * an id on the same element. PowerPoint writes each sldId that way, and so do
  * the committed fixtures, which the pptx spec renders in Chromium. So the
  * test's archive hands the renderer each sldId with r:id first.
+ *
+ * The xml helpers run unchanged through a spy, so a case can count how many
+ * times the renderer lists a shape tree's p:sp shapes.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { load } from 'js-yaml';
 import JSZip from 'jszip';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDeck, FIXTURE_DIR, type DeckSpec } from '../../../../../../e2e/document-preview/fixtures/pptx/deck';
 import type { GuardedZip, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
@@ -21,6 +24,12 @@ import { isPreviewError, previewError } from '../../errors';
 import { previewLimits } from '../../limits';
 import renderer from './render';
 import type { PlaceholderKind } from './styles';
+import { children } from './xml';
+
+vi.mock('./xml', async (importOriginal) => {
+  const xml = await importOriginal<typeof import('./xml')>();
+  return { ...xml, children: vi.fn(xml.children) };
+});
 
 interface CaseExpectation {
   error?: PreviewErrorCode;
@@ -36,7 +45,8 @@ interface CaseExpectation {
   overlaps?: string[][];
   markupExcludes?: string[];
   unread?: string[];
-  withinMs?: number;
+  readCounts?: Record<string, number>;
+  maxShapeTreeScans?: number;
 }
 
 interface RenderCase {
@@ -72,8 +82,6 @@ interface Run {
   /* Each archive the renderer opened through ctx.openZip. */
   opened: RecordedZip[];
   progress: Array<[number, number | null]>;
-  /* performance.now() just before render() is called. */
-  started: number;
   rendered: Promise<RenderSummary>;
 }
 
@@ -142,8 +150,12 @@ async function startRender(source: Source, options: RunOptions = {}): Promise<Ru
       }),
     requestAsset: async () => null,
   };
-  const started = performance.now();
-  return { root, opened, progress, started, rendered: renderer.render(bytes, ctx) };
+  return { root, opened, progress, rendered: renderer.render(bytes, ctx) };
+}
+
+/* How many times the renderer listed a shape tree's p:sp shapes since the spy was cleared. */
+function shapeTreeScans(): number {
+  return vi.mocked(children).mock.calls.filter(([, name]) => name === 'sp').length;
 }
 
 function slideElements(root: HTMLElement): HTMLElement[] {
@@ -206,6 +218,9 @@ function expectReads(opened: RecordedZip[], want: CaseExpectation): void {
     expect(names, `${name} is in the package`).toContain(name);
     expect(zip.reads, `${name} is never read`).not.toContain(name);
   }
+  for (const [name, count] of Object.entries(want.readCounts ?? {})) {
+    expect(zip.reads.filter((read) => read === name), `reads of ${name}`).toHaveLength(count);
+  }
 }
 
 afterEach(() => {
@@ -219,6 +234,7 @@ describe('the pptx renderer', () => {
 
   it.each(DATA.cases)('$name', async (testCase) => {
     const want = testCase.expect;
+    vi.mocked(children).mockClear();
     const run = await startRender(testCase, { limits: testCase.limits });
     if (want.error) {
       await expect(run.rendered).rejects.toMatchObject({ name: 'PreviewError', code: want.error });
@@ -226,7 +242,7 @@ describe('the pptx renderer', () => {
     }
 
     const summary = await run.rendered;
-    if (want.withinMs !== undefined) expect(performance.now() - run.started, 'render time in ms').toBeLessThan(want.withinMs);
+    if (want.maxShapeTreeScans !== undefined) expect(shapeTreeScans(), 'shape tree scans').toBeLessThanOrEqual(want.maxShapeTreeScans);
     expect(summary.type).toBe('pptx');
     if (want.units !== undefined) expect(summary.units).toBe(want.units);
     if (want.truncated !== undefined) expect(summary.truncated).toBe(want.truncated);

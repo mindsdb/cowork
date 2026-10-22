@@ -9,7 +9,7 @@ import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GuardedZip } from '../../contract';
-import { partReader, presentationPartName, relationshipPart, resolvePartName, type Relationship } from './package';
+import { partReader, presentationPartName, relationshipPart, resolvePartName, type Relationship, type Relationships } from './package';
 
 interface ExpectedRelationship extends Relationship {
   part: string | null;
@@ -18,6 +18,7 @@ interface ExpectedRelationship extends Relationship {
 interface PackageCases {
   partNames: Array<[string, string, string | null]>;
   archive: Record<string, string>;
+  slideSpellings: string[];
   slideRelationships: ExpectedRelationship[];
 }
 
@@ -81,6 +82,22 @@ describe('partReader', () => {
     await parts.xml(SLIDE);
     await parts.relationships(SLIDE);
     await parts.relationships(SLIDE);
+    expect(reads).toEqual(['ppt/slides/Slide1.xml', 'ppt/slides/_rels/slide1.xml.rels']);
+  });
+
+  it('reads and parses a part named in several spellings once', async () => {
+    const { zip, reads } = archive();
+    const parts = partReader(zip);
+    const docs = new Set<Document | null>();
+    const relationshipLists = new Set<Relationships>();
+    for (const name of DATA.slideSpellings) {
+      expect(parts.entryName(name)).toBe('ppt/slides/Slide1.xml');
+      docs.add(await parts.xml(name));
+      relationshipLists.add(await parts.relationships(name));
+    }
+    expect(parts.entryName('ppt/slides/slide2.xml')).toBeNull();
+    expect(docs.size).toBe(1);
+    expect(relationshipLists.size).toBe(1);
     expect(reads).toEqual(['ppt/slides/Slide1.xml', 'ppt/slides/_rels/slide1.xml.rels']);
   });
 

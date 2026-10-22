@@ -18,6 +18,10 @@ export interface Relationship {
 export type Relationships = ReadonlyMap<string, Relationship>;
 
 export interface PartReader {
+  /* The archive's own spelling of a part name, or null when the archive has no
+     such entry. Part names compare without regard to case, so this is the one
+     key a cache of parts uses. */
+  entryName(name: string): string | null;
   xml(name: string): Promise<Document | null>;
   bytes(name: string): Promise<Uint8Array | null>;
   relationships(sourcePart: string): Promise<Relationships>;
@@ -84,42 +88,52 @@ function readRelationships(doc: Document | null): Relationships {
   return rels;
 }
 
+const NO_RELATIONSHIPS: Relationships = new Map();
+
 /*
  * Part names in a package compare without regard to case, so each read looks
- * the name up among the archive's entries first. Parsed parts and
- * relationship lists are cached, since every slide reads its layout, master
- * and theme.
+ * the name up among the archive's entries first and only ever reads an entry
+ * the archive holds. Parsed parts and relationship lists are cached by the
+ * entry's own name, since every slide reads its layout, master and theme: a
+ * part named in several spellings is still read and parsed once. Bytes are
+ * not cached: imageUrl in slide.ts caches the data: URL it builds from them.
  */
 export function partReader(zip: GuardedZip): PartReader {
   const entries = new Map(zip.names().map((name) => [name.toLowerCase(), name]));
   const xmlCache = new Map<string, Promise<Document | null>>();
   const relsCache = new Map<string, Promise<Relationships>>();
 
-  function entry(name: string): string | null {
+  function entryName(name: string): string | null {
     return entries.get(name.toLowerCase()) ?? null;
   }
 
   function xml(name: string): Promise<Document | null> {
-    let doc = xmlCache.get(name);
+    const found = entryName(name);
+    if (!found) return Promise.resolve(null);
+    let doc = xmlCache.get(found);
     if (!doc) {
-      const found = entry(name);
-      doc = found ? zip.text(found).then((text) => (text === null ? null : parseXml(text))) : Promise.resolve(null);
-      xmlCache.set(name, doc);
+      doc = zip.text(found).then((text) => (text === null ? null : parseXml(text)));
+      xmlCache.set(found, doc);
     }
     return doc;
   }
 
   return {
+    entryName,
     xml,
     bytes(name) {
-      const found = entry(name);
+      const found = entryName(name);
       return found ? zip.bytes(found) : Promise.resolve(null);
     },
+    /* The cached list holds each relationship's raw Target, which every caller
+       resolves against its own sourcePart, so spellings can share it. */
     relationships(sourcePart) {
-      let rels = relsCache.get(sourcePart);
+      const found = entryName(relationshipsPartName(sourcePart));
+      if (!found) return Promise.resolve(NO_RELATIONSHIPS);
+      let rels = relsCache.get(found);
       if (!rels) {
-        rels = xml(relationshipsPartName(sourcePart)).then(readRelationships);
-        relsCache.set(sourcePart, rels);
+        rels = xml(found).then(readRelationships);
+        relsCache.set(found, rels);
       }
       return rels;
     },

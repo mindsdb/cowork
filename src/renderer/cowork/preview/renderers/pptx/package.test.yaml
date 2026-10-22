@@ -46,6 +46,14 @@ archive:
     <!DOCTYPE p:sld [<!ENTITY lol "lol">]>
     <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">&lol;</p:sld>
 
+# Names of the archive's ppt/slides/Slide1.xml that differ only in case. The
+# reader reads that entry, and its relationships part, once for all of them.
+slideSpellings:
+  - ppt/slides/slide1.xml
+  - PPT/SLIDES/SLIDE1.XML
+  - ppt/Slides/Slide1.xml
+  - Ppt/sLides/sLide1.Xml
+
 # The relationships of ppt/slides/slide1.xml as the reader returns them. The
 # second rId1 is a duplicate, so the first one stands.
 slideRelationships:
