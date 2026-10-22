@@ -25,8 +25,9 @@ export type PdfDocumentParams = NonNullable<Parameters<typeof getDocument>[0]>;
  * getDocument's options. No cMapUrl, standardFontDataUrl, wasmUrl or iccUrl,
  * so pdf.js builds no URL to fetch; CMaps and fonts come through
  * BinaryDataFactory by name. pdf.js skips an image whose decoded pixels would
- * pass the inflate budget, and scales one larger than a page canvas down while
- * decoding it.
+ * pass the inflate budget, and scales one larger than a page canvas down after
+ * decoding it. Both checks look at one image at a time: pdf.js keeps no total
+ * of the decoded bytes across a page's images.
  */
 export function pdfDocumentParams(bytes: ArrayBuffer, ctx: RendererContext): PdfDocumentParams {
   return {
