@@ -6,8 +6,8 @@
  * with "Preview may differ from PowerPoint".
  */
 import type { GuardedZip, RenderSummary, RendererContext } from '../../contract';
+import { isPreviewError, previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
-import { isPreviewError, previewError } from './errors';
 import { documentRoot, partReader, presentationPartName, relationshipPart, type PartReader } from './package';
 import { drawSlide, type DeckContext, type SlideSize } from './slide';
 import { NO_SLIDES_NOTE, PPTX_STYLES, PREVIEW_LABEL } from './styles';

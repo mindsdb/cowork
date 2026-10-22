@@ -1,9 +1,8 @@
 /*
  * The pptx preview in the harness. Each fixture in fixtures/pptx/fixtures.yaml
- * ends as its expectation says, and the frame is back at about:srcdoc after the
- * harness clicks through it. A clean fixture reaches only the harness origin. A
- * hostile one reaches it only for its own file and for the harness page and its
- * modules, since the harness origin stands in for the Cowork origin.
+ * ends as its expectation says, strayRequests finds nothing in the requests its
+ * preview made, and the frame is back at about:srcdoc after the harness clicks
+ * through it.
  *
  * Over the frame itself, the spec checks that it draws one slide per unit under
  * the "Preview may differ from PowerPoint" label, holds no link, media element
@@ -21,24 +20,13 @@ import { expect, test, type Frame, type Page } from '@playwright/test';
 
 import type { RenderSummary } from '../../src/renderer/cowork/preview/contract';
 import { PREVIEW_LABEL } from '../../src/renderer/cowork/preview/renderers/pptx/styles';
-import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
-import { loadFixtures, openPreview, type PreviewFixture, type PreviewRun } from './harness';
+import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
 
 const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
 const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
 
-/* Paths of the harness page itself and of its own modules, which Vite serves
-   from the harness origin. */
-const HARNESS_PAGE_PATH = /^\/(?:index\.html)?$|^\/(?:@|node_modules\/)|\.(?:[cm]?[jt]sx?|css)$/;
-
 /* Elements that can load, play or navigate, none of which a slide preview draws. */
 const FORBIDDEN_ELEMENTS = 'a, area, [href], [xlink\\:href], iframe, frame, object, embed, video, audio, source, form, base';
-
-function previewFrame(page: Page): Frame {
-  const frame = page.frame({ name: PREVIEW_FRAME_NAME });
-  if (!frame) throw new Error(`No frame named ${PREVIEW_FRAME_NAME} is mounted`);
-  return frame;
-}
 
 function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   const want = fixture.expect;
@@ -56,15 +44,6 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   for (const text of want.textExcludes ?? []) expect(run.text).not.toContain(text);
 }
 
-function expectRequests(run: PreviewRun, fixture: PreviewFixture, harnessOrigin: string): void {
-  const urls = run.requests.map((request) => new URL(request));
-  expect(urls.filter((url) => url.origin !== harnessOrigin).map(String), 'requests outside the harness origin').toEqual([]);
-  if (fixture.kind === 'hostile') {
-    const strays = urls.filter((url) => !url.pathname.endsWith(`/${fixture.file}`) && !HARNESS_PAGE_PATH.test(url.pathname));
-    expect(strays.map(String), 'harness-origin requests other than the fixture and the harness page').toEqual([]);
-  }
-}
-
 /* The frame body's markup, attributes and styles included, without the frame's
    own script, whose source is the renderer and not the file. */
 function bodyMarkup(frame: Frame): Promise<string> {
@@ -76,7 +55,7 @@ function bodyMarkup(frame: Frame): Promise<string> {
 }
 
 async function expectSlides(page: Page, summary: RenderSummary, fixture: PreviewFixture): Promise<void> {
-  const frame = previewFrame(page);
+  const frame = await previewFrame(page);
   await expect(frame.locator('section.pptx-slide')).toHaveCount(summary.units);
   await expect(frame.getByText(PREVIEW_LABEL, { exact: true })).toBeVisible();
   await expect(frame.locator(`body :is(${FORBIDDEN_ELEMENTS})`)).toHaveCount(0);
@@ -109,7 +88,7 @@ test.describe('pptx preview', () => {
       const run = await openPreview(page, 'pptx', fixture);
 
       expectOutcome(run, fixture);
-      expectRequests(run, fixture, new URL(baseURL).origin);
+      expect(strayRequests('pptx', fixture, run.requests, new URL(baseURL).origin)).toEqual([]);
       expect(run.frameUrlAfterClicks).toBe('about:srcdoc');
       if (run.outcome === 'rendered' && run.summary) await expectSlides(page, run.summary, fixture);
     });

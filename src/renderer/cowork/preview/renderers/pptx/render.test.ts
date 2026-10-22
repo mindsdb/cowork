@@ -17,8 +17,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildDeck, FIXTURE_DIR, type DeckSpec } from '../../../../../../e2e/document-preview/fixtures/pptx/deck';
 import type { GuardedZip, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
+import { isPreviewError, previewError } from '../../errors';
 import { previewLimits } from '../../limits';
-import { isPreviewError, previewError } from './errors';
 import renderer from './render';
 import type { PlaceholderKind } from './styles';
 
