@@ -14,7 +14,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { RendererBuildConfig } from '../../hooks';
 
-interface CodeCheck { name: string; pattern: string; flags?: string }
+interface CodeCheck { name: string; pattern: string; flags?: string; matches?: string[]; skips?: string[] }
 
 interface CodeChecks { bundle: CodeCheck[]; source: CodeCheck[] }
 
@@ -69,6 +69,14 @@ describe.each([true, false])('the xlsx preview bundle (minify: %s)', (minify) =>
 
   it.each(CHECKS)('holds no $name', ({ pattern, flags }) => {
     expect(output.chunks[0]).not.toMatch(new RegExp(pattern, flags));
+  });
+});
+
+describe('the bundle checks in code-checks.yaml', () => {
+  it.each(CHECKS.filter(({ matches, skips }) => matches || skips))('$name matches its examples and skips its non-examples', ({ pattern, flags, matches, skips }) => {
+    const check = new RegExp(pattern, flags);
+    expect((matches ?? []).filter((text) => !check.test(text))).toEqual([]);
+    expect((skips ?? []).filter((text) => check.test(text))).toEqual([]);
   });
 });
 

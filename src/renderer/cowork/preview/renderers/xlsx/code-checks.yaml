@@ -1,5 +1,7 @@
 # Text the xlsx preview must never hold. Each `pattern` is a JavaScript regular
-# expression source, and `flags` its optional flags.
+# expression source, and `flags` its optional flags. A check may list examples:
+# bundle.test.ts asserts that the pattern matches each of `matches` and none of
+# `skips`.
 #
 # bundle: matched against the whole built IIFE, by bundle.test.ts.
 # source: matched against render.ts, by render.test.ts.
@@ -10,8 +12,24 @@ bundle:
     pattern: '\bfetch\b'
   - name: XMLHttpRequest
     pattern: '\bXMLHttpRequest\b'
+  # A Worker or SharedWorker built, called or read off a global, and
+  # importScripts. The frame bundle also carries JSZip, whose stream classes
+  # end in Worker, so a bare name ending in Worker is not a match.
   - name: a Worker
-    pattern: 'Worker\b'
+    pattern: '\bnew\s+(?:Shared)?Worker\b|\b(?:Shared)?Worker\s*\(|\.(?:Shared)?Worker\b|\bimportScripts\b'
+    matches:
+      - new Worker(url)
+      - new SharedWorker(url)
+      - Worker(url)
+      - self.Worker
+      - globalThis.SharedWorker
+      - importScripts('x.js')
+    skips:
+      - new GenericWorker('x')
+      - this._compressWorker
+      - n.Utf8DecodeWorker
+      - FlateWorker.prototype
+      - var e = `Worker ` + this.name
   - name: an eval call
     pattern: '\beval\s*\('
   - name: the Function constructor

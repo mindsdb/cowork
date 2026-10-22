@@ -1,4 +1,5 @@
-# The xlsx preview fixtures, read only through loadFixtures in harness.ts.
+# The xlsx preview fixtures. The spec reads them through loadFixtures in
+# harness.ts; the renderer's unit tests read this file directly.
 # make-fixtures.mjs in this folder writes every file listed here. units counts
 # the sheets shown as tabs.
 
@@ -32,10 +33,11 @@
     outcome: error
     errorCode: parse-failed
 
-# Hyperlinks aimed at example.com, docs.google.com, drive.google.com, the
-# harness origin, localhost, 127.0.0.1 and javascript:, HYPERLINK and
-# WEBSERVICE formulas, an externalLink to a remote workbook, and cells holding
-# markup. Cells show as text, cached values only.
+# Hyperlinks aimed at example.com, docs.google.com, drive.google.com, a page
+# path and a module-like .js path on the harness origin, localhost, 127.0.0.1
+# and javascript:, HYPERLINK and WEBSERVICE formulas, an externalLink to a
+# remote workbook, and cells holding markup. Cells show as text, cached values
+# only.
 - name: hyperlinks, an externalLink and markup in cells
   file: hostile.xlsx
   kind: hostile

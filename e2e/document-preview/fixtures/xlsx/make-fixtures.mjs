@@ -174,6 +174,7 @@ function hostileWorkbook() {
     ['docs link', 'https://docs.google.com/spreadsheets/d/xlsx-hostile'],
     ['drive link', 'https://drive.google.com/file/d/xlsx-hostile'],
     ['harness origin link', `${HARNESS_ORIGIN}/xlsx-hostile`],
+    ['harness module link', `${HARNESS_ORIGIN}/xlsx-hostile.js`],
     ['localhost link', 'http://localhost:8080/xlsx-hostile'],
     ['loopback link', 'http://127.0.0.1:8080/xlsx-hostile'],
     ['script link', "javascript:parent.postMessage('xlsx-hostile','*')"],
