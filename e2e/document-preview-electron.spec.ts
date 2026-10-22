@@ -20,8 +20,8 @@ import {
  * (helpers/document-preview-electron-app.cjs) runs on the main window's
  * production webPreferences and preload (main-window-preferences.ts), with the
  * production guard (document-preview-guard.ts), and adds the server token to
- * loopback requests the way app.ts does. A loopback server records which
- * requests arrived with the token.
+ * loopback requests with app.ts's own listener (server-token-listener.ts). A
+ * loopback server records which requests arrived with the token.
  *
  * The isolation checks build the real preview frame from frameDocument.ts's
  * exports. The real frame's policy blocks fetches and server images, so the

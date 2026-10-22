@@ -2,16 +2,16 @@
  * Isolated Electron host for e2e/document-preview-electron.spec.ts. It opens
  * one window with the main window's own webPreferences and preload, registers
  * the production document preview guard, and adds the server token to
- * loopback requests the way app.ts's onBeforeSendHeaders listener does. The
- * listener here copies only the direct-port branch, with no Minds gate and no
- * Vite dev proxy; src/main/document-preview-wiring.test.ts pins how app.ts's
- * own listener asks the guard. No backend, credentials, onboarding or access
- * to the user's normal app profile. Needs `npm run build` first, for dist/main.
+ * loopback requests with app.ts's own listener (server-token-listener.ts),
+ * given no Minds gate and no Vite dev port. No backend, credentials,
+ * onboarding or access to the user's normal app profile. Needs
+ * `npm run build` first, for dist/main.
  */
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const { guardDocumentPreviewFrames } = require('../../dist/main/main/document-preview-guard.js');
 const { mainWindowWebPreferences } = require('../../dist/main/main/main-window-preferences.js');
+const { serverTokenListener } = require('../../dist/main/main/server-token-listener.js');
 const { IPC } = require('../../dist/main/shared/ipc-channels.js');
 
 const serverPort = process.env.PREVIEW_HOST_SERVER_PORT;
@@ -47,17 +47,18 @@ app.whenReady().then(async () => {
     if (!event.isMainFrame) globalThis.previewHost.navigations.push({ url: event.url, cancelled: event.defaultPrevented });
   });
 
+  const addServerToken = serverTokenListener({
+    guard,
+    serverPort: () => Number(serverPort),
+    token: () => token,
+    viteDevPort: null,
+    gate: () => false,
+  });
   win.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
-      const { frame } = details;
-      const tokenAllowed = guard.mayCarryServerToken(frame);
-      const url = new URL(details.url);
-      globalThis.previewHost.listenerCalls.push({ path: url.pathname, hadFrame: Boolean(frame) });
-      if (tokenAllowed && url.port === serverPort) {
-        details.requestHeaders.Authorization = `Bearer ${token}`;
-      }
-      callback({ requestHeaders: details.requestHeaders });
+      globalThis.previewHost.listenerCalls.push({ path: new URL(details.url).pathname, hadFrame: Boolean(details.frame) });
+      addServerToken(details, callback);
     },
   );
 
