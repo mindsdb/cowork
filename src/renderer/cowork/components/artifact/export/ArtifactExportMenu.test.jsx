@@ -45,11 +45,11 @@ function answer(status, body) {
   mocks.authFetch.mockResolvedValueOnce({ ok: status === 200, status, json: async () => body });
 }
 
-async function exportAsWord() {
-  const user = userEvent.setup();
-  render(<ArtifactExportMenu draftUrl={DRAFT_URL} formats={['html', 'docx']} />);
+async function exportAsWord(user = userEvent.setup()) {
+  const view = render(<ArtifactExportMenu draftUrl={DRAFT_URL} formats={['html', 'docx']} />);
   await user.click(screen.getByRole('button', { name: /^Export/ }));
   await user.click(await screen.findByRole('menuitem', { name: 'Word' }));
+  return view;
 }
 
 beforeEach(() => {
@@ -123,5 +123,51 @@ describe('a 200 whose file does not download', () => {
     await exportAsWord();
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(message));
+  });
+});
+
+/*
+ * Closing the viewer or switching files unmounts the button. The export and
+ * its save still finish, and no message timer outlives the button. The answer
+ * is the written row that both saves a file and shows a message, so a message
+ * timer would start if the button kept updating.
+ */
+describe('a button that unmounts', () => {
+  const noticeRow = cases.written.find((row) => row.omittedCount === 1);
+  const noticeAnswer = () => exportResult({
+    omittedCount: noticeRow.omittedCount,
+    scriptsDropped: noticeRow.scriptsDropped,
+  });
+  const fakeTimerUser = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('during an export still saves the file and starts no message timer', async () => {
+    let settle;
+    mocks.authFetch.mockReturnValueOnce(new Promise((resolveAnswer) => { settle = resolveAnswer; }));
+    const { unmount } = await exportAsWord(fakeTimerUser());
+
+    unmount();
+    settle({ ok: true, status: 200, json: async () => noticeAnswer() });
+
+    await waitFor(() => expect(mocks.downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('while a message shows clears its timer', async () => {
+    answer(200, noticeAnswer());
+    const { unmount } = await exportAsWord(fakeTimerUser());
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(noticeRow.message));
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

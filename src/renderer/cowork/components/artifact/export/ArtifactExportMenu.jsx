@@ -10,6 +10,8 @@ import { Button, Menu, Spinner } from '../../ui';
 import { cn } from '../../../lib/cn';
 import { EXPORT_FORMAT_LABELS, runArtifactExport } from '../../../lib/artifactExport';
 
+/** @typedef {import('../../../lib/artifactExport').ExportNotice} ExportNotice */
+
 /** How long a message stays under the button. */
 const NOTICE_MS = 6_000;
 
@@ -21,8 +23,7 @@ const NOTICE_MS = 6_000;
  */
 export function ArtifactExportMenu({ draftUrl, formats }) {
   const [busy, setBusy] = useState(false);
-  // An ExportNotice from runArtifactExport, or null.
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(/** @type {ExportNotice | null} */ (null));
   const noticeTimerRef = useRef(0);
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -33,6 +34,7 @@ export function ArtifactExportMenu({ draftUrl, formats }) {
     };
   }, []);
 
+  /** @param {ExportNotice | null} next */
   const showNotice = (next) => {
     window.clearTimeout(noticeTimerRef.current);
     setNotice(next);
