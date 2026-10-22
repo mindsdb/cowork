@@ -189,7 +189,7 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
 // one browser reloaded staging up to 13 times a minute; each load sent a burst
 // of exactly 50 `/items` reads, 6,555 of the 7,152 in fifteen minutes, and
 // starved cowork-server's single process until both pods failed readiness.
-describe('fetchSessions warms a bounded number at a time (ENG-3682)', () => {
+describe('fetchSessions warms a bounded number at a time', () => {
   const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
   it('keeps four reads in flight on a slow server, not fifty', async () => {
