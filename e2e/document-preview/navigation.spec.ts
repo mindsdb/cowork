@@ -50,7 +50,7 @@ test('the frame is sandboxed, named, built from srcdoc, and holds no token meta 
   const scriptSha256 = policy.match(/'sha256-([^']+)'/)?.[1] ?? '';
   expect(policy).toBe(previewFramePolicy(scriptSha256));
   const token = srcdoc.match(/<meta name="cowork-preview-token" content="([0-9a-f]{32})">/)?.[1] ?? '';
-  const scriptText = srcdoc.match(/<script>([\s\S]*)<\/script>$/)?.[1] ?? '';
+  const scriptText = srcdoc.slice(srcdoc.indexOf('<script>') + '<script>'.length, -'</script>'.length);
   expect(srcdoc).toBe(buildPreviewSrcdoc({ policy, token, scriptText, scriptSha256 }));
 
   const frame = await previewFrame(page);

@@ -31,7 +31,8 @@ describe('buildPreviewSrcdoc', () => {
 
   it('inlines the script byte for byte, so the policy hash matches it', () => {
     const srcdoc = srcdocFor();
-    const script = srcdoc.match(/<script>([\s\S]*)<\/script>$/)?.[1];
+    expect(srcdoc.endsWith('</script>')).toBe(true);
+    const script = srcdoc.slice(srcdoc.indexOf('<script>') + '<script>'.length, -'</script>'.length);
     expect(script).toBe(SCRIPT);
     expect(scriptSha256(script!)).toBe(HASH);
   });
