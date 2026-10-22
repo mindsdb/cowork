@@ -4,6 +4,7 @@
 import type { PluginOption } from 'vite';
 
 export declare const RENDERER_SPECIFIER: 'virtual:cowork-preview-renderer';
+export declare const NOTICES_FILE: 'third-party-notices.txt';
 
 export interface ScriptText {
   type: string;
@@ -33,6 +34,8 @@ export interface GeneratePreviewBundlesOptions {
   renderersDir?: string;
   runtimeDir?: string;
   outDir?: string;
+  /** Where the notices file goes: the folder Vite copies into each renderer build output. */
+  publicDir?: string;
 }
 
 export interface OutputItem {
@@ -56,6 +59,7 @@ export declare function thirdPartyNotices(
   noticeFiles: readonly string[],
   repoRoot?: string,
 ): string;
+export declare function verifyBuildNotices(buildDir: string, publicDir?: string): void;
 export declare function generatePreviewBundles(
   options?: GeneratePreviewBundlesOptions,
 ): Promise<{ types: string[]; outDir: string }>;

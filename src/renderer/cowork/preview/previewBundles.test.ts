@@ -10,14 +10,18 @@ import {
   checkScriptText,
   generatePreviewBundles,
   normalizeScriptText,
+  NOTICES_FILE,
   scriptSha256,
   singleChunk,
+  verifyBuildNotices,
   verifyGeneratedBundles,
 } from '../../../../scripts/preview-bundles.mjs';
 import { documentPreviewData } from '../../../../tests/helpers/documentPreviewData';
 
 const data = documentPreviewData();
 const GENERATED_DIR = path.join(__dirname, 'generated');
+const PUBLIC_DIR = path.join(__dirname, '../../public');
+const NODE_MODULES = path.join(__dirname, '../../../../node_modules');
 
 /* A renderer whose text holds `marker`, so a test can find it in its bundle. */
 function rendererSource(type: string, line = "ctx.root.title = 'MARKER';"): string {
@@ -39,6 +43,14 @@ function writeRenderer(renderersDir: string, type: string, files: Record<string,
 
 function readGenerated(outDir: string, name: string): string {
   return readFileSync(path.join(outDir, name), 'utf8');
+}
+
+/* Runs the generator with every folder it writes under `root`, so a test never
+   touches the checkout's generated or public folder. */
+function generateUnder(root: string, renderersDir = path.join(root, 'renderers')) {
+  const outDir = path.join(root, 'generated');
+  const publicDir = path.join(root, 'public');
+  return { outDir, publicDir, run: () => generatePreviewBundles({ renderersDir, outDir, publicDir }) };
 }
 
 afterEach(() => {
@@ -140,7 +152,7 @@ describe('generatePreviewBundles', () => {
   it('builds each renderer with only its own build config, wires assets.ts, and writes hashes and notices', async () => {
     const root = tempDir();
     const renderersDir = path.join(root, 'renderers');
-    const outDir = path.join(root, 'generated');
+    const { outDir, publicDir, run } = generateUnder(root);
     writeRenderer(renderersDir, 'pdf', {
       'render.ts': rendererSource('pdf'),
       /* Rewrites the marker and appends CR line endings after minification. */
@@ -152,14 +164,14 @@ describe('generatePreviewBundles', () => {
       for (const item of Object.values(bundle)) if (item.type === 'chunk') item.code += '\\r\\n/* end */\\r';
     },
   }],
-  notices: ['pdfjs-dist/standard_fonts/LICENSE_FOXIT'],
+  notices: ['pdfjs-dist/standard_fonts/LICENSE_FOXIT', 'pako/lib/zlib/README'],
 };
 `,
       'assets.ts': "export default async () => ({ names: [], load: async () => null });\n",
     });
     writeRenderer(renderersDir, 'docx', { 'render.ts': rendererSource('docx') });
 
-    const { types } = await generatePreviewBundles({ renderersDir, outDir });
+    const { types } = await run();
 
     expect(types).toEqual(['docx', 'pdf']);
     const pdf = readGenerated(outDir, 'pdf.iife.txt');
@@ -178,62 +190,108 @@ describe('generatePreviewBundles', () => {
     expect(registry.match(/loadAssets: null,/g)).toHaveLength(1);
     expect(registry).toContain("loadScript: () => import('./docx.iife.txt?raw')");
 
-    const notices = readGenerated(outDir, 'third-party-notices.txt');
+    /* The notices go to the public folder, which Vite copies into each build
+       output, and not into the generated folder. */
+    expect(existsSync(path.join(outDir, NOTICES_FILE))).toBe(false);
+    const notices = readGenerated(publicDir, NOTICES_FILE);
     for (const license of ['jszip/LICENSE.markdown', 'pako/LICENSE']) {
-      const text = readFileSync(path.join(__dirname, '../../../../node_modules', license), 'utf8').trim();
+      const text = readFileSync(path.join(NODE_MODULES, license), 'utf8').trim();
       expect(notices).toContain(text);
     }
     expect(notices).toContain('node_modules/pdfjs-dist/standard_fonts/LICENSE_FOXIT');
+    /* pako's Zlib license, which every bundle needs through the runtime's
+       JSZip, appears once although the pdf build config names it too. */
+    const zlibReadme = readFileSync(path.join(NODE_MODULES, 'pako/lib/zlib/README'), 'utf8').trim();
+    expect(notices.split(zlibReadme)).toHaveLength(2);
+    expect(notices.split('node_modules/pako/lib/zlib/README\n')).toHaveLength(2);
+  });
+
+  it("adds pako's Zlib license for a renderer with no build config", async () => {
+    const root = tempDir();
+    const { publicDir, run } = generateUnder(root);
+    writeRenderer(path.join(root, 'renderers'), 'pptx', { 'render.ts': rendererSource('pptx') });
+    await run();
+
+    const notices = readGenerated(publicDir, NOTICES_FILE);
+    expect(notices).toContain("This software is provided 'as-is', without any express or implied");
+    expect(notices).toContain('node_modules/pako/lib/zlib/README');
   });
 
   it('removes the bundle of a renderer that is gone', async () => {
     const root = tempDir();
     const renderersDir = path.join(root, 'renderers');
-    const outDir = path.join(root, 'generated');
+    const { outDir, run } = generateUnder(root);
     writeRenderer(renderersDir, 'pdf', { 'render.ts': rendererSource('pdf') });
     writeRenderer(renderersDir, 'docx', { 'render.ts': rendererSource('docx') });
-    await generatePreviewBundles({ renderersDir, outDir });
+    await run();
 
     rmSync(path.join(renderersDir, 'docx'), { recursive: true });
-    await generatePreviewBundles({ renderersDir, outDir });
+    await run();
 
-    expect(readdirSync(outDir).sort()).toEqual(['pdf.iife.txt', 'preview-hashes.gen.json', 'registry.ts', 'third-party-notices.txt']);
+    expect(readdirSync(outDir).sort()).toEqual(['pdf.iife.txt', 'preview-hashes.gen.json', 'registry.ts']);
   });
 
-  it('writes an empty registry when there is no renderer', async () => {
+  it('writes an empty registry and a notices file when there is no renderer', async () => {
     const root = tempDir();
-    const outDir = path.join(root, 'generated');
-    await generatePreviewBundles({ renderersDir: path.join(root, 'renderers'), outDir });
+    const { outDir, publicDir, run } = generateUnder(root);
+    await run();
 
     expect(readGenerated(outDir, 'registry.ts')).toContain('export const previewBundles: readonly PreviewBundle[] = [];');
     expect(JSON.parse(readGenerated(outDir, 'preview-hashes.gen.json'))).toEqual({});
+    expect(readGenerated(publicDir, NOTICES_FILE)).toBe('Third-party software in the document preview frame bundles.\n');
   });
 
   it('fails when a written bundle has no hash', async () => {
     const root = tempDir();
-    const renderersDir = path.join(root, 'renderers');
-    const outDir = path.join(root, 'generated');
-    writeRenderer(renderersDir, 'pdf', { 'render.ts': rendererSource('pdf') });
-    await generatePreviewBundles({ renderersDir, outDir });
+    const { outDir, run } = generateUnder(root);
+    writeRenderer(path.join(root, 'renderers'), 'pdf', { 'render.ts': rendererSource('pdf') });
+    await run();
 
     writeFileSync(path.join(outDir, 'preview-hashes.gen.json'), '{}\n');
 
     expect(() => verifyGeneratedBundles(outDir)).toThrow('preview bundle pdf: missing or wrong hash');
   });
 
-  it.each([
-    ['an unknown key', "export default { plugins: [], define: {} };\n", 'has an unknown key: define'],
-    ['a notice that does not resolve', "export default { plugins: [], notices: ['no-such-package/LICENSE'] };\n", "names a notice that doesn't resolve"],
-    ['no plugins array', 'export default { notices: [] };\n', 'must export a plugins array'],
-  ])('fails a build.config.mjs with %s', async (_label, config, message) => {
+  it.each(data.refusedBuildConfigs)('fails a build.config.mjs with $label', async ({ source, error }) => {
     const root = tempDir();
-    const renderersDir = path.join(root, 'renderers');
-    writeRenderer(renderersDir, 'pdf', { 'render.ts': rendererSource('pdf'), 'build.config.mjs': config });
-    await expect(generatePreviewBundles({ renderersDir, outDir: path.join(root, 'generated') })).rejects.toThrow(message);
+    writeRenderer(path.join(root, 'renderers'), 'pdf', { 'render.ts': rendererSource('pdf'), 'build.config.mjs': source });
+    await expect(generateUnder(root).run()).rejects.toThrow(error);
+  });
+});
+
+describe('a renderer build output', () => {
+  function buildOutput(notices: string | null) {
+    const root = tempDir();
+    const publicDir = path.join(root, 'public');
+    const buildDir = path.join(root, 'dist');
+    mkdirSync(publicDir);
+    mkdirSync(buildDir);
+    writeFileSync(path.join(publicDir, NOTICES_FILE), 'notices\n');
+    if (notices !== null) writeFileSync(path.join(buildDir, NOTICES_FILE), notices);
+    return { publicDir, buildDir };
+  }
+
+  it('fails without the notices file', () => {
+    const { publicDir, buildDir } = buildOutput(null);
+    expect(() => verifyBuildNotices(buildDir, publicDir)).toThrow(`has no ${NOTICES_FILE}`);
+  });
+
+  it('fails with notices other than the generated ones', () => {
+    const { publicDir, buildDir } = buildOutput('older notices\n');
+    expect(() => verifyBuildNotices(buildDir, publicDir)).toThrow('differs from');
+  });
+
+  it('passes with the generated notices', () => {
+    const { publicDir, buildDir } = buildOutput('notices\n');
+    expect(() => verifyBuildNotices(buildDir, publicDir)).not.toThrow();
   });
 });
 
 describe('the generated folder this run uses', () => {
+  it('has its notices in the public folder each renderer build copies', () => {
+    expect(readFileSync(path.join(PUBLIC_DIR, NOTICES_FILE), 'utf8')).toMatch(/^Third-party software in the document preview frame bundles\.\n/);
+  });
+
   it('holds a hash for each bundle, equal to its sha256 after \\r\\n? normalization', () => {
     expect(existsSync(path.join(GENERATED_DIR, 'registry.ts'))).toBe(true);
     const hashes = JSON.parse(readFileSync(path.join(GENERATED_DIR, 'preview-hashes.gen.json'), 'utf8'));

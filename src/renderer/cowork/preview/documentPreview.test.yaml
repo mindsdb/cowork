@@ -57,6 +57,18 @@ allowedScriptText:
 # Vite takes as production. A frame bundle is the same text under each.
 bundleNodeEnvs: [development, test, production]
 
+# build.config.mjs files the bundle generator refuses, with the error each gives.
+refusedBuildConfigs:
+  - label: an unknown key
+    source: "export default { plugins: [], define: {} };\n"
+    error: "has an unknown key: define"
+  - label: a notice that does not resolve
+    source: "export default { plugins: [], notices: ['no-such-package/LICENSE'] };\n"
+    error: "names a notice that doesn't resolve"
+  - label: no plugins array
+    source: "export default { notices: [] };\n"
+    error: must export a plugins array
+
 # Error codes whose reason the failure note names, one sentence each.
 reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]
 

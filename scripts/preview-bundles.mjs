@@ -6,9 +6,12 @@
  * The generator writes into the gitignored preview/generated/ folder:
  *   - <type>.iife.txt, the script text the frame's srcdoc inlines;
  *   - preview-hashes.gen.json, each script's base64 sha256 for the frame policy;
- *   - third-party-notices.txt, the LICENSE and NOTICE files of every package a
- *     bundle holds, plus each type's build.config.mjs `notices`;
  *   - registry.ts, the lazy loaders the viewer reads.
+ * It writes third-party-notices.txt, the LICENSE and NOTICE files of every
+ * package a bundle holds plus each type's build.config.mjs `notices`, into the
+ * renderer's public folder (src/renderer/public, also gitignored there).
+ * src/renderer/vite.config.ts sets no publicDir, so Vite copies its default
+ * public folder, this one, into both dist/renderer and dist/renderer-web.
  *
  * A type's build.config.mjs plugins apply to that type's build only, and its
  * assets.ts is wired into the registry when it exists. A bundle that isn't one
@@ -19,7 +22,8 @@
  * bytes a build ships.
  *
  * The package.json prebuild, predev and pretypecheck hooks and Vitest's
- * globalSetup run it. It sits outside the folders .dockerignore drops (build,
+ * globalSetup run it, and the postbuild hooks run verify-preview-build.mjs on
+ * each build output. It sits outside the folders .dockerignore drops (build,
  * out, dist, release), so the image builds can run it too.
  */
 import { createHash } from 'node:crypto';
@@ -32,13 +36,21 @@ import { build } from 'vite';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREVIEW_DIR = path.join(REPO_ROOT, 'src/renderer/cowork/preview');
+const PUBLIC_DIR = path.join(REPO_ROOT, 'src/renderer/public');
 
 export const RENDERER_SPECIFIER = 'virtual:cowork-preview-renderer';
+export const NOTICES_FILE = 'third-party-notices.txt';
 
 const TYPE_NAME = /^[a-z0-9]+$/;
 const BUNDLE_SUFFIX = '.iife.txt';
 const BUILD_CONFIG_KEYS = new Set(['plugins', 'notices']);
 const NOTICE_FILE = /^(?:licen[cs]e|notice)/i;
+
+/* Notice files a package keeps outside its top-level LICENSE and NOTICE files,
+   by package name, added whenever a bundle holds that package. pako ports
+   zlib's C code, and the Zlib license of that code is in lib/zlib/README, not
+   in pako's LICENSE. Every bundle holds pako, through the runtime's JSZip. */
+const PACKAGE_NOTICE_FILES = new Map([['pako', ['lib/zlib/README']]]);
 
 /* Text a frame bundle must not hold. The first two end or confuse the inline
    <script>; NUL changes under the HTML parser; the next three reach for Node or
@@ -205,9 +217,11 @@ function noticeSection(title, text) {
 }
 
 /* The LICENSE and NOTICE files of every bundled package, then the extra
-   notice files the build configs name. */
+   notice files: the ones PACKAGE_NOTICE_FILES names for a bundled package and
+   the ones the build configs name, each once. */
 export function thirdPartyNotices(packageDirs, noticeFiles, repoRoot = REPO_ROOT) {
   const sections = [];
+  const extraFiles = [...noticeFiles];
   for (const dir of [...packageDirs].sort()) {
     const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const files = readdirSync(dir).filter((name) => NOTICE_FILE.test(name) && statSync(path.join(dir, name)).isFile()).sort();
@@ -218,11 +232,24 @@ export function thirdPartyNotices(packageDirs, noticeFiles, repoRoot = REPO_ROOT
     for (const name of files) {
       sections.push(noticeSection(`${title} (${name})`, readFileSync(path.join(dir, name), 'utf8')));
     }
+    for (const name of PACKAGE_NOTICE_FILES.get(manifest.name) ?? []) extraFiles.push(path.join(dir, name));
   }
-  for (const file of [...new Set(noticeFiles)].sort()) {
+  for (const file of [...new Set(extraFiles)].sort()) {
     sections.push(noticeSection(path.relative(repoRoot, file), readFileSync(file, 'utf8')));
   }
   return ['Third-party software in the document preview frame bundles.', '', ...sections].join('\n');
+}
+
+/* Checks that a renderer build output carries the notices file the generator
+   wrote, byte for byte, so a build that drops or changes it fails.
+   verify-preview-build.mjs runs it on each build output. */
+export function verifyBuildNotices(buildDir, publicDir = PUBLIC_DIR) {
+  const shipped = path.join(buildDir, NOTICES_FILE);
+  if (!existsSync(shipped)) throw new Error(`${buildDir} has no ${NOTICES_FILE}`);
+  const written = path.join(publicDir, NOTICES_FILE);
+  if (readFileSync(shipped, 'utf8') !== readFileSync(written, 'utf8')) {
+    throw new Error(`${shipped} differs from ${written}`);
+  }
 }
 
 function moduleSpecifier(fromDir, file) {
@@ -268,13 +295,16 @@ function writeIfChanged(file, text) {
 /*
  * Builds every renderer under `renderersDir` and brings `outDir` to exactly
  * the files those builds give, so a removed renderer leaves no stale bundle
- * behind. It reads the written bundles back and checks their hashes last.
+ * behind. It writes the notices into `publicDir`, the folder Vite copies into
+ * each renderer build output. It reads the written bundles back and checks
+ * their hashes last.
  */
 export async function generatePreviewBundles({
   repoRoot = REPO_ROOT,
   renderersDir = path.join(PREVIEW_DIR, 'renderers'),
   runtimeDir = path.join(PREVIEW_DIR, 'runtime'),
   outDir = path.join(PREVIEW_DIR, 'generated'),
+  publicDir = PUBLIC_DIR,
 } = {}) {
   const types = existsSync(renderersDir)
     ? readdirSync(renderersDir).filter((name) => existsSync(path.join(renderersDir, name, 'render.ts'))).sort()
@@ -301,7 +331,6 @@ export async function generatePreviewBundles({
   const files = new Map([
     ...bundles.map((bundle) => [`${bundle.type}${BUNDLE_SUFFIX}`, bundle.text]),
     ['preview-hashes.gen.json', `${JSON.stringify(hashes, null, 2)}\n`],
-    ['third-party-notices.txt', thirdPartyNotices(packages, noticeFiles, repoRoot)],
     ['registry.ts', registrySource(bundles, { outDir, runtimeDir })],
   ]);
   mkdirSync(outDir, { recursive: true });
@@ -309,6 +338,8 @@ export async function generatePreviewBundles({
     if (!files.has(name)) rmSync(path.join(outDir, name), { recursive: true, force: true });
   }
   for (const [name, text] of files) writeIfChanged(path.join(outDir, name), text);
+  mkdirSync(publicDir, { recursive: true });
+  writeIfChanged(path.join(publicDir, NOTICES_FILE), thirdPartyNotices(packages, noticeFiles, repoRoot));
   verifyGeneratedBundles(outDir);
   return { types: bundles.map((bundle) => bundle.type), outDir };
 }

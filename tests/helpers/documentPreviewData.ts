@@ -21,6 +21,13 @@ export interface ForbiddenScriptText {
   text: string;
 }
 
+/* A build.config.mjs source the bundle generator refuses, and its error. */
+export interface RefusedBuildConfig {
+  label: string;
+  source: string;
+  error: string;
+}
+
 /* A zipBytes entry as the data states it: `size` zero bytes in place of its
    data. */
 export type ArchiveEntryData = Omit<ZipEntryInput, 'data'> & { size: number };
@@ -110,6 +117,7 @@ export interface DocumentPreviewData {
   forbiddenScriptText: ForbiddenScriptText[];
   allowedScriptText: string[];
   bundleNodeEnvs: string[];
+  refusedBuildConfigs: RefusedBuildConfig[];
   reasonCodes: PreviewErrorCode[];
   windowSizeReads: string[];
   archiveGuard: {
