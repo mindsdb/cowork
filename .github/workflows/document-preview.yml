@@ -31,9 +31,7 @@ jobs:
       - uses: ./.github/actions/retry
         with:
           command: npm ci
-      # The CJK fixtures draw text with system fonts when the file embeds none.
-      - name: Install CJK fonts
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      # --with-deps also installs fonts-wqy-zenhei and fonts-ipafont-gothic, the CJK fallback faces the Word and PDF fixtures draw with.
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Build web
