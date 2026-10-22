@@ -3,6 +3,8 @@
  * was never saved. With unsaved Edit text, the Close button and Esc ask first:
  * "Keep editing" leaves the viewer open with the text, and "Discard changes"
  * closes it and drops the text. With nothing unsaved, both close at once.
+ * While a save has not replied, the prompt says the text may be lost, since
+ * the save keeps it unless it fails.
  *
  * The header, the mode tabs, the body with its Markdown editor, the workspace
  * hook, the modal and the confirm dialog are the real ones, so the Close button
@@ -12,7 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
@@ -194,6 +196,23 @@ describe('ArtifactViewer with unsaved Edit text', () => {
         ARTIFACT,
         expect.objectContaining({ content: EDITED_TEXT, expectedRevisionId: REVISION.id }),
       );
+    });
+
+    it('asks with the save-in-flight prompt before the save replies', async () => {
+      saveArtifactSource.mockImplementation(() => new Promise(() => {}));
+      render(<Host />);
+      await typeUnsavedText();
+      await user.click(screen.getByRole('button', { name: /Save/ }));
+      await screen.findByText('Saving…');
+
+      await close();
+
+      const prompt = await screen.findByRole('dialog', { name: 'Close while saving?' });
+      expect(prompt).toHaveTextContent('A save is still in progress. If you close now, your unsaved edits may be lost.');
+      expect(discardPrompt()).toBeNull();
+      expect(editor()).toHaveValue(EDITED_TEXT);
+      await user.click(within(prompt).getByRole('button', { name: 'Close anyway' }));
+      await waitFor(() => expect(editor()).toBeNull());
     });
   });
 
