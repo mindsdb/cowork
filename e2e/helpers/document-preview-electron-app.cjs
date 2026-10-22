@@ -2,9 +2,11 @@
  * Isolated Electron host for e2e/document-preview-electron.spec.ts. It opens
  * one window with the main window's own webPreferences and preload, registers
  * the production document preview guard, and adds the server token to
- * loopback requests the way app.ts's onBeforeSendHeaders listener does. No
- * backend, credentials, onboarding or access to the user's normal app profile.
- * Needs `npm run build` first, for dist/main.
+ * loopback requests the way app.ts's onBeforeSendHeaders listener does. The
+ * listener here copies only the direct-port branch, with no Minds gate and no
+ * Vite dev proxy; src/main/document-preview-wiring.test.ts pins how app.ts's
+ * own listener asks the guard. No backend, credentials, onboarding or access
+ * to the user's normal app profile. Needs `npm run build` first, for dist/main.
  */
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('node:path');
