@@ -1008,6 +1008,51 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
   const manifest = (shellVersion: unknown) =>
     vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
 
+  // Define only userAgentData: spreading navigator would drop its prototype getters.
+  // `undefined` models a Chromium without the API.
+  const withUaPlatformVersion = (platformVersion: unknown) => {
+    Object.defineProperty(window.navigator, 'userAgentData', {
+      configurable: true,
+      value: platformVersion === undefined
+        ? undefined
+        : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
+    });
+  };
+  afterEach(() => {
+    delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
+  });
+
+  it('caps a macOS 12 prod shell that is not the newest', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    withUaPlatformVersion('12.7.4');
+    (window as unknown as Record<string, unknown>).antontron = {
+      getPlatform: () => 'darwin',
+      getUIVersion: async () => ({ app: '2.26.10.1.1', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'os-capped', reason: 'behind', macosMajor: 12 });
+  });
+
+  it('reads the macOS major only on macOS, and null when it cannot', async () => {
+    withUaPlatformVersion('6.8.0'); // Linux reports the kernel here
+    (window as unknown as Record<string, unknown>).antontron = { getPlatform: () => 'linux' };
+    let host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+
+    withUaPlatformVersion('15.1.0');
+    (window as unknown as Record<string, unknown>).antontron = { getPlatform: () => 'darwin' };
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBe(15);
+
+    withUaPlatformVersion('');
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+
+    withUaPlatformVersion(undefined);
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+  });
+
   it('judges a prod shell below the floor as too old', async () => {
     vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
     (window as unknown as Record<string, unknown>).antontron = {

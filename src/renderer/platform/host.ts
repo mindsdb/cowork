@@ -771,6 +771,25 @@ async function shellUpdateFromManifest(fresh = false): Promise<ShellUpdate | nul
   }
 }
 
+// The macOS major version from Chromium's UA client hints. Shells already in
+// the field cannot gain a bridge member, and the UA string is frozen at
+// 10_15_7, so this is the only source an OTA bundle can read. Null off macOS
+// (Linux reports its kernel here), without the API, or on an unparseable value.
+export async function getMacosMajor(): Promise<number | null> {
+  if (getPlatform() !== 'darwin') return null;
+  try {
+    const uaData = (navigator as Navigator & {
+      userAgentData?: { getHighEntropyValues?: (hints: string[]) => Promise<{ platformVersion?: unknown }> };
+    }).userAgentData;
+    if (typeof uaData?.getHighEntropyValues !== 'function') return null;
+    const { platformVersion } = await uaData.getHighEntropyValues(['platformVersion']);
+    const major = Number.parseInt(String(platformVersion ?? '').split('.')[0], 10);
+    return Number.isFinite(major) && major > 0 ? major : null;
+  } catch {
+    return null;
+  }
+}
+
 // Is the installed shell inside the supported desktop window (ENG-1047)?
 //
 // Runs in the UI bundle on purpose: it is the only code that reaches shells
@@ -793,6 +812,7 @@ export async function getShellSupport(): Promise<ShellSupportVerdict | null> {
       latestShellVersion: latest,
       source: info.source,
       buildKind: info.buildKind,
+      macosMajor: await getMacosMajor(),
     });
   } catch {
     return null;
