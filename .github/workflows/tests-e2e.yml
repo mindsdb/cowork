@@ -29,6 +29,10 @@ jobs:
       - uses: ./.github/actions/retry
         with:
           command: npm ci
+      # Electron no longer downloads its binary on install; doing it here keeps
+      # the download out of the first test's timeout and fails it on its own.
+      - name: Download Electron binary
+        run: npx install-electron --no
       - name: Build main + renderer
         run: npm run build
       - name: Install Electron Linux runtime deps
