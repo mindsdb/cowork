@@ -21,11 +21,7 @@
  * whose page canvas would pass maxPdfCanvasPixels, and the same under touch
  * emulation, where the frame reads a coarse pointer and gets the smaller touch
  * budget.
- *
- * The harness page arrives with the preview frame runtime. Until
- * src/renderer/cowork/preview/runtime exists, the spec skips with that reason.
  */
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
@@ -40,9 +36,6 @@ import {
   type PreviewFixture,
   type PreviewRun,
 } from './harness';
-
-const RUNTIME_READY = existsSync(join(__dirname, '../../src/renderer/cowork/preview/runtime'));
-const SKIP_REASON = 'The preview frame runtime (src/renderer/cowork/preview/runtime) is not in this tree yet';
 
 /* The fixture one page past maxPdfPages, at the largest page size. */
 const PAGE_CAP_FIXTURE = '501 pages at the largest page size';
@@ -220,13 +213,6 @@ async function expectCanvasesWithin(page: Page, fixture: PreviewFixture, touch: 
 }
 
 test.describe('pdf preview', () => {
-  if (!RUNTIME_READY) {
-    test('every pdf fixture', () => {
-      test.skip(true, SKIP_REASON);
-    });
-    return;
-  }
-
   const fixtures = loadFixtures('pdf');
   const missingCjk = CJK_FIXTURES.filter((name) => !fixtures.some((fixture) => fixture.name === name));
   if (missingCjk.length > 0) throw new Error(`fixtures/pdf/fixtures.yaml has no fixture named ${missingCjk.join(', ')}`);

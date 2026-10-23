@@ -12,11 +12,7 @@
  * keeps the tabs in view however long the sheet is, holds no link or loaded
  * resource, and stays within the row and column caps. A fixture's text checks
  * read the open grid's cells as well as the run's text (see expectOutcome).
- *
- * The harness page arrives with the preview frame change. Until
- * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
  */
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expect, test, type Frame, type Page } from '@playwright/test';
@@ -25,8 +21,6 @@ import type { RenderSummary } from '../../src/renderer/cowork/preview/contract';
 import { previewLimits } from '../../src/renderer/cowork/preview/limits';
 import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
 
-const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
-const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
 const LIMITS = previewLimits({ touch: false });
 
 /* One request, and whether the harness page made it rather than the preview
@@ -117,13 +111,6 @@ function expectGrid(grid: GridFacts, summary: RenderSummary, fixture: PreviewFix
 }
 
 test.describe('xlsx preview', () => {
-  if (!HARNESS_READY) {
-    test('every xlsx fixture', () => {
-      test.skip(true, SKIP_REASON);
-    });
-    return;
-  }
-
   for (const fixture of loadFixtures('xlsx')) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
       if (!baseURL) throw new Error('The web project sets baseURL to the harness page');

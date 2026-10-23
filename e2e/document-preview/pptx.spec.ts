@@ -12,22 +12,13 @@
  * blob: URLs that decoded. textIncludes must appear in the order listed, and
  * textExcludes nowhere in the frame's markup, as the header of fixtures.yaml
  * says.
- *
- * The harness page arrives with the preview frame change. Until
- * e2e/document-preview/vite.config.ts exists, the spec skips with that reason.
  */
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { expect, test, type Frame, type Page } from '@playwright/test';
 
 import type { RenderSummary } from '../../src/renderer/cowork/preview/contract';
 import { PREVIEW_LABEL } from '../../src/renderer/cowork/preview/renderers/pptx/styles';
 import { FORBIDDEN_ELEMENTS } from './fixtures/pptx/forbidden';
 import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
-
-const HARNESS_READY = existsSync(join(__dirname, 'vite.config.ts'));
-const SKIP_REASON = 'The preview harness page (e2e/document-preview/vite.config.ts) is not in this tree yet';
 
 /* One request, and whether the harness page made it rather than the preview
    frame or a frame inside it. */
@@ -92,13 +83,6 @@ async function expectSlides(page: Page, summary: RenderSummary, fixture: Preview
 }
 
 test.describe('pptx preview', () => {
-  if (!HARNESS_READY) {
-    test('every pptx fixture', () => {
-      test.skip(true, SKIP_REASON);
-    });
-    return;
-  }
-
   for (const fixture of loadFixtures('pptx')) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
       if (!baseURL) throw new Error('The web project sets baseURL to the harness page');

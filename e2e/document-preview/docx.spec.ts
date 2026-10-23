@@ -22,19 +22,10 @@
  * load as blob: pictures the browser decodes. The list number docx-preview builds
  * from numbering.xml must keep its counter(), and the run colored by the
  * theme alone must show the color theme1.xml gives it.
- *
- * The harness page arrives with the preview frame runtime. Until
- * src/renderer/cowork/preview/runtime exists, the spec skips with that reason.
  */
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { expect, test, type Frame, type Page } from '@playwright/test';
 
 import { loadFixtures, openPreview, previewFrame, strayRequests, type PreviewFixture, type PreviewRun } from './harness';
-
-const RUNTIME_READY = existsSync(join(__dirname, '../../src/renderer/cowork/preview/runtime'));
-const SKIP_REASON = 'The preview frame runtime (src/renderer/cowork/preview/runtime) is not in this tree yet';
 
 /* The namespace of SVG elements. docx-preview draws a VML picture as an SVG
    image. */
@@ -224,13 +215,6 @@ function fixtureNamed(fixtures: readonly PreviewFixture[], name: string): Previe
 }
 
 test.describe('docx preview', () => {
-  if (!RUNTIME_READY) {
-    test('every docx fixture', () => {
-      test.skip(true, SKIP_REASON);
-    });
-    return;
-  }
-
   const fixtures = loadFixtures('docx');
 
   for (const fixture of fixtures) {
