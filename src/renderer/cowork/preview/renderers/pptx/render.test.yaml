@@ -1,0 +1,769 @@
+# What render.test.ts renders and expects. Each case renders one file: a
+# committed `file` from e2e/document-preview/fixtures/pptx, a `deck` that
+# deck.ts builds at test time, or raw `bytes` in base64. `limits` replaces caps
+# from previewLimits.
+#
+# expect:
+#   error          the PreviewErrorCode render() rejects with
+#   units          summary.units, and the number of slides drawn
+#   truncated      summary.truncated
+#   text           text the preview holds anywhere
+#   slides         text each drawn slide holds, from the first slide on
+#   lastSlide      text the last drawn slide holds
+#   placeholders   the placeholder kinds drawn, in drawing order
+#   shapes         how many shape boxes (.pptx-shape) are drawn, counting the
+#                  skeleton master's footer bar once on each drawn slide
+#   images         how many pictures are drawn, each from a data: URL
+#   rtl            the text of each right-to-left paragraph, in order
+#   overlaps       lists of shape texts: each list's shapes are drawn in that
+#                  order, and each one's box overlaps the next one's
+#   markupExcludes text that appears nowhere in the rendered markup
+#   unread         archive entries the renderer never reads
+#   readCounts     archive entries and how many times the renderer reads each
+#   maxShapeTreeScans
+#                  the most times the renderer may list a shape tree's p:sp
+#                  shapes
+#   backgrounds    each drawn slide's background, in order: picture for a
+#                  data: picture stretched over the slide, tiled and the
+#                  tile's inline background-size for one repeated in tiles,
+#                  else its inline background color
+#   fills          shape text to that shape's fill, named as backgrounds names it
+#   outlines       shape text to the color of that shape's outline on all four
+#                  sides, '' for none
+#   lines          each drawn line in drawing order: its inline left, top, width
+#                  and transform, and the color of the top border it is drawn as
+#   crops          each cropped picture in drawing order: the inline left, top,
+#                  width and height of its clipping box, and of the picture in it
+#   boxes          the text of a paragraph in a shape, to that shape's inline
+#                  left, top, width and height
+#   transforms     the same, to that shape's inline transform, '' for none
+#   anchors        the same, to that shape's inline justify-content, '' for none
+#   paragraphs     a paragraph's text, without its bullet, to any of: align
+#                  (its inline text-align), bullet (the mark drawn before it,
+#                  '' for none), bulletColor (that mark's inline color), font
+#                  and color (its first run's inline font family and color)
+
+label: Preview may differ from PowerPoint
+
+# A 16 by 9 PNG, a dark 16 by 9 PNG, the signature, IHDR and IEND of a PNG that
+# declares 23,170 by 23,170 pixels, and an SVG with a script that is not one of
+# the picture types.
+images:
+  png: &png iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAGElEQVR42mNwKTqCFb2tNcSKGEY1DAoNANCv3elsETTYAAAAAElFTkSuQmCC
+  dark: &dark iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAF0lEQVR42mOUUDBgIAUwMZAIRjXQRAMAw3oAeiOWCXoAAAAASUVORK5CYII=
+  huge: &huge iVBORw0KGgoAAAANSUhEUgAAWoIAAFqCAQAAAAC/zB4JAAAAAElFTkSuQmCC
+  svg: &svg PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIG9ubG9hZD0icGFyZW50LnBvc3RNZXNzYWdlKCdwcHR4LXN2Zy1zY3JpcHQnLCcqJykiPjwvc3ZnPg==
+
+cases:
+  # Each title is a placeholder with no xfrm, so it takes the layout title's
+  # box, the master title's center anchor, and the master's title style: left
+  # aligned in the theme's heading font. The master's bgRef draws each slide's
+  # background as bg1, which the master maps to the theme's white lt1.
+  - name: three slides in sldIdLst order, not part order
+    file: three-slides.pptx
+    expect:
+      units: 3
+      truncated: false
+      slides: ['First slide: a quarterly review', 'Second slide: a picture and a table', 'Third slide: a chart']
+      placeholders: [chart]
+      images: 1
+      unread: [ppt/charts/chart1.xml]
+      backgrounds: ['#ffffff', '#ffffff', '#ffffff']
+      boxes: { 'First slide: a quarterly review': [5.0000%, 4.4444%, 90.0000%, 16.6667%] }
+      anchors: { 'First slide: a quarterly review': center }
+      paragraphs: { 'First slide: a quarterly review': { align: left, font: '"Calibri Light", sans-serif' } }
+
+  # The group maps its 4000 by 3000 child space onto its own box, so each
+  # child's box is the group's offset plus its child offset times 762 EMU.
+  # python-pptx's own output on its default 4 by 3 template. No placeholder
+  # carries a box, so each takes its layout's, or the master's where the layout
+  # has none either. The Picture with Caption layout's own list styles align
+  # its title left and take the caption's bullet off. insert_picture cropped a
+  # third off each side of the picture. The connector runs up from its box's
+  # bottom-left corner in the style's accent1, and the rectangle's a:ln sets
+  # only a width, so the style's accent1 draws its outline. The inverse line
+  # runs up from its box's bottom-left corner too, in the style's accent1,
+  # and its box draws neither the style's fill nor an outline.
+  - name: a deck python-pptx writes on its default template
+    file: python-pptx.pptx
+    expect:
+      units: 3
+      truncated: false
+      slides: [A deck python-pptx wrote, A picture placeholder, A connector and a wide outline]
+      placeholders: []
+      images: 1
+      backgrounds: ['#ffffff', '#ffffff', '#ffffff']
+      boxes:
+        A deck python-pptx wrote: [5.0000%, 4.0046%, 90.0000%, 16.6667%]
+        Bullets from the master: [5.0000%, 23.3333%, 90.0000%, 65.9954%]
+        A six point outline: [50.0000%, 26.6667%, 30.0000%, 26.6667%]
+      anchors: { A deck python-pptx wrote: center, A six point outline: center }
+      paragraphs:
+        A deck python-pptx wrote: { align: center, bullet: '', font: 'Calibri, sans-serif' }
+        Bullets from the master: { align: left, bullet: •, font: 'Calibri, sans-serif' }
+        Fonts from the theme: { bullet: • }
+        A picture placeholder: { align: left }
+        The picture is cropped to the placeholder: { bullet: '' }
+        A six point outline: { color: '#ffffff' }
+      crops:
+        - frame: [19.6007%, 8.9352%, 60.0000%, 60.0000%]
+          picture: [-99.9970%, 0.0000%, 299.9940%, 100.0000%]
+      lines:
+        - { left: 3.7868%, top: 46.6667%, width: 42.4264%, transform: translateY(-50%) rotate(-45.000deg), color: '#4f81bd' }
+        - { left: 48.2295%, top: 73.3333%, width: 33.5410%, transform: translateY(-50%) rotate(-26.565deg), color: '#4f81bd' }
+      outlines: { A six point outline: '#4f81bd', An inverse line: '' }
+      fills: { A six point outline: '#4f81bd', An inverse line: '' }
+      readCounts: { ppt/media/image1.png: 1 }
+      unread: [docProps/thumbnail.jpeg, ppt/printerSettings/printerSettings1.bin]
+
+  - name: overlapping shapes and a group
+    file: overlapping-shapes.pptx
+    expect:
+      units: 1
+      truncated: false
+      overlaps:
+        - [Back shape, Middle shape, Front shape]
+        - [Group back, Group front]
+      boxes:
+        Group back: [68.7500%, 6.6667%, 18.7500%, 22.2222%]
+        Group front: [75.0000%, 17.7778%, 18.7500%, 22.2222%]
+      transforms: { Back shape: '', Front shape: rotate(15.000deg) }
+
+  - name: right-to-left text
+    file: rtl-text.pptx
+    expect:
+      units: 1
+      truncated: false
+      slides: [Right-to-left text]
+      rtl: [مرحبا بالعالم, שלום עולם]
+
+  - name: video and audio inside the package
+    file: media.pptx
+    expect:
+      units: 1
+      truncated: false
+      placeholders: [video, audio]
+      unread: [ppt/media/clip.mp4, ppt/media/sound.m4a]
+
+  - name: a presentation part cut off mid-element
+    file: corrupt.pptx
+    expect:
+      error: parse-failed
+
+  # The header of an OLE compound file, which is what a password-protected
+  # .pptx and an old .ppt are.
+  - name: a password-protected deck or an old .ppt
+    bytes: 0M8R4KGxGuEAAAAAAAAAAA==
+    expect:
+      error: unsupported
+
+  - name: pictures, video, audio and links that point outside the package
+    file: linked-media.pptx
+    expect:
+      units: 1
+      truncated: false
+      placeholders: [picture, picture, picture, picture, video, audio]
+      images: 0
+      markupExcludes:
+        - pptx-linked
+        - pptx-external-embed
+        - pptx-internal-url
+        - pptx-outside-package
+        - pptx-hyperlink
+        - pptx-javascript-link
+        - pptx-origin-link
+        - example.com
+        - google.com
+        - localhost
+        - 127.0.0.1
+        - 'javascript:'
+
+  - name: a hostile chart color, fill, run color and typeface
+    file: chart-color.pptx
+    expect:
+      units: 1
+      truncated: false
+      slides: [A shape with hostile colors]
+      placeholders: [chart]
+      markupExcludes: [pptx-chart-color, pptx-fill-color, pptx-run-color, pptx-font, example.com, onerror, 'url(']
+      unread: [ppt/charts/chart1.xml]
+
+  # r:link and an External r:embed whose targets are real parts of the package:
+  # a renderer that followed either would read and draw them.
+  - name: r:link and External relationships to parts that exist
+    deck:
+      images: { shown.png: *png, linked.png: *png, external.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
+            - { kind: picture, box: [3048000, 0, 3048000, 1714500], internalLink: linked.png }
+            - { kind: picture, box: [6096000, 0, 3048000, 1714500], externalEmbed: ../media/external.png }
+            - { kind: picture, box: [9144000, 0, 3048000, 1714500], embedTarget: ../media/missing.png }
+    expect:
+      units: 1
+      placeholders: [picture, picture, picture]
+      images: 1
+      unread: [ppt/media/linked.png, ppt/media/external.png]
+
+  - name: a picture part whose bytes are not a picture type
+    deck:
+      images: { drawing.png: *svg }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: drawing.png }
+    expect:
+      units: 1
+      placeholders: [picture]
+      images: 0
+      markupExcludes: [svg, onload, pptx-svg-script]
+
+  - name: markup in slide text
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [0, 0, 12192000, 1714500]
+              paragraphs:
+                - text: &markup '<img src="https://example.com/pptx-markup.png" onerror="parent.postMessage(''pptx-markup'',''*'')">'
+    expect:
+      units: 1
+      slides: [*markup]
+      images: 0
+
+  - name: a deck past maxSlides
+    file: past-slide-cap.pptx
+    expect:
+      units: 300
+      truncated: true
+      slides: [Slide 1, Slide 2]
+      lastSlide: Slide 300
+
+  - name: the slide cap from ctx.limits
+    file: three-slides.pptx
+    limits: { maxSlides: 2 }
+    expect:
+      units: 2
+      truncated: true
+      slides: ['First slide: a quarterly review', 'Second slide: a picture and a table']
+
+  - name: a deck with no slides
+    deck: { slides: [] }
+    expect:
+      units: 0
+      truncated: false
+      text: [This presentation has no slides.]
+
+  - name: a sldId that names no slide
+    deck:
+      numberedSlides: 1
+      presentationXml: >-
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId99"/></p:sldIdLst>
+        <p:sldSz cx="12192000" cy="6858000"/></p:presentation>
+    expect:
+      units: 2
+      truncated: false
+      slides: [Slide 1, "This slide couldn't be shown."]
+
+  - name: a presentation part with another root element
+    deck:
+      numberedSlides: 1
+      presentationXml: <?xml version="1.0" encoding="UTF-8"?><workbook/>
+    expect:
+      error: parse-failed
+
+  # Every sldId names the one slide part. The part is drawn once and each
+  # later sldId shows the unreadable-slide note, so a file of a few KB can't
+  # have that part's shapes drawn once per sldId. 200 copies draw 201 shapes
+  # with the footer bar; drawn once per sldId they would be 603.
+  - name: sldIds that name a slide part an earlier sldId names
+    deck:
+      order: [1, 1, 1]
+      slides:
+        - shapes:
+            - { kind: text, box: [0, 0, 1219200, 685800], repeat: 200, paragraphs: [{ text: Repeated shape }] }
+    expect:
+      units: 3
+      truncated: false
+      slides: [Repeated shape, "This slide couldn't be shown.", "This slide couldn't be shown."]
+      shapes: 201
+
+  # Each slide placeholder looks up its layout and master placeholders in an
+  # index built once per part, so the layout's and the master's shape trees are
+  # each listed once, however many placeholders look them up. The first one
+  # takes its box from the layout placeholder with its idx.
+  - name: a slide and layout with many placeholders
+    deck:
+      layoutShapes:
+        - { kind: text, placeholder: body, idx: 10, repeat: 200, box: [0, 0, 1219200, 685800], paragraphs: [] }
+      slides:
+        - shapes:
+            - { kind: text, placeholder: body, idx: 10, repeat: 200, paragraphs: [{ text: Placeholder text }] }
+    expect:
+      units: 1
+      truncated: false
+      shapes: 201
+      maxShapeTreeScans: 2
+      boxes: { Placeholder text: [0.0000%, 0.0000%, 10.0000%, 10.0000%] }
+
+  # python-pptx's Title and Content slide: a title and a body placeholder idx
+  # 1, neither with an xfrm. The title takes the layout title's box. The
+  # layout's idx 1 placeholder has no xfrm either, so the body takes the box of
+  # the master's body placeholder, and the master's body style gives each
+  # paragraph its bullet and the theme's body font. The slide's own p:bg wins
+  # over the master's.
+  - name: placeholders that take their boxes and text styles from the layout and the master
+    deck:
+      slides:
+        - background: '203864'
+          shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A title from the layout }] }
+            - kind: text
+              placeholder: body
+              idx: 1
+              paragraphs: [{ text: First point }, { text: Second point }, { text: A point one level in, level: 1 }]
+    expect:
+      units: 1
+      backgrounds: ['#203864']
+      boxes:
+        A title from the layout: [5.0000%, 4.4444%, 90.0000%, 16.6667%]
+        First point: [6.8750%, 26.6204%, 86.2500%, 63.4491%]
+      paragraphs:
+        A title from the layout: { align: left, bullet: '', font: '"Calibri Light", sans-serif' }
+        First point: { align: '', bullet: •, font: 'Calibri, sans-serif' }
+        A point one level in: { bullet: • }
+
+  # bodyPr anchor and pPr algn values are looked up in tables keyed by the
+  # file's text. A value that names an Object.prototype member sets nothing,
+  # as an unknown value does.
+  - name: anchor and alignment values that name Object.prototype members
+    deck:
+      slides:
+        - shapes:
+            - { kind: text, box: [838200, 685800, 4572000, 1371600], anchor: __proto__, paragraphs: [{ text: Anchor proto, align: constructor }] }
+            - { kind: text, box: [6096000, 685800, 4572000, 1371600], anchor: toString, paragraphs: [{ text: Anchor toString, align: hasOwnProperty }] }
+            - { kind: text, box: [838200, 3429000, 4572000, 1371600], anchor: b, paragraphs: [{ text: Anchor bottom, align: ctr }] }
+    expect:
+      units: 1
+      anchors: { Anchor proto: '', Anchor toString: '', Anchor bottom: flex-end }
+      paragraphs: { Anchor proto: { align: '' }, Anchor toString: { align: '' }, Anchor bottom: { align: center } }
+
+  # A dark section header maps bg1 and tx1 to dk1 and lt1 in its own
+  # p:clrMapOvr. The skeleton master's background is bgRef bg1 and its title
+  # style's text is tx1, so that slide draws black with white text, and the
+  # next one, which keeps the master's mapping, white with black text.
+  - name: a slide's own color map override
+    deck:
+      slides:
+        - colorMap: dark
+          shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A dark section header }] }
+        - shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A slide on the master's colors }] }
+    expect:
+      units: 2
+      backgrounds: ['#000000', '#ffffff']
+      paragraphs:
+        A dark section header: { color: '#ffffff' }
+        "A slide on the master's colors": { color: '#000000' }
+
+  # A layout's override holds for each slide whose p:clrMapOvr keeps
+  # a:masterClrMapping, and a slide's own override wins over the layout's.
+  - name: a layout's color map override, and a slide's own over it
+    deck:
+      layoutColorMap: dark
+      slides:
+        - shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A slide on the dark layout }] }
+        - colorMap: light
+          shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A light slide on the dark layout }] }
+    expect:
+      units: 2
+      backgrounds: ['#000000', '#ffffff']
+      paragraphs:
+        A slide on the dark layout: { color: '#ffffff' }
+        A light slide on the dark layout: { color: '#000000' }
+
+  # Each picture names the one image part through a target spelled in another
+  # case. Part names compare without regard to case, so the part is read and
+  # encoded once, not once per spelling.
+  - name: pictures that name one image part in several spellings
+    deck:
+      images: { shown.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], embedTarget: ../media/shown.png }
+            - { kind: picture, box: [3048000, 0, 3048000, 1714500], embedTarget: ../MEDIA/shown.png }
+            - { kind: picture, box: [6096000, 0, 3048000, 1714500], embedTarget: ../media/SHOWN.PNG }
+            - { kind: picture, box: [9144000, 0, 3048000, 1714500], embedTarget: ../Media/Shown.Png }
+    expect:
+      units: 1
+      images: 4
+      placeholders: []
+      readCounts: { ppt/media/shown.png: 1 }
+
+  # 23,170 by 23,170 is about the most pixels Chromium decodes: about 2.1 GB of
+  # RGBA from a picture part of a few KB. Its header alone is past the budget.
+  - name: a picture whose header declares 23170 by 23170 pixels
+    deck:
+      images: { huge.png: *huge }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: huge.png }
+    expect:
+      units: 1
+      placeholders: [picture]
+      images: 0
+
+  # A picture may declare ctx.limits.maxInflatedBytes / 4 pixels. The 16 by 9
+  # PNG's 144 pixels fit 576 bytes and not 575.
+  - name: a picture at the pixel budget ctx.limits sets
+    deck:
+      images: { shown.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
+    limits: { maxInflatedBytes: 576 }
+    expect:
+      units: 1
+      placeholders: []
+      images: 1
+
+  - name: a picture one pixel past the pixel budget ctx.limits sets
+    deck:
+      images: { shown.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
+    limits: { maxInflatedBytes: 575 }
+    expect:
+      units: 1
+      placeholders: [picture]
+      images: 0
+
+  - name: a picture background on the slide, under white title text
+    deck:
+      images: { dark.png: *dark }
+      slides:
+        - backgroundImage: dark.png
+          shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A title on a dark picture, color: FFFFFF }] }
+    expect:
+      units: 1
+      slides: [A title on a dark picture]
+      backgrounds: [picture]
+      readCounts: { ppt/media/dark.png: 1 }
+
+  # The layout's r:embed is rId2 in the layout's relationships. The slide's own
+  # rId2 names another picture, so only a renderer that resolves the
+  # background against the layout's relationships reads dark.png.
+  - name: a picture background on the layout, under white title text
+    deck:
+      images: { dark.png: *dark, shown.png: *png }
+      layoutBackgroundImage: dark.png
+      slides:
+        - shapes:
+            - { kind: picture, box: [9144000, 0, 3048000, 1714500], image: shown.png }
+            - { kind: text, placeholder: title, paragraphs: [{ text: A title on the layout's picture, color: FFFFFF }] }
+    expect:
+      units: 1
+      slides: ["A title on the layout's picture"]
+      backgrounds: [picture]
+      images: 1
+      readCounts: { ppt/media/dark.png: 1, ppt/media/shown.png: 1 }
+
+  - name: a picture background past the pixel budget
+    deck:
+      images: { huge.png: *huge }
+      slides:
+        - backgroundImage: huge.png
+          shapes:
+            - { kind: text, placeholder: title, paragraphs: [{ text: A title on a picture not shown, color: FFFFFF }] }
+    expect:
+      units: 1
+      backgrounds: ['#808080']
+
+  - name: text boxes filled with a picture and with bytes that are not a picture type
+    deck:
+      images: { dark.png: *dark, drawing.png: *svg }
+      slides:
+        - shapes:
+            - kind: text
+              box: [838200, 685800, 4572000, 1371600]
+              fillImage: dark.png
+              paragraphs: [{ text: Text on a picture fill, color: FFFFFF }]
+            - kind: text
+              box: [6096000, 685800, 4572000, 1371600]
+              fillImage: drawing.png
+              styled: true
+              paragraphs: [{ text: Text on a picture fill not shown, color: FFFFFF }]
+    expect:
+      units: 1
+      fills: { Text on a picture fill: picture, Text on a picture fill not shown: '#808080' }
+      markupExcludes: [svg, pptx-svg-script]
+
+  # python-pptx's add_connector from (1219200, 4343400) to (6096000, 685800)
+  # writes the slide's connector: a box with flipV, and the style's accent1
+  # line. The layout's connector runs along the foot of the slide, and the
+  # group's runs across the middle of the group's box.
+  - name: connectors on the slide, in a group and on the layout
+    deck:
+      layoutShapes:
+        - { kind: connector, box: [0, 6400800, 12192000, 0] }
+      slides:
+        - shapes:
+            - { kind: connector, box: [1219200, 685800, 4876800, 3657600], flipV: true }
+            - kind: group
+              box: [6096000, 3429000, 6096000, 3429000]
+              childBox: [0, 0, 1000, 1000]
+              shapes:
+                - { kind: connector, box: [0, 500, 1000, 0], line: FF0000, lineWidth: 38100 }
+    expect:
+      units: 1
+      lines:
+        - { left: 0.0000%, top: 93.3333%, width: 100.0000%, transform: translateY(-50%) rotate(0.000deg), color: '#4472c4' }
+        - { left: 5.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#4472c4' }
+        - { left: 50.0000%, top: 75.0000%, width: 50.0000%, transform: translateY(-50%) rotate(0.000deg), color: '#ff0000' }
+
+  # Line shapes as pptxgenjs writes them: a p:sp with prstGeom line and an
+  # a:ln. Each carries text so the case can find its box, which draws neither
+  # the fill nor the outline.
+  - name: line shapes, diagonal, mirrored and horizontal
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [1219200, 685800, 4876800, 3657600]
+              geometry: line
+              fill: 00FF00
+              line: FF0000
+              paragraphs: [{ text: Diagonal line }]
+            - kind: text
+              box: [6096000, 685800, 4876800, 3657600]
+              geometry: line
+              flipH: true
+              line: '000000'
+              paragraphs: [{ text: Mirrored line }]
+            - kind: text
+              box: [1219200, 5143500, 6096000, 0]
+              geometry: line
+              line: 0000FF
+              lineWidth: 38100
+              paragraphs: [{ text: Horizontal line }]
+    expect:
+      units: 1
+      lines:
+        - { left: 5.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(36.870deg), color: '#ff0000' }
+        - { left: 45.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#000000' }
+        - { left: 10.0000%, top: 75.0000%, width: 50.0000%, transform: translateY(-50%) rotate(0.000deg), color: '#0000ff' }
+      fills: { Diagonal line: '', Mirrored line: '', Horizontal line: '' }
+      outlines: { Diagonal line: '', Mirrored line: '', Horizontal line: '' }
+
+  # The lineInv preset runs from its box's bottom-left corner to the top-right,
+  # and a flip brings it back to the other diagonal. pptxgenjs's LINE_INVERSE
+  # writes the first shape's p:sp, and python-pptx's MSO_SHAPE.LINE_INVERSE
+  # the third's, with the autoshape style's accent1 fill, which the line's
+  # box doesn't draw. A lineInv connector runs the same way.
+  - name: lineInv shapes and a lineInv connector
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [1219200, 685800, 4876800, 3657600]
+              geometry: lineInv
+              line: '800080'
+              lineWidth: 25400
+              paragraphs: [{ text: Inverse line }]
+            - kind: text
+              box: [6096000, 685800, 4876800, 3657600]
+              geometry: lineInv
+              flipH: true
+              line: '000000'
+              paragraphs: [{ text: Flipped inverse line }]
+            - kind: text
+              box: [1219200, 4572000, 2438400, 1828800]
+              geometry: lineInv
+              styled: true
+              line: FF0000
+              lineWidth: 50800
+              paragraphs: [{ text: Styled inverse line }]
+            - { kind: connector, box: [6096000, 4572000, 2438400, 1828800], geometry: lineInv }
+    expect:
+      units: 1
+      lines:
+        - { left: 5.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#800080' }
+        - { left: 45.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(36.870deg), color: '#000000' }
+        - { left: 7.5000%, top: 80.0000%, width: 25.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#ff0000' }
+        - { left: 47.5000%, top: 80.0000%, width: 25.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#4472c4' }
+      fills: { Inverse line: '', Flipped inverse line: '', Styled inverse line: '' }
+      outlines: { Inverse line: '', Flipped inverse line: '', Styled inverse line: '' }
+
+  # A p:sp can carry a connector preset, as a p:cxnSp does. Each draws as the
+  # straight line between its ends, from its box's top-left corner to the
+  # bottom-right, so a bent one comes out straight. One flip turns it onto the
+  # other diagonal and two bring it back. Each box draws neither its fill, the
+  # style's included, nor an outline. A bentConnector3 connector runs the same
+  # way.
+  - name: connector presets on shapes and a bent connector
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [1219200, 685800, 4876800, 3657600]
+              geometry: straightConnector1
+              fill: 00FF00
+              line: FF0000
+              paragraphs: [{ text: Straight connector shape }]
+            - kind: text
+              box: [6096000, 685800, 4876800, 3657600]
+              geometry: bentConnector3
+              flipV: true
+              line: '000000'
+              paragraphs: [{ text: Flipped bent connector shape }]
+            - kind: text
+              box: [1219200, 4572000, 2438400, 1828800]
+              geometry: bentConnector3
+              flipH: true
+              flipV: true
+              styled: true
+              paragraphs: [{ text: Twice flipped bent connector shape }]
+            - { kind: connector, box: [6096000, 4572000, 2438400, 1828800], geometry: bentConnector3, flipH: true }
+    expect:
+      units: 1
+      lines:
+        - { left: 5.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(36.870deg), color: '#ff0000' }
+        - { left: 45.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#000000' }
+        - { left: 7.5000%, top: 80.0000%, width: 25.0000%, transform: translateY(-50%) rotate(36.870deg), color: '#4472c4' }
+        - { left: 47.5000%, top: 80.0000%, width: 25.0000%, transform: translateY(-50%) rotate(-36.870deg), color: '#4472c4' }
+      fills: { Straight connector shape: '', Flipped bent connector shape: '', Twice flipped bent connector shape: '' }
+      outlines: { Straight connector shape: '', Flipped bent connector shape: '', Twice flipped bent connector shape: '' }
+
+  # A line's own rotation turns it on from its diagonal's angle, 36.870 degrees
+  # across a 4 by 3 box, or -36.870 when the line is mirrored. The box that
+  # holds a line shape's text turns by the rotation alone.
+  - name: rotated line shapes and a rotated connector
+    deck:
+      slides:
+        - shapes:
+            - kind: text
+              box: [1219200, 685800, 4876800, 3657600]
+              geometry: line
+              rotation: 30
+              line: FF0000
+              paragraphs: [{ text: Rotated line }]
+            - kind: text
+              box: [6096000, 685800, 4876800, 3657600]
+              geometry: line
+              rotation: 30
+              flipH: true
+              line: '000000'
+              paragraphs: [{ text: Rotated mirrored line }]
+            - { kind: connector, box: [6096000, 4572000, 2438400, 1828800], rotation: 90 }
+    expect:
+      units: 1
+      lines:
+        - { left: 5.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(66.870deg), color: '#ff0000' }
+        - { left: 45.0000%, top: 36.6667%, width: 50.0000%, transform: translateY(-50%) rotate(-6.870deg), color: '#000000' }
+        - { left: 47.5000%, top: 80.0000%, width: 25.0000%, transform: translateY(-50%) rotate(126.870deg), color: '#4472c4' }
+      transforms: { Rotated line: rotate(30.000deg), Rotated mirrored line: rotate(30.000deg) }
+
+  # python-pptx's insert_picture crops a 4 by 1 picture into a 4 by 3
+  # placeholder with l and r of 33333. A negative edge pads the picture out:
+  # pptxgenjs's contain sizing puts a 4 by 1 picture in a 3 by 2 box with t and
+  # b of -83333, so the picture keeps its shape across the middle of the box,
+  # as PowerPoint's Crop > Fit writes it. An edge pads at most ten times the
+  # picture's size, and a crop that leaves nothing draws the whole picture.
+  - name: cropped and padded pictures
+    deck:
+      images: { shown.png: *png }
+      slides:
+        - shapes:
+            - { kind: picture, box: [1219200, 685800, 4876800, 3657600], image: shown.png, crop: [33333, 0, 33333, 0] }
+            - { kind: picture, box: [6096000, 685800, 4876800, 3657600], image: shown.png, crop: [-50000, 25000, 50000, 0] }
+            - { kind: picture, box: [6096000, 4572000, 4876800, 1828800], image: shown.png, crop: [60000, 0, 40000, 0] }
+            - { kind: picture, box: [1219200, 4572000, 2743200, 1828800], image: shown.png, crop: [0, -83333, 0, -83333] }
+            - { kind: picture, box: [0, 0, 1219200, 685800], image: shown.png, crop: [-5000000, 0, 0, 0] }
+    expect:
+      units: 1
+      images: 5
+      crops:
+        - frame: [10.0000%, 10.0000%, 40.0000%, 53.3333%]
+          picture: [-99.9970%, 0.0000%, 299.9940%, 100.0000%]
+        - frame: [50.0000%, 10.0000%, 40.0000%, 53.3333%]
+          picture: [50.0000%, -33.3333%, 100.0000%, 133.3333%]
+        - frame: [10.0000%, 66.6667%, 22.5000%, 26.6667%]
+          picture: [0.0000%, 31.2500%, 100.0000%, 37.5001%]
+        - frame: [0.0000%, 0.0000%, 10.0000%, 10.0000%]
+          picture: [90.9091%, 0.0000%, 9.0909%, 100.0000%]
+
+  # python-pptx's shape.line.width writes an a:ln with a width and no fill, and
+  # keeps the autoshape style's lnRef, so PowerPoint draws an accent1 outline.
+  - name: outlines from the shape style's lnRef
+    deck:
+      slides:
+        - shapes:
+            - { kind: text, box: [838200, 685800, 3048000, 1714500], styled: true, lineWidth: 76200, paragraphs: [{ text: A wide outline }] }
+            - { kind: text, box: [4572000, 685800, 3048000, 1714500], styled: true, paragraphs: [{ text: The style's outline }] }
+            - { kind: text, box: [8305800, 685800, 3048000, 1714500], styled: true, noLine: true, paragraphs: [{ text: No outline }] }
+    expect:
+      units: 1
+      outlines: { A wide outline: '#4472c4', "The style's outline": '#4472c4', No outline: '' }
+      fills: { A wide outline: '#4472c4', "The style's outline": '#4472c4', No outline: '#4472c4' }
+
+  # A slide placeholder whose a:ln sets only a width keeps the color of the
+  # a:ln on the layout placeholder it inherits from.
+  - name: an outline width on the slide over an outline color on the layout
+    deck:
+      layoutShapes:
+        - { kind: text, placeholder: title, idx: 20, box: [838200, 685800, 4572000, 1371600], line: FF0000, paragraphs: [] }
+      slides:
+        - shapes:
+            - { kind: text, placeholder: title, idx: 20, lineWidth: 76200, paragraphs: [{ text: A wide outline in the layout's color }] }
+    expect:
+      units: 1
+      outlines: { "A wide outline in the layout's color": '#ff0000' }
+
+  # PowerPoint's "Tile picture as texture" writes a:tile in place of
+  # a:stretch. Each tile is the picture's 16 by 9 pixels at 1/96 inch each,
+  # 152400 by 85725 EMU, times the tile's scale, as a share of the box the
+  # fill covers. The shape's negative scale, which flips its tiles, draws them
+  # unflipped at half size.
+  - name: tiled picture fills on the slide and on a shape
+    deck:
+      images: { shown.png: *png }
+      slides:
+        - backgroundImage: shown.png
+          backgroundTile: 100000
+          shapes:
+            - kind: text
+              box: [838200, 685800, 4572000, 1371600]
+              fillImage: shown.png
+              fillTile: -50000
+              paragraphs: [{ text: Text on a tiled fill }]
+    expect:
+      units: 1
+      backgrounds: [tiled 1.2500% 1.2500%]
+      fills: { Text on a tiled fill: tiled 1.6667% 3.1250% }
+      readCounts: { ppt/media/shown.png: 1 }
+
+  # A bullet takes its paragraph's first run's color, so on a dark section
+  # header, where the master's body style's tx1 maps to white, the bullet is
+  # white too. An a:buClr gives a bullet its own color.
+  - name: bullet colors on a slide's own color map
+    deck:
+      slides:
+        - colorMap: dark
+          shapes:
+            - kind: text
+              placeholder: body
+              idx: 1
+              paragraphs: [{ text: A white point }, { text: A point with a red bullet, bulletColor: FF0000 }]
+    expect:
+      units: 1
+      backgrounds: ['#000000']
+      paragraphs:
+        A white point: { bullet: •, bulletColor: '#ffffff', color: '#ffffff' }
+        A point with a red bullet: { bullet: •, bulletColor: '#ff0000', color: '#ffffff' }
