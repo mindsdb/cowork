@@ -1169,3 +1169,203 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
     expect(typeof mod.host.getShellSupport).toBe('function');
   });
 });
+
+describe('shell update offers on macOS below the shell minimum', () => {
+  const withUaPlatformVersion = (platformVersion: unknown) => {
+    Object.defineProperty(window.navigator, 'userAgentData', {
+      configurable: true,
+      value: platformVersion === undefined
+        ? undefined
+        : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
+    });
+  };
+  afterEach(() => {
+    delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
+  });
+
+  const shellReply = {
+    ok: true,
+    offline: false,
+    updateAvailable: true,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: true,
+    shellVersion: '2.26.10.4.1',
+    shellDownloadUrl: 'https://example.test/installer.pkg',
+  };
+  const autoFailed = {
+    phase: 'failed' as const,
+    mode: 'manual' as const,
+    channel: 'prod' as const,
+    currentVersion: '2.26.10.1.1',
+    recoverable: false,
+    errorCode: 'x',
+  };
+  const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  const setup = async (platform: string, platformVersion: unknown, extra: Record<string, unknown> = {}) => {
+    withUaPlatformVersion(platformVersion);
+    const listeners: Record<string, (v: unknown) => void> = {};
+    (window as unknown as Record<string, unknown>).antontron = {
+      getPlatform: () => platform,
+      getShellUpdate: vi.fn(async () => ({
+        available: true,
+        latestVersion: '2.26.10.4.1',
+        currentVersion: '2.26.10.1.1',
+        downloadUrl: 'https://example.test/installer.pkg',
+      })),
+      checkForUpdate: vi.fn(async () => shellReply),
+      onUpdateStatus: vi.fn((cb: (v: unknown) => void) => {
+        listeners.status = cb;
+        return () => { delete listeners.status; };
+      }),
+      getShellAutoUpdate: vi.fn(async () => autoFailed),
+      checkShellAutoUpdate: vi.fn(async () => autoFailed),
+      downloadShellAutoUpdate: vi.fn(async () => autoFailed),
+      onShellAutoUpdate: vi.fn((cb: (v: unknown) => void) => {
+        listeners.auto = cb;
+        return () => { delete listeners.auto; };
+      }),
+      ...extra,
+    };
+    return { host: await importHost(), listeners };
+  };
+
+  describe('macOS 12', () => {
+    it('reports no shell update although the bridge has one', async () => {
+      const { host } = await setup('darwin', '12.7.4');
+      await expect(host.getShellUpdate()).resolves.toBeNull();
+    });
+
+    it('reports no shell update from the manifest fallback either', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion: '2.26.10.4.1' }) })));
+      const { host } = await setup('darwin', '12.7.4', {
+        getShellUpdate: undefined,
+        getUIVersion: async () => ({ app: '2.26.10.1.1', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+      });
+      await expect(host.getShellUpdate()).resolves.toBeNull();
+    });
+
+    it('strips the shell offer from a check result', async () => {
+      const { host } = await setup('darwin', '12.7.4');
+      const result = await host.checkForUpdates();
+      expect(result).toMatchObject({
+        ok: true, updateAvailable: false, shellUpdateAvailable: false, uiUpdateAvailable: false,
+      });
+      expect(result).not.toHaveProperty('shellVersion');
+      expect(result).not.toHaveProperty('shellDownloadUrl');
+    });
+
+    it('keeps a UI update that comes with a shell offer', async () => {
+      const { host } = await setup('darwin', '12.7.4', {
+        checkForUpdate: vi.fn(async () => ({ ...shellReply, uiUpdateAvailable: true })),
+      });
+      const result = await host.checkForUpdates();
+      expect(result).toMatchObject({ updateAvailable: true, uiUpdateAvailable: true, shellUpdateAvailable: false });
+      expect(result).not.toHaveProperty('shellVersion');
+    });
+
+    it('strips the shell offer from a legacy check reply plus manifest result', async () => {
+      const { host } = await setup('darwin', '12.7.4', {
+        checkForUpdate: vi.fn(async () => ({ updateAvailable: false })),
+      });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ updateAvailable: false, shellUpdateAvailable: false });
+    });
+
+    it('drops shell-available pushes and forwards other phases', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'available' });
+      expect(cb).toHaveBeenCalledWith({ phase: 'available' });
+      listeners.status({ phase: 'shell-available', version: '2.26.10.4.1' });
+      await flush();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('turns every auto-update snapshot into idle', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      for (const read of [host.getShellAutoUpdate, host.checkShellAutoUpdate, host.downloadShellAutoUpdate]) {
+        await expect(read()).resolves.toMatchObject({ phase: 'idle', currentVersion: '2.26.10.1.1', errorCode: 'x' });
+      }
+      const cb = vi.fn();
+      host.onShellAutoUpdate(cb);
+      listeners.auto(autoFailed);
+      await flush();
+      expect(cb).toHaveBeenCalledWith(expect.objectContaining({ phase: 'idle', errorCode: 'x' }));
+    });
+
+    it('keeps snapshot order and stops forwarding after unsubscribe', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const seen: string[] = [];
+      const off = host.onShellAutoUpdate((s) => seen.push(`${s.targetVersion}`));
+      listeners.auto({ ...autoFailed, targetVersion: 'a' });
+      listeners.auto({ ...autoFailed, targetVersion: 'b' });
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+      listeners.auto({ ...autoFailed, targetVersion: 'c' });
+      off();
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+    });
+
+    it('does not forward a pending shell-available push after unsubscribe (macOS 15)', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      const cb = vi.fn();
+      const off = host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      off();
+      await flush();
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('macOS 15', () => {
+    it('passes every offer through', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({
+        updateAvailable: true, shellUpdateAvailable: true, shellVersion: '2.26.10.4.1',
+      });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+      const auto = vi.fn();
+      host.onShellAutoUpdate(auto);
+      listeners.auto(autoFailed);
+      await flush();
+      expect(auto).toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed' }));
+    });
+  });
+
+  describe('Linux', () => {
+    it('passes every offer through whatever the UA data says', async () => {
+      const { host, listeners } = await setup('linux', '6.8.0');
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ shellUpdateAvailable: true });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+  });
+
+  describe('macOS with an unreadable version', () => {
+    it('does not block offers', async () => {
+      const { host, listeners } = await setup('darwin', undefined);
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ updateAvailable: true, shellUpdateAvailable: true });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+  });
+});

@@ -5,7 +5,6 @@ import {
   deriveShellTooOldNotice,
   MIN_MACOS_FOR_LATEST_SHELL,
   MIN_SUPPORTED_SHELL,
-  shellOfferSuppressed,
   SUPPORTED_SHELL_WINDOW_DAYS,
 } from './shell-support';
 
@@ -212,17 +211,5 @@ describe('deriveShellOsCappedNotice', () => {
   it('returns null for any other verdict', () => {
     expect(deriveShellOsCappedNotice(prod(LATEST))).toBeNull();
     expect(deriveShellOsCappedNotice(null)).toBeNull();
-  });
-});
-
-describe('shellOfferSuppressed', () => {
-  it('suppresses shell downloads only for a macOS-capped shell', () => {
-    const capped = { status: 'os-capped' as const, reason: 'behind' as const, shellVersion: '2.26.10.1.1', latestShellVersion: LATEST, daysBehind: 3, macosMajor: 12 };
-    expect(shellOfferSuppressed(capped)).toBe(true);
-    expect(shellOfferSuppressed(prod('2.26.9.1.3'))).toBe(false);
-    expect(shellOfferSuppressed(prod(LATEST))).toBe(false);
-    expect(shellOfferSuppressed({ status: 'not-applicable', reason: 'web' })).toBe(false);
-    expect(shellOfferSuppressed(null)).toBe(false);
-    expect(shellOfferSuppressed(undefined)).toBe(false);
   });
 });

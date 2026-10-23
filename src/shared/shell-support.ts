@@ -164,15 +164,6 @@ export function assessShellSupport(input: ShellSupportInput): ShellSupportVerdic
   return { status: 'supported', shellVersion, latestShellVersion, daysBehind };
 }
 
-/**
- * Whether the UI must not offer a shell download or installer. A macOS-capped
- * shell cannot install the newest shell, so any offer would be a dead end; the
- * `os-capped` notice explains why instead. UI and server updates are unaffected.
- */
-export function shellOfferSuppressed(verdict: ShellSupportVerdict | null | undefined): boolean {
-  return verdict?.status === 'os-capped';
-}
-
 // ---------------------------------------------------------------------------
 // The launch notice
 // ---------------------------------------------------------------------------

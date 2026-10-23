@@ -363,11 +363,14 @@ not the newest therefore gets `os-capped` instead of `too-old`: a notice with no
 action, shown once (`behind`), or every launch when the shell is also below
 `MIN_SUPPORTED_SHELL` (`below-floor`, which names the multi-account data risk).
 The renderer reads the macOS version from `navigator.userAgentData`, because
-shells in the field cannot gain a bridge member. While the verdict is
-`os-capped`, Settings → Updates and the sidebar banner offer no shell download
-or installer (`shellOfferSuppressed()`), since the installer would refuse this
-macOS; UI and server updates are offered as usual. There is no support
-commitment for these shells beyond `MIN_SUPPORTED_SHELL`.
+shells in the field cannot gain a bridge member. On macOS below the minimum
+the renderer's host layer (`src/renderer/platform/host.ts`) hides every shell
+update offer: the manual notice, the Settings → Updates check result and the
+auto-update card. It does so on every channel, keyed on the macOS version
+alone, so it also holds before the verdict resolves and when the manifest
+cannot be read; the installer would refuse this macOS anyway. UI and server
+updates are unaffected. There is no support commitment for these shells beyond
+`MIN_SUPPORTED_SHELL`.
 
 **Who moves the macOS minimum.** The engineer who raises `minimumSystemVersion`
 in `electron-builder.yml` also raises `MAC_MINIMUM_MACOS` in

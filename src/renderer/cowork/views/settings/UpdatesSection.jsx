@@ -7,7 +7,6 @@ import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
 import {
   deriveShellOsCappedNotice,
-  shellOfferSuppressed,
   MIN_MACOS_FOR_LATEST_SHELL,
   MIN_SUPPORTED_SHELL,
   SUPPORTED_SHELL_WINDOW_DAYS,
@@ -336,11 +335,7 @@ export default function UpdatesSection({
           >
             {(() => {
               const r = checkResult;
-              // A macOS-capped shell cannot install a shell update, so a pending one
-              // is not offered; the os-capped alert above says why.
-              const shellSuppressed = shellOfferSuppressed(shellSupport);
-              const shellPending = !shellSuppressed
-                && (r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate);
+              const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
               // Linux ships a .deb, which is installed rather than launched, so
@@ -367,9 +362,6 @@ export default function UpdatesSection({
                     : "Couldn't check for updates. Please try again.";
                 } else if (!r.updateAvailable) {
                   status = "You're up to date.";
-                } else if (shellSuppressed && !r.uiUpdateAvailable && !r.serverUpdateAvailable) {
-                  // Only a shell update exists, and this Mac cannot install it.
-                  status = 'No app updates are available for this Mac.';
                 }
               }
               const isError = !!r && !r.ok;
