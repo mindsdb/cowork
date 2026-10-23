@@ -17,8 +17,17 @@ const PKG_SCRIPT = readFileSync(path.join(REPO, 'scripts/release-mac-pkg-notariz
 // Since macOS 26 the "macOS + 9" rule no longer holds, so map explicitly.
 const DARWIN_MAJOR_FOR_MACOS: Record<number, number> = { 13: 22, 14: 23, 15: 24, 26: 25 };
 
+// The `mac:` block: from its line up to the next line that starts with a
+// non-space character. Other sections must not supply the value.
+const MAC_BLOCK = /^mac:[^\n]*\n(?:[ \t][^\n]*\n|\n)*/m.exec(BUILDER)?.[0];
+
 describe('macOS minimum', () => {
-  const builderMin = /^\s+minimumSystemVersion:\s*"([\d.]+)"/m.exec(BUILDER)?.[1];
+  const builderMin = /^\s+minimumSystemVersion:\s*"([\d.]+)"/m.exec(MAC_BLOCK ?? '')?.[1];
+
+  it('is read from the mac section of electron-builder.yml', () => {
+    expect(MAC_BLOCK, 'electron-builder.yml has no mac: block').toBeDefined();
+    expect(builderMin, 'the mac: block has no minimumSystemVersion').toBeDefined();
+  });
   const pkgMin = /^MAC_MINIMUM_MACOS="([\d.]+)"$/m.exec(PKG_SCRIPT)?.[1];
 
   it('is declared for the app bundle and the .pkg', () => {
