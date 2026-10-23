@@ -16,6 +16,8 @@ export interface ModalProps {
   fullBleed?: boolean;
   placement?: 'center' | 'left' | 'top';
   leftOffset?: number;
+  /** Dim the dialog under this one when it is opened over another (Base UI draws no nested backdrop by default). */
+  backdropWhenNested?: boolean;
   children?: ReactNode;
 }
 

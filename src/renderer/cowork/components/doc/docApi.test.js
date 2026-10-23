@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const api = vi.hoisted(() => ({ authFetch: vi.fn() }));
 vi.mock('../../api', () => ({ BASE: '/api/v1', authFetch: (...a) => api.authFetch(...a) }));
 
-const { fetchDoc, followConversationDocs, postDocOps } = await import('./docApi');
+const { fetchDoc, fetchDocHistory, fetchDocVersion, followConversationDocs, postDocOps, restoreDocVersion } = await import('./docApi');
 
 beforeEach(() => { vi.useFakeTimers(); api.authFetch.mockReset(); });
 afterEach(() => { vi.useRealTimers(); });
@@ -130,5 +130,31 @@ describe('useConversationDocs', () => {
     expect(api.authFetch).toHaveBeenCalledTimes(1);
     expect(api.authFetch.mock.calls[0][0]).toContain('conversation_id=5b0c2f4e-1d7a-4c39-9a51-0e2f6f1d3b8a');
     unmount();
+  });
+});
+
+
+describe('version history', () => {
+  const answer = (body) => ({ ok: true, status: 200, json: async () => body });
+
+  it('lists the versions, reads one and restores one, at the doc\'s own address', async () => {
+    api.authFetch.mockResolvedValueOnce(answer({ current: { rev: 3 }, versions: [] }));
+    expect(await fetchDocHistory('p 1', 'a1')).toEqual({ current: { rev: 3 }, versions: [] });
+    expect(api.authFetch.mock.calls[0][0]).toBe('/api/v1/docs/p%201/a1/history');
+
+    api.authFetch.mockResolvedValueOnce(answer({ doc: { rev: 2 } }));
+    expect(await fetchDocVersion('p1', 'a1', 2)).toEqual({ rev: 2 });
+    expect(api.authFetch.mock.calls[1][0]).toBe('/api/v1/docs/p1/a1/history/2');
+
+    api.authFetch.mockResolvedValueOnce(answer({ doc: { rev: 4 }, replacedRev: 3 }));
+    expect(await restoreDocVersion('p1', 'a1', 2)).toEqual({ doc: { rev: 4 }, replacedRev: 3 });
+    const [url, init] = api.authFetch.mock.calls[2];
+    expect(url).toBe('/api/v1/docs/p1/a1/history/2/restore');
+    expect(init.method).toBe('POST');
+  });
+
+  it('carries a refusal, as every doc request does', async () => {
+    api.authFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ detail: { code: 'no_version', message: 'not kept' } }) });
+    await expect(fetchDocVersion('p1', 'a1', 99)).rejects.toMatchObject({ status: 404, code: 'no_version', message: 'not kept' });
   });
 });

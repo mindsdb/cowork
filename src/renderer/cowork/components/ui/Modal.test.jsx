@@ -35,4 +35,16 @@ describe('Modal', () => {
     expect(dialog.isConnected).toBe(true);
     expect(dialog).toHaveAttribute('data-open');
   });
+
+  it('dims the dialog under a nested one only when asked', () => {
+    const backdrops = () => [...document.querySelectorAll('div')].filter((d) => d.style.background === 'rgba(0, 0, 0, 0.45)').length;
+    const nested = (dim) => render(
+      <Modal open ariaLabel="Outer"><Modal open ariaLabel="Inner" backdropWhenNested={dim}><p>Inner</p></Modal></Modal>,
+    );
+    const { unmount } = nested(false);
+    expect(backdrops()).toBe(1);
+    unmount();
+    nested(true);
+    expect(backdrops()).toBe(2);
+  });
 });

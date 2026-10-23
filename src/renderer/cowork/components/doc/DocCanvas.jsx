@@ -5,7 +5,8 @@
 // leading "# " or "- " converts, "/" opens the block menu, and a text
 // selection raises the formatting bar with "Edit with agent". What each key
 // does is decided in canvasOps; every change is a doc op (see docModel /
-// cowork-server cowork/docs/ops.py). `onAddTab` adds a
+// cowork-server cowork/docs/ops.py). `changed` marks blocks that read
+// differently now, on an earlier version being looked at. `onAddTab` adds a
 // tab from the page head of a doc of one tab; `nameTitle` and `onNamed`, for
 // a tab just added, select its title to be named.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -29,9 +30,10 @@ import {
 import { blockPlainText, isListBlock, isTextBlock, makeBlock } from './docModel';
 
 const NO_ITEMS = [];
+const NO_CHANGES = new Set();
 
 export default function DocCanvas({
-  doc, tab, editable, apply, flash = {}, agentLive = false, onAskAgent, onSelectionChange,
+  doc, tab, editable, apply, flash = {}, changed = NO_CHANGES, agentLive = false, onAskAgent, onSelectionChange,
   onAddTab, nameTitle = false, onNamed,
 }) {
   const root = useRef(null);
@@ -287,7 +289,7 @@ export default function DocCanvas({
         <div
           key={b.id}
           data-block-id={b.id}
-          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) ? 'doc-block--selected' : ''}`}
+          className={`doc-block doc-block--${b.type} ${flash[b.id] ? 'doc-block--flash' : ''} ${askTargets.has(b.id) ? 'doc-block--selected' : ''} ${changed.has(b.id) ? 'doc-block--changed' : ''}`}
         >
           {editable && (
             <BlockGutter

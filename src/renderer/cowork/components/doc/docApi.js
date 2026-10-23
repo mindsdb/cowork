@@ -72,6 +72,20 @@ export async function fetchDocMarkdown(projectRef, artifactId) {
   return res.text();
 }
 
+// Version history: the versions the doc's editing sessions left, one of them
+// for the read-only preview, and bringing one back. The doc's owner's alone.
+
+/** `{ current, versions }`: the doc now and its kept versions, newest first. */
+export const fetchDocHistory = (projectRef, artifactId) => call(`${docPath(projectRef, artifactId)}/history`);
+
+/** A kept version's doc, as its editing session left it. */
+export const fetchDocVersion = (projectRef, artifactId, rev) =>
+  call(`${docPath(projectRef, artifactId)}/history/${encodeURIComponent(rev)}`).then((r) => r.doc);
+
+/** Bring version `rev` back: `{ doc, replacedRev }`, and restoring `replacedRev` undoes it. */
+export const restoreDocVersion = (projectRef, artifactId, rev) =>
+  call(`${docPath(projectRef, artifactId)}/history/${encodeURIComponent(rev)}/restore`, { method: 'POST', body: '{}' });
+
 // A stream that never opened stops after this many tries: a server without the
 // route, or no server at all, should not keep a retry loop running for as long
 // as the view lives. One that opened and dropped keeps reconnecting.

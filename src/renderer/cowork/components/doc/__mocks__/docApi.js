@@ -9,10 +9,14 @@ export const followDoc = vi.fn();
 export const followConversationDocs = vi.fn(() => () => {});
 export const downloadDocExport = vi.fn();
 export const fetchDocMarkdown = vi.fn();
+export const fetchDocHistory = vi.fn();
+export const fetchDocVersion = vi.fn();
+export const restoreDocVersion = vi.fn();
 
 /** Forget every call and answer; the stream goes back to recording its handlers. */
 export function resetDocApi() {
-  for (const fn of [fetchDoc, postDocOps, followDoc, downloadDocExport, fetchDocMarkdown]) fn.mockReset();
+  for (const fn of [fetchDoc, postDocOps, followDoc, downloadDocExport, fetchDocMarkdown,
+    fetchDocHistory, fetchDocVersion, restoreDocVersion]) fn.mockReset();
   stream.handlers = null;
   followDoc.mockImplementation((_p, _a, handlers) => { stream.handlers = handlers; return () => {}; });
 }

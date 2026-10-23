@@ -122,6 +122,12 @@ export default defineConfig({
         // and words), and when an edit is given up on as timed out: useDoc
         // decides from these whether to send it again, reread, or drop it.
         'src/renderer/cowork/components/doc/docApi.js': { statements: 67, branches: 72 },
+        // Version history: which version a row names and when, and which
+        // blocks read differently now. A wrong time or mark sends someone
+        // back to the version they didn't mean, and the list, the preview
+        // and the restore all go through the hook.
+        'src/renderer/cowork/components/doc/versionHistory.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/doc/useVersionHistory.js': { statements: 98, branches: 90 },
       },
     },
     projects: [
