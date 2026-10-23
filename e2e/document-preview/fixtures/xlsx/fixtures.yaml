@@ -1,0 +1,252 @@
+# The xlsx preview fixtures. The spec reads them through loadFixtures in
+# harness.ts; the renderer's unit tests read this file directly.
+# make-fixtures.mjs in this folder writes every file listed here, but for the
+# four that make-python-fixtures.py writes with openpyxl and XlsxWriter. units
+# counts the sheets shown as tabs.
+
+- name: a workbook with two sheets
+  file: two-sheets.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Regions, Products, Region, Revenue, North, '120']
+
+# Row 1 names the columns c1 to c201 and column A names the rows r2 to r2001,
+# so the text shows the grid stops at row 2,000 and column 200. Every other
+# cell holds a number, so the grid is full at the caps and must still render
+# before the progress watchdog fires.
+- name: a sheet past 2,000 rows and 200 columns
+  file: past-caps.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: true
+    textIncludes: [c200, r2000]
+    textExcludes: [c201, r2001]
+
+# Shaped like a report exported from a spreadsheet app, one row and one column
+# past the caps: shared strings, dates, currency and percents through a styles
+# part, and amounts filled down as shared formulas with their cached results.
+# Most of its 400,000 shown cells go through a number format, so this checks
+# the watchdog against realistic content as well as the plain grid above.
+- name: an exported report past 2,000 rows and 200 columns
+  file: export-past-caps.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: true
+    textIncludes: [Order, Week 191, ORD-01998, '2024-01-01', '$595.00', '$565.25', '5.0%', '12%', On track]
+    textExcludes: [Week 192, ORD-01999]
+
+# Labelled like past-caps.xlsx, but every other cell holds a sentence wider
+# than its column, so the grid at the caps is 400,000 cells of text. A browser
+# lays out only the blocks of rows in view, so the frame reports rendered soon
+# after it builds the grid.
+- name: a sheet of long text past 2,000 rows and 200 columns
+  file: text-past-caps.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: true
+    textIncludes: [c200, r2000, Revenue from returning customers in the quarter]
+    textExcludes: [c201, r2001]
+
+- name: a workbook whose workbook part is cut off
+  file: corrupt.xlsx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+# Hyperlinks aimed at example.com, docs.google.com, drive.google.com, a page
+# path and a module-like .js path on the harness origin, localhost, 127.0.0.1
+# and javascript:, HYPERLINK and WEBSERVICE formulas, an externalLink to a
+# remote workbook, and cells holding markup. Cells show as text, cached values
+# only.
+- name: hyperlinks, an externalLink and markup in cells
+  file: hostile.xlsx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes:
+      - example.com link
+      - script link
+      - formula link
+      - web service value
+      - external value
+      - '<img src="https://example.com/xlsx-img.png" onerror="parent.postMessage(1,''*'')">'
+      - '<a href="https://example.com/xlsx-anchor">anchor markup</a>'
+      - '<style>body{background:url(https://example.com/xlsx-style.png)}</style>'
+    textExcludes: ['HYPERLINK(', 'WEBSERVICE(', '[1]Prices', 'xlsx-external']
+
+# The workbook lists two sheets, but the first sheet's part is missing from the
+# zip. SheetJS gives no sheet for it, so its tab says it could not be read,
+# never that it is empty, and the second sheet still opens.
+- name: a workbook whose first sheet's part is missing
+  file: missing-sheet.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Missing, Stock, This sheet could not be read.]
+    textExcludes: [This sheet is empty.]
+
+# openpyxl's shape: the total's formula is saved with an empty value, and the
+# workbook asks to be calculated when it opens. The preview calculates
+# nothing, so it says so above the grid.
+- name: a workbook saved with its formulas uncalculated
+  file: uncalculated.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Total
+      - "Formulas in this workbook weren't calculated when it was saved, so formula cells may show blank or 0. Download it to see the results."
+
+# ExcelJS's shape: the total's formula is saved with no value at all, and the
+# workbook doesn't ask to be calculated when it opens. SheetJS leaves the
+# total's cell out, so the preview says above the grid that formulas weren't
+# calculated.
+- name: a workbook saved with a formula that has no value
+  file: formula-without-value.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Budget
+      - Water
+      - '1200'
+      - Total
+      - "Formulas in this workbook weren't calculated when it was saved, so formula cells may show blank or 0. Download it to see the results."
+
+# The two below come from make-python-fixtures.py, as openpyxl 3.1.5 and
+# XlsxWriter 3.3.0 save a =SUM total. Neither calculates it: openpyxl saves an
+# empty value and XlsxWriter saves 0, and both ask for the workbook to be
+# calculated when it opens, so the preview says so above the grid.
+- name: a workbook openpyxl saved, its total uncalculated
+  file: openpyxl-total.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Budget
+      - Water
+      - '1200'
+      - Total
+      - "Formulas in this workbook weren't calculated when it was saved, so formula cells may show blank or 0. Download it to see the results."
+
+- name: a workbook XlsxWriter saved, its total uncalculated
+  file: xlsxwriter-total.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Budget
+      - Water
+      - '1200'
+      - Total
+      - "Formulas in this workbook weren't calculated when it was saved, so formula cells may show blank or 0. Download it to see the results."
+
+# The two below also come from make-python-fixtures.py. They hold no formula
+# in a cell, though both ask to be calculated when they open, so no note
+# shows. Their amounts use Excel's built-in currency, accounting and date
+# formats, saved as a format id with no format code, and each has a worksheet
+# that holds only a chart. The openpyxl one opens on the amounts.
+- name: a workbook openpyxl saved with built-in formats and a chart
+  file: openpyxl-report.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Prices, Chart, Currency, '$1,234.50', '$1,235']
+    textExcludes: ['1234.5', "Formulas in this workbook weren't calculated"]
+
+# The XlsxWriter one opens on its chart worksheet, and its amounts have a
+# sparkline, which XlsxWriter saves as an <xm:f> after the cells.
+- name: a workbook XlsxWriter saved with built-in formats, opening on a chart
+  file: xlsxwriter-report.xlsx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 2
+    truncated: false
+    textIncludes: [Chart, Prices, "This sheet holds a chart or picture, which the preview doesn't show."]
+    textExcludes: [This sheet is empty., "Formulas in this workbook weren't calculated"]
+
+# The six below are zips SheetJS would read with a reader other than its
+# .xlsx one, past what the archive guard counted. The preview refuses each
+# before SheetJS reads it.
+
+# The only entry is Index.zip, a whole .xlsx inside it.
+- name: an Index.zip entry holding another workbook
+  file: nested-index-zip.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A valid workbook plus META-INF/manifest.xml, styles.xml and content.xml,
+# which SheetJS reads as an OpenDocument spreadsheet.
+- name: a workbook beside OpenDocument parts
+  file: opendocument-parts.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A valid workbook plus Index/Document.iwa, which sends SheetJS to its Numbers
+# reader.
+- name: a workbook beside a Numbers part
+  file: numbers-part.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A valid workbook plus meta-inf/MANIFEST.XML. SheetJS ignores case in part
+# names, so this sends it to its OpenDocument reader too.
+- name: a workbook beside a manifest named in mixed case
+  file: mixed-case-manifest.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A workbook part named xl/book.bin, which the content types name as a binary
+# workbook, beside a stand-in xl/workbook.xml. SheetJS picks its .xlsb reader
+# by the part's name.
+- name: a binary workbook part under another name
+  file: binary-workbook-part.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# The workbook and OpenDocument parts of opendocument-parts.xlsx, with the
+# manifest and content.xml renamed in the zip's directory by Unicode Path
+# fields. A reader that lists the zip as JSZip does finds neither, while
+# SheetJS reads the names in the entries' own headers and would take its
+# OpenDocument reader.
+- name: OpenDocument parts renamed by Unicode Path fields
+  file: unicode-path-parts.xlsx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported

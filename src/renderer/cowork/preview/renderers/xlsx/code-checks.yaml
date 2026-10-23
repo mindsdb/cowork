@@ -1,0 +1,97 @@
+# Text the xlsx preview must never hold. Each `pattern` is a JavaScript regular
+# expression source, and `flags` its optional flags. A check may list examples:
+# the test that runs the check asserts that the pattern matches each of
+# `matches` and none of `skips`.
+#
+# bundle: matched against the whole built IIFE, by bundle.test.ts.
+# source: matched against render.ts, by render.test.ts.
+
+bundle:
+  # Nothing in the frame may reach the network, start a thread or run strings as code.
+  - name: a fetch call
+    pattern: '\bfetch\b'
+  - name: XMLHttpRequest
+    pattern: '\bXMLHttpRequest\b'
+  # A Worker or SharedWorker built, called or read off a global, and
+  # importScripts. The frame bundle also carries JSZip, whose stream classes
+  # end in Worker, so a bare name ending in Worker is not a match.
+  - name: a Worker
+    pattern: '\bnew\s+(?:Shared)?Worker\b|\b(?:Shared)?Worker\s*\(|\.(?:Shared)?Worker\b|\bimportScripts\b'
+    matches:
+      - new Worker(url)
+      - new SharedWorker(url)
+      - Worker(url)
+      - self.Worker
+      - globalThis.SharedWorker
+      - importScripts('x.js')
+    skips:
+      - new GenericWorker('x')
+      - this._compressWorker
+      - n.Utf8DecodeWorker
+      - FlateWorker.prototype
+      - var e = `Worker ` + this.name
+  # Any mention of eval, so an indirect call or a copy of eval called later
+  # counts as well as a direct call.
+  - name: eval
+    pattern: '\beval\b'
+    matches:
+      - eval(src)
+      - (0, eval)(src)
+      - const run = eval
+      - globalThis['eval'](src)
+    skips:
+      - evaluate(x)
+      - medieval
+  - name: the Function constructor
+    pattern: '\bFunction\s*\('
+  # The bundle generator's own bans: the frame runs one inline script by hash.
+  - name: a dynamic import
+    pattern: '\bimport\s*\('
+  - name: import.meta
+    pattern: '\bimport\.meta\b'
+  - name: an opening script tag
+    pattern: '<script'
+    flags: i
+  - name: a closing script tag
+    pattern: '</script'
+    flags: i
+  - name: a NUL character
+    pattern: '\x00'
+  - name: a process reference
+    pattern: '\bprocess\.'
+  # The grid never builds HTML from a sheet.
+  - name: SheetJS's HTML writer
+    pattern: 'sheet_to_html'
+
+source:
+  # The grid puts cells in through textContent only.
+  - name: an innerHTML write
+    pattern: '\binnerHTML\b'
+  - name: an outerHTML write
+    pattern: '\bouterHTML\b'
+  - name: insertAdjacentHTML
+    pattern: '\binsertAdjacentHTML\b'
+  - name: document.write
+    pattern: '\bdocument\.write'
+  - name: SheetJS's HTML writer
+    pattern: 'sheet_to_html'
+  - name: a read of a cell's HTML (cell.h)
+    pattern: '\.h\b'
+  # Nothing in the grid is a link.
+  - name: a read of a cell's hyperlink (cell.l)
+    pattern: '\.l\b'
+  - name: a bracket read of a cell's HTML or hyperlink (cell['h'], cell['l'])
+    pattern: "\\[\\s*['\"`][hl]['\"`]\\s*\\]"
+    matches:
+      - cell['h']
+      - cell["l"].Target
+      - cell[ `l` ]
+    skips:
+      - sheet['!data']
+      - row['hl']
+  # Covers document.createElement('a') and the renderer's own element('a').
+  - name: an anchor or area element
+    pattern: "\\(\\s*['\"](?:a|area)['\"]"
+  - name: an href
+    pattern: '\bhref\b'
+    flags: i
