@@ -178,6 +178,8 @@ export function AccessChooser({
   // eye lands on first.
   modes = ['ownerOnly', 'restricted', 'password', 'public'],
   onSubmit,
+  // What is being shared, for the label: "app", or "doc" for a doc.
+  noun = 'app',
 }) {
   const draft = value;
   const set = (patch) => onChange?.({ ...draft, ...patch });
@@ -189,7 +191,7 @@ export function AccessChooser({
         value={draft.mode}
         onValueChange={(m) => set({ mode: m })}
         className="flex flex-col gap-2"
-        aria-label="Who can access your app"
+        aria-label={`Who can access your ${noun}`}
       >
         {/* "Only you" is its own option rather than an empty "Specific people".
             The two used to be the same radio, distinguished only by whether the

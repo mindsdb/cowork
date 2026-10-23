@@ -19,6 +19,10 @@ const spies = vi.hoisted(() => ({
   // by default (a turn that recovered), so a test that wants trackTurnFailed
   // to fire on a real failure overrides it with an error-role message.
   fetchSession: vi.fn(async () => ({ messages: [] })),
+  // The conversation's doc stream, for the test that has the agent make a doc.
+  conversationDocs: null,
+  // The passage the doc pane reports picked when its "Pick a passage" is clicked.
+  picked: null,
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -97,6 +101,39 @@ vi.mock('./api', async (importOriginal) => {
       const handle = { kind: 'reply', opts: args[args.length - 1], abort: vi.fn() };
       streams.push(handle);
       return handle;
+    },
+  };
+});
+
+// The chat follows a streaming turn's doc events; kept so a test can have the
+// agent make a doc.
+vi.mock('./components/doc/docApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  followConversationDocs: (_id, handlers) => {
+    spies.conversationDocs = handlers;
+    return () => {};
+  },
+}));
+
+// The doc pane is tested on its own; here it reports what it shows (as the
+// real one does once its doc has loaded), a passage picked in it, and is where
+// "Edit with agent" is asked from.
+vi.mock('./components/doc/DocPane', async () => {
+  const { useEffect } = await import('react');
+  return {
+    default: ({ artifactId, projectRef, onAskAgent, onViewChange }) => {
+      const view = { artifactId, projectId: projectRef, title: 'Plan', tab: 't_1', rev: 1, mode: 'edit' };
+      useEffect(() => {
+        onViewChange?.({ artifactId, projectId: projectRef, title: 'Plan', tab: 't_1', rev: 1, mode: 'edit' });
+      }, [artifactId, projectRef, onViewChange]);
+      return (
+        <>
+          <button type="button" onClick={() => onViewChange?.({ ...view, selection: spies.picked })}>Pick a passage</button>
+          <button type="button" onClick={() => onAskAgent({ blockIds: ['b_1'], quote: 'Acme leads', request: 'Make it shorter', tabId: 't_1', mode: 'edit' })}>
+            Edit with agent
+          </button>
+        </>
+      );
     },
   };
 });
@@ -1710,6 +1747,147 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
     expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+  });
+});
+
+/** Real streams over a fake /responses: each request's body is kept, and each turn ends when the test says. */
+function serveTurns() {
+  const enc = new TextEncoder();
+  const bodies = [];
+  const finish = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+    if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+    bodies.push(JSON.parse(init.body));
+    return { ok: true, status: 200, body: new ReadableStream({
+      start(controller) {
+        finish.push(() => {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'response.completed' })}\n\n`));
+          controller.close();
+        });
+      },
+    }) };
+  }));
+  return { bodies, finish: async (i) => { await act(async () => { finish[i](); await Promise.resolve(); }); } };
+}
+
+describe('"Write it as a doc" on a message that waits its turn', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('goes with that message when it drains, not with the turn that starts first', async () => {
+    // Found in review: the choice was one global flag taken by whichever
+    // stream started next, so a doc request queued in one conversation went
+    // out with another conversation's message.
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha
+    spies.useActualStreams = true;
+    const turns = serveTurns();
+    await send(user, composer, 'alpha turn');
+    await waitFor(() => expect(turns.bodies).toHaveLength(1));
+
+    // Beta asks for a doc while Alpha's turn holds the slot: it queues.
+    await openByTitle(user, 'Beta task');
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
+    await send(user, composer, 'beta as a doc');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    // So does a plain follow-up in Alpha, which drains first.
+    await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'alpha follow-up');
+
+    await turns.finish(0);
+    await waitFor(() => expect(turns.bodies).toHaveLength(2));
+    expect(turns.bodies[1]).toMatchObject({ conversation: 'conv-a', input: 'alpha follow-up' });
+    expect(turns.bodies[1]).not.toHaveProperty('output');
+
+    await turns.finish(1);
+    await waitFor(() => expect(turns.bodies).toHaveLength(3));
+    expect(turns.bodies[2]).toMatchObject({ conversation: 'conv-b', input: 'beta as a doc', output: 'doc' });
+    expect(turns.bodies[0]).not.toHaveProperty('output');
+  });
+});
+
+describe('the doc a message was sent beside', () => {
+  const DOC = 'a'.repeat(32);
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Alpha's turn runs over real streams and makes a doc, which docks beside the chat. */
+  async function docBesideARunningTurn(user) {
+    const composer = await openTask(user);
+    spies.useActualStreams = true;
+    spies.conversationDocs = null;
+    const turns = serveTurns();
+    await send(user, composer, 'write it up as a doc');
+    await waitFor(() => expect(turns.bodies).toHaveLength(1));
+    await waitFor(() => expect(spies.conversationDocs).not.toBeNull());
+    act(() => spies.conversationDocs.onEvent({ type: 'doc.created', artifactId: DOC, title: 'Plan', card: { projectId: 'p1' } }));
+    await screen.findByRole('button', { name: 'Pick a passage' });
+    return { composer, turns };
+  }
+  const pick = async (user, quote) => {
+    spies.picked = { blockIds: ['b_1'], quote };
+    await user.click(screen.getByRole('button', { name: 'Pick a passage' }));
+  };
+  const about = (quote) => ({ doc_context: { artifactId: DOC, tab: 't_1', selection: { blockIds: ['b_1'], quote } } });
+
+  it('goes out with the passage each waiting message was sent about', async () => {
+    // Found in review: a queued message took the doc view as it was when the
+    // queue drained, so two sent about two passages both went with the last.
+    const user = userEvent.setup();
+    const { composer, turns } = await docBesideARunningTurn(user);
+    await pick(user, 'Acme leads');
+    await send(user, composer, 'about Acme');
+    await pick(user, 'Beta trails');
+    await send(user, composer, 'about Beta');
+
+    await turns.finish(0);
+    await waitFor(() => expect(turns.bodies).toHaveLength(2));
+    expect(turns.bodies[1]).toMatchObject({ input: 'about Acme', ...about('Acme leads') });
+    await turns.finish(1);
+    await waitFor(() => expect(turns.bodies).toHaveLength(3));
+    expect(turns.bodies[2]).toMatchObject({ input: 'about Beta', ...about('Beta trails') });
+  });
+
+  it('keeps the doc it was sent beside after the person moves to another chat', async () => {
+    // Found in review: moving to another chat closed the doc's view there, so
+    // the message waiting in the first chat went out with no doc at all.
+    const user = userEvent.setup();
+    const { composer, turns } = await docBesideARunningTurn(user);
+    await pick(user, 'Acme leads');
+    await send(user, composer, 'about Acme');
+    await openByTitle(user, 'Beta task');
+
+    await turns.finish(0);
+    await waitFor(() => expect(turns.bodies).toHaveLength(2));
+    expect(turns.bodies[1]).toMatchObject({ conversation: 'conv-a', input: 'about Acme', ...about('Acme leads') });
+  });
+});
+
+describe('"Edit with agent" from the doc beside the chat', () => {
+  // Before, not after: an upload an earlier test started can land late.
+  beforeEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('leaves the files staged in the composer for the next message', async () => {
+    // Found in review: the request went out as if typed in the composer, so it
+    // took the composer's staged files with it and cleared them.
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    await send(user, composer, 'write it up as a doc');
+    const turn = await waitForStream();
+    // The agent makes a doc mid-turn: it opens beside the chat.
+    act(() => spies.conversationDocs.onEvent({ type: 'doc.created', artifactId: 'a'.repeat(32), title: 'Plan', card: { projectId: 'p1' } }));
+    await act(async () => { turn.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    await attach(user, 'notes.txt');
+    await user.click(screen.getByRole('button', { name: 'Edit with agent' }));
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('> Acme leads\n\nMake it shorter');
+    expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual([]);
+    expect(uploadAttachments).not.toHaveBeenCalled();
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
   });
 });
 

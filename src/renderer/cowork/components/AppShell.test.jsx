@@ -41,6 +41,21 @@ describe('AppShell', () => {
     expect(screen.getByRole('main').style.getPropertyValue('--titlebar-safe-top')).toBe('52px');
   });
 
+  it('exposes where a header in the corner starts its row: past the hamburger, 0 when docked', () => {
+    const inset = () => screen.getByRole('main').style.getPropertyValue('--titlebar-safe-left');
+    const { unmount } = render(<AppShell {...baseProps} isMobile={false} titlebarSafeTop={52}><div>x</div></AppShell>);
+    expect(inset()).toBe('141px'); // the hamburger at 97, past the traffic lights
+    unmount();
+    hostMock.isWeb = true;
+    try {
+      const web = render(<AppShell {...baseProps} isMobile={false} titlebarSafeTop={52}><div>x</div></AppShell>);
+      expect(inset()).toBe('62px'); // the hamburger at 18
+      web.unmount();
+    } finally { hostMock.isWeb = false; }
+    render(<AppShell {...baseProps} isMobile={false} titlebarSafeTop={0}><div>x</div></AppShell>);
+    expect(inset()).toBe('0px');
+  });
+
   it('calls onOpenSidebar when the hamburger is clicked', () => {
     const onOpenSidebar = vi.fn();
     render(

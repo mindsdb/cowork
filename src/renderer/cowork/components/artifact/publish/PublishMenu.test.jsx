@@ -158,3 +158,31 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     });
   });
 });
+
+describe('PublishMenu — a doc that follows its edits', () => {
+  const SHARED_AND_CHANGED = {
+    publishedUrl: 'https://share/doc',
+    modified: true,
+    versions: [{ md5: 'a' }, { md5: 'b' }],
+  };
+
+  it('has nothing to update by hand and no versions to pick', () => {
+    const controller = makeController(SHARED_AND_CHANGED);
+    render(<PublishMenu controller={controller} noun="doc" followsEdits />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Updates as you edit')).toBeInTheDocument();
+    expect(screen.getByText('Who can access your doc')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+    expect(controller.loadVersions).not.toHaveBeenCalled();
+  });
+
+  it('still offers Update for an app whose shared copy is behind', () => {
+    render(<PublishMenu controller={makeController(SHARED_AND_CHANGED)} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+    expect(screen.getByText('Version history (2)')).toBeInTheDocument();
+  });
+});

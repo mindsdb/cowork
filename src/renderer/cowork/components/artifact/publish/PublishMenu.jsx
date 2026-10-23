@@ -104,12 +104,12 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
 // nothing to publish — deliberately not styled as a control, so status reads
 // as status and the action button only appears when there is something to do
 // (ENG-500).
-function UpToDateTag() {
+function UpToDateTag({ label = 'Up to date' }) {
   return (
     <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
       {/* var(--ok) has no config utility (distinct from the --success hex) — keep inline. */}
       <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
-      Up to date
+      {label}
     </span>
   );
 }
@@ -214,7 +214,9 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 
 // ── Main control ─────────────────────────────────────────────────────────
 
-export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
+// `followsEdits`: the server republishes the shared copy after every save (a
+// doc), so there is nothing to update by hand and no versions to pick from.
+export function PublishMenu({ controller, disabled = false, disabledReason = '', noun = 'app', followsEdits = false }) {
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   // Published is not the same as shared: an owner-only artifact has a URL that
@@ -242,7 +244,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (isPublished) {
       setView('summary');
       setDraft(draftFromController(pub));
-      pub.loadVersions();  // lazy-load history for the rollback section
+      if (!followsEdits) pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
       setDraft({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
@@ -344,8 +346,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 <>
                   <PanelHeader title="Share to the Web" />
                   <div className="py-3 px-4">
-                    <SectionLabel>Who can access your app</SectionLabel>
-                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
+                    <SectionLabel>{`Who can access your ${noun}`}</SectionLabel>
+                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} noun={noun} />
                   </div>
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
@@ -372,7 +374,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     {view === 'summary' && (
                       <>
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
-                          Who can access your app
+                          {`Who can access your ${noun}`}
                         </SectionLabel>
                         <AccessSummaryCard mode={pub.accessMode} ownerOnly={pub.ownerOnly} />
                         {pub.accessMode === 'password' && (
@@ -380,7 +382,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                             <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
                           </div>
                         )}
-                        {pub.supportsPublishRoutes !== false && pub.versions.length > 1 && (
+                        {!followsEdits && pub.supportsPublishRoutes !== false && pub.versions.length > 1 && (
                           <div className="mt-3">
                             <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
                           </div>
@@ -391,9 +393,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     {view === 'access' && (
                       <>
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
-                          Who can access your app
+                          {`Who can access your ${noun}`}
                         </SectionLabel>
-                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} />
+                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} noun={noun} />
                       </>
                     )}
   
@@ -469,7 +471,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         <FooterButton primary disabled title="Loading current access…">
                           Update
                         </FooterButton>
-                      ) : (draftDiffers(draft, current) || pub.modified) ? (
+                      ) : (draftDiffers(draft, current) || (pub.modified && !followsEdits)) ? (
                         <FooterButton primary onClick={doApplyAccess}
                           disabled={pub.busy || !isAccessDraftValid(draft)}
                           busy={pub.phase === 'publishing'} busyLabel="Updating…">
@@ -478,6 +480,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       ) : (
                         <UpToDateTag />
                       )
+                    ) : followsEdits ? (
+                      <UpToDateTag label="Updates as you edit" />
                     ) : (pub.modified && pub.supportsPublishRoutes !== false) ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel="Updating…">

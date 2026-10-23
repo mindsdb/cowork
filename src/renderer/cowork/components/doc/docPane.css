@@ -1,0 +1,109 @@
+/* The doc pane's chrome around the editor (doc.css): its header and live
+   state, its banners, its loading and error states, how it narrows, and the
+   divider that resizes it beside the chat. The shared page's editor wears the
+   same header and banners. */
+
+.doc-pane { border-left: 1px solid var(--line); }
+
+.doc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: padding var(--dur-layout) var(--ease-out);
+}
+/* A header in a corner something is drawn over (headerCorner, DocPane.jsx).
+   Filling the window on a Mac it is the window's title bar: its row sits on
+   the line of the window's buttons (centred at y 31), starts past them where
+   the shell's open-sidebar icon sits beside them (x 103; the buttons end near
+   x 80), and its bare stretches drag the window. */
+.doc-root[data-corner='window'] > .doc-header { height: 62px; padding-left: 103px; -webkit-app-region: drag; }
+.doc-root[data-corner='window'] > .doc-header :is(button, a, input) { -webkit-app-region: no-drag; }
+/* Expanded to the main column's edge, with no chat beside it to rule off, it
+   starts its row past the shell's open-sidebar button while the sidebar is
+   folded away: the shell says where in the window (0 while the sidebar is
+   docked over the corner), the pane where it starts itself. The pane starts
+   9px down the window, so the row also lifts 2px onto the buttons' line. */
+.doc-pane[data-corner='main'] { border-left-color: transparent; }
+.doc-root[data-corner='main'] > .doc-header {
+  padding-left: max(16px, calc(var(--titlebar-safe-left, 0px) - var(--doc-left, 0px)));
+  padding-bottom: min(4px, var(--titlebar-safe-left, 0px));
+}
+.doc-header__icon { color: var(--ink-3); display: inline-grid; place-items: center; }
+/* With the tabs folded away, the header's leading icon is the way back to them. */
+.doc-header__tabs { position: relative; margin: 0 -7px; animation: doc-header-in var(--dur-layout) var(--ease-out); }
+.doc-header__tabs-dot {
+  position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
+@keyframes doc-header-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+.doc-header__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-header__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.doc-header__status--agent { color: var(--doc-accent-ink); }
+.doc-header__status--warn { color: var(--warning-text); }
+/* A narrow pane gives the title the room; "Agent is writing" still shows. */
+.doc-root--narrow .doc-header__status:not(.doc-header__status--agent):not(.doc-header__status--warn) { display: none; }
+.doc-header__pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent);
+  animation: doc-pulse 1.2s ease-in-out infinite;
+}
+@keyframes doc-pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+.doc-body { display: flex; flex: 1 1 auto; min-height: 0; }
+
+.doc-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-bottom: 1px solid var(--warning-border);
+}
+.doc-banner--info { background: var(--accent-bg); color: var(--info-text); border-color: var(--info-border); }
+.doc-banner__spacer { flex: 1; }
+
+/* A narrow pane gives the page a narrower gutter. */
+.doc-root--narrow .doc-page { --doc-gutter: 48px; padding-top: 24px; }
+
+/* Loading and failing to load */
+.doc-state { flex: 1; display: grid; place-items: center; padding: 40px; color: var(--ink-3); font-size: var(--text-sm); text-align: center; }
+.doc-skeleton { max-width: var(--doc-page-max); margin: 0 auto; padding: 40px var(--doc-gutter); display: grid; gap: 12px; }
+.doc-skeleton > div { height: 12px; border-radius: 6px; background: var(--surface-2); }
+.doc-skeleton > div:first-child { height: 28px; width: 60%; margin-bottom: 14px; }
+
+/* Pane resize handle (beside the chat) */
+.doc-resizer {
+  position: absolute; left: -4px; top: 0; bottom: 0; width: 8px;
+  cursor: col-resize; z-index: 4;
+}
+.doc-resizer::after {
+  content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px;
+  background: transparent; transition: background 120ms;
+}
+.doc-resizer:hover::after, .doc-resizer[data-active="true"]::after, .doc-resizer:focus-visible::after { background: var(--accent); }
+.doc-resizer:focus-visible { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-header__pulse, .doc-header__tabs { animation: none; }
+}
