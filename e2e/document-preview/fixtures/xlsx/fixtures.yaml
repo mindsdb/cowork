@@ -1,5 +1,5 @@
-# The xlsx preview fixtures. The spec reads them through loadFixtures in
-# harness.ts; the renderer's unit tests read this file directly.
+# The xlsx preview fixtures. The spec and the renderer's unit tests read them
+# through loadFixtures in harness.ts.
 # make-fixtures.mjs in this folder writes every file listed here, but for the
 # four that make-python-fixtures.py writes with openpyxl and XlsxWriter. units
 # counts the sheets shown as tabs.

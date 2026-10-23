@@ -1,7 +1,8 @@
 # What render.test.ts renders and expects. Each case renders one file: a
 # committed `file` from e2e/document-preview/fixtures/pptx, a `deck` that
 # deck.ts builds at test time, or raw `bytes` in base64. `limits` replaces caps
-# from previewLimits.
+# from previewLimits. A committed file's case takes units, truncated and error
+# from the file's fixtures.yaml entry, unless it sets `limits`.
 #
 # expect:
 #   error          the PreviewErrorCode render() rejects with
@@ -62,8 +63,6 @@ cases:
   - name: three slides in sldIdLst order, not part order
     file: three-slides.pptx
     expect:
-      units: 3
-      truncated: false
       slides: ['First slide: a quarterly review', 'Second slide: a picture and a table', 'Third slide: a chart']
       placeholders: [chart]
       images: 1
@@ -87,8 +86,6 @@ cases:
   - name: a deck python-pptx writes on its default template
     file: python-pptx.pptx
     expect:
-      units: 3
-      truncated: false
       slides: [A deck python-pptx wrote, A picture placeholder, A connector and a wide outline]
       placeholders: []
       images: 1
@@ -119,8 +116,6 @@ cases:
   - name: overlapping shapes and a group
     file: overlapping-shapes.pptx
     expect:
-      units: 1
-      truncated: false
       overlaps:
         - [Back shape, Middle shape, Front shape]
         - [Group back, Group front]
@@ -132,23 +127,18 @@ cases:
   - name: right-to-left text
     file: rtl-text.pptx
     expect:
-      units: 1
-      truncated: false
       slides: [Right-to-left text]
       rtl: [مرحبا بالعالم, שלום עולם]
 
   - name: video and audio inside the package
     file: media.pptx
     expect:
-      units: 1
-      truncated: false
       placeholders: [video, audio]
       unread: [ppt/media/clip.mp4, ppt/media/sound.m4a]
 
   - name: a presentation part cut off mid-element
     file: corrupt.pptx
-    expect:
-      error: parse-failed
+    expect: {}
 
   # The header of an OLE compound file, which is what a password-protected
   # .pptx and an old .ppt are.
@@ -160,8 +150,6 @@ cases:
   - name: pictures, video, audio and links that point outside the package
     file: linked-media.pptx
     expect:
-      units: 1
-      truncated: false
       placeholders: [picture, picture, picture, picture, video, audio]
       images: 0
       markupExcludes:
@@ -181,8 +169,6 @@ cases:
   - name: a hostile chart color, fill, run color and typeface
     file: chart-color.pptx
     expect:
-      units: 1
-      truncated: false
       slides: [A shape with hostile colors]
       placeholders: [chart]
       markupExcludes: [pptx-chart-color, pptx-fill-color, pptx-run-color, pptx-font, example.com, onerror, 'url(']
@@ -233,8 +219,6 @@ cases:
   - name: a deck past maxSlides
     file: past-slide-cap.pptx
     expect:
-      units: 300
-      truncated: true
       slides: [Slide 1, Slide 2]
       lastSlide: Slide 300
 

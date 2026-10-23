@@ -14,7 +14,7 @@ import { load } from 'js-yaml';
 import { read, utils, version, write, type WorkBook } from 'xlsx';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import type { PreviewFixture } from '../../../../../../e2e/document-preview/harness';
+import { loadFixtures } from '../../../../../../e2e/document-preview/harness';
 import { buildWorkbook, withUnicodePaths, type FixtureSheet, type FixtureWorkbook } from '../../../../../../e2e/document-preview/fixtures/xlsx/make-fixtures.mjs';
 import type { PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
 import { isPreviewError } from '../../errors';
@@ -56,7 +56,7 @@ interface TestContext extends RendererContext {
 type RenderEnding = { outcome: 'rendered'; summary: RenderSummary } | { outcome: 'error'; errorCode: PreviewErrorCode };
 
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/xlsx');
-const FIXTURE_LIST = load(readFileSync(join(FIXTURES, 'fixtures.yaml'), 'utf8')) as PreviewFixture[];
+const FIXTURE_LIST = loadFixtures('xlsx');
 const SOURCE_CHECKS = (load(readFileSync(join(__dirname, 'code-checks.yaml'), 'utf8')) as { source: CodeCheck[] }).source;
 
 function fixture(file: string): ArrayBuffer {

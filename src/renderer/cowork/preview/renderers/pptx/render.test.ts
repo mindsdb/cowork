@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDeck, FIXTURE_DIR, type DeckSpec } from '../../../../../../e2e/document-preview/fixtures/pptx/deck';
 import { FORBIDDEN_ELEMENTS } from '../../../../../../e2e/document-preview/fixtures/pptx/forbidden';
+import { loadFixtures } from '../../../../../../e2e/document-preview/harness';
 import type { GuardedZip, PreviewErrorCode, PreviewLimits, RenderSummary, RendererContext } from '../../contract';
 import { isPreviewError, previewError } from '../../errors';
 import { previewLimits } from '../../limits';
@@ -107,6 +108,24 @@ interface RenderCases {
   cases: RenderCase[];
 }
 
+/* A committed deck's case takes its units, truncated and error from the
+   deck's fixtures.yaml entry, which the pptx spec checks too, so the two
+   can't drift. A case that changes ctx.limits states its own. */
+function withFixtureSummaries(data: RenderCases): RenderCases {
+  const fixtures = new Map(loadFixtures('pptx').map(({ file, expect: want }) => [file, want]));
+  const cases = data.cases.map((testCase) => {
+    if (testCase.file === undefined || testCase.limits !== undefined) return testCase;
+    const fixture = fixtures.get(testCase.file);
+    if (!fixture) throw new Error(`fixtures/pptx/fixtures.yaml has no entry for ${testCase.file}`);
+    const { units, truncated, error } = testCase.expect;
+    if (units !== undefined || truncated !== undefined || error !== undefined) {
+      throw new Error(`render.test.yaml case '${testCase.name}' repeats what fixtures.yaml says of ${testCase.file}`);
+    }
+    return { ...testCase, expect: { ...testCase.expect, units: fixture.units, truncated: fixture.truncated, error: fixture.errorCode } };
+  });
+  return { ...data, cases };
+}
+
 /* The archive the renderer reads, and the entry names it asked for, in order. */
 interface RecordedZip {
   zip: GuardedZip;
@@ -137,7 +156,7 @@ interface Rect {
   height: number;
 }
 
-const DATA = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
+const DATA = withFixtureSummaries(load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases);
 const SLD_ID_ID_FIRST = /<p:sldId id="(\d+)" r:id="(\w+)"\/>/g;
 const XML_DECLARATION = /^<\?xml\s[^?]*\?>/;
 const PICTURE_URL = /^url\("data:image\/(?:png|jpeg|gif|bmp|webp);base64,[A-Za-z0-9+/=]+"\)$/;

@@ -1,17 +1,17 @@
 /*
  * The Word renderer, run on the real docx-preview with the harness's .docx
- * fixtures. Every fixture renders, except the ones render.test.yaml lists as
- * parse-failed or unsupported. Single tests swap one docx-preview step for a
+ * fixtures. Each fixture ends as its fixtures.yaml entry expects: it renders,
+ * or it fails with parse-failed or unsupported. Single tests swap one docx-preview step for a
  * failure, or wrap it to look at what render() hands it.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import * as docxPreview from 'docx-preview';
-import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { PreviewLimits, RendererContext } from '../../contract';
+import { loadFixtures } from '../../../../../../e2e/document-preview/harness';
+import type { PreviewErrorCode, PreviewLimits, RendererContext } from '../../contract';
 import { previewLimits } from '../../limits';
 import renderer, { DOCX_OPTIONS, EMPTY_IMAGE } from './render';
 
@@ -20,15 +20,20 @@ vi.mock('docx-preview', async (importOriginal) => {
   return { ...actual, parseAsync: vi.fn(actual.parseAsync), renderDocument: vi.fn(actual.renderDocument) };
 });
 
-interface RenderCases { parseFailed: string[]; unsupported: string[] }
-
-const CASES = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
+const FIXTURE_LIST = loadFixtures('docx');
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/docx');
-const DOCX_FILES = readdirSync(FIXTURES).filter((name) => name.endsWith('.docx'));
+
+/* The fixtures whose fixtures.yaml entry expects this error code. */
+function filesFailingWith(code: PreviewErrorCode): string[] {
+  return FIXTURE_LIST.filter(({ expect: want }) => want.errorCode === code).map(({ file }) => file);
+}
+
+const PARSE_FAILED = filesFailingWith('parse-failed');
+const UNSUPPORTED = filesFailingWith('unsupported');
 
 /* The fixture whose 2,000 drawings name one 480 KB picture. */
 const PICTURE_PER_REFERENCE = 'picture-per-reference.docx';
-const RENDERED_FILES = DOCX_FILES.filter((name) => !CASES.parseFailed.includes(name) && !CASES.unsupported.includes(name));
+const RENDERED_FILES = FIXTURE_LIST.filter(({ expect: want }) => want.outcome === 'rendered').map(({ file }) => file);
 
 /* A data: URL of a PNG whose header says side by side, followed by `padding`
    bytes of zeros. */
@@ -156,8 +161,8 @@ describe('the docx renderer', () => {
     expect(vi.mocked(ctx.progress).mock.calls).toEqual([[0, 3], [1, 3], [2, 3], [3, 3]]);
   });
 
-  it('finds every file render.test.yaml lists among the fixtures', () => {
-    expect(DOCX_FILES).toEqual(expect.arrayContaining([...CASES.parseFailed, ...CASES.unsupported]));
+  it('finds every .docx in the fixture folder listed in fixtures.yaml', () => {
+    expect(FIXTURE_LIST.map(({ file }) => file).sort()).toEqual(readdirSync(FIXTURES).filter((name) => name.endsWith('.docx')).sort());
   });
 
   it.each(RENDERED_FILES)('renders %s and leaves nothing in it that loads or opens a URL', async (name) => {
@@ -166,13 +171,13 @@ describe('the docx renderer', () => {
     expect(leftoverTargets(ctx.root)).toEqual([]);
   });
 
-  it.each(CASES.parseFailed)('fails %s with parse-failed and inserts nothing', async (name) => {
+  it.each(PARSE_FAILED)('fails %s with parse-failed and inserts nothing', async (name) => {
     const ctx = context();
     await expect(renderer.render(fixtureBytes(name), ctx)).rejects.toMatchObject({ code: 'parse-failed' });
     expect(ctx.root.childNodes).toHaveLength(0);
   });
 
-  it.each(CASES.unsupported)('fails %s with unsupported before docx-preview lays anything out', async (name) => {
+  it.each(UNSUPPORTED)('fails %s with unsupported before docx-preview lays anything out', async (name) => {
     const ctx = context();
     await expect(renderer.render(fixtureBytes(name), ctx)).rejects.toMatchObject({ code: 'unsupported' });
     expect(docxPreview.renderDocument).not.toHaveBeenCalled();

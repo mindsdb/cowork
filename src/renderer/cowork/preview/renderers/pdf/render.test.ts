@@ -13,7 +13,8 @@ import { load } from 'js-yaml';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import type { PreviewLimits, RendererContext } from '../../contract';
+import { loadFixtures } from '../../../../../../e2e/document-preview/harness';
+import type { PreviewLimits, RenderSummary, RendererContext } from '../../contract';
 import { previewLimits } from '../../limits';
 import renderer, { IMAGE_CAP_GLOBAL, pdfDocumentParams } from './render';
 
@@ -27,6 +28,14 @@ interface RenderCases { images: ImageCase[] }
 
 const CASES = load(readFileSync(join(__dirname, 'render.test.yaml'), 'utf8')) as RenderCases;
 const FIXTURES = join(__dirname, '../../../../../../e2e/document-preview/fixtures/pdf');
+const FIXTURE_LIST = loadFixtures('pdf');
+
+/* The summary a fixture's fixtures.yaml entry expects. */
+function expectedSummary(file: string): RenderSummary {
+  const want = FIXTURE_LIST.find((fixture) => fixture.file === file)?.expect;
+  if (want?.units === undefined) throw new Error(`fixtures/pdf/fixtures.yaml states no units for ${file}`);
+  return { type: 'pdf', units: want.units, truncated: want.truncated ?? false };
+}
 
 /* Every pdf.js operator that paints an image. */
 const IMAGE_PAINT_OPS = new Set(Object.entries(pdfjs.OPS).filter(([name]) => name.includes('Image')).map(([, op]) => op));
@@ -98,9 +107,9 @@ describe('the image cap in pdf.js\'s fake worker', () => {
 });
 
 describe('the pdf renderer', () => {
-  it('lays out every page of a 3-page file and reports units: 3', async () => {
+  it('lays out every page of a 3-page file and reports its pages', async () => {
     const ctx = context();
-    await expect(renderer.render(fixtureBytes('three-pages.pdf'), ctx)).resolves.toEqual({ type: 'pdf', units: 3, truncated: false });
+    await expect(renderer.render(fixtureBytes('three-pages.pdf'), ctx)).resolves.toEqual(expectedSummary('three-pages.pdf'));
     expect(pdfjs.getDocument).toHaveBeenCalledOnce();
     expect(vi.mocked(pdfjs.getDocument).mock.calls[0][0]).toMatchObject({ useSystemFonts: false, useWasm: false, enableXfa: false });
     expect(pageSlots(ctx.root).map((slot) => slot.dataset.pageNumber)).toEqual(['1', '2', '3']);
@@ -112,8 +121,9 @@ describe('the pdf renderer', () => {
 
   it('lays out maxPdfPages of the 501-page file and reports truncated', async () => {
     const ctx = context();
-    await expect(renderer.render(fixtureBytes('pages-501-max-size.pdf'), ctx)).resolves.toEqual({ type: 'pdf', units: 500, truncated: true });
-    expect(pageSlots(ctx.root)).toHaveLength(500);
+    const summary = expectedSummary('pages-501-max-size.pdf');
+    await expect(renderer.render(fixtureBytes('pages-501-max-size.pdf'), ctx)).resolves.toEqual(summary);
+    expect(pageSlots(ctx.root)).toHaveLength(summary.units);
     expect(pageSlots(ctx.root)[0].style.aspectRatio).toBe('14400 / 14400');
   });
 

@@ -8,10 +8,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { load } from 'js-yaml';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { PreviewFixture } from '../../../../../../e2e/document-preview/harness';
+import { loadFixtures } from '../../../../../../e2e/document-preview/harness';
 import { HARNESS_ORIGIN, xlsxFixtureFiles } from '../../../../../../e2e/document-preview/fixtures/xlsx/make-fixtures.mjs';
 import documentPreviewConfig from '../../../../../../playwright.document-preview.config';
 
@@ -45,7 +44,7 @@ describe('xlsx preview fixtures', () => {
   });
 
   it('are each listed once in fixtures.yaml, as clean or hostile', () => {
-    const listed = load(readFileSync(join(FIXTURES, 'fixtures.yaml'), 'utf8')) as PreviewFixture[];
+    const listed = loadFixtures('xlsx');
     const files = written.map(({ file }) => file);
 
     expect(listed.map(({ file }) => file).filter((file) => !PYTHON_FIXTURES.includes(file))).toEqual(files);
