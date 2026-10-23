@@ -139,9 +139,13 @@ pkgbuild \
 
 echo "==> Synthesizing distribution"
 productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
-# Set the installer title shown in the macOS Installer UI and "move to Trash" dialog.
-# The synthesized XML has no <title> element, so insert one after the root tag.
-sed -i '' "s|<installer-gui-script[^>]*>|&\n    <title>${PRODUCT_NAME}</title>|" "$DIST_XML"
+# The synthesized XML has no <title> (shown in the Installer UI and the "move to
+# Trash" dialog) and no OS floor, so insert both after the root tag. The floor
+# makes the installer refuse macOS 12 instead of installing an app that cannot
+# start. One substitution without "\n": BSD sed writes "\n" in a replacement as
+# a literal "n".
+MAC_MINIMUM_MACOS="13.0"
+sed -i '' "s|<installer-gui-script[^>]*>|&<title>${PRODUCT_NAME}</title><allowed-os-versions><os-version min=\"${MAC_MINIMUM_MACOS}\"/></allowed-os-versions>|" "$DIST_XML"
 
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
