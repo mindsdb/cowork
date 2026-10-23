@@ -32,6 +32,7 @@ const workspaceMock = vi.hoisted(() => ({
 vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(async () => ({ kind: 'static', url: '/preview' })),
+  fetchMyLiveApps: vi.fn(async () => new Map()),
   previewArtifact: vi.fn(),
   unpublishArtifact: vi.fn(async () => undefined),
 }));

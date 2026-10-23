@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { liveAppKey, liveAppLines, liveAppStateLine, liveAppStatesFrom } from './liveAppState';
+import { liveAppKey, liveAppLines, liveAppStateLine, liveAppStatesFrom, liveAppViewerNotice } from './liveAppState';
 
 const running = {
   projectId: 'p1', slug: 'table-counts', slot: 1, state: 'running',
@@ -130,5 +130,51 @@ describe('liveAppLines', () => {
   it('gives nothing with live apps off, or to a card that is not a full-stack app', () => {
     expect(liveAppLines(card, { liveApps: false, states })).toBe(null);
     expect(liveAppLines({ ...card, type: 'html-app' }, { liveApps: true, states })).toBe(null);
+  });
+});
+
+describe('liveAppViewerNotice', () => {
+  const ready = (item) => ({ status: 'ready', state: item && liveAppStatesFrom([item]).values().next().value });
+
+  it('names a running app\'s address, and that is what the viewer opens', () => {
+    expect(liveAppViewerNotice(ready(running), { now: NOW })).toEqual({
+      address: 'http://app1.view.localhost:8080/',
+      text: 'This live app runs at its own address.',
+    });
+  });
+
+  it('says a stopped app is stopped, when, why and what to do, as its card does, with nothing to open', () => {
+    expect(liveAppViewerNotice(ready(stopped), { now: NOW })).toEqual({
+      address: '',
+      text: 'Stopped 12:04 UTC, no requests for 2 h. Ask your agent to relaunch it.',
+    });
+  });
+
+  it('says an app with no launch on record is not running, and how to launch it', () => {
+    expect(liveAppViewerNotice(ready(undefined))).toEqual({
+      address: '',
+      text: "This live app isn't running. Ask your agent to launch it.",
+    });
+  });
+
+  it('opens only an http(s) address', () => {
+    for (const address of ['javascript:alert(1)', 'file:///etc/passwd', 'not a url', '']) {
+      expect(liveAppViewerNotice(ready({ ...running, address }))).toEqual({
+        address: '',
+        text: 'This live app is running. Ask your agent for its address.',
+      });
+    }
+  });
+
+  it("says it couldn't check when the read failed, never that the app isn't running", () => {
+    expect(liveAppViewerNotice({ status: 'failed' })).toEqual({
+      address: '',
+      text: "Couldn't check whether this app is running. Reload to try again.",
+    });
+  });
+
+  it('has nothing to show before the read answers', () => {
+    expect(liveAppViewerNotice({ status: 'loading' })).toBe(null);
+    expect(liveAppViewerNotice({ status: 'off' })).toBe(null);
   });
 });

@@ -39,6 +39,29 @@ function PreviewPlaceholder() {
   );
 }
 
+// A live app runs only at its own address, never inside Cowork, so its viewer
+// names that address while it runs, or says why it isn't running.
+function LiveAppPanel({ notice, onOpen }) {
+  if (!notice) return <PreviewPlaceholder />;
+  const address = notice.address ? new URL(notice.address) : null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+      <div style={{
+        display: 'grid', justifyItems: 'center', gap: 12, maxWidth: 460,
+        textAlign: 'center', fontFamily: FONT_BODY,
+      }}>
+        <div style={{ color: 'var(--ink-2)', fontSize: 13 }}>{notice.text}</div>
+        {address && (
+          <Button onClick={onOpen} title={address.href}>
+            {Ico.arrowUpRight(14)}
+            {address.host}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ArtifactViewerBody({
   workspace,
   preview,
@@ -62,6 +85,7 @@ export function ArtifactViewerBody({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp,
     url: previewUrl,
     doc: previewDoc = '',
     kind: previewKind,
@@ -137,6 +161,8 @@ export function ArtifactViewerBody({
     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
+  ) : liveApp ? (
+    <LiveAppPanel notice={liveApp.notice} onOpen={liveApp.onOpen} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />
