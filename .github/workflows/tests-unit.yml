@@ -1,6 +1,6 @@
 name: Tests (unit)
 
-# Typecheck + unit/component tests + a real renderer build.
+# Typecheck + unit/component tests + real renderer and doc-editor builds.
 #
 # `workflow_call` only. It used to carry its own `pull_request` and `push`
 # triggers, which meant every PR and every merge produced a SECOND run tree
@@ -133,3 +133,6 @@ jobs:
         with:
           command: npm ci
       - run: npm run build:renderer
+      # The editor shipped for shared docs' pages (extraResources: doc-editor),
+      # a separate bundle the renderer build does not touch.
+      - run: npm run build:doc-editor
