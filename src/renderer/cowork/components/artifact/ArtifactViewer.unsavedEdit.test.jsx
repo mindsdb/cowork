@@ -10,9 +10,12 @@
  * hook, the modal and the confirm dialog are the real ones, so the Close button
  * is the one people click, the draft lives where the app keeps it, and Esc goes
  * through the dialog's own dismissal. Only the network, the host and the
- * comment and publish controllers are stubbed.
+ * comment and publish controllers are stubbed. The artifact, its saved source
+ * and the typed text live in ArtifactViewer.unsavedEdit.test.yaml.
  */
-
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -63,30 +66,15 @@ import { ArtifactViewer } from './ArtifactViewer';
 import { previewArtifact } from '../../api';
 import { loadArtifactSource, saveArtifactSource } from '../../lib/artifactWorkspaceApi';
 
-const SAVED_TEXT = 'Saved line';
-const TYPED_TEXT = ' and an unsaved edit';
+const DATA = load(readFileSync(resolve(__dirname, 'ArtifactViewer.unsavedEdit.test.yaml'), 'utf8'));
+const SAVED_TEXT = DATA.savedText;
+const TYPED_TEXT = DATA.typedText;
 const EDITED_TEXT = `${SAVED_TEXT}${TYPED_TEXT}`;
-
-const ARTIFACT = {
-  id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
-  title: 'Notes',
-  type: 'document',
-  ext: '.md',
-  path: '/artifacts/notes/notes.md',
-  canonicalPath: '/artifacts/notes/notes.md',
-};
-
-const REVISION = { id: 'rev-1', number: 1 };
+const ARTIFACT = DATA.artifact;
+const REVISION = DATA.source.revision;
 
 function savedSource() {
-  return {
-    artifactId: ARTIFACT.id,
-    path: 'notes.md',
-    content: SAVED_TEXT,
-    revision: REVISION,
-    revisions: [],
-    capabilities: { role: 'owner', canPreview: true, canComment: true, canEdit: true },
-  };
+  return { ...DATA.source, artifactId: ARTIFACT.id, content: SAVED_TEXT, revisions: [] };
 }
 
 /* Mirrors how hosts wire the viewer: `open` is their state, and onClose clears it. */
@@ -129,7 +117,7 @@ describe('ArtifactViewer with unsaved Edit text', () => {
     saveArtifactSource.mockImplementation(async (_artifact, { content }) => ({
       ...savedSource(),
       content,
-      revision: { id: 'rev-2', number: 2 },
+      revision: DATA.savedRevision,
     }));
   });
 
