@@ -365,18 +365,27 @@ describe('ArtifactViewer draft preview through a signed link', () => {
   const LINK = 'https://draft-staging.mindshub.co/_t/v1.first.sig/index.html';
   const NEXT_LINK = 'https://draft-staging.mindshub.co/_t/v1.second.sig/index.html';
   const linked = { ...artifact, projectId: 'proj-1' };
+  let iframeLoading;
 
   beforeEach(() => {
     loadArtifactDraftDocument.mockReset();
     createDraftLink.mockReset();
     headerProps.current = null;
     setDraftLinks(true);
+    // The frames here point at a live draft host: keep happy-dom from loading them.
+    iframeLoading = window.happyDOM.settings.disableIframePageLoading;
+    window.happyDOM.settings.disableIframePageLoading = true;
   });
 
   // Unmount first: a mounted viewer would rerun its preview effect on the
   // store's reset and fetch into srcdoc with a mock already reset. Spies are
   // restored here, so a failed expectation never leaves window.open replaced.
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); setDraftLinks(false); });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    setDraftLinks(false);
+    window.happyDOM.settings.disableIframePageLoading = iframeLoading;
+  });
 
   it('navigates the frame to a fresh link and never fetches the draft into srcdoc', async () => {
     createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
