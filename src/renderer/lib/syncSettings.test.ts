@@ -267,7 +267,8 @@ describe('syncModelsToDb', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     fetchMock.mockResolvedValue({ ok: false, status: 400 });
     expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=deepseek-v4-flash'])).toBe(true);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('deepseek-v4-flash'));
+    expect(JSON.parse(String(warn.mock.calls[0][0]))).toMatchObject({ event: 'setting_value_refused', status_code: 400, setting_key: 'planning_model' });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('deepseek-v4-flash');
     warn.mockRestore();
   });
 

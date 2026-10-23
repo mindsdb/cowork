@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { spawn, execFile } from 'child_process';
 import { BrowserWindow, app } from 'electron';
 import * as path from 'path';
@@ -6,7 +7,8 @@ import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getChannel, getInstallSpec, getMinServerVersion } from './server-source';
 import { installerStepPlan, meetsMinVersion } from './update-logic';
-import { withServerMaintenance } from './server-process';
+import { forgetServerCapability, withServerMaintenance } from './server-process';
+import { lockedServerInstallArgs } from './server-release-install';
 import {
   PYTHON_RANGE,
   getLocalBin,
@@ -241,12 +243,12 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
   // the installer which does --force --reinstall.
   const version = await getInstalledVersion();
   if (!version) {
-    console.log('[installer] cowork-server version could not be determined, reinstall needed');
+    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", '[installer] cowork-server version could not be determined, reinstall needed');
     return { installed: false, reason: 'version-unknown', binary };
   }
   const minVersion = getMinServerVersion();
   if (!meetsMinVersion(version, minVersion)) {
-    console.log(
+    diagnostic("main.installer", "INFO", "installer_cowork_server_is_below_minimum_needs_upgrade",
       `[installer] cowork-server ${version} is below minimum ${minVersion}, needs upgrade`,
     );
     return { installed: false, reason: 'below-minimum', binary, version, minVersion };
@@ -481,30 +483,24 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     const spec = getInstallSpec();
     sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
 
-    // PyPI installs resolve the exact target version up front (stream-aware:
-    // prod = latest stable, staging = latest rc) plus the direct anton pin
-    // its wheel requires — an rc wheel's transitive `anton-agent==<rc>` pin
-    // is unresolvable unless restated as a direct requirement. Falls back to
-    // the floor spec when PyPI is unreachable (prod-equivalent behavior; a
-    // staging machine then converges onto the rc stream at the next update
-    // poll).
+    // Resolve the stream's exact release. Its packaged contract selects Anton
+    // and every registry dependency; lookup failure stops before installation.
     let packageSpec = spec.package;
-    let withArgs: string[] = [];
-    if (spec.channel === 'pypi') {
+    if (spec.channel === 'pypi' && !process.env.COWORK_SERVER_PACKAGE) {
       const { resolvePypiInstallTarget } = await import('./server-updater');
       const target = await resolvePypiInstallTarget();
       if (target) {
         packageSpec = `cowork-server==${target.version}`;
-        withArgs = target.withArgs;
-        sendLog(win, `Resolved cowork-server ${target.version}${withArgs.length ? ` (+ ${withArgs[1]})` : ''} from PyPI\n`);
+        sendLog(win, `Resolved cowork-server ${target.version} from PyPI\n`);
       } else {
-        sendLog(win, 'Could not reach PyPI to resolve the latest version; installing by version floor.\n');
+        setStep('cowork-server', 'error');
+        sendInstallError(win, 'Could not select a server release. Retry when PyPI is available.');
+        return false;
       }
     }
     const installArgs = [
       'tool', 'install',
       packageSpec,
-      ...withArgs,
       '--force', '--reinstall',
       '--python', PYTHON_RANGE,
     ];
@@ -519,17 +515,17 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
      */
     const uvEnv: NodeJS.ProcessEnv = {
       UV_PYTHON_PREFERENCE: 'only-managed',
-      // No prerelease flag anywhere: rc reachability comes only from exact
-      // specifiers (`cowork-server==<rc>` and the restated
-      // `--with anton-agent==<rc>` above). A resolution-wide
-      // UV_PRERELEASE=allow would let TRANSITIVE deps (fastapi, pydantic…)
-      // resolve to alphas/betas prod never sees.
+      // Exact requirements in the release contract enable only reviewed rc versions.
       ...writeUvOverrides(spec.overrides),
     };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
     const installResult = await withServerMaintenance(
-      () => runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv }),
+      () => {
+        // The install replaces the server whose answer is recorded.
+        forgetServerCapability();
+        return runCommand(uvBin, lockedServerInstallArgs(uvBin, installArgs), win, { shouldAbort, env: uvEnv });
+      },
     );
     if (abortIfRequested()) return false;
 

@@ -28,6 +28,26 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 
 ---
 
+### Docker builds with a supplied dependency lock
+
+For an exact server environment, put a hashed `requirements.lock` and Git source
+identities in [`server-lock/`](server-lock/README.md), then run:
+
+```bash
+docker build --build-arg COWORK_SERVER_LOCK=true -t cowork:locked .
+```
+
+The contract selects both server and anton, replacing the ordinary version/ref
+arguments. Registry packages install from exact hashed wheels before either app
+is imported. The installer checks the complete environment, source commits,
+dependency compatibility, and the PyJWT security floor. A missing artifact or a
+mismatch fails the build; it does not select a newer package. Change the supplied
+contract explicitly when updating dependencies.
+
+Builds without `COWORK_SERVER_LOCK=true` select a server version or Git ref and
+consume that release's dependency contract, as described below.
+Git build backends, apt packages, and the frontend have separate build inputs.
+
 ## Build Channels
 
 The *Environments* table above covers **how** you run the app. A build **channel** (or "kind") covers **which env it targets and where it stores its data**. Every launch resolves to one of four kinds. [`src/main/channels.ts`](src/main/channels.ts) is the source of truth: its `CHANNELS` table maps each kind to a data home, API host, and default sidecar branch, and every other layer derives from it.
@@ -223,6 +243,8 @@ component library, and two entrypoints.
 npm run dev:web
 ```
 
+Web development defaults to the platform UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
+
 This boots both processes:
 
 1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
@@ -231,7 +253,7 @@ This boots both processes:
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+`/api` proxy. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
 ### Build a production bundle
@@ -242,7 +264,7 @@ npm run build:web
 
 Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
-and point its `/v1` requests at a running cowork-server process.
+and point its `/api` requests at a running cowork-server process.
 
 ### Browser tab icon
 
@@ -252,6 +274,58 @@ a square image of at least 32 × 32 pixels works best. Changes preview immediate
 and persist through the settings API. Removing the override restores the page's
 original icon, including a deployment's custom branding. Desktop does not show
 this control, and the browser's home-screen icon is unchanged.
+
+### Deployment brand
+
+A web build with the platform UI off (`BUILD_TARGET=web` and
+`VITE_PLATFORM_UI` not `true`) reads an optional brand from its own origin
+when the page loads. One build then serves any number of deployments, and a
+deployment changes its brand by serving different files, with no rebuild.
+Hosted web and desktop never load a brand: their HTML has no reference to it.
+
+| Path | What it is |
+|---|---|
+| `/brand/brand.js` | A classic script that only assigns `window.COWORK_DEPLOYMENT_BRAND = { ... };` |
+| `/brand/brand.css` | A stylesheet, loaded after the app's own CSS |
+| `/brand/<file>` | Any image the config names |
+
+The build marks the stock title, favicon comment and icon links with
+`<!-- cowork-deployment-brand:start -->` and `<!-- cowork-deployment-brand:end -->`.
+A deployment server can replace that entire region with its escaped title and
+literal icon links before sending the page. The markers appear only in web
+builds with the platform UI off. Without a replacement, the stock content stays.
+
+The blocking brand script and title line follow this region, before the app's
+bundle, so the first render already has the brand. The script must never be
+`async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
+stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
+serves them, so a deployment that serves nothing of its own looks stock.
+
+The wrapper identifies its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
+including `/`, `/index-web.html` and deep client routes. Assets, API responses
+and redirects have no such header. A deployment proxy can use the header to
+distinguish the shell from other HTML. The build rejects missing, duplicate or
+reordered title and icon anchors, and markers already present in the source.
+
+Every field is optional. A field that breaks its rule is ignored, with one
+console warning, and the rest still apply. Unknown keys are ignored, so the
+format only ever gains optional fields.
+
+| Field | Rule | Used for |
+|---|---|---|
+| `productName` | 1 to 64 characters after trimming | The tab title and the places that name the product |
+| `skin` | `{ "id", "label" }`: an id of lowercase letters, digits and single hyphens, up to 32 characters; a label of 1 to 32 characters | A style listed first in Settings > Appearance > Style. `brand.css` styles `body[data-skin="<id>"]` |
+| `theme` | `light` or `dark` | The theme a browser starts in |
+| `skinLocked` | `true` or `false` | `true` keeps every browser on the default style: the brand's `skin` when its id is not a stock style's (`normal`, `8bit` or `custom`), or Normal otherwise. Settings shows the style without a picker, and the corner and top-bar buttons switch only light and dark. A browser's saved style is kept and comes back once the lock is off. The theme stays each person's choice |
+| `logoUrl`, `iconUrl`, `appleTouchIconUrl` | `/brand/<file>`, with an optional `?v=<token>` | The sidebar logo, the tab icon and the home-screen icon |
+
+A person's own Settings win over the brand: a sidebar title, logo or tab icon
+set there is shown instead, and clearing the tab icon brings back the brand's.
+The style is the one exception while the brand sets `skinLocked: true`.
+If `brand.js` doesn't load, or doesn't set an object, the page shows stock
+names, styles and icons with no style lock, and logs one console error naming
+the file. A server that serves the brand should send `Cache-Control: no-cache`
+with an ETag, so a changed brand shows after a reload.
 
 ### Platform abstraction
 
@@ -719,6 +793,26 @@ edit, and disable go unavailable for everyone, creators and organization admins
 included. Deploy cowork-server#417, confirm hosted responses carry
 `capabilities`, and only then deploy the renderer.
 
+A person can share their own skill with everyone, read-only, or stop sharing
+it. The skill's page and its Edit form show that "Who can use it" control only
+when the skill's `capabilities.canShare` is true; a change goes to
+`PUT /api/v1/skills/{skill}/sharing` (the Edit form sends it after saving the
+rest). Creating a skill (the Write form, Upload and the chat's skill card) asks
+the same question, with Only me preselected, only when the skills list's
+top-level `canShare` is true, and sends the answer as `shared`. The chat's
+skill card creates a skill shared with everyone without the chat's project
+scope, since a reader applies the creator's scope. Unlike the other capabilities, a missing `canShare` is false on
+every build, desktop included. cowork-server grants it only where each person
+keeps their own skills, so hosted Cowork, the desktop app and a deployment
+whose skills everyone already shares never show it. Deploy cowork-server
+first: against an older server the renderer shows no control and sends no
+`shared` field.
+
+The Connections page reads the same way. Each connection carries `managed` and
+`shared`, and the page keys its Reconnect, Remove and read-only note on them; a
+missing field keeps every control, and cowork-server's 403 enforces the rule
+when a change is refused.
+
 ### A model that can't run right now is not selectable
 
 MindsHub's `/v1/models` marks each model with whether it can run for the org
@@ -866,8 +960,11 @@ A task that stops on a billing limit gets a card in its timeline, and the card n
 
 To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
-Settings > Agent tests each configured provider through the sidecar's
-`/settings/test-providers`. For a failed MindsHub probe the sidecar adds
+Settings > Agent tests configured providers by default on desktop and web, independently of `VITE_PLATFORM_UI`. For the Python-served Docker app, set `COWORK_PROVIDER_TESTS_ENABLED=false` in the container environment to skip provider tests on open, save and retry. Recreate the container and reload the page after changing it; the same image supports either value. The setting accepts `true` or `false` and defaults to `true`. The SPA wrapper supplies the value before the renderer starts. Static hosting and desktop retain enabled defaults.
+
+With the platform UI off, provider and model controls are hidden, but that does not disable background provider testing. Configure the runtime flag separately when the operator manages providers outside Cowork. Memory and Advanced Settings remain visible, and model or provider error cards direct users to the operator.
+
+With testing disabled, Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. This controls browser requests, not API authorization. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
 (`{ code, resetAt }`), and only for a response from the configured MindsHub host.
 `mindsProbeNotice` in `lib/providerStatus.js` turns it into the notice under each
@@ -888,6 +985,10 @@ it from a type an old sidecar never classified). To see the notices, the Provide
 copy, the restricted hint and an open picker with a restricted row, open
 `/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
 per-case `id`s work the same way.
+
+Settings > Appearance carries "Show where figures came from", on by default and kept with the server's settings (`show_figure_sources`); the switch shows only when the server serves that key. With it on, each figure in a finished answer that cowork-server traced (the `response.figure_sources` event) is a button: a grey dotted underline when a step returned it, a solid amber one when no step did. A figure no step of this turn returned but one of the chat's earlier answers gave also gets the grey underline, and says "Repeated from an earlier answer" with no source listed. Hover or keyboard focus shows where it came from, and a click or Enter lists every source: its SQL and requests with a Copy button each, a web link, Open step, and View file. View file opens the file read only, as it is now: a project file by its path, offered only while the chat is in the project the answer ran in, or a file attached to the chat by its files-store id, offered only while the chat has a project, since the attachment route goes through it. Inside a table the figures share one tab stop and the arrow keys move between them. With the setting off, answers render with no marks.
+
+To see every mark without running such a turn, open `/figure-sources-fixture.html` under the same dev server; `?theme=dark` and the per-case `id`s work the same way. `npx playwright test --config playwright.figure-sources.config.ts` checks on that page that a figure's popover stays on screen on 375x667 and 320x568 phones and at 200% zoom.
 
 ---
 
@@ -1319,6 +1420,20 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 
 ---
 
+## Server release dependencies
+
+Fresh installs, updates, repairs and rollback use `scripts/install_release_server.py`. It reads the exact dependency contract embedded in the selected server wheel, or from the same resolved Git commit. It verifies the server wheel against PyPI's SHA-256, checks that the complete dependency set resolves without additions, then verifies the installed versions and source identity. An unavailable pin or missing contract fails the operation.
+
+Anton and registry dependencies move through a reviewed server release. A standalone Anton PyPI upload no longer changes an installed server. Normal application updates still select the build's stable or prerelease stream; selecting a release also selects its reviewed dependency set.
+
+Before replacing a healthy older installation that has no contract, the consumer retains its actual versions, official Git identities and server wheel for repair or rollback. This local snapshot is never used to invent a fresh installation. A healthy custom source that cannot be preserved stops migration before replacement. A broken installation keeps its last saved snapshot. Registry wheels and Git source still depend on uv's local cache for fully offline restoration.
+
+Desktop `uv tool install` enforces exact versions and checks the resulting inventory; it does not provide dependency-hash enforcement. Docker's native installer additionally uses `--require-hashes --no-deps --only-binary :all:` for registry packages. An explicit `ANTON_REF` selects code at one Git commit while retaining the server's registry versions. Preflight checks that source against the server's original Anton version requirement and the reviewed registry dependencies before replacing the environment. The supplied `server-lock/` Docker option continues to enforce its complete independent requirements and source contract.
+
+For a dependency update, review and publish the upstream server lock and its generated export, then select that server release. For a complete supplied Docker lock, regenerate and review it before rebuilding. Source-only releases never refresh either selection. Python, build backends, npm's existing lockfile and operating-system packages have their own update policies.
+
+`COWORK_SERVER_PACKAGE` and its optional `ANTON_PACKAGE` remain explicit development overrides. They bypass the release consumer and resolve the developer's custom source. Leave them unset for reviewed releases. The deprecated `scripts/install-anton.sh` refuses installation; use Anton's release installer or this application's server installer.
+
 ## Environment Variables
 
 | Variable | Source | Purpose |
@@ -1339,7 +1454,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
-| `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
+| `COWORK_SERVER_PACKAGE` | Manual | Development override with a literal `uv` spec; bypasses the release contract and channel/ref selection |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
 
 ---
@@ -1424,3 +1539,8 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 ---
 
 _Built by MindsDB._
+
+## Diagnostics
+
+See [structured logging](docs/structured-logging.md) for defaults, troubleshooting
+overrides, retained evidence streams and rollout requirements.

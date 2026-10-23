@@ -9,6 +9,7 @@ import { versionRows } from '../../lib/versionRows';
 import { MIN_SUPPORTED_SHELL, SUPPORTED_SHELL_WINDOW_DAYS } from '../../../../shared/shell-support';
 import { shellAutoOwnsBanner, debInstallStep, abortedInstallHint } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
+import { STOCK_PRODUCT_NAME } from '../../../../shared/product-name';
 
 const UPDATE_CARD_CLASS =
   'flex items-center gap-3 flex-wrap py-2.5 px-3 border border-solid ' +
@@ -311,8 +312,8 @@ export default function UpdatesSection({
               const manualHint = autoPhase === 'failed'
                 ? 'You can still download the installer manually.'
                 : shellDownloadStarted
-                  ? `Installer downloading — when it's done, quit MindsHub Cowork and ${debInstaller ? debStep : 'open the installer to finish updating.'}`
-                  : `Download the installer, then quit MindsHub Cowork and ${debInstaller ? debStep : 'open it to finish updating.'}`;
+                  ? `Installer downloading — when it's done, quit ${STOCK_PRODUCT_NAME} and ${debInstaller ? debStep : 'open the installer to finish updating.'}`
+                  : `Download the installer, then quit ${STOCK_PRODUCT_NAME} and ${debInstaller ? debStep : 'open it to finish updating.'}`;
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {

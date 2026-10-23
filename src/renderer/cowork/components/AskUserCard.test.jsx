@@ -388,4 +388,37 @@ describe('AskUserCard', () => {
     expect(screen.queryByText(/side panel/i)).toBeNull();
     expect(screen.queryByText(/Form spec did not parse/i)).toBeNull();
   });
+
+  describe('reopened after its turn timed out', () => {
+    const TIMEOUT = { status: 'timeout', values: [], text: '' };
+
+    it('sends a pick as a message by its label, not to the answer broker', async () => {
+      const user = userEvent.setup();
+      const onAnswerAsMessage = vi.fn();
+      renderCard({ answer: TIMEOUT }, { reopened: true, onAnswerAsMessage });
+      expect(screen.queryByText(/timed out/i)).toBeNull();
+      await user.click(screen.getByRole('button', { name: /postgres/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledWith('postgres');
+      expect(submitAnswer).not.toHaveBeenCalled();
+      // Busy until the new turn closes the card, so a second click sends nothing.
+      await user.click(screen.getByRole('button', { name: /mysql/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a multi-select as one message of labels', async () => {
+      const user = userEvent.setup();
+      const onAnswerAsMessage = vi.fn();
+      renderCard({ answer: TIMEOUT, select: 'many' }, { reopened: true, onAnswerAsMessage });
+      await user.click(screen.getByRole('button', { name: /postgres/i }));
+      await user.click(screen.getByRole('button', { name: /mysql/i }));
+      await user.click(screen.getByRole('button', { name: /^send$/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledWith('postgres, mysql');
+    });
+
+    it('offers no Skip and says typing works even for a select-only question', () => {
+      renderCard({ answer: TIMEOUT, allow_custom: false }, { reopened: true, onAnswerAsMessage: vi.fn() });
+      expect(screen.queryByRole('button', { name: /skip/i })).toBeNull();
+      expect(screen.getByText(/type your own answer below/i)).toBeInTheDocument();
+    });
+  });
 });

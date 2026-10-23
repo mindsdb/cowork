@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
@@ -16,7 +17,7 @@ import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../component
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
-import { SKINS, normalizeSkin } from '../../../lib/skins';
+import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -32,7 +33,10 @@ import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
+import { providerTestsEnabled } from '../../../lib/providerTests';
 import { visibleProviderCards } from './providerVisibility';
+import { productName } from '../../../lib/deploymentBrand';
+import { STOCK_WORDMARK } from '../../../../shared/product-name';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -67,8 +71,8 @@ const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Tr
 
    `usage` is the `/hub/usage/` view, which decides the allowance copy (a
    refill time, or the no-grant sentence). */
-export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
-  if (!PLATFORM_UI) {
+export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
+  if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
   }
   const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
@@ -774,6 +778,7 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
+  const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
   // allowance copy and the funds link. Null outside the provider (tests).
   const hubUsageCtx = useHubUsageContext();
@@ -784,6 +789,21 @@ export default function SettingsView({
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
+  // "Tested" is a brief confirmation. Own its timer so a stale one can't
+  // clear a newer result, and none fires after the view unmounts.
+  const testedTimerRef = useRef(null);
+  const showTested = ({ autoHide = false } = {}) => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(true);
+    if (autoHide) testedTimerRef.current = setTimeout(() => setTested(false), 2400);
+  };
+  const resetTested = () => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(false);
+  };
+  useEffect(() => () => clearTimeout(testedTimerRef.current), []);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
@@ -793,8 +813,9 @@ export default function SettingsView({
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
   // Start by distrusting a persisted provider failure. The mount-time check
-  // below decides whether it is still real before failure UI is shown.
-  const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
+  // below decides whether it is still real before failure UI is shown. A deployment
+  // with testing disabled keeps the stored result without running connectivity tests.
+  const [initialProviderTestDone, setInitialProviderTestDone] = useState(!providerTestsAvailable);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
@@ -917,7 +938,7 @@ export default function SettingsView({
       ? !!(p.baseUrl || '').trim()
       : !!(p.apiKey || '').trim()
   );
-  const anyProviderFailed = providers.some(
+  const canRetestProviders = providerTestsAvailable && providers.some(
     (p) => providerConfigured(p) && (settings.providerStatus || {})[p.type] === 'fail',
   );
 
@@ -956,14 +977,13 @@ export default function SettingsView({
     return types;
   })();
 
-  // Custom providers must carry a non-empty name. Pre-compute so the
-  // Models dropdown can show the name and the Save button knows to
-  // block when any custom row is missing one.
+  // Editable custom providers must carry a non-empty name. Hidden provider
+  // fields must not prevent saving the settings that remain available.
   const providerDisplayName = (p) => {
     if (p.type === 'openai-compatible') return (p.name || '').trim() || 'OpenAI-compatible';
     return typeLabels[p.type] || p.type;
   };
-  const missingCustomNames = providers.some(
+  const missingCustomNames = PLATFORM_UI && providers.some(
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
 
@@ -1038,6 +1058,7 @@ export default function SettingsView({
   // server merges results into the persisted status map, so dots survive a
   // reload.
   const runProviderTests = async (targetProviders = null) => {
+    if (!providerTestsAvailable) return null;
     const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
     if (toTest.length === 0) return null;
 
@@ -1151,7 +1172,7 @@ export default function SettingsView({
   };
 
   const save = async () => {
-    const shouldTestLlm = llmDirty || anyProviderFailed;
+    const shouldTestLlm = llmDirty || canRetestProviders;
     const submitted = draft.capture();
     const normalized = withResolvedRoles(clampBudgets(settings));
     const patch = clampBudgets(submitted.patch);
@@ -1161,7 +1182,7 @@ export default function SettingsView({
       if (JSON.stringify(value) !== JSON.stringify(settings[key])) patch[key] = value;
     }
     setTesting(true);
-    setTested(false);
+    resetTested();
     setSaveError(null);
     let result;
     try {
@@ -1189,15 +1210,14 @@ export default function SettingsView({
         const freshProviders = result?.settings?.providers || normalized.providers || providers;
         await runProviderTests(visibleProviderCards(normalized, freshProviders, PLATFORM_UI).filter(providerConfigured));
       }
-      setTested(true);
-      setTimeout(() => setTested(false), 2400);
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
         configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
       });
-      setTested(true);
+      showTested();
     } finally {
       setTesting(false);
     }
@@ -1206,15 +1226,14 @@ export default function SettingsView({
   const validate = async () => {
     if (testing) return;
     setTesting(true);
-    setTested(false);
+    resetTested();
     try {
       const [result] = await Promise.all([
         validateSettings(),
         runProviderTests(),
       ]);
       setValidation(result);
-      setTested(true);
-      setTimeout(() => setTested(false), 2400);
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',
@@ -1235,8 +1254,11 @@ export default function SettingsView({
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
   const renderSaveFooter = () => {
-    const saveDisabled = (!settingsDirty && !anyProviderFailed) || testing || missingCustomNames;
-    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    const saveDisabled = (!settingsDirty && !canRetestProviders) || testing || missingCustomNames;
+    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…'
+      : (!settingsDirty && !canRetestProviders) ? 'No unsaved changes'
+        : !providerTestsAvailable ? 'Save changes.'
+          : canRetestProviders ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
     return (
     <>
       <div
@@ -1247,8 +1269,10 @@ export default function SettingsView({
         {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
-          {saveError ? saveError : testing ? 'Testing configuration…'
-            : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+          {saveError ? saveError : testing ? (providerTestsAvailable ? 'Testing configuration…' : 'Saving settings…')
+            : tested ? (configReady
+              ? (providerTestsAvailable ? 'Test passed — provider, model, and credentials look good.' : 'Settings saved.')
+              : (configError || (providerTestsAvailable ? 'Test reported a problem.' : 'Configuration reported a problem.')))
               : saved ? 'Settings saved.'
                 : configError ? configError
                   : 'Changes apply on save.'}
@@ -1265,7 +1289,7 @@ export default function SettingsView({
           className="w-[140px] inline-flex items-center justify-center gap-1.5"
           style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
         >
-          {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+          {testing ? 'Saving…' : (settingsDirty || canRetestProviders) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
         </Button>
       </Tooltip>
     </>
@@ -1279,8 +1303,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
-          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* Platform builds offer BYOK outside SaaS orgs, which use their managed provider. */}
+          {PLATFORM_UI && !orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
@@ -1300,22 +1324,26 @@ export default function SettingsView({
                   providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
                   isSsoConnected: PLATFORM_UI && isSsoConnected,
-                  testInProgress: testing,
+                  testInProgress: providerTestsAvailable && testing,
                   initialTestDone: initialProviderTestDone,
                 });
                 const status = st.checking ? 'testing' : st.settled;
                 const detail = configured ? st.detail : '';
                 // The probe's reason names which MindsHub limit a 402/429 was,
                 // which the detail string alone cannot.
-                const neutralProbeError = !PLATFORM_UI && p.type === 'minds-cloud'
+                const neutralProbeError = (!PLATFORM_UI || !providerTestsAvailable) && p.type === 'minds-cloud'
                   && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
                   ? PROVIDER_UNAVAILABLE_MESSAGE : '';
                 const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
-                const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+                const statusPillTitle = status === 'ok'
+                  ? (!providerTestsAvailable && st.raw !== 'ok'
+                    ? 'Connected through MindsHub sign-in.'
+                    : `Last test passed${detail ? ` (${detail})` : ''}`)
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
-                      : 'Not tested yet — save settings and run a test to verify.';
+                      : providerTestsAvailable ? 'Not tested yet — save settings and run a test to verify.'
+                        : 'Provider connectivity has not been tested.';
                 const statusPill = statusBadge ? (
                   <Badge
                     title={statusPillTitle}
@@ -1547,7 +1575,7 @@ export default function SettingsView({
               </div>
             </SettingsGroup>
           </div>}
-          <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
+          {PLATFORM_UI && <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
@@ -1612,7 +1640,7 @@ export default function SettingsView({
                     providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
                     isSsoConnected: PLATFORM_UI && isSsoConnected,
-                    testInProgress: testing,
+                    testInProgress: providerTestsAvailable && testing,
                     initialTestDone: initialProviderTestDone,
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;
@@ -1666,7 +1694,7 @@ export default function SettingsView({
                   );
 
                   const probeNoticeNode = probeNotice ? (
-                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} />
+                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
                   ) : null;
 
                   const subtitle = role === 'planning'
@@ -1867,7 +1895,7 @@ export default function SettingsView({
                 );
               })()}
             </SettingsGroup>
-          </div>
+          </div>}
         </div>
 
         <SettingsGroup title="Memory">
@@ -2015,7 +2043,7 @@ export default function SettingsView({
         // Errors don't auto-fade — they stay until the next attempt so a
         // failed save can't go unnoticed.
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
-        console.warn(`Auto-save failed for ${key}:`, err);
+        diagnostic("renderer.cowork.views.settings.SettingsView", "WARNING", "auto_save_failed_for", `Auto-save failed for ${key}:`, err);
       }
     };
 
@@ -2133,21 +2161,27 @@ export default function SettingsView({
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
       <SettingsGroup title="Appearance">
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
+        {SKIN_LOCKED ? (
+          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+            <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
+          </Section>
+        ) : (
+          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+            <ToggleGroup
+              value={normalizeSkin(skin)}
+              onValueChange={(v) => onSkinChange?.(v)}
+              aria-label="Style"
+              options={SKINS.map((s) => ({
+                value: s.id,
+                label: s.icon && Ico[s.icon]
+                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
+                  : s.label,
+                'aria-label': `${s.label} style`,
+                title: s.title,
+              }))}
+            />
+          </Section>
+        )}
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -2267,14 +2301,14 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
-        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
-                placeholder="MindsHub"
-                title="Replaces the MindsHub wordmark in the nav panel."
+                placeholder={productName(STOCK_WORDMARK)}
+                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
                 ariaLabel="Sidebar title text"
               />
             </div>
@@ -2367,6 +2401,22 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+        {/* Gated on its own key. A server older than this setting does not
+            serve the key and rejects a write to it with a 400, and it sends
+            no figure sources to mark either. The renderer ships OTA and
+            leads the installed server. */}
+        {'showFigureSources' in settings && (
+          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showFigureSources !== false}
+                onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
+                aria-label="Show where figures came from"
+              />
+              <AutoSaveTag settingKey="showFigureSources" />
+            </div>
+          </Section>
+        )}
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <div className="flex items-center">
@@ -2398,16 +2448,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
-            <div className="flex items-center">
-              <Switch
-                checked={settings.show8bitToggle !== false}
-                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                aria-label="8-bit style toggle button"
-              />
-              <AutoSaveTag settingKey="show8bitToggle" />
-            </div>
-          </Section>
+          {!SKIN_LOCKED && (
+            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.show8bitToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                  aria-label="8-bit style toggle button"
+                />
+                <AutoSaveTag settingKey="show8bitToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>

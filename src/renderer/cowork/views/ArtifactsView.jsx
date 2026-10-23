@@ -62,6 +62,7 @@ import {
 } from '../components/collection';
 import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const EMPTY_ARTIFACTS = [];
@@ -817,7 +818,9 @@ export default function ArtifactsView({
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      showToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
+      // Without the platform UI the deployment decides where shares live,
+      // so the toast names no service.
+      showToast({ kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
@@ -908,6 +911,7 @@ export default function ArtifactsView({
   }, [list, search, sort]);
 
   const total = (list || []).length;
+  const { artifactsNote } = surfaceCopy(host.isWeb);
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -968,7 +972,7 @@ export default function ArtifactsView({
           description: (
             <>
               {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
-              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+              {artifactsNote && <span className="block mt-2 text-ink-4">{artifactsNote}</span>}
             </>
           ),
           style: { flex: 1 },

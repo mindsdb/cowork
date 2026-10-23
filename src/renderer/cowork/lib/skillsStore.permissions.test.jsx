@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   fetchSkills: vi.fn(),
   saveSkill: vi.fn(),
   deleteSkill: vi.fn(),
+  setSkillSharing: vi.fn(),
 }));
 
 vi.mock('../api', () => api);
@@ -134,5 +135,99 @@ describe('skillsStore catalogue provenance', () => {
     await Promise.all([staleReload, deleting]);
 
     expect(api.fetchSkills).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('skillsStore sharing', () => {
+  it("follows the list's canShare, false before a load and kept across a failed refresh", async () => {
+    api.fetchSkills
+      .mockResolvedValueOnce({ skills: [], canShare: true })
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({ skills: [] });
+
+    const { useSkills } = await import('./skillsStore');
+    const { result } = renderHook(() => useSkills());
+    expect(result.current.canShare).toBe(false);
+
+    await waitFor(() => expect(result.current.catalogueStatus).toBe('loaded'));
+    expect(result.current.canShare).toBe(true);
+
+    await act(async () => {
+      await result.current.reload();
+    });
+    expect(result.current.catalogueStatus).toBe('error');
+    expect(result.current.canShare).toBe(true);
+
+    // An older server sends no flag at all, which never reads as a grant.
+    await act(async () => {
+      await result.current.reload();
+    });
+    expect(result.current.catalogueStatus).toBe('loaded');
+    expect(result.current.canShare).toBe(false);
+  });
+
+  it.each([
+    ['the string "true"', 'true'],
+    ['the number 1', 1],
+  ])('never reads %s as a grant', async (_, canShare) => {
+    api.fetchSkills.mockResolvedValueOnce({ skills: [], canShare });
+
+    const { useSkills } = await import('./skillsStore');
+    const { result } = renderHook(() => useSkills());
+
+    await waitFor(() => expect(result.current.catalogueStatus).toBe('loaded'));
+    expect(result.current.canShare).toBe(false);
+  });
+
+  it('stays false when the first load fails', async () => {
+    api.fetchSkills.mockRejectedValueOnce(new Error('network unavailable'));
+
+    const { useSkills } = await import('./skillsStore');
+    const { result } = renderHook(() => useSkills());
+
+    await waitFor(() => expect(result.current.catalogueStatus).toBe('error'));
+    expect(result.current.canShare).toBe(false);
+  });
+
+  it('reloads the list after the sharing write, with a request that starts after it', async () => {
+    const before = { label: 'weekly-report', shared: false, capabilities: { canShare: true } };
+    const after = { ...before, shared: true };
+    let resolveStaleRequest;
+    api.fetchSkills
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleRequest = resolve;
+      }))
+      .mockResolvedValueOnce({ skills: [after], canShare: true });
+    api.setSkillSharing.mockResolvedValue(after);
+
+    const { reloadSkills, setSkillSharingAndSync, useSkills } = await import('./skillsStore');
+    const { result } = renderHook(() => useSkills());
+    const staleReload = reloadSkills();
+    await waitFor(() => expect(api.fetchSkills).toHaveBeenCalledTimes(1));
+
+    const sharing = setSkillSharingAndSync('weekly-report', true);
+    await waitFor(() => expect(api.setSkillSharing).toHaveBeenCalledWith('weekly-report', true));
+    expect(api.fetchSkills).toHaveBeenCalledTimes(1);
+
+    let saved;
+    await act(async () => {
+      resolveStaleRequest({ skills: [before], canShare: true });
+      [, saved] = await Promise.all([staleReload, sharing]);
+    });
+
+    expect(saved).toEqual(after);
+    expect(api.fetchSkills).toHaveBeenCalledTimes(2);
+    expect(result.current.skills).toEqual([after]);
+  });
+
+  it('re-throws a refused write without reloading', async () => {
+    api.fetchSkills.mockResolvedValue({ skills: [], canShare: true });
+    const refusal = Object.assign(new Error('Sharing is busy right now. Try again in a moment.'), { status: 503 });
+    api.setSkillSharing.mockRejectedValue(refusal);
+
+    const { setSkillSharingAndSync } = await import('./skillsStore');
+
+    await expect(setSkillSharingAndSync('weekly-report', true)).rejects.toBe(refusal);
+    expect(api.fetchSkills).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,9 @@ import type { BrowserWindow } from 'electron';
 // are stubbed to their contracts.
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('./server-release-install', () => ({
+  lockedServerInstallArgs: vi.fn((_uv: string, args: string[]) => args),
+}));
 vi.mock('electron', () => ({
   app: { isPackaged: true },
   BrowserWindow: class {},
@@ -32,6 +35,7 @@ vi.mock('./server-source', () => ({
 }));
 vi.mock('./server-process', () => ({
   withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  forgetServerCapability: vi.fn(),
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
 }));
 vi.mock('./server-updater', () => ({
@@ -39,8 +43,10 @@ vi.mock('./server-updater', () => ({
 }));
 
 import { IPC } from '../shared/ipc-channels';
+import { forgetServerCapability } from './server-process';
 import { resolvePypiInstallTarget } from './server-updater';
 import { runInstaller, inspectCoworkServerInstall } from './installer';
+import { lockedServerInstallArgs } from './server-release-install';
 
 const EXT = process.platform === 'win32' ? '.exe' : '';
 // Where the astral bootstrap script / findUv probe expects uv, and where
@@ -177,6 +183,7 @@ describe('runInstaller — uv discovery scenarios', () => {
     // The install spawns the SAME binary the check resolved and logged —
     // "uv found at X" and the executed uv must never diverge.
     expect(spawnCalls[0].slice(0, 3)).toEqual([PATH_ONLY_UV, 'tool', 'install']);
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(PATH_ONLY_UV, spawnCalls[0].slice(1));
     expect(spawnCalls[0]).toContain('cowork-server==0.26.8.2.1');
     // Verification succeeds and reports where the binary landed.
     expect(log).toContain(`cowork-server found at ${SERVER_BIN}`);
@@ -199,6 +206,18 @@ describe('runInstaller — uv discovery scenarios', () => {
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0][0]).toBe(PROBED_UV);
     expect(errors).toEqual([]);
+  });
+
+  it('forgets the replaced server\'s marker answer before installing over it', async () => {
+    setupMachine({ uvProbed: true, toolListVersion: '0.26.8.2.1' });
+    const forget = vi.mocked(forgetServerCapability);
+    forget.mockClear();
+
+    await expect(runInstaller(fakeWindow().win)).resolves.toBe(true);
+
+    const install = vi.mocked(cp.spawn).mock.invocationCallOrder.at(-1) ?? 0;
+    expect(forget).toHaveBeenCalledTimes(1);
+    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(install);
   });
 
   it('fresh machine without uv bootstraps it, then installs the server with it', async () => {
@@ -244,20 +263,17 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(events).not.toContain(IPC.INSTALL_DONE);
   });
 
-  it('falls back to the version-floor spec when PyPI cannot be resolved', async () => {
+  it('stops before changing the environment when PyPI cannot select an exact release', async () => {
     const { spawnCalls } = setupMachine({
       uvProbed: true,
       toolListVersion: '0.26.8.2.1',
     });
     vi.mocked(resolvePypiInstallTarget).mockResolvedValueOnce(null as never);
 
-    const { win, logs, errors } = fakeWindow();
-    await expect(runInstaller(win)).resolves.toBe(true);
-
-    expect(logs.join('')).toContain('Could not reach PyPI to resolve the latest version');
-    expect(spawnCalls[0]).toContain('cowork-server>=0.26.7.27.3');
-    expect(spawnCalls[0]).not.toContain('cowork-server==0.26.8.2.1');
-    expect(errors).toEqual([]);
+    const { win, errors } = fakeWindow();
+    await expect(runInstaller(win)).resolves.toBe(false);
+    expect(spawnCalls).toEqual([]);
+    expect(errors).toContain('Could not select a server release. Retry when PyPI is available.');
   });
 
   it('verification rejects an installed server below the minimum version and says so', async () => {

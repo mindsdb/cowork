@@ -6,7 +6,8 @@
 // Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
-import { initialStreamState, reduceStream } from './responseStreamAdapter';
+import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
+import { rebaseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
 const THINKING_PLACEHOLDER = 'Thinking...';
@@ -252,8 +253,8 @@ export function dropLegacyIndexKeyedSidecar(cid) {
 
 // Replay the server-persisted event log for one assistant turn
 // through the same reducer the live stream uses. The resulting
-// `steps` and `startedAt` are identical to what the client would
-// have built during a fresh stream — no parity drift.
+// `steps`, `startedAt` and `figureSources` are identical to what the
+// client would have built during a fresh stream — no parity drift.
 export function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
@@ -263,10 +264,20 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    figureSources: state.figureSources,
     // 'done' once the persisted events carried response.completed,
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    incompleteReason: state.incompleteReason,
+    // What the live turn showed as its answer: the last round's text, with
+    // earlier rounds' narration in the steps as Notes (ENG-3554). The saved
+    // content joins every round's text, so a reload would otherwise show the
+    // narration twice: once as Notes, once at the top of the answer.
+    answer: answerBody(state),
+    answerFigureSources: state.figureSources
+      ? rebaseFigureSources(state.figureSources, state.answerText, answerBody(state), state.bodyTextMap)
+      : null,
   };
 }
 
@@ -308,7 +319,7 @@ export function failedEventMeta(events) {
 
 // Walk a messages payload from the server and, for any assistant
 // turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
+// `steps`/`startedAt`/`figureSources` via the live reducer. A terminal
 // `response.failed` becomes a client-side error bubble after the
 // partial assistant turn. Drops the raw `events` array.
 export function hydrateMessagesFromServerEvents(messages) {
@@ -327,12 +338,22 @@ export function hydrateMessagesFromServerEvents(messages) {
     }
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    // A finished turn shows the same answer it showed live. Only when the
+    // replay produced one: an older event log without the text keeps the
+    // saved content.
+    const liveAnswer = turnComplete && typeof rest.content === 'string' && reduced.answer.trim()
+      && reduced.answer !== rest.content
+      ? { content: reduced.answer, figureSources: reduced.answerFigureSources }
+      : null;
     out.push({
       ...rest,
       ...completeFlag,
+      ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
         ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
         : {}),
+      ...(reduced.figureSources ? { figureSources: reduced.figureSources } : {}),
+      ...(liveAnswer || {}),
     });
     if (reduced.status === 'error') {
       const failed = failedEventMeta(m.events);
