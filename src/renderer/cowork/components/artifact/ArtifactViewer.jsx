@@ -821,26 +821,7 @@ export function ArtifactViewer({
   const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
     ? browserTabTarget
     : `${host.getApiOrigin()}${browserTabTarget}`;
-  // On desktop an unpublished artifact CANNOT be opened over the served URL,
-  // however well-formed it is: the loopback server requires a bearer token
-  // (`require_auth` defaults on in local tenancy), and main injects that token
-  // into this window's own session only (`app.ts` webRequest). shell.openExternal
-  // launches a separate browser process, which carries no such header and gets
-  // 401. The local file needs no credential, so hand it to the OS instead —
-  // the same route the ⋯ menu's "Open in browser" takes, which is exactly why
-  // that control kept working while this one did not. `onOpenOS` already owns
-  // the fullstack-backend and missing-path cases, so delegate rather than
-  // restate them.
-  //
-  // Published stays on openExternal: that URL is public, absolute, and the
-  // thing a person actually wants a tab of. Org/web has no local file, so it
-  // stays on the URL too.
-  //
-  // NOT `draftNavigationIsAuthorized` (ENG-2818), despite the matching shape:
-  // that answers whether a navigation *inside this window* is authorized, and
-  // it is true here — main's header injection covers the app's own requests.
-  // This control leaves the window entirely, which is the one case that
-  // injection does not reach.
+
   // Org web, unpublished: the authenticated draft URL cannot open in a tab (the
   // tab carries no bearer), so open a fresh signed link instead. The tab is
   // opened inside the click, where popup blockers allow it, and its opener is
@@ -880,6 +861,26 @@ export function ArtifactViewer({
     ? artifactWorkspaceRef(artifact)
     : null;
 
+  // On desktop an unpublished artifact CANNOT be opened over the served URL,
+  // however well-formed it is: the loopback server requires a bearer token
+  // (`require_auth` defaults on in local tenancy), and main injects that token
+  // into this window's own session only (`app.ts` webRequest). shell.openExternal
+  // launches a separate browser process, which carries no such header and gets
+  // 401. The local file needs no credential, so hand it to the OS instead —
+  // the same route the ⋯ menu's "Open in browser" takes, which is exactly why
+  // that control kept working while this one did not. `onOpenOS` already owns
+  // the fullstack-backend and missing-path cases, so delegate rather than
+  // restate them.
+  //
+  // Published stays on openExternal: that URL is public, absolute, and the
+  // thing a person actually wants a tab of. Org/web has no local file, so it
+  // stays on the URL too.
+  //
+  // NOT `draftNavigationIsAuthorized` (ENG-2818), despite the matching shape:
+  // that answers whether a navigation *inside this window* is authorized, and
+  // it is true here — main's header injection covers the app's own requests.
+  // This control leaves the window entirely, which is the one case that
+  // injection does not reach.
   const onOpenInBrowserTab = () => {
     if (!isPublished && canOpenLocalFile) return onOpenOS();
     if (draftLinkRef) return openDraftLinkInTab(draftLinkRef);
