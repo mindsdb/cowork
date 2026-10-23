@@ -31,6 +31,9 @@
  * - a Unicode Path extra field (0x7075) that names something other than the
  *   entry's own name. JSZip names the entry from that field, while SheetJS
  *   and the guard's other checks read the name itself;
+ * - a name JSZip lists as another: one with a . or .. segment, or an empty
+ *   segment inside it, which JSZip resolves away while SheetJS keeps the name
+ *   as it is;
  * - an entry JSZip reads as a directory, and so drops, that holds data;
  * - an entry whose deflate stream runs past its stated compressed size
  *   (SheetJS inflates until the stream ends, not until that size), or that
@@ -208,6 +211,17 @@ function namesAnotherEntry(extra: Uint8Array, name: Uint8Array): boolean {
     .some((value) => !sameBytes(value.subarray(UNICODE_PATH_NAME_START), name));
 }
 
+/* Whether JSZip lists the entry under another name than its own. JSZip
+   resolves each name it lists (utils.resolve): it drops a . segment and an
+   empty one other than the first and last, and a .. segment drops the one
+   before it. A / or . byte is that character in every encoding a name can
+   use, so the guard decodes one byte to one character and splits that. */
+function jszipRewritesName(name: Uint8Array): boolean {
+  const segments = new TextDecoder('latin1').decode(name).split('/');
+  return segments.some((segment, index) => segment === '.' || segment === '..'
+    || (segment === '' && index !== 0 && index !== segments.length - 1));
+}
+
 /* Whether JSZip reads the record as a directory, and so drops its data: the
    DOS directory attribute, a Unix directory mode, or a name ending in '/'. */
 function readsAsDirectory(record: CentralRecord): boolean {
@@ -252,6 +266,9 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
   }
   if (namesAnotherEntry(record.extra, record.name) || namesAnotherEntry(bytes.subarray(extraStart, dataStart), record.name)) {
     throw previewError('parse-failed', "An archive entry's Unicode Path field names another entry.");
+  }
+  if (jszipRewritesName(record.name)) {
+    throw previewError('parse-failed', "An archive entry's name has a segment JSZip resolves away.");
   }
   if (readsAsDirectory(record) && record.uncompressedSize !== 0) {
     throw previewError('parse-failed', 'An archive directory entry holds data.');

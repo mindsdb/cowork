@@ -214,6 +214,12 @@ describe('guardArchive', () => {
     expect(await failure(guard(bytes.buffer))).toMatchObject({ code: 'parse-failed' });
   });
 
+  it('ends in parse-failed for a name with a .. segment, which JSZip lists under the name it resolves to', async () => {
+    const bytes = zipBytes([{ name: 'x/../content.xml', data: text('<a/>') }]);
+    expect(await jszipNames(bytes)).toEqual(['content.xml']);
+    expect(await failure(guard(bytes))).toMatchObject({ code: 'parse-failed' });
+  });
+
   it('ends in parse-failed for the sheet preview\'s workbook whose parts Unicode Path fields rename', async () => {
     const file = readFileSync(join(__dirname, '../../../../../e2e/document-preview/fixtures/xlsx/unicode-path-parts.xlsx'));
     expect(await failure(guard(new Uint8Array(file).buffer))).toMatchObject({ code: 'parse-failed' });

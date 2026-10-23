@@ -130,6 +130,11 @@ archiveGuard:
       entries:
         - { name: xl/workbook.xml, size: 1024, unicodePath: xl/workbook.xml, localUnicodePath: xl/workbook.xml }
       names: [xl/workbook.xml]
+    - case: a name with dots inside a segment, which JSZip keeps as it is
+      entries:
+        - { name: xl/my..book.xml, size: 1024 }
+        - { name: .rels/file., size: 1024 }
+      names: [xl/my..book.xml, .rels/file.]
   # Shapes two zip readers read differently: SheetJS's own zip reader inflates
   # data that JSZip drops, cuts short or never finds. The guard refuses each
   # with parse-failed before a renderer reads it.
@@ -186,6 +191,16 @@ archiveGuard:
     - case: a Unicode Path field in the local header that names another entry
       entries:
         - { name: xl/workbook.xml, size: 1024, localUnicodePath: xl/bomb.xml }
+    # JSZip lists each of these under another name than the one SheetJS reads.
+    - case: a name with a .. segment
+      entries:
+        - { name: x/../xl/workbook.xml, size: 1024 }
+    - case: a name with a . segment
+      entries:
+        - { name: ./xl/workbook.xml, size: 1024 }
+    - case: a name with an empty segment inside it
+      entries:
+        - { name: xl//workbook.xml, size: 1024 }
     - case: a file that starts with PK but not PK\x03\x04 and ends in a cut-short end record
       entries:
         - { name: xl/bomb.xml, size: 1024 }
