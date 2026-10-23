@@ -264,9 +264,15 @@ describe('open in a browser tab — web / org, signed draft links', () => {
   });
 
   it('opens a new link for this click, not the preview link and not the API URL', async () => {
+    // Read when the link is requested: the opener must already be cut before
+    // anything is awaited, not only once the click has finished.
+    let openerAtRequest;
     createDraftLink
       .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
-      .mockResolvedValueOnce({ url: OPEN_LINK, expiresAt: 2 });
+      .mockImplementationOnce(() => {
+        openerAtRequest = tab.opener;
+        return Promise.resolve({ url: OPEN_LINK, expiresAt: 2 });
+      });
 
     render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
     await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
@@ -275,6 +281,7 @@ describe('open in a browser tab — web / org, signed draft links', () => {
     expect(createDraftLink).toHaveBeenCalledTimes(2);
     expect(createDraftLink).toHaveBeenLastCalledWith('proj-1', baseArtifact.id);
     expect(window.open).toHaveBeenCalledWith('', '_blank');
+    expect(openerAtRequest).toBeNull();
     expect(tab.opener).toBeNull();
     expect(tab.location.replace).toHaveBeenCalledWith(OPEN_LINK);
     expect(openExternal).not.toHaveBeenCalled();
