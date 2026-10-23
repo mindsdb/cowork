@@ -36,6 +36,9 @@ FROM node:22-slim AS spa-builder
 WORKDIR /build
 # Lockfile-only install first → cached layer when only source changes.
 COPY package.json package-lock.json ./
+# vendor/ holds the tarballs package.json installs from file: paths, so npm ci
+# needs it before the full source copy.
+COPY vendor/ ./vendor/
 # --ignore-scripts skips postinstall hooks (e.g. node-gyp rebuilds for
 # native modules) — the web SPA has no native dependencies.
 RUN npm ci --ignore-scripts
