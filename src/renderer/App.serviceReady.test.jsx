@@ -95,6 +95,7 @@ describe('service readiness', () => {
     expect(screen.getByText(/Ask your administrator/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(mocks.checkConfigured).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled());
     expectNoProviderSetup();
     mocks.checkConfigured.mockResolvedValue({ configured: true, orgMode: false });
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));

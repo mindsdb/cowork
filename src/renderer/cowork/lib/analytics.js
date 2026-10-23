@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Desktop PostHog analytics: fire-and-forget event capture via the Capture API
 // directly (no posthog-js dependency).
 //
@@ -205,7 +206,7 @@ const isDebug = memoizedFlag(
 );
 
 function dlog(...args) {
-  if (isDebug()) console.log('[analytics]', ...args);
+  if (isDebug()) diagnostic("renderer.cowork.lib.analytics", "INFO", "analytics", '[analytics]', ...args);
 }
 
 // ── Identity state ─────────────────────────────────────────────────

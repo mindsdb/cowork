@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
    Editorial, document-like. Inter body, Inter headings, mono for operator
@@ -22,6 +23,7 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
+import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
@@ -659,7 +661,14 @@ const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) 
   );
 });
 
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '' }) {
+/** A message that finished live a moment ago (ENG-3554): its steps fold
+ *  shut on screen. Past that, it renders folded like any older turn. */
+const JUST_FINISHED_MS = 2000;
+function justFinished(message) {
+  return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
+}
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive, reopenable, reply }),
     [steps, startedAt, conversationLive, reopenable, reply],
@@ -737,7 +746,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, reop
           isActive={live.isActive}
           slotId={live.slotId}
           currentThought={live.currentThought}
-          currentLabel={pendingQuestion ? pendingQuestion.label : (active?.label || live.placeholderLabel || null)}
+          currentLabel={pendingQuestion ? pendingQuestion.label : ((active && stepDisplayLabel(active)) || live.placeholderLabel || null)}
           onActivateStep={onActivateStep}
         />,
       );
@@ -752,6 +761,8 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, reop
         startedAt={seg.startedAt}
         isActive={false}
         onActivateStep={onActivateStep}
+        // Only the last block was open on screen while the turn ran.
+        collapseOnMount={collapseOnMount && idx === segments.length - 1}
       />,
     );
     prevWasCard = false;
@@ -924,7 +935,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-open] failed', e);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_open_failed", '[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
       revalidateAfterFailure();
     }
@@ -951,7 +962,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-reveal] failed', e || bridgeError);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_reveal_failed", '[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
       revalidateAfterFailure();
     }
@@ -3118,6 +3129,7 @@ export default function ChatView({
                   {/* Above the text: a question is asked, then answered, then
                       (at most) the turn's closing text streams — so every
                       card and block precedes the text that came after. */}
+                  {justFinished(m) && m._leavingTake && <FirstTake take={null} leavingText={m._leavingTake} />}
                   <TurnSegments
                     steps={m.steps}
                     startedAt={m.startedAt}
@@ -3139,6 +3151,9 @@ export default function ChatView({
                     onAnswerAsMessage={(text) => onSend?.(text, [])}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
+                    // Only right after it finished live: reopening the task
+                    // later shows the steps already folded.
+                    collapseOnMount={justFinished(m)}
                   />
                   <TextBlock
                     text={m.content}

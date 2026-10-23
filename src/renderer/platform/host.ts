@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 // Host platform abstraction for the cowork SPA.
 //
 // The cowork renderer ships in two shells:
@@ -1461,7 +1462,7 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
          * has no error branch to fall into — a rejection there strands sign-in on
          * the validating screen with nothing on it.
          */
-        console.warn('[host] could not read the MindsHub organizations', error);
+        diagnostic("renderer.platform.host", "WARNING", "host_could_not_read_the_mindshub_organizations", '[host] could not read the MindsHub organizations', error);
       }
     }
     return NO_ORGS;
@@ -1470,7 +1471,7 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   const { listWebOrganizations } = await import('../lib/keycloak');
   const result = await listWebOrganizations();
   if (!result.ok) {
-    console.warn('[host] could not read the MindsHub organizations', result.reason);
+    diagnostic("renderer.platform.host", "WARNING", "host_could_not_read_the_mindshub_organizations", '[host] could not read the MindsHub organizations', result.reason);
     return { ...NO_ORGS, reachable: false };
   }
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
@@ -1486,7 +1487,7 @@ export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchM
          * A refusal is something the menu renders, so it has to arrive as a
          * value. Throwing past the toast leaves the row looking untouched.
          */
-        console.warn('[host] could not change the MindsHub organization', error);
+        diagnostic("renderer.platform.host", "WARNING", "host_could_not_change_the_mindshub_organization", '[host] could not change the MindsHub organization', error);
         return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
       }
     }
