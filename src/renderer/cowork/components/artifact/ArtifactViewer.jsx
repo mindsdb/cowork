@@ -33,7 +33,7 @@ import {
   loadArtifactDraftText,
   loadArtifactDraftDocument,
 } from '../../lib/artifactWorkspaceApi';
-import { DRAFT_LINK_ORIGINS } from '../../lib/draftLinkOrigins';
+import { DRAFT_LINK_ORIGINS } from '../../../../shared/draft-link-origins';
 import { useDraftLinks } from '../../../lib/draftLinks';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';

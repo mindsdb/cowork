@@ -20,13 +20,16 @@
          the OS browser instead, so index.html needs none of them.
          Tighten per-deployment via reverse-proxy headers if needed.
 
-         The three draft hosts at the end of frame-src/child-src are where a
-         draft preview frame loads a signed draft link: production, staging and
-         dev, all listed because one build serves every environment. The draft
-         then follows that host's own policy, not this one. Published artifact
-         hosts are not listed: this shell never frames them. DRAFT_LINK_ORIGINS
-         (cowork/lib/draftLinkOrigins.ts) is the same list, and shellCsp.test.ts
-         keeps the two equal.
+         The hosted build (web with the platform UI on) appends the draft
+         hosts to frame-src/child-src at build time: vite.config.ts applies
+         withDraftLinkFrameSources (shared/draft-link-origins.ts). A draft
+         preview frame loads a signed draft link there, and the draft then
+         follows that host's own policy, not this one. Production, staging and
+         dev all go in because one build serves every environment. This
+         template lists none of them because self-hosted and white-label
+         builds serve it too, and their pages must not name those hosts.
+         Published artifact hosts are never listed: this shell never frames
+         them.
 
          cdn.jsdelivr.net is not for this app's own code. It is for previews
          that still render through `srcdoc`, which inherits this policy: the
@@ -35,8 +38,9 @@
          them. anton's dashboards load Tailwind and ECharts from this host, so
          without it their charts and styles render blank. It comes out when
          nothing renders through srcdoc any more. Desktop navigates its
-         preview frame to its loopback server, so index.html needs neither. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com https://draft.mindshub.co https://draft-staging.mindshub.co https://draft-dev.mindshub.co; child-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com https://draft.mindshub.co https://draft-staging.mindshub.co https://draft-dev.mindshub.co" />
+         preview frame to its loopback server, so index.html needs neither
+         the CDN nor the draft hosts. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com; child-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com" />
     <title>MindsHub Cowork</title>
     <!-- Brand favicon: the same MindsHub "minds" mark as the desktop app icon,
          so the web tab matches the dock/taskbar glyph. SVG for crisp tabs on
