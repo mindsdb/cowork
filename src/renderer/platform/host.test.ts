@@ -976,7 +976,7 @@ describe('checkConfigured() on web reads the deployment flags from /health', () 
     const host = await importHost();
 
     await expect(host.checkConfigured()).resolves.toEqual({
-      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true,
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true, draftLinks: false,
     });
     expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
   });
@@ -1179,5 +1179,31 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
   it('is on the curated `host` object, which App.tsx and Settings call through', async () => {
     const mod = await importHost();
     expect(typeof mod.host.getShellSupport).toBe('function');
+  });
+});
+
+// toMatchObject, not toEqual: other deployment flags read from /health sit
+// next to this one in the same result.
+describe('checkConfigured() on web reads draft_links from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports draft links only when /health says true', async () => {
+    stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: true, draft_links: true });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ orgMode: true, draftLinks: true });
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { draft_links: false }],
+    ['a string', { draft_links: 'true' }],
+  ])('reports no draft links when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
   });
 });

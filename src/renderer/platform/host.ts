@@ -523,6 +523,9 @@ export async function checkConfigured(): Promise<{
   orgMode?: boolean;
   // Only a server that runs live apps reports them; the bridge path never does.
   liveApps?: boolean;
+  // Only a server that issues signed draft links reports them; the bridge
+  // path never does.
+  draftLinks?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -536,12 +539,14 @@ export async function checkConfigured(): Promise<{
     provider?: string;
     org_mode?: boolean;
     live_apps?: boolean;
+    draft_links?: boolean;
   };
   return {
     configured: Boolean(h.config_ready),
     provider: h.provider ?? '',
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
+    draftLinks: h.draft_links === true,
   };
 }
 
