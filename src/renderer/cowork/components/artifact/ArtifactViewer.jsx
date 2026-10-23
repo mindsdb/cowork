@@ -74,6 +74,23 @@ function isSameArtifact(a, b) {
   return (a.path || '') === (b.path || '');
 }
 
+/* The prompt's text when a close would drop Edit text. While the workspace
+   status is 'saving', a request that has already gone out decides what
+   happens to the text: a save keeps it unless the save fails, and a revision
+   restore replaces it. So that prompt says the edits may be lost. */
+const CLOSE_PROMPTS = {
+  unsaved: {
+    title: 'Discard changes?',
+    message: 'Your unsaved edits to this artifact will be lost.',
+    confirmLabel: 'Discard changes',
+  },
+  saving: {
+    title: 'Close while saving?',
+    message: 'A save is still in progress. If you close now, your unsaved edits may be lost.',
+    confirmLabel: 'Close anyway',
+  },
+};
+
 export function ArtifactViewer({
   open,
   artifact,
@@ -154,6 +171,8 @@ export function ArtifactViewer({
   // instead of stating a fact the user cannot act on.
   const [blockedBy, setBlockedBy] = useState(null);
   const [pendingDiscard, setPendingDiscard] = useState(null);
+  // The CLOSE_PROMPTS entry showing before a close drops Edit text, or null.
+  const [closePrompt, setClosePrompt] = useState(null);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -198,6 +217,11 @@ export function ArtifactViewer({
     setRepairNoticeError('');
     setBlockedBy(null);
   }, [workspace.repair?.id, artifact?.id]);
+  /* Hides the unsaved-edit prompt when the host closes the viewer or switches
+     the artifact, since the workspace resets that draft on the same change. */
+  useEffect(() => {
+    setClosePrompt(null);
+  }, [open, artifact?.id]);
 
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
@@ -854,6 +878,18 @@ export function ArtifactViewer({
     }
   };
 
+  /* Closing resets the workspace, which drops Edit text that was never saved,
+     so the Close button, Esc and the backdrop ask first while there is some.
+     The text stays unsaved until a save's reply arrives, so a close during a
+     save asks too, with the prompt for a save in flight. */
+  const requestClose = () => {
+    if (workspace.dirty) {
+      setClosePrompt(workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved);
+      return;
+    }
+    onClose?.();
+  };
+
   const headerReview = {
     enabled: commentsEnabled,
     open: commentsOpen,
@@ -952,7 +988,7 @@ export function ArtifactViewer({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       size="lg"
       width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
@@ -966,7 +1002,7 @@ export function ArtifactViewer({
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
-        onClose={onClose}
+        onClose={requestClose}
       />
 
       {workspace.currentRevision && (
@@ -1102,6 +1138,20 @@ export function ArtifactViewer({
           } finally {
             setRepairBusy(false);
           }
+        }}
+      />
+
+      <ConfirmModal
+        open={!!closePrompt}
+        title={closePrompt?.title}
+        message={closePrompt?.message}
+        confirmLabel={closePrompt?.confirmLabel}
+        cancelLabel="Keep editing"
+        destructive
+        onClose={() => setClosePrompt(null)}
+        onConfirm={() => {
+          setClosePrompt(null);
+          onClose?.();
         }}
       />
 
