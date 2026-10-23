@@ -987,7 +987,12 @@ export default function ArtifactsView({
       {liveApps && generalProjectId && (
         <SharedLiveAppsSection
           projectId={generalProjectId}
-          onDuplicated={() => onRefreshArtifacts?.()}
+          // The copy sorts with the viewer's own artifacts, often below the
+          // fold, so the toast is what says it worked.
+          onDuplicated={() => {
+            showToast({ kind: 'ok', message: 'Duplicated into your General project.' });
+            onRefreshArtifacts?.();
+          }}
           className="mx-8 mb-6"
         />
       )}

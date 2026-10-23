@@ -31,7 +31,8 @@ vi.mock('../../platform/host', () => ({
   },
 }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
-vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
+const toastAdd = vi.hoisted(() => vi.fn());
+vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
 vi.mock('../components/artifact', () => ({ ArtifactViewer: () => null }));
 
 import ArtifactsView from './ArtifactsView';
@@ -205,7 +206,8 @@ describe('"Shared with you" on the page', () => {
       render(<ArtifactsView artifacts={[app]} projects={[GENERAL]} />);
       const list = await screen.findByRole('region', { name: 'Shared with you' });
       expect(within(list).getByText('Pipeline Health')).toBeInTheDocument();
-      expect(screen.getByText('Table Row Counts')).toBeInTheDocument();
+      const own = screen.getByText('Table Row Counts');
+      expect(list.compareDocumentPosition(own) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('shows no list while nobody has shared anything', async () => {
@@ -231,9 +233,10 @@ describe('"Shared with you" on the page', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(duplicateLiveApp).not.toHaveBeenCalled();
       expect(onRefreshArtifacts).not.toHaveBeenCalled();
+      expect(toastAdd).not.toHaveBeenCalled();
     });
 
-    it('says where the copy goes, copies into General on confirm, and reads the list again', async () => {
+    it('says where the copy goes, copies into General on confirm, says it worked, and reads the list again', async () => {
       duplicateLiveApp.mockResolvedValue(copy);
       const onRefreshArtifacts = vi.fn();
       render(<ArtifactsView artifacts={[]} projects={[GENERAL]} onRefreshArtifacts={onRefreshArtifacts} />);
@@ -244,6 +247,7 @@ describe('"Shared with you" on the page', () => {
 
       await waitFor(() => expect(onRefreshArtifacts).toHaveBeenCalledTimes(1));
       expect(duplicateLiveApp).toHaveBeenCalledWith({ shareId: 's1', projectId: 'p-general' });
+      expect(toastAdd).toHaveBeenCalledWith({ title: 'Duplicated into your General project.', type: 'success' });
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
   });
