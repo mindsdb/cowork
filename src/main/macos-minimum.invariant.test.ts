@@ -3,10 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { MAC_MINIMUM_DARWIN_VERSION } from '../../scripts/update-metadata.mjs';
+import { MIN_MACOS_FOR_LATEST_SHELL } from '../shared/shell-support';
 
-// The macOS minimum lives in three places that use two formats: the app's
+// The macOS minimum lives in four places that use two formats: the app's
 // LSMinimumSystemVersion and the .pkg take the macOS version, the update feed
-// takes the Darwin version. Hand-parsed like the other invariant tests: js-yaml
+// takes the Darwin version, and the UI decides who sees the macOS notice from
+// the macOS major. Hand-parsed like the other invariant tests: js-yaml
 // is only a transitive dependency.
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BUILDER = readFileSync(path.join(REPO, 'electron-builder.yml'), 'utf8');
@@ -33,5 +35,9 @@ describe('macOS minimum', () => {
     const darwinMajor = DARWIN_MAJOR_FOR_MACOS[macosMajor];
     expect(darwinMajor, `add macOS ${macosMajor} to DARWIN_MAJOR_FOR_MACOS`).toBeDefined();
     expect(MAC_MINIMUM_DARWIN_VERSION).toBe(`${darwinMajor}.0.0`);
+  });
+
+  it('matches the macOS major the UI uses to cap shells', () => {
+    expect(MIN_MACOS_FOR_LATEST_SHELL).toBe(Number(builderMin!.split('.')[0]));
   });
 });
