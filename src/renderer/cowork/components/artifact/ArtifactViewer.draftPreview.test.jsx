@@ -27,6 +27,8 @@ const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
 const loadArtifactDraftText = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(),
   previewArtifact: vi.fn(),
@@ -36,6 +38,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText,
   loadArtifactDraftDocument,
 }));

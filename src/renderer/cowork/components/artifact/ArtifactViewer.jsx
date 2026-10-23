@@ -4,7 +4,7 @@
 //
 //   left   — artifact title (truncated)
 //   middle — Preview / Edit / Review modes
-//   right  — comments · Publish control · ⋯ menu · close
+//   right  — comments · stats · Publish control · ⋯ menu · close
 //
 // Publish/unpublish/update/change-access all live in the <PublishMenu>
 // popover, backed by the usePublish state machine — so this component is
@@ -27,6 +27,7 @@ import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
+import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -41,6 +42,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { useArtifactStats } from './stats/useArtifactStats';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -129,9 +131,20 @@ export function ArtifactViewer({
   const [reloadNonce, setReloadNonce] = useState(0);
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
-  // comment-placement mode, the inbox sidebar, marker visibility, leaving.
+  // comment-placement mode, marker visibility, leaving.
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [inboxOpen, setInboxOpen] = useState(false);
+  // The docked side panel: the comments inbox or Stats, never both.
+  const [sidePanel, setSidePanel] = useState(null);
+  const inboxOpen = sidePanel === 'comments';
+  // The inbox controls keep their boolean interface. Opening the inbox
+  // replaces Stats; closing it leaves Stats alone.
+  const setInboxOpen = useCallback((next) => {
+    setSidePanel((current) => {
+      const value = typeof next === 'function' ? next(current === 'comments') : next;
+      if (value) return 'comments';
+      return current === 'comments' ? null : current;
+    });
+  }, []);
   const [markersShown, setMarkersShown] = useState(true);
   const [repairBusy, setRepairBusy] = useState(false);
   const [textSelection, setTextSelection] = useState(null);
@@ -295,28 +308,41 @@ export function ArtifactViewer({
   });
 
   // One switch for the whole comments chrome. Opening resets to the default
-  // sub-state (markers on, inbox closed); closing also drops the iframe out of
+  // sub-state (markers on, no side panel); closing also drops the iframe out of
   // comment-placement mode so no pin cursor lingers on a "plain" preview.
+  // Either way Stats closes, since it shares the docked slot.
   const toggleComments = () => {
     setCommentsOpen((was) => {
       if (was) layer.exitMode();
-      setInboxOpen(false);
+      setSidePanel(null);
       setMarkersShown(true);
       return !was;
     });
+  };
+
+  // Stats turns comment mode off, so no markers are drawn beside it and at
+  // most one header switch is on.
+  const toggleStats = () => {
+    if (sidePanel === 'stats') {
+      setSidePanel(null);
+      return;
+    }
+    layer.exitMode();
+    setCommentsOpen(false);
+    setSidePanel('stats');
   };
 
   useEffect(() => {
     if (workspace.mode === 'review' && commentsEnabled) {
       setFeedbackNotice('');
       setCommentsOpen(true);
-      setInboxOpen(true);
+      setSidePanel('comments');
       return;
     }
     if (workspace.mode === 'edit') {
       layer.exitMode();
       setCommentsOpen(false);
-      setInboxOpen(false);
+      setSidePanel(null);
     }
     if (workspace.mode !== 'review') setTextSelection(null);
   }, [commentsEnabled, layer.exitMode, workspace.mode]);
@@ -423,6 +449,37 @@ export function ArtifactViewer({
   const authorship = artifactAuthorship(
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
+
+  // Stats are for the owner of a published artifact only. The header applies
+  // the same rule to its button.
+  const statsAvailable = !!pub.publishedUrl && canManage;
+  const statsOpen = open && statsAvailable && sidePanel === 'stats';
+  const stats = useArtifactStats(artifact, { enabled: statsOpen });
+  // Stats closes when it stops being available and with the viewer, so the
+  // next artifact does not open and report it unasked. The comments inbox
+  // keeps its state across closes.
+  useEffect(() => {
+    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
+  }, [open, sidePanel, statsAvailable]);
+  // One event per open and artifact, after its first successful load. The
+  // viewer outlives an artifact switch, so the ref holds which artifact was
+  // reported rather than a flag. The hook returns no data for an artifact it
+  // has not loaded yet, so a switch never reports the previous numbers.
+  const statsIdentity = artifactIdentity(artifact) || artifact?.id || '';
+  const statsTrackedRef = useRef(null);
+  useEffect(() => {
+    if (!statsOpen) {
+      statsTrackedRef.current = null;
+      return;
+    }
+    if (statsTrackedRef.current === statsIdentity || !stats.data) return;
+    statsTrackedRef.current = statsIdentity;
+    trackArtifactStatsOpened({
+      artifactId: statsIdentity,
+      accessMode: pub.accessLoaded ? pub.accessMode : null,
+      hasViews: (stats.data.total_views || 0) > 0,
+    });
+  }, [statsOpen, stats.data, statsIdentity, pub.accessLoaded, pub.accessMode]);
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -841,6 +898,14 @@ export function ArtifactViewer({
     controller: comments,
     onToggle: toggleComments,
   };
+  const headerStats = { open: sidePanel === 'stats', onToggle: toggleStats };
+  const bodyStats = {
+    open: statsOpen,
+    controller: stats,
+    accessMode: pub.accessMode,
+    accessLoaded: !!pub.accessLoaded,
+    onClose: () => setSidePanel(null),
+  };
   const publication = {
     canManage,
     publishable,
@@ -924,6 +989,7 @@ export function ArtifactViewer({
         authorship={authorship}
         workspace={workspace}
         review={headerReview}
+        stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
@@ -1038,6 +1104,7 @@ export function ArtifactViewer({
         workspace={{ ...workspace, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
+        stats={bodyStats}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 

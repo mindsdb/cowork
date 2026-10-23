@@ -12,13 +12,22 @@ vi.mock('./comments', () => ({
   CommentsPanel: () => null,
   CommentsToolbar: () => null,
 }));
+const statsPanel = vi.hoisted(() => ({ props: null }));
+vi.mock('./stats/StatsPanel', () => ({
+  StatsPanel: (props) => {
+    statsPanel.props = props;
+    return <div data-testid="stats-panel" />;
+  },
+}));
 vi.mock('./workspace/TextSelectionComment', () => ({
-  TextSelectionComment: () => null,
+  TextSelectionComment: () => <div data-testid="text-selection-comment" />,
 }));
 
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 
-function renderBody(mode, previewOverrides = {}, workspaceOverrides = {}) {
+function renderBody(
+  mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined, reviewOverrides = {},
+) {
   const workspace = {
     mode,
     source: {
@@ -84,12 +93,14 @@ function renderBody(mode, previewOverrides = {}, workspaceOverrides = {}) {
     onCreate: vi.fn(),
     textSelection: null,
     setTextSelection: vi.fn(),
+    ...reviewOverrides,
   };
 
   return <ArtifactViewerBody
     workspace={workspace}
     preview={preview}
     review={review}
+    stats={stats}
     agentReview={{ busy: false, setBusy: vi.fn() }}
   />;
 }
@@ -224,5 +235,63 @@ describe('ArtifactViewerBody agent repair decisions', () => {
     // The first attempt carries no confirmed head, so the server refuses it.
     expect(decideRepair).toHaveBeenCalledWith('rejected');
     expect(await screen.findByText(/discard everything written since/i)).toBeTruthy();
+  });
+});
+
+describe('ArtifactViewerBody stats panel', () => {
+  const controller = {
+    data: { total_views: 1 },
+    loading: false,
+    error: null,
+    trackingBusy: false,
+    reload: vi.fn(),
+    setTracking: vi.fn(),
+  };
+
+  it('docks the Stats panel beside the stage while it is open', () => {
+    const onClose = vi.fn();
+    render(renderBody('preview', {}, {}, {
+      open: true,
+      controller,
+      accessMode: 'restricted',
+      accessLoaded: true,
+      onClose,
+    }));
+
+    expect(screen.getByTestId('stats-panel')).toBeInTheDocument();
+    expect(statsPanel.props).toMatchObject({
+      data: controller.data,
+      loading: false,
+      error: null,
+      trackingBusy: false,
+      accessMode: 'restricted',
+      accessLoaded: true,
+      onRetry: controller.reload,
+      onToggleTracking: controller.setTracking,
+      onClose,
+    });
+  });
+
+  it('renders no Stats panel while it is closed', () => {
+    render(renderBody('preview', {}, {}, {
+      open: false,
+      controller,
+      accessMode: 'public',
+      accessLoaded: false,
+      onClose: vi.fn(),
+    }));
+
+    expect(screen.queryByTestId('stats-panel')).toBeNull();
+  });
+
+  it('keeps the text selection composer away from the Stats panel', () => {
+    const selection = { quote: 'Deck', start: 0, end: 4 };
+    const stats = { open: false, controller, accessMode: 'public', accessLoaded: true, onClose: vi.fn() };
+    const { rerender } = render(renderBody('review', {}, {}, stats, { textSelection: selection }));
+    expect(screen.getByTestId('text-selection-comment')).toBeInTheDocument();
+
+    rerender(renderBody('review', {}, {}, { ...stats, open: true }, { textSelection: selection }));
+    expect(screen.getByTestId('stats-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('text-selection-comment')).toBeNull();
   });
 });

@@ -239,6 +239,23 @@ export function setArtifactAccess(artifact, access) {
   });
 }
 
+// Owner-only, like loadArtifactAccess above: view counts of the published
+// artifact and, on a restricted link, who opened it.
+export function loadArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`);
+}
+
+export function setArtifactTracking(artifact, enabled) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats/tracking`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export function requestAgentRepair(artifact, payload) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

@@ -48,6 +48,8 @@ const workspaceMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   // Resolves rather than returning undefined: an artifact with a local path
   // mounts a preview on open, and the viewer chains off this directly.
@@ -63,6 +65,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText: vi.fn(async () => ({ content: '' })),
   loadArtifactDraftDocument: vi.fn(async () => ({
     content: '<html><head></head><body>Hi</body></html>',

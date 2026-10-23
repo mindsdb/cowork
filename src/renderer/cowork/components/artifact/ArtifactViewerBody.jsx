@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
+import { StatsPanel } from './stats/StatsPanel';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
@@ -43,6 +44,7 @@ export function ArtifactViewerBody({
   workspace,
   preview,
   review,
+  stats = null,
   agentReview,
 }) {
   const {
@@ -256,7 +258,8 @@ export function ArtifactViewerBody({
               onClose={toggleComments}
             />
           )}
-          {textSelection && workspace.mode === 'review' && (
+          {/* Stats replaces the comments chrome, so no composer opens beside it. */}
+          {textSelection && workspace.mode === 'review' && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}
@@ -287,6 +290,19 @@ export function ArtifactViewerBody({
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}
             onClose={() => setInboxOpen(false)}
+          />
+        )}
+        {stats?.open && (
+          <StatsPanel
+            data={stats.controller?.data ?? null}
+            loading={!!stats.controller?.loading}
+            error={stats.controller?.error ?? null}
+            trackingBusy={!!stats.controller?.trackingBusy}
+            accessMode={stats.accessMode}
+            accessLoaded={!!stats.accessLoaded}
+            onToggleTracking={stats.controller?.setTracking}
+            onRetry={stats.controller?.reload}
+            onClose={stats.onClose}
           />
         )}
         <ArtifactComparison

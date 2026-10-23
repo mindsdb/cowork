@@ -5,7 +5,7 @@ import { forwardRef } from 'react';
 // target of a Base UI Tooltip/Menu trigger (those inject a ref).
 //
 // `active` gives a persistent toggled-on state (accent-tinted fill + accent
-// glyph) that survives mouse-leave — used by the comments switch so it reads
+// glyph) that survives mouse-leave — used by the comments and Stats switches so they read
 // as on/off, not just a hover. Hover-idle colors are resolved from `active`
 // so the two states never fight over the inline background.
 //
