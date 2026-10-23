@@ -180,15 +180,57 @@ describe('the subframe navigation guard', () => {
     expect(navigate({ url: 'about:srcdoc', isMainFrame: false, frame: preview(frame()) })).toBe(false);
   });
 
-  it('cancels a srcdoc frame inside a page loaded by URL, such as Code mode\'s preview, and lets that page navigate', () => {
+  it('cancels a srcdoc frame directly under the main window, such as a comparison pane or the visual editor', () => {
+    const { create, navigate } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    const pane = frame({ parent: main, url: 'about:srcdoc' });
+    for (const created of [main, pane]) create(created);
+
+    expect(navigate({ url: `${SERVER}/api/v1/x`, isMainFrame: false, frame: pane })).toBe(true);
+  });
+
+  it('lets a srcdoc frame inside a page loaded by URL, such as Code mode\'s preview, navigate, and that page too', () => {
     const { create, navigate } = setup();
     const main = frame({ url: 'file:///app/index.html' });
     const devApp = frame({ parent: main, url: 'http://127.0.0.1:4173/' });
     const child = frame({ parent: devApp, url: 'about:srcdoc' });
     for (const created of [main, devApp, child]) create(created);
 
-    expect(navigate({ url: 'http://127.0.0.1:4173/page2', isMainFrame: false, frame: child })).toBe(true);
+    expect(navigate({ url: 'http://127.0.0.1:4173/page2', isMainFrame: false, frame: child })).toBe(false);
     expect(navigate({ url: 'http://127.0.0.1:4173/about', isMainFrame: false, frame: devApp })).toBe(false);
+  });
+
+  it('lets a srcdoc frame inside another srcdoc frame of the main window navigate', () => {
+    const { create, navigate } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    const pane = frame({ parent: main, url: 'about:srcdoc' });
+    const inner = frame({ parent: pane, url: 'about:srcdoc' });
+    for (const created of [main, pane, inner]) create(created);
+
+    expect(navigate({ url: 'https://example.com/', isMainFrame: false, frame: inner })).toBe(false);
+  });
+
+  it('cancels a srcdoc frame two levels inside the preview frame, by the mark', () => {
+    const { create, navigate, preview } = setup();
+    const main = frame({ url: 'file:///app/index.html' });
+    create(main);
+    const outer = frame({ parent: preview(main), url: 'about:srcdoc' });
+    const inner = frame({ parent: outer, url: 'about:srcdoc' });
+    for (const created of [outer, inner]) create(created);
+
+    expect(navigate({ url: 'https://example.com/', isMainFrame: false, frame: inner })).toBe(true);
+  });
+
+  it('cancels a srcdoc frame whose parent chain it cannot read', () => {
+    const { navigate } = setup();
+    const child: GuardedFrame = {
+      frameTreeNodeId: nextFrameId++,
+      name: '',
+      url: 'about:srcdoc',
+      parent: disposedFrame(),
+    };
+
+    expect(navigate({ url: 'https://example.com/', isMainFrame: false, frame: child })).toBe(true);
   });
 
   it('cancels a navigation the preview frame or a frame inside it starts, whatever frame it targets', () => {

@@ -19,14 +19,17 @@ import { PREVIEW_FRAME_NAME } from '../shared/document-preview';
  * - It cancels every navigation that a marked frame, or a frame inside one,
  *   starts, whichever frame it targets, the main frame included. It also
  *   cancels a subframe's navigation when the frame is missing, sits at
- *   about:srcdoc, or sits inside a marked frame. None of these decisions reads
- *   a frame's name, so a frame that renames itself is still held. A cancelled
- *   navigation opens nothing anywhere else either.
+ *   about:srcdoc directly under the main frame, or sits inside a marked frame.
+ *   None of these decisions reads a frame's name, so a frame that renames
+ *   itself is still held. A cancelled navigation opens nothing anywhere else
+ *   either.
  *
- * The about:srcdoc rule holds every srcdoc subframe in the window, not only
- * the preview frame: the HTML comparison panes, the visual editor, and srcdoc
- * frames inside a page loaded by URL, such as an HTML artifact or the task's
- * own app in Code mode's preview.
+ * The about:srcdoc rule holds the srcdoc frames the Cowork page itself mounts:
+ * the preview frame, the HTML comparison panes and the visual editor. It
+ * leaves alone a srcdoc frame further down, such as one inside a page loaded
+ * by URL (an HTML artifact, or the task's own app in Code mode's preview),
+ * which navigates as it did before this guard. A frame inside the preview
+ * frame is still held, by the mark.
  *
  * Electron reports a navigation here only when it loads a URL. about: URLs
  * (about:blank, and the parent replacing a frame's srcdoc), javascript: URLs
@@ -85,9 +88,11 @@ function isPreviewFrame(frame: GuardedFrame): boolean {
   }
 }
 
-function isSrcdocFrame(frame: GuardedFrame): boolean {
+/* Whether the frame sits at about:srcdoc directly under the main frame. A
+   frame whose address or parent chain it can't read counts as one. */
+function isTopSrcdocFrame(frame: GuardedFrame): boolean {
   try {
-    return SRCDOC_URL.test(frame.url);
+    return SRCDOC_URL.test(frame.url) && !frame.parent?.parent;
   } catch {
     return true;
   }
@@ -135,7 +140,7 @@ export function guardDocumentPreviewFrames(contents: GuardedContents): DocumentP
       return;
     }
     if (event.isMainFrame || event.url === 'about:srcdoc') return;
-    if (!event.frame || isSrcdocFrame(event.frame) || isInPreview(event.frame)) event.preventDefault();
+    if (!event.frame || isTopSrcdocFrame(event.frame) || isInPreview(event.frame)) event.preventDefault();
   });
 
   return {
