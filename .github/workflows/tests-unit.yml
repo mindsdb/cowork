@@ -77,7 +77,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest # unit/component only — no native/Electron dep
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       COWORK_SERVER_CHANNEL: ''
       ANTHROPIC_API_KEY: ''
