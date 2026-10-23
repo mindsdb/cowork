@@ -20,6 +20,8 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  routingStatusCopy,
+  showRouterRoleRow,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -1091,5 +1093,69 @@ describe('committedSettingsPatch', () => {
       ['anthropic_api_key', 'planning_model'])).toEqual({
       anthropicApiKey: '', planningModel: null, defaultModel: null,
     });
+  });
+});
+
+
+// ─── Fast answers (Jev routing) ──────────────────────────────────────
+
+describe('fast answers settings', () => {
+  it('reads the routing settings from server rows, keeping the key masked', () => {
+    const out = transformSettingsRows([
+      { key: 'jev_decisions_enabled', value: 'False' },
+      { key: 'decision_model_url', value: 'https://api.typesafe.ai/v1/systemone' },
+      { key: 'decision_model_api_key', is_sensitive: true, is_set: true },
+      { key: 'decision_model', value: 'jev-latest' },
+    ]);
+
+    expect(out).toMatchObject({
+      jevDecisionsEnabled: false,
+      decisionModelUrl: 'https://api.typesafe.ai/v1/systemone',
+      decisionModelApiKey: '***',
+      decisionModel: 'jev-latest',
+    });
+  });
+
+  it('writes them under the server keys, and never writes the masked key back', () => {
+    const writes = diffSettingsForWrite({
+      jevDecisionsEnabled: false,
+      decisionModelUrl: 'https://api.typesafe.ai/v1/systemone',
+      decisionModelApiKey: '***',
+      decisionModel: 'jev-latest',
+    }, { jevDecisionsEnabled: true, decisionModelApiKey: '***' });
+
+    expect(writes).toEqual({
+      jev_decisions_enabled: 'false',
+      decision_model_url: 'https://api.typesafe.ai/v1/systemone',
+      decision_model: 'jev-latest',
+    });
+  });
+
+  it('keeps the routing it holds when the server sends none', () => {
+    const held = { routing: { mode: 'jev' } };
+
+    expect(mergeRecommendedModels(held, { routing: { mode: 'off' } }).routing).toEqual({ mode: 'off' });
+    expect(mergeRecommendedModels(held, {}).routing).toEqual({ mode: 'jev' });
+    expect(mergeRecommendedModels({}, {}).routing).toBeNull();
+  });
+
+  it.each([
+    [null, 'minds-cloud', true],             // older server: it still gates on the row
+    [{ mode: 'jev' }, 'minds-cloud', false],
+    [{ mode: 'llm' }, 'anthropic', false],
+    [{ mode: 'llm' }, 'openai-compatible', true], // the pick is the only router model there
+  ])('shows the router row for routing %j on %s: %s', (routing, provider, shown) => {
+    expect(showRouterRoleRow(routing, provider)).toBe(shown);
+  });
+
+  it('says who decides for each mode, and nothing for one it does not know', () => {
+    expect(routingStatusCopy({ mode: 'jev' }, { agentLabel: 'Cowork' })).toMatch(/^Jev on MindsHub decides/);
+    expect(routingStatusCopy({ mode: 'own' })).toMatch(/^Your decision model decides/);
+    expect(routingStatusCopy({ mode: 'off' }, { agentLabel: 'Cowork' })).toBe(
+      'Jev is off and no decision model is set, so every message runs Cowork.',
+    );
+    expect(routingStatusCopy({ mode: 'llm' })).toMatch(/^Your provider's fastest model decides/);
+    expect(routingStatusCopy({ mode: 'something-new' })).toBe('');
+    expect(routingStatusCopy(null)).toBe('');
   });
 });
