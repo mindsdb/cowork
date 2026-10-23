@@ -146,15 +146,20 @@ export function draftDirectoryUrl(fetchUrl) {
   }
 }
 
-// The draft's file name, decoded; a bare `%` in it stays literal.
+// A URL path segment, decoded. A bare `%` (`growth_100%.png`) is escaped
+// first, so the rest still decodes; one that still can't stays literal.
+export function decodePathSegment(seg) {
+  try {
+    return decodeURIComponent(seg.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+  } catch {
+    return seg;
+  }
+}
+
+// The draft's file name, decoded.
 export function draftFileName(fetchUrl) {
   try {
-    const name = new URL(fetchUrl).pathname.split('/').pop();
-    try {
-      return decodeURIComponent(name.replace(/%(?![0-9a-f]{2})/gi, '%25'));
-    } catch {
-      return name;
-    }
+    return decodePathSegment(new URL(fetchUrl).pathname.split('/').pop());
   } catch {
     return '';
   }
@@ -192,9 +197,11 @@ export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListene
 // own directory. No-op if the document already declares a `<base href>` — a
 // second one would be inert (the first `<base>` in document order wins) and
 // misleading to read.
-export function injectDraftBaseHref(html, fetchUrl) {
+// `hasBase` lets a caller that has parsed the page say whether it declares a
+// `<base href>`, where the regex could be fooled by the same text in a script.
+export function injectDraftBaseHref(html, fetchUrl, { hasBase } = {}) {
   const baseHref = draftDirectoryUrl(fetchUrl);
-  if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
+  if (!baseHref || (hasBase ?? HAS_BASE_TAG_RE.test(html))) return html;
   // Precedent: cowork-server's comments_layer.py escapes `</script>` in its
   // own injected script for the same reason — a literal occurrence would
   // close the tag early. DRAFT_FRAGMENT_GUARD_SCRIPT is a fixed, hand-authored

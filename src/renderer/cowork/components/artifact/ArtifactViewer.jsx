@@ -567,16 +567,14 @@ export function ArtifactViewer({
           if (doc.isHtml) {
             // The files the draft loads from its folder can't carry the token
             // either, so inline them with it. The inliner never reads above the
-            // draft's own folder, so that folder is its root. Goes once drafts
-            // are served by signed link (ENG-3215).
-            const rootUrl = draftDirectoryUrl(fetchUrl);
-            const html = rootUrl
-              ? await inlineHtmlFromApi(doc.content, {
-                rootUrl,
-                filePath: draftFileName(fetchUrl),
-                signal: reading.signal,
-              })
-              : injectDraftBaseHref(doc.content, fetchUrl);
+            // draft's own folder, so that folder is its root. If inlining fails,
+            // the draft still shows as it loaded. Goes once drafts are served
+            // by signed link (ENG-3215).
+            const html = await inlineHtmlFromApi(doc.content, {
+              rootUrl: draftDirectoryUrl(fetchUrl),
+              filePath: draftFileName(fetchUrl),
+              signal: reading.signal,
+            }).catch(() => injectDraftBaseHref(doc.content, fetchUrl));
             if (cancelled) return;
             setPreviewDoc(html);
           } else {

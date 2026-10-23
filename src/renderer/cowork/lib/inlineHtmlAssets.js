@@ -14,6 +14,7 @@
 
 import {
   DRAFT_FRAGMENT_GUARD_SCRIPT,
+  decodePathSegment,
   draftDirectoryUrl,
   injectDraftBaseHref,
 } from '../components/artifact/artifactPreviewUtils';
@@ -38,19 +39,15 @@ const isRelative = (ref) => !!ref?.trim() && !/^([a-z][a-z0-9+.-]*:|\/|#|\?)/i.t
 
 // `ref` resolved against `fromPath`, as a project-relative path. The base is
 // encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
-// A bare `%` (`growth_100%.png`) is escaped before decoding, so the rest of
-// the segment still decodes; one that still can't be decoded stays literal.
-const decodeSegment = (seg) => {
-  try {
-    return decodeURIComponent(seg.replace(/%(?![0-9a-f]{2})/gi, '%25'));
-  } catch {
-    return seg;
-  }
-};
-
+// Refs resolve under a placeholder root, so one that climbs above the root
+// (`../theme.css` from a file at the root) shows up instead of being clamped
+// onto a different file at the root, and is refused.
+const ROOT = '__inline_root__';
 const resolvePath = (ref, fromPath) => {
-  const base = `file:///${fromPath.split('/').map(encodeURIComponent).join('/')}`;
-  return new URL(ref.trim(), base).pathname.slice(1).split('/').map(decodeSegment).join('/');
+  const base = `file:///${ROOT}/${fromPath.split('/').map(encodeURIComponent).join('/')}`;
+  const { pathname } = new URL(ref.trim(), base);
+  if (!pathname.startsWith(`/${ROOT}/`)) throw new Error(`${ref} climbs above the preview's root`);
+  return pathname.slice(ROOT.length + 2).split('/').map(decodePathSegment).join('/');
 };
 
 const toDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -129,10 +126,12 @@ export async function inlineHtmlAssets(
         if (signal?.aborted) throw new Error('Preview closed');
         if (budget <= 0) throw new Error('Inline budget spent');
         const tooLarge = new Error(`${path} is too large to inline`);
-        const readSignal = AbortSignal.any([
-          AbortSignal.timeout(READ_TIMEOUT_MS),
-          ...(signal ? [signal] : []),
-        ]);
+        const timeout = AbortSignal.timeout(READ_TIMEOUT_MS);
+        // AbortSignal.any is Safari 17.4+ and Firefox 124+. Older ones keep the
+        // timeout; the caller's abort then stops only reads not yet started.
+        const readSignal = signal && typeof AbortSignal.any === 'function'
+          ? AbortSignal.any([timeout, signal])
+          : timeout;
         const response = await fetchFile(path, readSignal);
         // Refuse on the header, before the body downloads, as readInlineText does.
         const length = Number(response.headers?.get('Content-Length'));
@@ -229,7 +228,11 @@ export async function inlineHtmlAssets(
   // Nothing inlined: hand back the page as it came, base and guard spliced in
   // as text, so the line numbers the preview's error reports carry still hold.
   // Re-serializing below drops whitespace and comments ahead of <head>.
-  if (!inlinedAny) return baseUrl ? injectDraftBaseHref(html, baseUrl) : html;
+  if (!inlinedAny) {
+    return baseUrl
+      ? injectDraftBaseHref(html, baseUrl, { hasBase: !!doc.querySelector('base[href]') })
+      : html;
+  }
 
   // Something inlined: line numbers shift past it whatever we do, so the base
   // and guard go in through the DOM, where text inside an inlined file can't

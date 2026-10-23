@@ -327,10 +327,10 @@ describe('inlineHtmlAssets', () => {
   it('skips <noscript> content, which a scripted iframe never shows', async () => {
     const fetchFile = files({ 'big.png': 'PNG' });
 
-    const doc = parse(await inlineHtmlAssets('<noscript><img src="big.png"></noscript>', 'page.html', fetchFile));
+    const out = await inlineHtmlAssets('<noscript><img src="big.png"></noscript>', 'page.html', fetchFile);
 
     expect(fetchFile).not.toHaveBeenCalled();
-    expect(doc.querySelector('img')?.getAttribute('src') ?? 'big.png').toBe('big.png');
+    expect(out).not.toContain('data:');
   });
 
   it('adds a base on the file folder and a fragment guard, unless the page has its own base', async () => {
@@ -419,6 +419,42 @@ describe('inlineHtmlAssets', () => {
       { signal: expect.any(AbortSignal) },
     );
     expect(out).toContain(`<base href="${root}Q3%20report/">`);
+  });
+
+  /* Clamping would read a different file at the root, which the browser
+     would never have loaded for this ref. */
+  it('refuses a ref that climbs above the root rather than clamping it onto the root', async () => {
+    const fetchFile = files({ 'theme.css': 'p {}' });
+
+    await inlineHtmlAssets('<link rel="stylesheet" href="../theme.css">', 'index.html', fetchFile);
+
+    expect(fetchFile).not.toHaveBeenCalled();
+  });
+
+  it('adds the base to an untouched page whose script only mentions a <base href>', async () => {
+    const out = await inlineHtmlAssets(
+      '<html><head><script>const tag = "<base href=x>";</script></head></html>', 'index.html', files({}),
+      { baseUrl: 'https://cowork.test/api/v1/artifacts/drafts/p/a/index.html' },
+    );
+
+    expect(out).toContain('<base href="https://cowork.test/api/v1/artifacts/drafts/p/a/">');
+  });
+
+  it('still reads, on the timeout alone, where AbortSignal.any is missing', async () => {
+    const any = AbortSignal.any;
+    AbortSignal.any = undefined;
+    try {
+      const fetchFile = files({ 'a.png': 'PNG' });
+
+      const doc = parse(await inlineHtmlAssets('<img src="a.png">', 'page.html', fetchFile, {
+        signal: new AbortController().signal,
+      }));
+
+      expect(fetchFile).toHaveBeenCalledWith('a.png', expect.any(AbortSignal));
+      expect(doc.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
+    } finally {
+      AbortSignal.any = any;
+    }
   });
 
   it('escapes a closing tag inside inlined script so it cannot end the element early', async () => {

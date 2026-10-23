@@ -156,6 +156,23 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('srcdoc')).toContain('src="data:image/png;base64,');
   });
 
+  it('still shows the draft, with its base, when inlining fails', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    vi.spyOn(DOMParser.prototype, 'parseFromString').mockImplementation(() => {
+      throw new Error('parse failed');
+    });
+    try {
+      render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+      const frame = await screen.findByTitle('Launch brief');
+      expect(frame.getAttribute('srcdoc')).toContain(
+        '<base href="https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/">',
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it('delivers HTML over 200KB to srcdoc whole, without the text-preview cap', async () => {
     const big = `<html><head></head><body>${'x'.repeat(250_000)}END</body></html>`;
     loadArtifactDraftDocument.mockResolvedValue(htmlDoc(big));
