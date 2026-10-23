@@ -76,6 +76,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { folderPickerDefaultPath } from './folder-picker';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import {
@@ -1523,17 +1524,20 @@ function setupIPC() {
   // Native directory selection for the first-class Code workspace. The
   // renderer receives only the user-selected path; filesystem access and Git
   // orchestration remain in the local sidecar.
+  let lastPickedFolder: string | null = null;
   ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a folder',
+      defaultPath: folderPickerDefaultPath(lastPickedFolder, app.getPath('home')),
       // `createDirectory` exposes New Folder in the macOS panel;
       // `promptToCreate` provides the equivalent typed-path flow on Windows.
       // The native default confirmation label (Open) matches both platforms.
       properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
     });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
-    return { ok: true, path: path.resolve(result.filePaths[0]) };
+    lastPickedFolder = path.resolve(result.filePaths[0]);
+    return { ok: true, path: lastPickedFolder };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
