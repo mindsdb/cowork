@@ -243,10 +243,13 @@
 # manifest and content.xml renamed in the zip's directory by Unicode Path
 # fields. A reader that lists the zip as JSZip does finds neither, while
 # SheetJS reads the names in the entries' own headers and would take its
-# OpenDocument reader.
+# OpenDocument reader. The runtime's archive guard refuses a Unicode Path
+# field that names another entry, so the file ends in parse-failed before
+# the renderer reads it. The renderer's own check, which ends it in
+# unsupported, has its unit test in render.test.ts.
 - name: OpenDocument parts renamed by Unicode Path fields
   file: unicode-path-parts.xlsx
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: parse-failed

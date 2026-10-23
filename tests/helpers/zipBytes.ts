@@ -30,6 +30,12 @@ export interface ZipEntryInput {
   dataDescriptor?: boolean;
   /* Adds a ZIP64 extra field holding the true sizes to that header. */
   zip64Extra?: 'central' | 'local';
+  /* Adds a Unicode Path extra field (0x7075) that names this path to the
+     directory record, or to the local header. Its CRC-32 matches the
+     header's own name, so JSZip names the entry from the directory record's
+     field. */
+  unicodePath?: string;
+  localUnicodePath?: string;
   /* Bytes the directory record carries as its comment, such as a whole
      record a reader that starts elsewhere finds. */
   centralComment?: Uint8Array;
@@ -59,6 +65,7 @@ const END_RECORD = 0x06054b50;
 const DATA_DESCRIPTOR = 0x08074b50;
 const DATA_DESCRIPTOR_FLAG = 0x0008;
 const ZIP64_EXTRA_FIELD = 0x0001;
+const UNICODE_PATH_EXTRA_FIELD = 0x7075;
 const DOS_DATE_1980 = 0x21;
 
 function header(size: number, write: (view: DataView) => void): Uint8Array {
@@ -74,6 +81,19 @@ function zip64Field({ compressed, uncompressed }: ZipSizes): Uint8Array {
     view.setBigUint64(4, BigInt(uncompressed), true);
     view.setBigUint64(12, BigInt(compressed), true);
   });
+}
+
+/* Version 1, the CRC-32 of the header's own name, then `path` in UTF-8. */
+function unicodePathField(name: Uint8Array, path: string): Uint8Array {
+  const utf8 = new TextEncoder().encode(path);
+  const field = header(9 + utf8.length, (view) => {
+    view.setUint16(0, UNICODE_PATH_EXTRA_FIELD, true);
+    view.setUint16(2, 5 + utf8.length, true);
+    view.setUint8(4, 1);
+    view.setUint32(5, crc32(name), true);
+  });
+  field.set(utf8, 9);
+  return field;
 }
 
 function concat(parts: readonly Uint8Array[]): Uint8Array {
@@ -108,8 +128,14 @@ export function zipBytes(
     const localSizes: ZipSizes = entry.dataDescriptor
       ? { compressed: 0, uncompressed: 0, ...entry.localSizes }
       : { ...centralSizes, ...entry.localSizes };
-    const centralExtra = entry.zip64Extra === 'central' ? zip64Field(trueSizes) : new Uint8Array(0);
-    const localExtra = entry.zip64Extra === 'local' ? zip64Field(trueSizes) : new Uint8Array(0);
+    const centralExtra = concat([
+      entry.zip64Extra === 'central' ? zip64Field(trueSizes) : new Uint8Array(0),
+      entry.unicodePath === undefined ? new Uint8Array(0) : unicodePathField(name, entry.unicodePath),
+    ]);
+    const localExtra = concat([
+      entry.zip64Extra === 'local' ? zip64Field(trueSizes) : new Uint8Array(0),
+      entry.localUnicodePath === undefined ? new Uint8Array(0) : unicodePathField(localName, entry.localUnicodePath),
+    ]);
     const centralComment = entry.centralComment ?? new Uint8Array(0);
     const local = header(30, (view) => {
       view.setUint32(0, LOCAL_HEADER, true);

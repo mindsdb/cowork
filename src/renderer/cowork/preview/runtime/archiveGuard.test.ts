@@ -192,6 +192,12 @@ describe('guardArchive', () => {
     expect(await failure(guard(bytes))).toMatchObject({ code: 'parse-failed' });
   });
 
+  it('ends in parse-failed for a Unicode Path field that names another entry, which JSZip lists instead', async () => {
+    const bytes = zipBytes([{ name: 'xl/workbook.xml', data: text('<workbook/>'), unicodePath: 'xl/hidden.xml' }]);
+    expect(await jszipNames(bytes)).toEqual(['xl/hidden.xml']);
+    expect(await failure(guard(bytes))).toMatchObject({ code: 'parse-failed' });
+  });
+
   it('ends in parse-failed when the end record miscounts the directory', async () => {
     const bytes = zipBytes([{ name: 'a', data: text('a') }, { name: 'b', data: text('b') }], { statedEntries: 1 });
     expect(await failure(guard(bytes))).toMatchObject({ code: 'parse-failed' });

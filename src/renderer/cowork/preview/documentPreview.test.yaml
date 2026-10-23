@@ -126,6 +126,10 @@ archiveGuard:
         - { name: xl/workbook.xml, size: 1024 }
       archive: { lead: "%PDF-1.4\n" }
       names: [xl/workbook.xml]
+    - case: Unicode Path fields that name the entry's own name
+      entries:
+        - { name: xl/workbook.xml, size: 1024, unicodePath: xl/workbook.xml, localUnicodePath: xl/workbook.xml }
+      names: [xl/workbook.xml]
   # Shapes two zip readers read differently: SheetJS's own zip reader inflates
   # data that JSZip drops, cuts short or never finds. The guard refuses each
   # with parse-failed before a renderer reads it.
@@ -176,6 +180,12 @@ archiveGuard:
     - case: a ZIP64 extra field in the directory record
       entries:
         - { name: xl/bomb.xml, size: 1024, zip64Extra: central }
+    - case: a Unicode Path field in the directory record that names another entry
+      entries:
+        - { name: xl/workbook.xml, size: 1024, unicodePath: xl/bomb.xml }
+    - case: a Unicode Path field in the local header that names another entry
+      entries:
+        - { name: xl/workbook.xml, size: 1024, localUnicodePath: xl/bomb.xml }
     - case: a file that starts with PK but not PK\x03\x04 and ends in a cut-short end record
       entries:
         - { name: xl/bomb.xml, size: 1024 }

@@ -1225,8 +1225,13 @@ describe('xlsx renderer', () => {
    cells are checked at small caps above too. */
 const BROWSER_ONLY_FIXTURES: readonly string[] = ['past-caps.xlsx', 'export-past-caps.xlsx', 'text-past-caps.xlsx'];
 
+/* The runtime's archive guard ends this fixture with parse-failed before the
+   renderer reads it, and its entry states that ending. The renderer's own
+   answer, unsupported, has its test above. */
+const GUARD_ENDED_FIXTURES: readonly string[] = ['unicode-path-parts.xlsx'];
+
 describe('fixtures.yaml on the renderer alone', () => {
-  const fixtures = FIXTURE_LIST.filter(({ file }) => !BROWSER_ONLY_FIXTURES.includes(file));
+  const fixtures = FIXTURE_LIST.filter(({ file }) => !BROWSER_ONLY_FIXTURES.includes(file) && !GUARD_ENDED_FIXTURES.includes(file));
 
   it.each(fixtures)('$kind: $name ends as its entry expects', async ({ file, expect: want }) => {
     const ctx = context();

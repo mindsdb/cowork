@@ -26,6 +26,9 @@
  *   an entry as empty where JSZip reads its data. The guard accepts that
  *   difference, since SheetJS reads less than JSZip, not more;
  * - a ZIP64 extra field, which JSZip and SheetJS apply differently;
+ * - a Unicode Path extra field (0x7075) that names something other than the
+ *   entry's own name. JSZip names the entry from that field, while SheetJS
+ *   and the guard's other checks read the name itself;
  * - an entry JSZip reads as a directory, and so drops, that holds data;
  * - an entry whose deflate stream runs past its stated compressed size
  *   (SheetJS inflates until the stream ends, not until that size), or that
@@ -76,6 +79,10 @@ const STORED = 0;
 const DEFLATED = 8;
 const DATA_DESCRIPTOR_FLAG = 0x0008;
 const ZIP64_EXTRA_FIELD = 0x0001;
+const UNICODE_PATH_EXTRA_FIELD = 0x7075;
+/* A Unicode Path field holds a version byte and the CRC-32 of the entry's
+   name, then the name it gives the entry. */
+const UNICODE_PATH_NAME_START = 5;
 const DOS_DIRECTORY_ATTRIBUTE = 0x10;
 const MADE_BY_UNIX = 3;
 const UNIX_DIRECTORY_MODE = 0x4000;
@@ -165,15 +172,27 @@ function readDirectory(bytes: Uint8Array, offset: number, end: number, stopAfter
   return next === end || records.length > stopAfter ? records : null;
 }
 
-/* Whether extra field bytes hold a ZIP64 field. It walks the fields the way
+/* The values of the extra fields with this id. It walks the fields the way
    SheetJS does, reading a field header wherever four bytes remain, so it sees
    every field JSZip sees too. */
-function hasZip64Field(extra: Uint8Array): boolean {
+function extraFields(extra: Uint8Array, id: number): Uint8Array[] {
   const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
+  const values: Uint8Array[] = [];
   for (let at = 0; at + 4 <= extra.length; at += 4 + view.getUint16(at + 2, true)) {
-    if (view.getUint16(at, true) === ZIP64_EXTRA_FIELD) return true;
+    if (view.getUint16(at, true) === id) values.push(extra.subarray(at + 4, at + 4 + view.getUint16(at + 2, true)));
   }
-  return false;
+  return values;
+}
+
+function hasZip64Field(extra: Uint8Array): boolean {
+  return extraFields(extra, ZIP64_EXTRA_FIELD).length > 0;
+}
+
+/* Whether a Unicode Path field in these extra fields names other bytes than
+   `name`. A field too short to hold a name names nothing, which differs too. */
+function namesAnotherEntry(extra: Uint8Array, name: Uint8Array): boolean {
+  return extraFields(extra, UNICODE_PATH_EXTRA_FIELD)
+    .some((value) => !sameBytes(value.subarray(UNICODE_PATH_NAME_START), name));
 }
 
 /* Whether JSZip reads the record as a directory, and so drops its data: the
@@ -214,6 +233,9 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
   }
   if (hasZip64Field(record.extra) || hasZip64Field(bytes.subarray(extraStart, dataStart))) {
     throw previewError('parse-failed', 'An archive entry carries a ZIP64 extra field.');
+  }
+  if (namesAnotherEntry(record.extra, record.name) || namesAnotherEntry(bytes.subarray(extraStart, dataStart), record.name)) {
+    throw previewError('parse-failed', "An archive entry's Unicode Path field names another entry.");
   }
   if (readsAsDirectory(record) && record.uncompressedSize !== 0) {
     throw previewError('parse-failed', 'An archive directory entry holds data.');
