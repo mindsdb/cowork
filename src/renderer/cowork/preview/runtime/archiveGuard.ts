@@ -25,6 +25,8 @@
  *   0: SheetJS reads its data by the local compressed size, so it reads such
  *   an entry as empty where JSZip reads its data. The guard accepts that
  *   difference, since SheetJS reads less than JSZip, not more;
+ * - an extra field whose stated length runs past the entry's extra fields,
+ *   since JSZip reads its value on into the bytes that follow;
  * - a ZIP64 extra field, which JSZip and SheetJS apply differently;
  * - a Unicode Path extra field (0x7075) that names something other than the
  *   entry's own name. JSZip names the entry from that field, while SheetJS
@@ -184,6 +186,17 @@ function extraFields(extra: Uint8Array, id: number): Uint8Array[] {
   return values;
 }
 
+/* Whether a field's stated length runs past the end of these extra fields.
+   JSZip reads such a field's value on into the bytes that follow, such as the
+   entry's comment, where the guard would read a shorter one. */
+function runsPastExtraFields(extra: Uint8Array): boolean {
+  const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
+  for (let at = 0; at + 4 <= extra.length; at += 4 + view.getUint16(at + 2, true)) {
+    if (at + 4 + view.getUint16(at + 2, true) > extra.length) return true;
+  }
+  return false;
+}
+
 function hasZip64Field(extra: Uint8Array): boolean {
   return extraFields(extra, ZIP64_EXTRA_FIELD).length > 0;
 }
@@ -230,6 +243,9 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
     || !sameBytes(bytes.subarray(nameStart, extraStart), record.name)
     || !(sameSizes || sizesInDescriptor)) {
     throw previewError('parse-failed', "An archive entry's local header differs from its directory record.");
+  }
+  if (runsPastExtraFields(record.extra) || runsPastExtraFields(bytes.subarray(extraStart, dataStart))) {
+    throw previewError('parse-failed', "An archive entry's extra field runs past the entry's extra fields.");
   }
   if (hasZip64Field(record.extra) || hasZip64Field(bytes.subarray(extraStart, dataStart))) {
     throw previewError('parse-failed', 'An archive entry carries a ZIP64 extra field.');

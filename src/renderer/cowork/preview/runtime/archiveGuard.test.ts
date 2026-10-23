@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -196,6 +197,26 @@ describe('guardArchive', () => {
     const bytes = zipBytes([{ name: 'xl/workbook.xml', data: text('<workbook/>'), unicodePath: 'xl/hidden.xml' }]);
     expect(await jszipNames(bytes)).toEqual(['xl/hidden.xml']);
     expect(await failure(guard(bytes))).toMatchObject({ code: 'parse-failed' });
+  });
+
+  it('ends in parse-failed for an extra field that runs past the entry\'s extra fields, which JSZip reads on into the comment', async () => {
+    /* The Unicode Path field names the entry's own name, but states one byte
+       more than the extra fields hold, so JSZip takes the comment's `x` into
+       the name. */
+    const bytes = new Uint8Array(zipBytes([
+      { name: 'content.xml', data: text('<a/>'), unicodePath: 'content.xml', centralComment: text('x') },
+    ]));
+    const view = new DataView(bytes.buffer);
+    const directoryOffset = view.getUint32(bytes.length - END_RECORD_SIZE + 16, true);
+    const fieldLength = directoryOffset + CENTRAL_HEADER_SIZE + 'content.xml'.length + 2;
+    view.setUint16(fieldLength, view.getUint16(fieldLength, true) + 1, true);
+    expect(await jszipNames(bytes.buffer)).toEqual(['content.xmlx']);
+    expect(await failure(guard(bytes.buffer))).toMatchObject({ code: 'parse-failed' });
+  });
+
+  it('ends in parse-failed for the sheet preview\'s workbook whose parts Unicode Path fields rename', async () => {
+    const file = readFileSync(join(__dirname, '../../../../../e2e/document-preview/fixtures/xlsx/unicode-path-parts.xlsx'));
+    expect(await failure(guard(new Uint8Array(file).buffer))).toMatchObject({ code: 'parse-failed' });
   });
 
   it('ends in parse-failed when the end record miscounts the directory', async () => {
