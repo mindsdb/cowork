@@ -11,13 +11,16 @@
 // and `shell.openExternal` launches a separate browser process that carries no
 // such header — so the served URL answers 401 there however well-formed it is.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+
+import { setDraftLinks } from '../../../lib/draftLinks';
 
 const LOOPBACK = 'http://127.0.0.1:26866';
 const WEB_ORIGIN = 'https://cowork.example';
 
 const openExternal = vi.hoisted(() => vi.fn(async () => {}));
+const createDraftLink = vi.hoisted(() => vi.fn());
 const openPath = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const publishState = vi.hoisted(() => ({ publishedUrl: '' }));
 const headerProps = vi.hoisted(() => ({ current: null }));
@@ -62,13 +65,16 @@ vi.mock('../../api', () => ({
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
-vi.mock('../../lib/artifactWorkspaceApi', () => ({
+// The real artifactRef: only a card with a full identity can ask for a link.
+vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
+  artifactRef: (await importOriginal()).artifactRef,
   loadArtifactDraftText: vi.fn(async () => ({ content: '' })),
   loadArtifactDraftDocument: vi.fn(async () => ({
     content: '<html><head></head><body>Hi</body></html>',
     contentType: 'text/html; charset=utf-8',
     isHtml: true,
   })),
+  createDraftLink,
 }));
 vi.mock('../../../platform/host', () => ({
   host: {
@@ -157,6 +163,7 @@ function clickBrowserTab(artifact) {
 
 beforeEach(() => {
   openExternal.mockClear();
+  createDraftLink.mockReset();
   openPath.mockClear();
   openPath.mockResolvedValue({ ok: true });
   headerProps.current = null;
@@ -227,6 +234,141 @@ describe('open in a browser tab — web / org', () => {
     await clickBrowserTab({ ...baseArtifact, draftUrl: absolute });
 
     expect(openExternal).toHaveBeenCalledWith(absolute);
+  });
+});
+
+/*
+ * The authenticated draft URL cannot open in a tab (the tab carries no
+ * bearer), so with draft links on an unpublished draft opens a fresh signed
+ * link. The tab is opened inside the click and pointed at the link once it
+ * arrives, with its opener cut before anything is awaited.
+ */
+describe('open in a browser tab — web / org, signed draft links', () => {
+  const FRAME_LINK = 'https://draft-staging.mindshub.co/_t/v1.frame.sig/index.html';
+  const OPEN_LINK = 'https://draft-staging.mindshub.co/_t/v1.tab.sig/index.html';
+  const linked = { ...baseArtifact, projectId: 'proj-1', draftUrl: DRAFT_PATH };
+  let tab;
+  let openSpy;
+
+  beforeEach(() => {
+    shell.electron = false;
+    setDraftLinks(true);
+    tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    openSpy = vi.spyOn(window, 'open').mockReturnValue(tab);
+  });
+
+  afterEach(() => {
+    cleanup();
+    openSpy.mockRestore();
+    setDraftLinks(false);
+  });
+
+  it('opens a new link for this click, not the preview link and not the API URL', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
+      .mockResolvedValueOnce({ url: OPEN_LINK, expiresAt: 2 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(createDraftLink).toHaveBeenCalledTimes(2);
+    expect(createDraftLink).toHaveBeenLastCalledWith('proj-1', baseArtifact.id);
+    expect(window.open).toHaveBeenCalledWith('', '_blank');
+    expect(tab.opener).toBeNull();
+    expect(tab.location.replace).toHaveBeenCalledWith(OPEN_LINK);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('says the browser blocked the tab and asks for no link when the pop-up is refused', async () => {
+    createDraftLink.mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 });
+    openSpy.mockReturnValue(null);
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The browser blocked the new tab. Allow pop-ups for this site and try again.',
+    );
+    expect(bodyProps.current?.preview?.error).toBe('');
+  });
+
+  it('closes the tab and says so when no link is issued', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
+      .mockRejectedValueOnce(Object.assign(new Error('Draft links are not available'), { status: 404 }));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Draft links are not available (HTTP 404)');
+    expect(bodyProps.current?.preview?.error).toBe('');
+  });
+
+  it('closes the tab when the link is not on a draft host', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
+      .mockResolvedValueOnce({ url: 'https://evil.example/_t/v1.tab.sig/index.html', expiresAt: 2 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('clears the last tab error on the next click', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
+      .mockResolvedValueOnce({ url: OPEN_LINK, expiresAt: 2 });
+    openSpy.mockReturnValueOnce(null);
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+    expect(await screen.findByRole('alert')).toHaveTextContent('The browser blocked the new tab.');
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(tab.location.replace).toHaveBeenCalledWith(OPEN_LINK);
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('keeps the old route for a backend artifact with an action path', async () => {
+    const app = { ...linked, type: 'fullstack-stateless-app' };
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(window.open).not.toHaveBeenCalled();
+    expect(createDraftLink).not.toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith(`${WEB_ORIGIN}${DRAFT_PATH}`);
+  });
+
+  it('keeps the old route for a card without a full identity', async () => {
+    const shortCard = { ...linked, id: 'aaaaaaaa' };
+    render(<ArtifactViewer open artifact={shortCard} onClose={vi.fn()} />);
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(window.open).not.toHaveBeenCalled();
+    expect(createDraftLink).not.toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith(`${WEB_ORIGIN}${DRAFT_PATH}`);
+  });
+
+  it('still opens the public link for a published artifact', async () => {
+    createDraftLink.mockResolvedValue({ url: OPEN_LINK, expiresAt: 1 });
+    publishState.publishedUrl = 'https://artifacts.mindshub.ai/a/launch';
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(openExternal).toHaveBeenCalledWith('https://artifacts.mindshub.ai/a/launch');
+    expect(window.open).not.toHaveBeenCalled();
   });
 });
 
