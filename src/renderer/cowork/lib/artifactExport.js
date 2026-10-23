@@ -7,7 +7,6 @@
  * come from the server's `exportFormats`, so an older server, which sends
  * none, shows no Export at all.
  */
-import { host } from '../../platform/host';
 import { downloadArtifactFile } from './artifactDownload';
 import { requestArtifactExport } from './artifactWorkspaceApi';
 
@@ -81,19 +80,17 @@ function omittedReferencesMessage(count) {
 }
 
 /**
- * Saves the exported file and resolves whether it saved. Web hands over the
- * draft URL alone, so the save goes through the authenticated drafts route.
- * Desktop saves through the serve URL, and through the drafts route when the
- * server sent an empty one.
+ * Saves the exported file and resolves whether it saved, through
+ * downloadArtifactFile with both URLs. Web fetches the draft URL with the
+ * bearer, and the serve URL only when the server sent no draft URL. Desktop
+ * saves through the serve URL, and through the drafts route when the server
+ * sent an empty one.
  *
  * @param {ArtifactExportResult} result
  * @returns {Promise<boolean>}
  */
 export async function saveExportedFile(result) {
-  const file = host.isWeb
-    ? { draftUrl: result.draftUrl }
-    : { serveUrl: result.serveUrl, draftUrl: result.draftUrl };
-  return downloadArtifactFile(file, { actionPath: result.filename });
+  return downloadArtifactFile({ serveUrl: result.serveUrl, draftUrl: result.draftUrl }, { actionPath: result.filename });
 }
 
 /**

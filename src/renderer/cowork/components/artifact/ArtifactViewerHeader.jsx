@@ -2,7 +2,7 @@ import Ico from '../Icons';
 import { Button, Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
-import { isHtmlArtifact, isImageArtifact } from '../../lib/artifactKinds';
+import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
@@ -10,28 +10,6 @@ import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
-
-/*
- * Besides HTML and images, what a browser tab shows from the file's URL. The
- * serve route types a .csv as text/csv, which Chrome saves rather than shows,
- * so it is left out even though the viewer previews it.
- */
-const BROWSER_TAB_EXTS = ['.md', '.txt', '.pdf'];
-
-/*
- * Whether a browser tab shows this file rather than saving it, matched on the
- * declared `ext` and the path like the kind predicates in artifactKinds.js. On
- * web a tab opened on any other file's serve or draft URL saves the file
- * without a word. A published artifact opens its shared page, which a tab
- * always shows.
- */
-function showsInBrowserTab(artifact, isPublished) {
-  if (isPublished) return true;
-  const ext = (artifact?.ext || '').toLowerCase();
-  const path = (artifact?.path || '').toLowerCase();
-  return isHtmlArtifact(artifact) || isImageArtifact(artifact)
-    || BROWSER_TAB_EXTS.some((tabExt) => ext === tabExt || path.endsWith(tabExt));
-}
 
 export function ArtifactViewerHeader({
   title,
@@ -75,14 +53,15 @@ export function ArtifactViewerHeader({
   } = actions;
   /* A file to save needs a serve or draft URL. A full-stack app's primary file
      is its static shell, not the app, so it offers none. */
-  const canDownload = !isBackendArtifact && !!(artifact?.serveUrl || artifact?.draftUrl);
+  const canDownload = canDownloadArtifact(artifact);
   /* The tab-only rule is a web rule: on desktop an unpublished file opens in
      its default app instead, as it always has. Org mode serves no file a tab
      can load without the bearer, so there a tab opens only the shared page,
-     as Live Artifacts' arrow does. */
+     as Live Artifacts' arrow does. A published artifact opens its shared
+     page, which a tab always shows. */
   const canOpenAsTab = orgMode
     ? isPublished
-    : (!host.isWeb || showsInBrowserTab(artifact, isPublished));
+    : (!host.isWeb || isPublished || canShowInBrowserTab(artifact));
   const exportFormats = artifactExportFormats(workspace, artifact);
   const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
   const openMenuItems = [

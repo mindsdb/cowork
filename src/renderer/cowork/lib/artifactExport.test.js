@@ -1,6 +1,7 @@
 /*
  * Which transport saves an exported file on each host. Web saves through the
- * bearer fetch of the drafts route even when a serve URL is present. Desktop
+ * bearer fetch of the drafts route even when a serve URL is present, and of
+ * the serve URL when the server sent an empty draft URL. Desktop
  * saves through the serve URL, and through the drafts route when the server
  * sent none. Both transports are mocked, so these tests pin the choice of
  * transport only; how downloadAuthenticatedResource saves on each host is
@@ -50,11 +51,11 @@ beforeEach(() => {
   mocks.downloadAuthenticatedResource.mockResolvedValue(true);
 });
 
-describe.each(cases.saves)('saving an export on $name', ({ web, serveUrl, transport, url }) => {
+describe.each(cases.saves)('saving an export on $name', ({ web, serveUrl, draftUrl = DRAFT_URL, transport, url }) => {
   it(`goes through the ${transport} transport`, async () => {
     mocks.host.isWeb = web;
 
-    await expect(saveExportedFile(exportResult({ serveUrl }))).resolves.toBe(true);
+    await expect(saveExportedFile(exportResult({ serveUrl, draftUrl }))).resolves.toBe(true);
 
     if (transport === 'authenticated') {
       expect(mocks.downloadAuthenticatedResource).toHaveBeenCalledWith(url, 'notes.docx');

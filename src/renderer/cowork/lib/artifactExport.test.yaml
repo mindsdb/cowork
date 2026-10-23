@@ -1,6 +1,7 @@
 # How an exported file saves, read by artifactExport.test.js. `transport` is
 # `authenticated` for the bearer fetch of the drafts route (a Blob save) and
 # `anchor` for a plain download link. `url` is the URL that transport gets.
+# `draftUrl`, when set, replaces the export's draft URL.
 saves:
   - name: web, with a serve URL beside the draft URL
     web: true
@@ -12,6 +13,12 @@ saves:
     serveUrl: ''
     transport: authenticated
     url: https://cowork.example/api/v1/artifacts/drafts/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/notes.docx?download=1
+  - name: web, when the server sent an empty draft URL
+    web: true
+    draftUrl: ''
+    serveUrl: /api/v1/artifacts/serve/proj/notes.docx
+    transport: authenticated
+    url: https://cowork.example/api/v1/artifacts/serve/proj/notes.docx?download=1
   - name: desktop, with a serve URL
     web: false
     serveUrl: /api/v1/artifacts/serve/proj/notes.docx
