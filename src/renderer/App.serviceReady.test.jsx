@@ -18,9 +18,7 @@ vi.mock('./platform/host', () => ({ host: {
   readSettings: mocks.readSettings,
   saveSettings: mocks.saveSettings,
   getShellSupport: async () => null,
-  getShellAutoUpdate: async () => null,
-  onShellAutoUpdate: () => () => {},
-  onUpdateStatus: () => () => {},
+  watchUpdateState: () => () => {},
   accountOwnershipPending: async () => null,
 } }));
 vi.mock('./lib/orgMode', () => ({ setOrgMode: mocks.setOrgMode }));
