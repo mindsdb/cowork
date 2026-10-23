@@ -41,6 +41,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -53,6 +54,7 @@ import {
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
   injectDraftBaseHref,
+  splitDraftUrl,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -557,11 +559,20 @@ export function ArtifactViewer({
       // previewUrl/previewDoc were both already reset to '' at the top of
       // this effect, so setting only one of them here is enough to keep them
       // mutually exclusive.
+      const reading = new AbortController();
       loadArtifactDraftDocument(fetchUrl)
-        .then((doc) => {
+        .then(async (doc) => {
           if (cancelled) return;
           if (doc.isHtml) {
-            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+            // The files the draft loads from its folder can't carry the token
+            // either, so inline them with it. Goes once drafts are served by
+            // signed link (ENG-3215).
+            const draft = splitDraftUrl(fetchUrl);
+            const html = draft
+              ? await inlineHtmlFromApi(doc.content, { ...draft, signal: reading.signal })
+              : injectDraftBaseHref(doc.content, fetchUrl);
+            if (cancelled) return;
+            setPreviewDoc(html);
           } else {
             // Non-HTML draft content type: org mode's draft preview only ever
             // offers .html here (md/txt/csv already took the isText branch
@@ -579,7 +590,7 @@ export function ArtifactViewer({
           setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
-      return () => { cancelled = true; };
+      return () => { cancelled = true; reading.abort(); };
     }
     mountArtifactPreview(actionPath)
       .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {

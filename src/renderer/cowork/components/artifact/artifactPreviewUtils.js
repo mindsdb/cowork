@@ -144,6 +144,23 @@ function draftDirectoryUrl(fetchUrl) {
   }
 }
 
+// The drafts route serves an artifact's folder at `.../drafts/<project>/<id>/`.
+// Splits a draft URL into that folder's URL and the file's path inside it, or
+// null when the URL isn't a drafts URL.
+export function splitDraftUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const match = /^(.*\/artifacts\/drafts\/[^/]+\/[^/]+\/)(.+)$/.exec(parsed.pathname);
+    if (!match) return null;
+    return {
+      rootUrl: `${parsed.origin}${match[1]}`,
+      filePath: match[2].split('/').map(decodeURIComponent).join('/'),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /*
  * A srcdoc document's `document.URL` stays `about:srcdoc` no matter what
  * `<base>` says — the base only changes how relative references *resolve*,

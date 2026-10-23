@@ -13,6 +13,7 @@
  */
 
 import { DRAFT_FRAGMENT_GUARD_SCRIPT } from '../components/artifact/artifactPreviewUtils';
+import { fetchAuthenticatedResponse } from './authenticatedResource';
 
 // Big enough for a report's images, small enough to keep `srcdoc` sane.
 const ASSET_MAX_BYTES = 5 * 1024 * 1024;
@@ -225,4 +226,19 @@ export async function inlineHtmlAssets(
   // Keep the original doctype: a legacy one keeps the page in quirks mode.
   const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : '';
   return `${doctype}${doc.documentElement.outerHTML}`;
+}
+
+/**
+ * `inlineHtmlAssets` for a file whose folder is served by an API route at
+ * `rootUrl` + its relative path (a project's `files-raw`, an artifact's
+ * drafts), read with the viewer's token.
+ * @param {string} html the file's markup
+ * @param {{ rootUrl: string, filePath: string, signal?: AbortSignal }} options
+ */
+export function inlineHtmlFromApi(html, { rootUrl, filePath, signal }) {
+  const urlFor = (path) => rootUrl + path.split('/').map(encodeURIComponent).join('/');
+  return inlineHtmlAssets(html, filePath, (path) => fetchAuthenticatedResponse(urlFor(path)), {
+    baseUrl: urlFor(filePath),
+    signal,
+  });
 }

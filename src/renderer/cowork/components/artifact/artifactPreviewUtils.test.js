@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  splitDraftUrl,
   isAbsoluteArtifactPreviewUrl,
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
@@ -126,6 +127,24 @@ describe('draftNavigationIsAuthorized', () => {
  * base from that URL; srcdoc needs the same base stated explicitly or every
  * relative <script src>/<link href>/anchor in the document breaks.
  */
+describe('splitDraftUrl', () => {
+  const root = 'https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/';
+
+  it('splits a draft URL into its folder and the file path, without the query', () => {
+    expect(splitDraftUrl(`${root}static/index.html?v=3&__antonComments=1`))
+      .toEqual({ rootUrl: root, filePath: 'static/index.html' });
+  });
+
+  it('decodes the file path', () => {
+    expect(splitDraftUrl(`${root}Q3%20report/index.html`).filePath).toBe('Q3 report/index.html');
+  });
+
+  it('answers null for a URL that is not a drafts URL', () => {
+    expect(splitDraftUrl('https://cowork.example/api/v1/projects/acme/files-raw/a.html')).toBeNull();
+    expect(splitDraftUrl('/api/v1/artifacts/drafts/proj-1/id/index.html')).toBeNull();
+  });
+});
+
 describe('injectDraftBaseHref', () => {
   it('inserts a base tag pointing at the draft directory, inside <head>', () => {
     const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';
