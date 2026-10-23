@@ -15,6 +15,7 @@ export interface UnavailableModelFields {
   title?: string;
 }
 
+export const MODEL_ROUTER_ID: 'model-router';
 export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
 

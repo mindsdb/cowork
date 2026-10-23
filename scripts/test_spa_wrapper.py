@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 META_NAME = "cowork-provider-tests-enabled"
+PICKER_META_NAME = "cowork-model-picker"
 
 
 class SpaWrapperTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class SpaWrapperTests(unittest.TestCase):
         (self.spa / "assets/main.js").write_bytes(b"console.log('bundle');\n")
         (self.spa / "brand/brand.js").write_bytes(b"window.COWORK_DEPLOYMENT_BRAND = {};\n")
 
-    def client(self, value=None):
+    def client(self, value=None, model_picker=None):
         server = ModuleType("cowork.server")
         server.app = FastAPI()
 
@@ -49,6 +50,8 @@ class SpaWrapperTests(unittest.TestCase):
         environment = {"COWORK_SPA_DIR": str(self.spa)}
         if value is not None:
             environment["COWORK_PROVIDER_TESTS_ENABLED"] = value
+        if model_picker is not None:
+            environment["COWORK_MODEL_PICKER"] = model_picker
         with patch.dict(os.environ, environment, clear=True), patch.dict(
             sys.modules, {"cowork": ModuleType("cowork"), "cowork.server": server}
         ):
@@ -148,6 +151,40 @@ class SpaWrapperTests(unittest.TestCase):
                 self.assertEqual(
                     str(error.exception), "The SPA shell needs one <head> and no provider-testing metadata."
                 )
+
+    def test_model_picker_off_or_unset_leaves_the_shell_as_today(self):
+        for model_picker in (None, "off"):
+            with self.subTest(model_picker=model_picker), self.client("false", model_picker) as client:
+                response = client.get("/")
+                self.assert_shell(response, "false")
+                self.assertNotIn(PICKER_META_NAME, response.text)
+
+    def test_model_picker_mode_reaches_every_shell_url_before_the_renderer(self):
+        for model_picker in ("default", "open"):
+            with self.client("false", model_picker) as client:
+                for path in ("/", "/c/conversation-id", "/index-web.html"):
+                    with self.subTest(model_picker=model_picker, path=path):
+                        response = client.get(path)
+                        tests_meta = f'<meta name="{META_NAME}" content="false">'
+                        picker_meta = f'<meta name="{PICKER_META_NAME}" content="{model_picker}">'
+                        self.assertEqual(response.text.count(PICKER_META_NAME), 1)
+                        self.assertLess(response.text.index(picker_meta), response.text.index("<script"))
+                        self.assertEqual(
+                            response.text.replace(f"\n    {tests_meta}\n    {picker_meta}", "", 1), self.html
+                        )
+
+    def test_malformed_model_picker_values_fail_without_echoing_them(self):
+        for model_picker in ("", "DEFAULT", "Open", "on", "true", " open ", "locked"):
+            with self.subTest(model_picker=model_picker), self.assertRaises(ValueError) as error:
+                self.client("false", model_picker)
+            self.assertEqual(str(error.exception), "COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
+
+    def test_a_template_that_already_names_the_model_picker_is_refused(self):
+        html = self.html.replace("<head>", f"<head><meta name='{PICKER_META_NAME}' content='open'>")
+        (self.spa / "index-web.html").write_text(html, encoding="utf-8")
+        with self.client("false", "default") as client, self.assertRaises(ValueError) as error:
+            client.get("/")
+        self.assertEqual(str(error.exception), "The SPA shell needs no model-picker metadata.")
 
 
 if __name__ == "__main__":
