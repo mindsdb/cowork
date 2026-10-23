@@ -40,7 +40,7 @@ describe('authenticated private file resources', () => {
 
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).resolves.toBe(blob);
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).rejects.toThrow('426');
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', {});
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
   });
 
   it('carries the HTTP status on a failure, so a caller can tell a missing file apart', async () => {
@@ -76,7 +76,7 @@ describe('authenticated private file resources', () => {
 
     await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'report.bin')).resolves.toBe(true);
 
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', {});
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
     expect(click).toHaveBeenCalledOnce();
     expect(click.mock.instances[0]).toMatchObject({
       href: 'blob:private-file',
