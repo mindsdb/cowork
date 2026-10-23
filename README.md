@@ -1531,7 +1531,7 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 
 | Layer     | Tech                                   |
 | --------- | -------------------------------------- |
-| Framework | Electron 34                            |
+| Framework | Electron 45                            |
 | Renderer  | React 19 + TypeScript + Vite 6         |
 | Backend   | FastAPI (Python, [`cowork-server`](https://pypi.org/project/cowork-server/) via PyPI) |
 | Markdown  | marked 17                              |
