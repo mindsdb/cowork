@@ -141,7 +141,7 @@ export function duplicateDisclaimerTitle(app) {
  */
 export function duplicateDisclaimer(app) {
   return `${ownerLabel(app?.ownerEmail)} shared this app. Your copy runs with your own connections `
-    + 'and can read whatever they can read. Review it before you launch it.';
+    + 'and can use whatever they can use. Review it before you launch it.';
 }
 
 /**
