@@ -725,7 +725,6 @@ export function ArtifactViewer({
   // server, or in web, the path is on the server box, so we fall back to
   // the HTTP serve/published URL.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
-  const canOpenInBrowser = isPublished || canOpenLocalFile || !!artifact?.serveUrl;
 
   // Open the artifact's containing folder in the OS file manager.
   const onOpenFolder = async () => {
@@ -736,15 +735,6 @@ export function ArtifactViewer({
     } catch (e) {
       setErr(e?.message || 'Could not open folder.');
     }
-  };
-
-  // Open the published URL in the default browser. No raw window.open
-  // fallback: host.openExternal is what restricts the agent-writable URL to
-  // http(s)/mailto, so a failure is reported instead of bypassing it.
-  const onOpenPublished = async () => {
-    if (!pub.publishedUrl) return;
-    try { await host.openExternal(pub.publishedUrl); }
-    catch (e) { setErr(e?.message || 'Open failed'); }
   };
 
   // Open the local file / served preview (HTML → default browser, other
@@ -784,13 +774,10 @@ export function ArtifactViewer({
     }
   };
 
-  // The link-pill arrow: published → open the public URL; otherwise → open
-  // the local/served preview.
-  const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
-
   // "Open this artifact in a browser tab", for the control beside the mode
-  // tabs. It exists separately from the ⋯ menu's "Open in browser" because
-  // that menu is hidden in org mode, where this affordance still belongs.
+  // tabs, which org mode keeps too. No raw window.open fallback:
+  // host.openExternal is what restricts the agent-writable URL to
+  // http(s)/mailto, so a failure is reported instead of bypassing it.
   //
   // Preference order: the published URL is what the artifact *is* and what a
   // person would share; the served URL is desktop's local HTTP view; the
@@ -813,8 +800,7 @@ export function ArtifactViewer({
   // into this window's own session only (`app.ts` webRequest). shell.openExternal
   // launches a separate browser process, which carries no such header and gets
   // 401. The local file needs no credential, so hand it to the OS instead —
-  // the same route the ⋯ menu's "Open in browser" takes, which is exactly why
-  // that control kept working while this one did not. `onOpenOS` already owns
+  // the same route the header's Open button takes. `onOpenOS` already owns
   // the fullstack-backend and missing-path cases, so delegate rather than
   // restate them.
   //
@@ -905,7 +891,6 @@ export function ArtifactViewer({
     disabledReason,
   };
   const artifactActions = {
-    canOpenInBrowser,
     canOpenInBrowserTab: !!browserTabUrl,
     canOpenLocalFile,
     isBackendArtifact,
@@ -913,7 +898,6 @@ export function ArtifactViewer({
     artifact,
     deleteBusy,
     onReload,
-    onOpenInBrowser,
     onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
