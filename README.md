@@ -116,6 +116,8 @@ parent/
 
 ```bash
 npm install
+# Electron no longer downloads its binary on install; fetch it once.
+npx install-electron --no
 
 # Build everything (main + renderer)
 npm run build
