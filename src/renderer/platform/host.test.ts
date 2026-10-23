@@ -20,11 +20,36 @@ const keycloakMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/keycloak', () => keycloakMock);
 
+// Wraps the real diagnostic so tests can assert which events host.ts emitted.
+const diagnosticSpy = vi.hoisted(() => vi.fn());
+vi.mock('../../shared/diagnostics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/diagnostics')>();
+  return {
+    ...actual,
+    diagnostic: (...args: Parameters<typeof actual.diagnostic>) => {
+      diagnosticSpy(...args);
+      actual.diagnostic(...args);
+    },
+  };
+});
+
+// Define only userAgentData: spreading navigator would drop its prototype getters.
+// `undefined` models a Chromium without the API.
+const withUaPlatformVersion = (platformVersion: unknown) => {
+  Object.defineProperty(window.navigator, 'userAgentData', {
+    configurable: true,
+    value: platformVersion === undefined
+      ? undefined
+      : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
+  });
+};
+
 function setUrl(url: string) {
   (window as unknown as { happyDOM: { setURL(u: string): void } }).happyDOM.setURL(url);
 }
 
 beforeEach(() => {
+  diagnosticSpy.mockClear();
   delete (window as unknown as Record<string, unknown>).antontron;
   keycloakMock.listWebOrganizations.mockReset();
   keycloakMock.switchWebOrganization.mockReset();
@@ -36,6 +61,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
   vi.unstubAllGlobals();
   setUrl('http://localhost:3000/');
 });
@@ -1008,19 +1034,6 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
   const manifest = (shellVersion: unknown) =>
     vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
 
-  // Define only userAgentData: spreading navigator would drop its prototype getters.
-  // `undefined` models a Chromium without the API.
-  const withUaPlatformVersion = (platformVersion: unknown) => {
-    Object.defineProperty(window.navigator, 'userAgentData', {
-      configurable: true,
-      value: platformVersion === undefined
-        ? undefined
-        : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
-    });
-  };
-  afterEach(() => {
-    delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
-  });
 
   it('caps a macOS 12 prod shell that is not the newest', async () => {
     vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
@@ -1171,17 +1184,6 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
 });
 
 describe('shell update offers on macOS below the shell minimum', () => {
-  const withUaPlatformVersion = (platformVersion: unknown) => {
-    Object.defineProperty(window.navigator, 'userAgentData', {
-      configurable: true,
-      value: platformVersion === undefined
-        ? undefined
-        : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
-    });
-  };
-  afterEach(() => {
-    delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
-  });
 
   const shellReply = {
     ok: true,
@@ -1309,14 +1311,17 @@ describe('shell update offers on macOS below the shell minimum', () => {
       expect(seen).toEqual(['a', 'b']);
     });
 
-    it('does not forward a pending shell-available push after unsubscribe (macOS 15)', async () => {
-      const { host, listeners } = await setup('darwin', '15.1.0');
-      const cb = vi.fn();
-      const off = host.onUpdateStatus(cb);
-      listeners.status({ phase: 'shell-available' });
-      off();
+    it('keeps delivering auto-update snapshots after a callback throws', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const seen: string[] = [];
+      host.onShellAutoUpdate((s) => {
+        seen.push(`${s.targetVersion}`);
+        if (s.targetVersion === 'a') throw new Error('boom');
+      });
+      listeners.auto({ ...autoFailed, targetVersion: 'a' });
+      listeners.auto({ ...autoFailed, targetVersion: 'b' });
       await flush();
-      expect(cb).not.toHaveBeenCalled();
+      expect(seen).toEqual(['a', 'b']);
     });
   });
 
@@ -1339,6 +1344,39 @@ describe('shell update offers on macOS below the shell minimum', () => {
       await flush();
       expect(auto).toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed' }));
     });
+
+    it('passes the auto-update check and download snapshots through', async () => {
+      const { host } = await setup('darwin', '15.1.0');
+      await expect(host.checkShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+      await expect(host.downloadShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+
+    it('survives a throwing status callback and still delivers the next push', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      const seen: string[] = [];
+      host.onUpdateStatus((status) => {
+        seen.push(status.version ?? '');
+        if (status.version === 'a') throw new Error('boom');
+      });
+      listeners.status({ phase: 'shell-available', version: 'a' });
+      listeners.status({ phase: 'shell-available', version: 'b' });
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+      expect(diagnosticSpy).toHaveBeenCalledWith(
+        'renderer.platform.host', 'WARNING', 'host_update_status_callback_failed',
+        '[host] an update status callback threw', expect.any(Error),
+      );
+    });
+
+    it('does not forward a pending shell-available push after unsubscribe', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      const cb = vi.fn();
+      const off = host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      off();
+      await flush();
+      expect(cb).not.toHaveBeenCalled();
+    });
   });
 
   describe('Linux', () => {
@@ -1356,8 +1394,15 @@ describe('shell update offers on macOS below the shell minimum', () => {
   });
 
   describe('macOS with an unreadable version', () => {
-    it('does not block offers', async () => {
+    it('does not block offers, and says so once', async () => {
       const { host, listeners } = await setup('darwin', undefined);
+      await host.getShellUpdate();
+      await host.checkForUpdates();
+      expect(diagnosticSpy.mock.calls.filter((c) => c[2] === 'host_macos_version_unreadable')).toHaveLength(1);
+      expect(diagnosticSpy).toHaveBeenCalledWith(
+        'renderer.platform.host', 'WARNING', 'host_macos_version_unreadable',
+        '[host] could not read the macOS version; shell offers stay visible',
+      );
       await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
       await expect(host.checkForUpdates()).resolves.toMatchObject({ updateAvailable: true, shellUpdateAvailable: true });
       const cb = vi.fn();

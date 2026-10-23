@@ -655,7 +655,12 @@ export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
         return;
       }
       void shellUpdatesBlocked().then((blocked) => {
-        if (active && !blocked) cb(status);
+        if (!active || blocked) return;
+        try {
+          cb(status);
+        } catch (error) {
+          diagnostic("renderer.platform.host", "WARNING", "host_update_status_callback_failed", '[host] an update status callback threw', error);
+        }
       });
     });
     return () => {
@@ -935,7 +940,12 @@ export function onShellAutoUpdate(cb: (snapshot: ShellAutoUpdateSnapshot) => voi
     const unsubscribe = bridge.onShellAutoUpdate((snapshot: ShellAutoUpdateSnapshot) => {
       queue = queue.then(async () => {
         const blocked = await shellUpdatesBlocked();
-        if (active) cb(idleWhenBlocked(snapshot, blocked));
+        if (!active) return;
+        try {
+          cb(idleWhenBlocked(snapshot, blocked));
+        } catch (error) {
+          diagnostic("renderer.platform.host", "WARNING", "host_shell_auto_update_callback_failed", '[host] a shell auto-update callback threw', error);
+        }
       });
     });
     return () => {
