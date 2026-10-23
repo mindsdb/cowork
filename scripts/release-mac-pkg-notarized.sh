@@ -146,6 +146,9 @@ productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
 # a literal "n".
 MAC_MINIMUM_MACOS="13.0"
 sed -i '' "s|<installer-gui-script[^>]*>|&<title>${PRODUCT_NAME}</title><allowed-os-versions><os-version min=\"${MAC_MINIMUM_MACOS}\"/></allowed-os-versions>|" "$DIST_XML"
+echo "==> distribution.xml"
+cat "$DIST_XML"
+xmllint --noout "$DIST_XML"
 
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
