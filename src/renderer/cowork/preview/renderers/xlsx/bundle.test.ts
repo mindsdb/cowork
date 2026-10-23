@@ -1,29 +1,23 @@
 /*
  * Builds the xlsx renderer into one IIFE with Vite's library build and its
- * build.config.mjs plugins, and checks the bundle against the `bundle` list in
- * code-checks.yaml. It builds twice, minified and not, so neither a comment nor
- * a minifier's rewrite hides a banned name.
+ * build.config.mjs plugins, minified and not, and checks it is one chunk that
+ * carries the vendored SheetJS. generatedBundles.test.ts checks the bundle
+ * that ships against the shared ban list.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { load } from 'js-yaml';
 import { build } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { RendererBuildConfig } from '../../hooks';
-
-interface CodeCheck { name: string; pattern: string; flags?: string; matches?: string[]; skips?: string[] }
-
-interface CodeChecks { bundle: CodeCheck[]; source: CodeCheck[] }
 
 interface Bundle { chunks: string[]; assets: string[] }
 
 interface TransformPlugin { transform(code: string, id: string): { code: string } | null }
 
 const REPO_ROOT = join(__dirname, '../../../../../..');
-const CHECKS = (load(readFileSync(join(__dirname, 'code-checks.yaml'), 'utf8')) as CodeChecks).bundle;
 
 /* A computed specifier, because tsc never checks build.config.mjs. */
 async function buildConfig(): Promise<RendererBuildConfig> {
@@ -65,18 +59,6 @@ describe.each([true, false])('the xlsx preview bundle (minify: %s)', (minify) =>
 
   it('carries the vendored SheetJS 0.20.3 inside it', () => {
     expect(output.chunks[0]).toMatch(/version\s*=\s*['"`]0\.20\.3['"`]/);
-  });
-
-  it.each(CHECKS)('holds no $name', ({ pattern, flags }) => {
-    expect(output.chunks[0]).not.toMatch(new RegExp(pattern, flags));
-  });
-});
-
-describe('the bundle checks in code-checks.yaml', () => {
-  it.each(CHECKS.filter(({ matches, skips }) => matches || skips))('$name matches its examples and skips its non-examples', ({ pattern, flags, matches, skips }) => {
-    const check = new RegExp(pattern, flags);
-    expect((matches ?? []).filter((text) => !check.test(text))).toEqual([]);
-    expect((skips ?? []).filter((text) => check.test(text))).toEqual([]);
   });
 });
 

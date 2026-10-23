@@ -1,8 +1,9 @@
 /*
  * Checks the slide preview's code and the repository's dependencies against
  * code-checks.yaml. The bundle half builds render.ts into one IIFE, the way
- * the preview bundle generator builds each type, twice, minified and not, so
- * neither a comment nor a minifier's rewrite hides a banned name. The source
+ * the preview bundle generator builds each type, minified and not, and checks
+ * it is one chunk that holds the renderer; generatedBundles.test.ts checks the
+ * bundle that ships against the shared ban list. The source
  * half reads each renderer file. The package half reads package.json and
  * package-lock.json.
  */
@@ -24,7 +25,6 @@ interface CodeCheck {
 }
 
 interface CodeChecks {
-  bundle: CodeCheck[];
   source: CodeCheck[];
   packages: CodeCheck[];
 }
@@ -94,10 +94,6 @@ describe.each([true, false])('the pptx preview bundle (minify: %s)', (minify) =>
     expect(output.chunks).toHaveLength(1);
     expect(output.assets).toEqual([]);
     expect(output.chunks[0]).toContain(PREVIEW_LABEL);
-  });
-
-  it.each(CHECKS.bundle)('holds no $name', ({ pattern, flags }) => {
-    expect(output.chunks[0]).not.toMatch(new RegExp(pattern, flags));
   });
 });
 
