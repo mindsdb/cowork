@@ -1,11 +1,11 @@
 import { diagnostic } from '../../shared/diagnostics';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { createStreamFlusher } from './lib/streamFlush';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
@@ -2349,6 +2349,7 @@ function AppCore() {
         }] };
       }));
     };
+    const streamFlusher = createStreamFlusher(flushStreaming, () => isCurrentStream(taskId, ctrl));
 
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
@@ -2366,12 +2367,13 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlusher.event(ev);
       },
       onDone() {
         const superseded = !isCurrentStream(taskId, ctrl);
         releaseStream(taskId, ctrl);
         if (superseded) return;
+        streamFlusher.settle();
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(taskId);
         markInFlightDone(taskId);
@@ -2448,6 +2450,7 @@ function AppCore() {
         // aborted run's question is dead too and leaving it behind would hijack
         // the composer.
         if (superseded) return;
+        streamFlusher.settle();
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
@@ -3612,6 +3615,7 @@ function AppCore() {
         }] };
       }));
     };
+    const streamFlusher = createStreamFlusher(flushStreamingMessage, () => isCurrentStream(resolvedId, sessionCtrl));
 
     // Phase 2 — runs after ChatView has mounted with the empty task.
     // Append the user message + thinking placeholder, then start the
@@ -3673,7 +3677,7 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreamingMessage());
+        streamFlusher.event(ev);
       },
       onProgress(event, sid) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
@@ -3691,6 +3695,7 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId, sessionCtrl);
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
+        streamFlusher.settle();
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, taskId, sid);
         const finalId = sid || resolvedId;
@@ -3772,6 +3777,7 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
+        streamFlusher.settle();
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
@@ -4120,6 +4126,7 @@ function AppCore() {
         }] };
       }));
     };
+    const streamFlusher = createStreamFlusher(flushStreaming, () => isCurrentStream(resolvedId || id, ctrl));
 
     // If a connect form is active for this conversation, append a
      // redacted snapshot of its state to the *sent* text so the agent
@@ -4156,12 +4163,13 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || id, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlusher.event(ev);
       },
       onDone() {
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
+        streamFlusher.settle();
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         // Turn done → conversation persisted; drop the optimistic flag (set if
@@ -4234,6 +4242,7 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
+        streamFlusher.settle();
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
@@ -4422,6 +4431,7 @@ function AppCore() {
         }] };
       }));
     };
+    const streamFlusher = createStreamFlusher(flushStreaming, () => isCurrentStream(resolvedId || id, vaultCtrl));
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
@@ -4489,7 +4499,7 @@ function AppCore() {
             }
           }
         }
-        flushSync(() => flushStreaming());
+        streamFlusher.event(ev);
       },
       onChunk(chunk, sid) {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
@@ -4510,6 +4520,7 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
+        streamFlusher.settle();
         if (sid) adoptServerId(sid);
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
@@ -4579,6 +4590,7 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
+        streamFlusher.settle();
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);

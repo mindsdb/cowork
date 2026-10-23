@@ -528,6 +528,25 @@ export function TextBlock({
     });
     return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
   }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
+  /* MarkdownContent is memoized, and callers pass fresh openers every render.
+     Hand it openers that keep their identity and call the latest one at click
+     time, so a settled answer skips re-rendering while another one streams. */
+  const openStepRef = useRef(onOpenStep);
+  const viewFileRef = useRef(onViewFile);
+  useEffect(() => {
+    openStepRef.current = onOpenStep;
+    viewFileRef.current = onViewFile;
+  });
+  const hasOpenStep = !!onOpenStep;
+  const hasViewFile = !!onViewFile;
+  const openStep = useMemo(
+    () => (hasOpenStep ? (stepId) => openStepRef.current?.(stepId) : null),
+    [hasOpenStep],
+  );
+  const viewFile = useMemo(
+    () => (hasViewFile ? (source) => viewFileRef.current?.(source) : null),
+    [hasViewFile],
+  );
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
@@ -539,8 +558,8 @@ export function TextBlock({
       conversationId={conversationId}
       isAssistant
       figureSources={figures}
-      onOpenFigureStep={onOpenStep}
-      onViewFigureFile={onViewFile}
+      onOpenFigureStep={openStep}
+      onViewFigureFile={viewFile}
     />
   );
 }
