@@ -157,7 +157,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
         <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
         {sharedWith ? (
           <div id={DONE_MESSAGE_ID} className="s-body">
-            {`Shared with ${sharedWith}. It shows under "${SHARED_WITH_YOU_LABEL}" with your email, where they can duplicate it into their own project.`}
+            {`Shared with ${sharedWith}. They find it under "${SHARED_WITH_YOU_LABEL}" on their Live Artifacts page, with your email, and can duplicate it into a project of their own.`}
           </div>
         ) : (
           <form

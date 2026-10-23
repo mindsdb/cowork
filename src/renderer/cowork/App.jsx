@@ -6052,6 +6052,7 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
+            onRefreshArtifacts={reloadArtifacts}
             loading={!artifactsLoaded}
             projects={projects}
             agentLabel={agentLabel}

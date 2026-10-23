@@ -60,6 +60,8 @@ export const SHARE_WITH_ONE = 'one';
 export const SHARE_WITH_EVERYONE = 'everyone';
 export const SHARE_WITH_EVERYONE_LABEL = 'Everyone on this stack';
 export const SHARED_WITH_YOU_LABEL = 'Shared with you';
+// Live Artifacts spans every project, so a copy made there goes to General.
+export const COPY_GOES_TO_GENERAL = 'Your copy goes to your General project.';
 
 /**
  * Whether the card offers "Share with…": a full-stack app the viewer owns,

@@ -4,7 +4,8 @@
  * so a project's long artifact list never scrolls it out of view. Rendered by
  * WorkingFolderBox only on a deployment that runs live apps (lib/liveApps.ts),
  * and only with a project to put the copy in. Draws nothing while nobody has
- * shared anything.
+ * shared anything. The Live Artifacts page lists the same apps through
+ * `useSharedLiveApps` (components/artifacts/SharedLiveAppsSection.jsx).
  *
  * The list is the same in every project, and others change it at any time, so
  * it re-reads once a minute and whenever `refreshKey` changes (the chat rail
@@ -29,7 +30,14 @@ import {
 
 const REFRESH_MS = 60_000;
 
-export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
+/**
+ * The shared list, its re-reads and the Duplicate flow, for any surface that
+ * lists it. `destination`, when given, follows the disclaimer and says where
+ * the copy goes. Returns the list, a load error to show, `choose(app)` to open
+ * the disclaimer, and the disclaimer itself, which the caller renders outside
+ * whatever hides with an empty list, so a refusal that empties it still shows.
+ */
+export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, destination = '' }) {
   const [apps, setApps] = useState([]);
   const [loadError, setLoadError] = useState('');
   // The app whose disclaimer is open, and the copy request it confirms.
@@ -104,12 +112,16 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
     }
   };
 
-  // Outside the card, so a refusal that empties the list still shows its sentence.
+  const choose = (app) => {
+    setDuplicateError('');
+    setPending(app);
+  };
+
   const disclaimer = (
     <ConfirmModal
       open={!!pending}
       title={duplicateDisclaimerTitle(pending)}
-      message={duplicateDisclaimer(pending)}
+      message={destination ? `${duplicateDisclaimer(pending)} ${destination}` : duplicateDisclaimer(pending)}
       confirmLabel="Duplicate"
       cancelLabel="Cancel"
       busy={busy}
@@ -119,6 +131,12 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
       onConfirm={confirmDuplicate}
     />
   );
+
+  return { apps, loadError, choose, disclaimer };
+}
+
+export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
+  const { apps, loadError, choose, disclaimer } = useSharedLiveApps({ projectId, refreshKey, onDuplicated });
 
   // One tree shape whether or not the card shows, so the disclaimer never remounts.
   const showCard = apps.length > 0 || Boolean(loadError);
@@ -144,7 +162,7 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
                     size="xs"
                     variant="tinted"
                     aria-label={`Duplicate ${app.name}`}
-                    onClick={() => { setDuplicateError(''); setPending(app); }}
+                    onClick={() => choose(app)}
                   >
                     Duplicate
                   </Button>
