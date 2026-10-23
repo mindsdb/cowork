@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
+import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -92,6 +93,22 @@ const deploymentBrand = {
   },
 };
 
+// A web build with the platform UI on is the hosted build, whose preview frame
+// loads signed draft links, so its page's CSP must let a frame load the draft
+// hosts (shared/draft-link-origins.ts). They go in at build time: one hosted
+// build serves every environment, and the self-hosted and white-label pages
+// built from the same template must not name them. 'post' runs the function's
+// single-CSP checks on the page as shipped; the brand plugin above, also
+// 'post', is never in the same build, so the two need no order between them.
+const draftLinkFrameSources = {
+  name: 'cowork-draft-link-frame-sources',
+  transformIndexHtml: {
+    order: 'post' as const,
+    handler: (html: string, ctx: { filename: string }) =>
+      path.basename(ctx.filename) === WEB_ENTRY ? withDraftLinkFrameSources(html) : html,
+  },
+};
+
 // The build's platform switch: on for desktop, and for web only when
 // VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
 function platformUiFor(mode: string): boolean {
@@ -113,6 +130,7 @@ export default defineConfig(({ mode }) => ({
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback] : []),
     ...(platformUiFor(mode) ? [] : [deploymentBrand]),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources] : []),
   ],
   customLogger: logger,
   define: {
