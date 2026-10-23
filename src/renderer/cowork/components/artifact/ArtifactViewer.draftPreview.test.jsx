@@ -151,6 +151,7 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     const frame = await screen.findByTitle('Launch brief');
     expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(
       'https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/img/logo.png',
+      { signal: expect.any(AbortSignal) },
     );
     expect(frame.getAttribute('srcdoc')).toContain('src="data:image/png;base64,');
   });

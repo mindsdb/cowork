@@ -12,7 +12,11 @@
  *     inherits it.
  */
 
-import { DRAFT_FRAGMENT_GUARD_SCRIPT } from '../components/artifact/artifactPreviewUtils';
+import {
+  DRAFT_FRAGMENT_GUARD_SCRIPT,
+  draftDirectoryUrl,
+  injectDraftBaseHref,
+} from '../components/artifact/artifactPreviewUtils';
 import { fetchAuthenticatedResponse } from './authenticatedResource';
 
 // Big enough for a report's images, small enough to keep `srcdoc` sane.
@@ -22,6 +26,8 @@ const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 const INLINE_TOTAL_MAX_CHARS = 50 * 1024 * 1024;
 // Fetches in flight at once, so the budget is seen before most downloads start.
 const MAX_PARALLEL_READS = 6;
+// A stalled asset is given up on, so it can't hold the whole preview back.
+const READ_TIMEOUT_MS = 30 * 1000;
 
 // Not `@import url(...)`: the inherited CSP blocks a `data:` stylesheet anyway.
 const CSS_URL = /(?<!@import\s*)url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
@@ -32,17 +38,19 @@ const isRelative = (ref) => !!ref?.trim() && !/^([a-z][a-z0-9+.-]*:|\/|#|\?)/i.t
 
 // `ref` resolved against `fromPath`, as a project-relative path. The base is
 // encoded so a `#`, `?` or `%` in a folder or file name stays part of the path.
-// A segment with a bare `%` (`growth_100%.png`) can't be decoded, so it alone
-// stays literal.
+// A bare `%` (`growth_100%.png`) is escaped before decoding, so the rest of
+// the segment still decodes; one that still can't be decoded stays literal.
+const decodeSegment = (seg) => {
+  try {
+    return decodeURIComponent(seg.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+  } catch {
+    return seg;
+  }
+};
+
 const resolvePath = (ref, fromPath) => {
   const base = `file:///${fromPath.split('/').map(encodeURIComponent).join('/')}`;
-  return new URL(ref.trim(), base).pathname.slice(1).split('/').map((seg) => {
-    try {
-      return decodeURIComponent(seg);
-    } catch {
-      return seg;
-    }
-  }).join('/');
+  return new URL(ref.trim(), base).pathname.slice(1).split('/').map(decodeSegment).join('/');
 };
 
 const toDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -59,8 +67,8 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
 /**
  * @param {string} html the file's markup
  * @param {string} filePath its project-relative path, to resolve refs against
- * @param {(path: string) => Promise<Response>} fetchFile reads a project file,
- *   its body unread
+ * @param {(path: string, signal: AbortSignal) => Promise<Response>} fetchFile
+ *   reads a file, its body unread
  * @param {{ baseUrl?: string, maxInlineChars?: number, signal?: AbortSignal }} [options]
  *   `baseUrl` is the file's absolute URL, to base anything left un-inlined on
  *   its folder; `signal` stops reads that haven't started
@@ -121,7 +129,11 @@ export async function inlineHtmlAssets(
         if (signal?.aborted) throw new Error('Preview closed');
         if (budget <= 0) throw new Error('Inline budget spent');
         const tooLarge = new Error(`${path} is too large to inline`);
-        const response = await fetchFile(path);
+        const readSignal = AbortSignal.any([
+          AbortSignal.timeout(READ_TIMEOUT_MS),
+          ...(signal ? [signal] : []),
+        ]);
+        const response = await fetchFile(path, readSignal);
         // Refuse on the header, before the body downloads, as readInlineText does.
         const length = Number(response.headers?.get('Content-Length'));
         if (length > ASSET_MAX_BYTES || length > budget) {
@@ -159,6 +171,7 @@ export async function inlineHtmlAssets(
     doc.body.append(script);
   }
 
+  let inlinedAny = false;
   // Stylesheets and scripts first, so images can't spend the budget the page's
   // styling and code need.
   const jobs = [];
@@ -181,6 +194,7 @@ export async function inlineHtmlAssets(
       // A literal `</style` would end the element early.
       style.textContent = css.replace(/<\/(style)/gi, '<\\/$1');
       link.replaceWith(style);
+      inlinedAny = true;
     })());
   }
   for (const script of doc.querySelectorAll('script[src]')) {
@@ -192,6 +206,7 @@ export async function inlineHtmlAssets(
       // `</script` would end the element early, and `<!--` then `<script` would
       // stop the real end tag ending it. `\x21` is `!` in both strings and regexes.
       script.textContent = js.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\x21--');
+      inlinedAny = true;
     })());
   }
   await Promise.allSettled(jobs);
@@ -206,14 +221,20 @@ export async function inlineHtmlAssets(
       // entries would go un-authed.
       img.removeAttribute('srcset');
       for (const source of img.closest('picture')?.querySelectorAll('source') ?? []) source.remove();
+      inlinedAny = true;
     })());
   }
   await Promise.allSettled(imageJobs);
 
-  // The base and fragment guard artifact drafts use, added through the DOM so
-  // text inside an inlined file can't pass for a page's own <base>.
-  let baseDir = '';
-  try { baseDir = baseUrl ? new URL('.', baseUrl).href : ''; } catch { /* relative: no base */ }
+  // Nothing inlined: hand back the page as it came, base and guard spliced in
+  // as text, so the line numbers the preview's error reports carry still hold.
+  // Re-serializing below drops whitespace and comments ahead of <head>.
+  if (!inlinedAny) return baseUrl ? injectDraftBaseHref(html, baseUrl) : html;
+
+  // Something inlined: line numbers shift past it whatever we do, so the base
+  // and guard go in through the DOM, where text inside an inlined file can't
+  // pass for a page's own <base>.
+  const baseDir = baseUrl ? draftDirectoryUrl(baseUrl) : '';
   // Only a base with an href decides resolution; `<base target>` alone doesn't.
   if (baseDir && !doc.querySelector('base[href]')) {
     const base = doc.createElement('base');
@@ -237,7 +258,8 @@ export async function inlineHtmlAssets(
  */
 export function inlineHtmlFromApi(html, { rootUrl, filePath, signal }) {
   const urlFor = (path) => rootUrl + path.split('/').map(encodeURIComponent).join('/');
-  return inlineHtmlAssets(html, filePath, (path) => fetchAuthenticatedResponse(urlFor(path)), {
+  const fetchFile = (path, readSignal) => fetchAuthenticatedResponse(urlFor(path), { signal: readSignal });
+  return inlineHtmlAssets(html, filePath, fetchFile, {
     baseUrl: urlFor(filePath),
     signal,
   });

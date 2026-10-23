@@ -118,8 +118,10 @@ export function withArtifactCommentFlag(url) {
   return appendPreviewParam(url, '__antonComments', '1');
 }
 
-const HAS_BASE_TAG_RE = /<base[\s/>]/i;
+// Only a base with an href decides resolution; `<base target>` alone doesn't.
+const HAS_BASE_TAG_RE = /<base\s[^>]*\bhref\s*=/i;
 const HEAD_OPEN_RE = /<head([^>]*)>/i;
+const LEADING_DOCTYPE_RE = /^(\s*<!doctype[^>]*>)/i;
 
 function escapeHtmlAttribute(value) {
   return String(value)
@@ -132,7 +134,7 @@ function escapeHtmlAttribute(value) {
 // fragment — so relative asset/link references inside HTML fetched via
 // `authFetch` resolve the same way they would if the iframe had navigated to
 // `fetchUrl` directly through `src`.
-function draftDirectoryUrl(fetchUrl) {
+export function draftDirectoryUrl(fetchUrl) {
   try {
     const parsed = new URL(fetchUrl);
     parsed.search = '';
@@ -144,20 +146,17 @@ function draftDirectoryUrl(fetchUrl) {
   }
 }
 
-// The drafts route serves an artifact's folder at `.../drafts/<project>/<id>/`.
-// Splits a draft URL into that folder's URL and the file's path inside it, or
-// null when the URL isn't a drafts URL.
-export function splitDraftUrl(url) {
+// The draft's file name, decoded; a bare `%` in it stays literal.
+export function draftFileName(fetchUrl) {
   try {
-    const parsed = new URL(url);
-    const match = /^(.*\/artifacts\/drafts\/[^/]+\/[^/]+\/)(.+)$/.exec(parsed.pathname);
-    if (!match) return null;
-    return {
-      rootUrl: `${parsed.origin}${match[1]}`,
-      filePath: match[2].split('/').map(decodeURIComponent).join('/'),
-    };
+    const name = new URL(fetchUrl).pathname.split('/').pop();
+    try {
+      return decodeURIComponent(name.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+    } catch {
+      return name;
+    }
   } catch {
-    return null;
+    return '';
   }
 }
 
@@ -190,7 +189,7 @@ export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListene
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would
 // otherwise resolve against the parent app's origin instead of the draft's
-// own directory. No-op if the document already declares a `<base>` — a
+// own directory. No-op if the document already declares a `<base href>` — a
 // second one would be inert (the first `<base>` in document order wins) and
 // misleading to read.
 export function injectDraftBaseHref(html, fetchUrl) {
@@ -208,8 +207,10 @@ export function injectDraftBaseHref(html, fetchUrl) {
   // touches no storage API and cannot throw — anything added here runs
   // ahead of the server's script and must keep that same property.
   const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
-  return HEAD_OPEN_RE.test(html)
-    ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
+  if (HEAD_OPEN_RE.test(html)) return html.replace(HEAD_OPEN_RE, `<head$1>${markup}`);
+  // Never ahead of a doctype, which would drop the page into quirks mode.
+  return LEADING_DOCTYPE_RE.test(html)
+    ? html.replace(LEADING_DOCTYPE_RE, `$1${markup}`)
     : `${markup}${html}`;
 }
 

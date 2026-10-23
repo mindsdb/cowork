@@ -155,7 +155,10 @@ describe('ContextFileModal previewing a project HTML file', () => {
     const iframe = await renderHtml('reports/report.html');
 
     expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/report.html');
-    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/style.css');
+    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith(
+      '/api/v1/projects/acme/files-raw/reports/style.css',
+      { signal: expect.any(AbortSignal) },
+    );
     expect(mountProjectFilePreview).not.toHaveBeenCalled();
     expect(iframe?.getAttribute('srcdoc')).toContain('<style>p { color: green }</style>');
     expect(iframe?.hasAttribute('src')).toBe(false);

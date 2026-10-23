@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { inlineHtmlAssets } from './inlineHtmlAssets';
+const fetchAuthenticatedResponse = vi.hoisted(() => vi.fn());
+vi.mock('./authenticatedResource', () => ({ fetchAuthenticatedResponse }));
+
+import { inlineHtmlAssets, inlineHtmlFromApi } from './inlineHtmlAssets';
 
 /* A response as fetchAuthenticatedResponse hands it back: headers in, body unread. */
 const response = (blob, headers = {}) => ({
@@ -167,7 +170,7 @@ describe('inlineHtmlAssets', () => {
     ));
 
     expect(fetchFile).toHaveBeenCalledTimes(1);
-    expect(fetchFile).toHaveBeenCalledWith('reports/ok.png');
+    expect(fetchFile).toHaveBeenCalledWith('reports/ok.png', expect.any(AbortSignal));
     expect(doc.querySelector('img').getAttribute('src')).toBe('../secrets.env');
   });
 
@@ -327,7 +330,7 @@ describe('inlineHtmlAssets', () => {
     const doc = parse(await inlineHtmlAssets('<noscript><img src="big.png"></noscript>', 'page.html', fetchFile));
 
     expect(fetchFile).not.toHaveBeenCalled();
-    expect(doc.querySelector('noscript')).toBeNull();
+    expect(doc.querySelector('img')?.getAttribute('src') ?? 'big.png').toBe('big.png');
   });
 
   it('adds a base on the file folder and a fragment guard, unless the page has its own base', async () => {
@@ -375,6 +378,47 @@ describe('inlineHtmlAssets', () => {
     expect(fetchFile).not.toHaveBeenCalledWith('theme.css');
     expect(css).toContain('@import url(theme.css)');
     expect(css).toContain('url(data:image/png');
+  });
+
+  /* The preview's error reports carry line numbers; re-serializing drops the
+     whitespace and comments ahead of <head>, so an untouched page goes back as
+     it came. */
+  it('hands back a page with nothing to inline as it came, only the base spliced in', async () => {
+    const html = '<!DOCTYPE html>\n<!-- generated -->\n<html>\n<head>\n<script>boom()</script></head></html>';
+
+    const out = await inlineHtmlAssets(html, 'index.html', files({}), {
+      baseUrl: 'https://cowork.test/api/v1/artifacts/drafts/p/a/index.html',
+    });
+
+    expect(out.split('<script>boom')[0].split('\n')).toHaveLength(5);
+    expect(out).toContain('<!-- generated -->');
+    expect(out).toContain('<base href="https://cowork.test/api/v1/artifacts/drafts/p/a/">');
+  });
+
+  it('hands each read a signal that aborts with the caller', async () => {
+    const closed = new AbortController();
+    const fetchFile = vi.fn((path, readSignal) => new Promise((resolve, reject) => {
+      readSignal.addEventListener('abort', () => reject(readSignal.reason));
+      closed.abort();
+    }));
+
+    const doc = parse(await inlineHtmlAssets('<img src="a.png">', 'page.html', fetchFile, { signal: closed.signal }));
+
+    expect(fetchFile.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
+    expect(doc.querySelector('img').getAttribute('src')).toBe('a.png');
+  });
+
+  it('reads through the API route, encoding each path segment', async () => {
+    fetchAuthenticatedResponse.mockResolvedValue(response(new Blob(['PNG'], { type: 'image/png' })));
+    const root = 'https://cowork.test/api/v1/projects/acme/files-raw/';
+
+    const out = await inlineHtmlFromApi('<img src="img/50% off.png">', { rootUrl: root, filePath: 'Q3 report/page.html' });
+
+    expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(
+      `${root}Q3%20report/img/50%25%20off.png`,
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(out).toContain(`<base href="${root}Q3%20report/">`);
   });
 
   it('escapes a closing tag inside inlined script so it cannot end the element early', async () => {

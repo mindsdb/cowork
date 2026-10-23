@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  splitDraftUrl,
+  draftFileName,
   isAbsoluteArtifactPreviewUrl,
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
@@ -127,21 +127,28 @@ describe('draftNavigationIsAuthorized', () => {
  * base from that URL; srcdoc needs the same base stated explicitly or every
  * relative <script src>/<link href>/anchor in the document breaks.
  */
-describe('splitDraftUrl', () => {
-  const root = 'https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/';
-
-  it('splits a draft URL into its folder and the file path, without the query', () => {
-    expect(splitDraftUrl(`${root}static/index.html?v=3&__antonComments=1`))
-      .toEqual({ rootUrl: root, filePath: 'static/index.html' });
+describe('draftFileName', () => {
+  it('names the file, decoded, without the query', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/Q3%20report.html?v=2'))
+      .toBe('Q3 report.html');
   });
 
-  it('decodes the file path', () => {
-    expect(splitDraftUrl(`${root}Q3%20report/index.html`).filePath).toBe('Q3 report/index.html');
+  it('keeps a name with a bare % literal', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/100%.html')).toBe('100%.html');
+  });
+});
+
+describe('injectDraftBaseHref, base and doctype handling', () => {
+  const url = 'https://cowork.example/api/v1/artifacts/drafts/p/a/index.html';
+
+  it('adds the base when the page has only a <base target>', () => {
+    expect(injectDraftBaseHref('<html><head><base target="_blank"></head></html>', url))
+      .toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p/a/">');
   });
 
-  it('answers null for a URL that is not a drafts URL', () => {
-    expect(splitDraftUrl('https://cowork.example/api/v1/projects/acme/files-raw/a.html')).toBeNull();
-    expect(splitDraftUrl('/api/v1/artifacts/drafts/proj-1/id/index.html')).toBeNull();
+  it('puts the base after a doctype, never ahead of it, when there is no <head>', () => {
+    expect(injectDraftBaseHref('<!DOCTYPE html>\n<title>x</title>', url))
+      .toMatch(/^<!DOCTYPE html><base href=/);
   });
 });
 
