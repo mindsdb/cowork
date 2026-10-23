@@ -31,8 +31,11 @@ import {
   isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
+import { askAgentAbout } from '../lib/docViewContext';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
+import DocModal from '../components/doc/DocModal';
+import { docPageTarget, isDocArtifact } from '../components/doc/docArtifact';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -217,16 +220,19 @@ async function downloadWithFeedback(artifact, toastManager) {
   }
 }
 
+/*
+ * A click means "show me this artifact" in both deployments: Desktop renders
+ * the local bytes, org mode renders the authenticated draft, and a doc opens in
+ * the doc editor either way. What org mode cannot render — a fullstack app, an
+ * image — falls through to openBest and opens what collaborators see.
+ */
+const canPreviewArtifact = (artifact, orgMode) =>
+  isDocArtifact(artifact) || (orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact));
+
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
-  /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
+  const canPreview = canPreviewArtifact(artifact, orgMode);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
@@ -289,7 +295,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     // save them rather than do nothing (ENG-2044). Same rule as
     // artifactOpenTarget's 'download'.
     else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(fileToOpen(artifact));
   };
   // ↗
   const onOpenExternal = (e) => {
@@ -399,17 +405,14 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
+// The file to hand the OS for an artifact: a doc's is its page.
+const fileToOpen = (artifact) => docPageTarget(artifact) || artifact;
+
 // How a row opens.
 function useArtifactOpen(artifact, onOpenViewer) {
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
-  /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
+  const canPreview = canPreviewArtifact(artifact, orgMode);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
@@ -426,7 +429,7 @@ function useArtifactOpen(artifact, onOpenViewer) {
     // save them rather than do nothing (ENG-2044). Same rule as
     // artifactOpenTarget's 'download'.
     else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(fileToOpen(artifact));
   };
   // The row's ↗ skips the viewer: published URL, else served URL, else file.
   const openOutside = async () => {
@@ -435,7 +438,7 @@ function useArtifactOpen(artifact, onOpenViewer) {
     // authenticated draft URL still delivers the bytes as a download.
     if (url) await openUrl(url);
     else if (orgMode && canDownloadOrgDraft(artifact)) await downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(fileToOpen(artifact));
   };
   return { orgMode, toastManager, published, openBest, openOutside };
 }
@@ -666,6 +669,8 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  // "Edit with agent" in a doc opened here: `{ artifact, message, docRequest }`.
+  onEditDocWithAgent,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -1021,8 +1026,21 @@ export default function ArtifactsView({
         )}
       </CollectionState>
 
+      {/* A doc opens in the doc editor; every other artifact in the file viewer. */}
+      {viewer && isDocArtifact(viewer) && (
+        <DocModal
+          artifact={viewer}
+          onClose={() => setViewerPath(null)}
+          onAskAgent={onEditDocWithAgent ? (ask) => {
+            // Sent as the doc beside a chat sends it: the host takes it to the
+            // doc's chat (or a new one) with the doc docked there.
+            setViewerPath(null);
+            onEditDocWithAgent({ artifact: viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+          } : undefined}
+        />
+      )}
       <ArtifactViewer
-        open={!!viewer}
+        open={!!viewer && !isDocArtifact(viewer)}
         artifact={viewer}
         onClose={() => setViewerPath(null)}
         onChange={updateOne}
@@ -1119,7 +1137,7 @@ export default function ArtifactsView({
                 if (a.publishedUrl) {
                   try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
-                  openArtifactFile(a);
+                  openArtifactFile(fileToOpen(a));
                 }
               },
             });

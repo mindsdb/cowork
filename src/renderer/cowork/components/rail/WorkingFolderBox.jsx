@@ -14,6 +14,7 @@ export function WorkingFolderBox({
   maxBodyHeight = 320,
   conversationId = null,
   onAddressWithAgent,
+  onOpenDoc,
 }) {
   return (
     <RailCard title="Artifacts" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
@@ -22,6 +23,7 @@ export function WorkingFolderBox({
         isStreaming={isStreaming}
         conversationId={conversationId}
         onAddressWithAgent={onAddressWithAgent}
+        onOpenDoc={onOpenDoc}
       />
     </RailCard>
   );

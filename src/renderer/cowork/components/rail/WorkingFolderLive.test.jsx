@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, act, cleanup, within } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -45,6 +45,10 @@ vi.mock('../artifact', () => ({
     : null),
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
+// The doc editor is tested on its own; here it only has to be what opens.
+vi.mock('../doc/DocPane', () => ({
+  default: ({ title }) => <div role="region" aria-label={`Doc editor: ${title}`} />,
+}));
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
@@ -80,7 +84,7 @@ const draft = (overrides = {}) => ({
 const renderRail = async (artifact) => {
   fetchArtifacts.mockResolvedValue([artifact]);
   render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
-  return screen.findByText(/Weekly Report|Ops Console/);
+  return screen.findByText(/Weekly Report|Ops Console|Q4 Hiring Plan/);
 };
 
 beforeEach(() => {
@@ -597,5 +601,42 @@ describe('artifacts rail grouping by conversation', () => {
     await screen.findByText('Mine B');
 
     expect(screen.getByText('Mine B').closest('[role="button"]').className).toContain(THREE);
+  });
+});
+
+describe('a doc in the artifacts rail (desktop)', () => {
+  const doc = () => draft({
+    title: 'Q4 Hiring Plan', format: 'doc', ext: '.json', primary: 'doc.cdoc.json',
+    path: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.cdoc.json',
+    htmlPath: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.html',
+  });
+  beforeEach(() => { hostState.isWeb = false; hostState.isElectron = true; hostState.localApi = true; });
+
+  it('opens in the doc editor, not as its JSON in another app', async () => {
+    // Found on the packaged app: the click handed doc.cdoc.json to the OS,
+    // which opened Xcode (the Mac's .json app), and Xcode crashed.
+    const row = await renderRail(doc());
+    fireEvent.click(row);
+    expect(await screen.findByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeInTheDocument();
+    expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('opens beside the chat when the rail is in one, as from its card', async () => {
+    // Found in review: inside a chat the rail opened a doc as a modal, without
+    // "Edit with agent" or the doc riding on the chat's messages.
+    const onOpenDoc = vi.fn();
+    fetchArtifacts.mockResolvedValue([doc()]);
+    render(<WorkingFolderLive project={PROJECT} isStreaming={false} conversationId="conv-a" onOpenDoc={onOpenDoc} />);
+    fireEvent.click(await screen.findByText('Q4 Hiring Plan'));
+    expect(onOpenDoc).toHaveBeenCalledWith(expect.objectContaining({ title: 'Q4 Hiring Plan', format: 'doc' }));
+    expect(screen.queryByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeNull();
+    expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('opens outside the app as its rendered page', async () => {
+    await renderRail(doc());
+    const menu = await openKebab();
+    await act(async () => { fireEvent.click(within(menu).getByRole('menuitem', { name: 'Open in OS' })); });
+    expect(openPath).toHaveBeenCalledWith('/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.html');
   });
 });

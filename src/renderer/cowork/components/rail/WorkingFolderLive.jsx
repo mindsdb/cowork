@@ -21,6 +21,8 @@ import {
   unpublishArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { docPageTarget, isDocArtifact } from '../doc/docArtifact';
+import DocModal from '../doc/DocModal';
 import { OverflowMenu } from '../OverflowMenu';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
@@ -62,12 +64,13 @@ const EXT_ICON = {
 };
 
 function iconForRow(row) {
+  if (isDocArtifact(row)) return 'doc'; // stored as .json, but a document to the person
   const ext = String(row?.ext || '').replace(/^\./, '').toLowerCase();
   return EXT_ICON[ext] || 'doc';
 }
 
 
-export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
+export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent, onOpenDoc }) {
   const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
@@ -200,6 +203,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
   const [pendingDeleteArtifact, setPendingDeleteArtifact] = useState(null);
+  const [docArt, setDocArt] = useState(null);
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
@@ -285,7 +289,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       return;
     }
     try {
-      const result = await host.openPath(a.path);
+      // Outside the app a doc is its rendered page, not its JSON.
+      const result = await host.openPath((docPageTarget(a) || a).path);
       if (result && result.ok === false) {
         setRowError(result.reason || 'Could not open file.');
       }
@@ -328,6 +333,16 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
   const onOpenArtifact = async (artifact) => {
+    // A doc opens in the doc editor. Handed to the OS, its doc.cdoc.json
+    // opened in whatever edits .json (Xcode, on the QA Mac, which crashed).
+    // In a chat that is the pane beside it (`onOpenDoc`), as from the doc's
+    // card, with "Edit with agent" and the doc on the chat's messages;
+    // elsewhere a modal over the page.
+    if (isDocArtifact(artifact)) {
+      if (onOpenDoc) onOpenDoc(artifact);
+      else setDocArt(artifact);
+      return;
+    }
     /*
      * In org mode the viewer renders the authenticated draft instead of local
      * bytes, and an artifact whose draft it cannot render keeps the published
@@ -511,6 +526,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           if (target) onDeleteArtifact(target);
         }}
       />
+
+      {docArt && <DocModal artifact={docArt} onClose={() => setDocArt(null)} />}
 
       <ArtifactViewer
         open={!!previewArt}
