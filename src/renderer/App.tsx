@@ -16,6 +16,7 @@ import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
+import { setDraftLinks } from './lib/draftLinks';
 import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
@@ -87,6 +88,7 @@ export default function App() {
     try {
       const result = await checkServiceReady(() => host.checkConfigured());
       setOrgMode(result.orgMode ?? host.isWeb);
+      setDraftLinks(result.draftLinks);
       setServiceUnconfigured(result.state === 'unconfigured');
       setPage(result.state === 'ready' ? 'terminal' : 'auth');
     } finally {
@@ -208,6 +210,7 @@ export default function App() {
       // opposite default would render desktop-only artifact actions (Share,
       // Update, the iframe preview) in an org deployment whose /health blipped.
       setOrgMode(decision.orgMode ?? host.isWeb);
+      setDraftLinks(decision.draftLinks);
       // ENG-921: record the resolved first screen + ground-truth server-install
       // state before sign-in, so first-run breakage between download and a
       // healthy server is measurable (app_installed only fires once the server

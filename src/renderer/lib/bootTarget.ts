@@ -12,13 +12,19 @@ export interface BootDecision {
    * would render desktop-only artifact actions in an org deployment.
    */
   orgMode: boolean | null;
+  /**
+   * Whether the deployment serves draft previews through signed links. False
+   * when /health could not be read: previews then stay on srcdoc, which is
+   * what every other deployment shows.
+   */
+  draftLinks: boolean;
 }
 
 // The minimal host surface the boot decision needs. Kept as its own interface
 // so tests can pass a stub without the full platform bridge.
 export interface BootHost {
   readSettings: () => Promise<Record<string, string>>;
-  checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean }>;
+  checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean; draftLinks?: boolean }>;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   // Resolves once the boot sequence (sidecar start + boot-time update poll) has
   // settled. Awaited only on the terminal route so the loading screen stays up
@@ -87,6 +93,7 @@ export async function resolveBootTarget(
   // Unknown until /health answers. Reported as null rather than false so the
   // caller can tell "standalone" apart from "could not find out".
   let orgMode: boolean | null = null;
+  let draftLinks = false;
   try {
     // readSettings() and checkConfigured() are independent, so run them
     // concurrently — on web these are two ingress round-trips that used to be
@@ -104,20 +111,21 @@ export async function resolveBootTarget(
     ]);
     const { configured } = configuredResult;
     orgMode = Boolean(configuredResult.orgMode);
+    draftLinks = configuredResult.draftLinks === true;
     const consented =
       settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent || hasRegistrationConsent;
     if (consented && configured) {
       const status = await host.checkInstall();
-      if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode };
+      if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode, draftLinks };
       // Headed into the app — but wait for the boot sequence to settle first, so
       // a pending boot-time update (which restarts the sidecar) doesn't flash the
       // chat UI in a server-down state before reloading (ENG-749). Fast when
       // nothing is pending.
       await host.awaitBootReady();
-      return { target: 'terminal', orgMode };
+      return { target: 'terminal', orgMode, draftLinks };
     }
   } catch {
-    return { target: 'auth', orgMode: null };
+    return { target: 'auth', orgMode: null, draftLinks: false };
   }
-  return { target: 'auth', orgMode };
+  return { target: 'auth', orgMode, draftLinks };
 }

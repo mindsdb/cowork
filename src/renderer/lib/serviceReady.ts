@@ -1,8 +1,8 @@
 import type { BootHost } from './bootTarget';
 
 export type ServiceReadiness =
-  | { state: 'ready' | 'unconfigured'; orgMode: boolean }
-  | { state: 'unavailable'; orgMode: null };
+  | { state: 'ready' | 'unconfigured'; orgMode: boolean; draftLinks: boolean }
+  | { state: 'unavailable'; orgMode: null; draftLinks: false };
 
 export async function checkServiceReady(
   checkConfigured: BootHost['checkConfigured'],
@@ -12,8 +12,9 @@ export async function checkServiceReady(
     return {
       state: result.configured ? 'ready' : 'unconfigured',
       orgMode: Boolean(result.orgMode),
+      draftLinks: result.draftLinks === true,
     };
   } catch {
-    return { state: 'unavailable', orgMode: null };
+    return { state: 'unavailable', orgMode: null, draftLinks: false };
   }
 }
