@@ -11,6 +11,7 @@ import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
 import { ShellTooOldNotice } from './ShellTooOldNotice';
+import { ShellOsCappedNotice } from './ShellOsCappedNotice';
 import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
@@ -106,6 +107,7 @@ export default function App() {
   // Dismissal is this mount's state only, so the notice is back next launch.
   const [shellSupport, setShellSupport] = useState<ShellSupportVerdict | null>(null);
   const [tooOldDismissed, setTooOldDismissed] = useState(false);
+  const [osCappedDismissed, setOsCappedDismissed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     host.getShellSupport()
@@ -369,6 +371,14 @@ export default function App() {
           verdict={shellSupport}
           shellAuto={shellAuto}
           onDismiss={() => setTooOldDismissed(true)}
+          topOffset={isMac ? 40 : 12}
+        />
+      )}
+
+      {page !== 'loading' && shellSupport?.status === 'os-capped' && !osCappedDismissed && (
+        <ShellOsCappedNotice
+          verdict={shellSupport}
+          onDismiss={() => setOsCappedDismissed(true)}
           topOffset={isMac ? 40 : 12}
         />
       )}
