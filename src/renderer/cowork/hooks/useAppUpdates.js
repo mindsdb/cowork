@@ -1,6 +1,7 @@
 import { diagnostic } from '../../../shared/diagnostics';
 import { useState, useEffect, useCallback } from 'react';
 import { host } from '../../platform/host';
+import { shellOfferSuppressed } from '../../../shared/shell-support';
 
 // The app's self-update lifecycle, across the two independently-versioned
 // pieces the renderer surfaces:
@@ -20,7 +21,13 @@ export function useAppUpdates() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   // Download-only shell notice; dismissal is scoped to the offered version.
-  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [pendingShellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  // A shell on a macOS the newest shell no longer runs on cannot install what
+  // a notice would offer, so it gets no notice at all (the os-capped notice
+  // explains instead). Before the verdict resolves, or if it cannot be read,
+  // nothing is hidden.
+  const [shellSupport, setShellSupport] = useState(null);
+  const shellUpdate = shellOfferSuppressed(shellSupport) ? null : pendingShellUpdate;
   const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
   const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
@@ -40,6 +47,15 @@ export function useAppUpdates() {
       cancelled = true;
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => host.getShellSupport())
+      .then((verdict) => { if (!cancelled) setShellSupport(verdict ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Listen for OTA update status pushed from main process. No-op in

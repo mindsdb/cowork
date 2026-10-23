@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ShellOsCappedNotice, OS_CAPPED_DISMISSED_KEY } from './ShellOsCappedNotice';
-import type { ShellSupportVerdict } from '../shared/shell-support';
+import { MIN_MACOS_FOR_LATEST_SHELL, type ShellSupportVerdict } from '../shared/shell-support';
 
 const capped = (reason: 'behind' | 'below-floor'): ShellSupportVerdict => ({
   status: 'os-capped', reason, shellVersion: '2.26.10.1.1', latestShellVersion: '2.26.10.4.1', daysBehind: 3, macosMajor: 12,
@@ -27,6 +27,17 @@ describe('ShellOsCappedNotice', () => {
     unmount();
     render(<ShellOsCappedNotice verdict={capped('behind')} onDismiss={() => {}} />);
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('keys the dismissal to the macOS minimum', () => {
+    expect(OS_CAPPED_DISMISSED_KEY).toBe(`anton.shellOsCappedDismissed.${MIN_MACOS_FOR_LATEST_SHELL}`);
+  });
+
+  it('shows again when only a dismissal for another minimum is stored', () => {
+    window.localStorage.setItem(`anton.shellOsCappedDismissed.${MIN_MACOS_FOR_LATEST_SHELL - 1}`, '1');
+    window.localStorage.setItem('anton.shellOsCappedDismissed', '1');
+    render(<ShellOsCappedNotice verdict={capped('behind')} onDismiss={() => {}} />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
   it('brings the below-floor notice back every launch', () => {

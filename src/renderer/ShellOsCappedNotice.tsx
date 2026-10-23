@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Alert } from './cowork/components/ui/Alert';
 import Ico from './cowork/components/Icons';
-import { deriveShellOsCappedNotice, type ShellSupportVerdict } from '../shared/shell-support';
+import { deriveShellOsCappedNotice, MIN_MACOS_FOR_LATEST_SHELL, type ShellSupportVerdict } from '../shared/shell-support';
 
 // The launch notice for a shell whose macOS the newest shell no longer runs on.
 // No action: only a macOS update helps. The plain notice is dismissed for good
 // (stored in this profile's localStorage); the below-floor one names a data
-// risk and returns every launch.
-export const OS_CAPPED_DISMISSED_KEY = 'anton.shellOsCappedDismissed';
+// risk and returns every launch. The key carries the macOS minimum, so raising
+// it later shows the notice again to people who dismissed the earlier one.
+export const OS_CAPPED_DISMISSED_KEY = `anton.shellOsCappedDismissed.${MIN_MACOS_FOR_LATEST_SHELL}`;
 
 function readDismissed(): boolean {
   try {

@@ -774,7 +774,8 @@ async function shellUpdateFromManifest(fresh = false): Promise<ShellUpdate | nul
 // The macOS major version from Chromium's UA client hints. Shells already in
 // the field cannot gain a bridge member, and the UA string is frozen at
 // 10_15_7, so this is the only source an OTA bundle can read. Null off macOS
-// (Linux reports its kernel here), without the API, or on an unparseable value.
+// (the value is not a macOS version there), without the API, or on an
+// unparseable value.
 export async function getMacosMajor(): Promise<number | null> {
   if (getPlatform() !== 'darwin') return null;
   try {

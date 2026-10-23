@@ -12,6 +12,7 @@ const hostMock = vi.hoisted(() => {
       onShellAutoUpdate: vi.fn((cb) => { state.onShellAutoUpdateCb = cb; return vi.fn(); }),
       onUpdateStatus: vi.fn((cb) => { state.onUpdateStatusCb = cb; return vi.fn(); }),
       getShellUpdate: vi.fn(async () => null),
+      getShellSupport: vi.fn(async () => null),
       applyUpdate: vi.fn(async () => ({ ok: true })),
       openExternal: vi.fn(),
       downloadShellAutoUpdate: vi.fn(async () => ({ phase: 'ready-to-install' })),
@@ -37,6 +38,7 @@ beforeEach(() => {
   Object.values(hostMock.host).forEach((fn) => fn.mockClear?.());
   hostMock.host.getShellAutoUpdate.mockResolvedValue(null);
   hostMock.host.getShellUpdate.mockResolvedValue(null);
+  hostMock.host.getShellSupport.mockResolvedValue(null);
 });
 
 describe('useAppUpdates', () => {
@@ -118,5 +120,39 @@ describe('useAppUpdates', () => {
     const { result } = await mountFlushed();
     act(() => result.current.handleDownloadShellUpdate());
     expect(hostMock.host.openExternal).toHaveBeenCalledWith('https://mindshub.ai/download');
+  });
+
+  describe('on a macOS the newest shell no longer runs on', () => {
+    const osCapped = {
+      status: 'os-capped', reason: 'behind', shellVersion: '2.26.10.1.1', latestShellVersion: '2.26.10.4.1', daysBehind: 3, macosMajor: 12,
+    };
+
+    it('drops a pushed shell-available notice so no installer is offered', async () => {
+      hostMock.host.getShellSupport.mockResolvedValue(osCapped);
+      const { result } = await mountFlushed();
+      act(() => hostMock.state.onUpdateStatusCb({ phase: 'shell-available', version: '2.0.0', downloadUrl: 'https://x/y' }));
+      expect(result.current.shellUpdate).toBeNull();
+    });
+
+    it('drops a cached notice recovered after an OTA reload', async () => {
+      hostMock.host.getShellSupport.mockResolvedValue(osCapped);
+      hostMock.host.getShellUpdate.mockResolvedValue({ version: '2.0.0', currentVersion: '1.9.0', downloadUrl: 'https://x/y' });
+      const { result } = await mountFlushed();
+      expect(result.current.shellUpdate).toBeNull();
+    });
+
+    it('keeps the notice for a shell that is merely too old', async () => {
+      hostMock.host.getShellSupport.mockResolvedValue({ ...osCapped, status: 'too-old', reason: 'outside-window' });
+      const { result } = await mountFlushed();
+      act(() => hostMock.state.onUpdateStatusCb({ phase: 'shell-available', version: '2.0.0', downloadUrl: 'https://x/y' }));
+      expect(result.current.shellUpdate).toMatchObject({ version: '2.0.0' });
+    });
+
+    it('still reports UI updates', async () => {
+      hostMock.host.getShellSupport.mockResolvedValue(osCapped);
+      const { result } = await mountFlushed();
+      act(() => hostMock.state.onUpdateStatusCb({ phase: 'available', version: '3.0.0' }));
+      expect(result.current.updateStatus).toEqual({ phase: 'available', version: '3.0.0' });
+    });
   });
 });
