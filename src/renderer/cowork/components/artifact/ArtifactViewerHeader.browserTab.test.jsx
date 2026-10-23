@@ -3,15 +3,23 @@
 // It lives there rather than in the ⋯ menu because that menu is hidden in org
 // mode — its other entries are OS/file actions and `/publish` routes an org
 // deployment cannot answer — while this affordance belongs on both. So the
-// assertions that matter are: it shows on Cloud, and it does not appear when
-// there is nothing for it to open.
+// assertions that matter are: it shows on Cloud once the artifact is shared,
+// and it does not appear when there is nothing for it to open. Before that,
+// Cloud's only URL is the draft route, which a tab can't load without the
+// bearer.
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { setOrgMode } from '../../../lib/orgMode';
 
 vi.mock('../../../platform/host', () => ({
-  host: { isWeb: false, isElectron: true, isMac: () => false, openExternal: vi.fn() },
+  host: {
+    isWeb: false,
+    isElectron: true,
+    isMac: () => false,
+    openExternal: vi.fn(),
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+  },
 }));
 
 import ArtifactViewerHeader from './ArtifactViewerHeader';
@@ -39,7 +47,6 @@ const props = {
     disabledReason: '',
   },
   actions: {
-    canOpenInBrowser: false,
     canOpenInBrowserTab: true,
     canOpenLocalFile: false,
     isBackendArtifact: false,
@@ -47,7 +54,6 @@ const props = {
     artifact: { serveUrl: '' },
     deleteBusy: false,
     onReload: vi.fn(),
-    onOpenInBrowser: vi.fn(),
     onOpenInBrowserTab,
     onOpenFolder: vi.fn(),
     onOpenOS: vi.fn(),
@@ -55,6 +61,15 @@ const props = {
     onTrash: vi.fn(),
   },
   onClose: vi.fn(),
+};
+
+const shared = {
+  ...props,
+  publication: {
+    ...props.publication,
+    controller: { ...props.publication.controller, publishedUrl: 'https://pages.example/storefront', versions: [] },
+    isPublished: true,
+  },
 };
 
 const withoutUrl = {
@@ -68,12 +83,19 @@ afterEach(() => {
 });
 
 describe('open in a browser tab', () => {
-  it('is offered on Cloud, where the actions menu is not', () => {
+  it('is offered on Cloud for a shared artifact, where the actions menu is not', () => {
     setOrgMode(true);
-    render(<ArtifactViewerHeader {...props} />);
+    render(<ArtifactViewerHeader {...shared} />);
 
     expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
+
+  it('hides on Cloud until the artifact is shared', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} />);
+
+    expect(screen.queryByRole('button', { name: 'Open in a browser tab' })).toBeNull();
   });
 
   it('is offered on desktop too', () => {
