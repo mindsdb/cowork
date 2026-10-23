@@ -92,6 +92,20 @@ export default defineConfig({
            read as no on the desktop too, and a control that wrongly appears
            looks like a working feature until its request is refused. */
         'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
+        // The doc editor's decisions, kept out of its components to be tested
+        // directly: what each key and menu does to the doc, where a popover
+        // goes, and a chart's scale and marks.
+        'src/renderer/cowork/components/doc/canvasOps.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/doc/chartGeometry.js': { statements: 100, branches: 95 },
+        // The block menu's options, as data: a slip there copies, moves or
+        // deletes the wrong block, which nothing on screen flags.
+        'src/renderer/cowork/components/doc/blockMenu.js': { statements: 100, branches: 100 },
+        // The doc's op engine and its escaping, and the write queue. Their
+        // failures are silent: a block shown twice, an edit dropped while
+        // the doc's writer is away. Only the branch table shows the guards
+        // still fire.
+        'src/renderer/cowork/components/doc/docModel.js': { statements: 97, branches: 90 },
+        'src/renderer/cowork/components/doc/useDoc.js': { statements: 98, branches: 96 },
       },
     },
     projects: [
