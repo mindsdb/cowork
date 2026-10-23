@@ -324,6 +324,16 @@ describe('inlineHtmlAssets', () => {
     expect(doc.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
   });
 
+  it('reads a conversations/ folder freely when chat workspaces do not apply, as in an artifact', async () => {
+    const fetchFile = files({ 'conversations/2024/log.png': 'PNG' });
+
+    const doc = parse(await inlineHtmlAssets(
+      '<img src="conversations/2024/log.png">', 'index.html', fetchFile, { chatWorkspaces: false },
+    ));
+
+    expect(doc.querySelector('img').getAttribute('src')).toMatch(/^data:image\/png/);
+  });
+
   it('skips <noscript> content, which a scripted iframe never shows', async () => {
     const fetchFile = files({ 'big.png': 'PNG' });
 

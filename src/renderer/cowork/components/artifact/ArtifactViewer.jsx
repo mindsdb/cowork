@@ -574,6 +574,7 @@ export function ArtifactViewer({
               rootUrl: draftDirectoryUrl(fetchUrl),
               filePath: draftFileName(fetchUrl),
               signal: reading.signal,
+              chatWorkspaces: false,
             }).catch(() => injectDraftBaseHref(doc.content, fetchUrl));
             if (cancelled) return;
             setPreviewDoc(html);

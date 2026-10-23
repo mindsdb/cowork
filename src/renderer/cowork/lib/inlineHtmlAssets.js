@@ -68,14 +68,16 @@ const workspaceOf = (path) => (path.startsWith('conversations/') ? path.split('/
  *   reads a file, its body unread
  * @param {{ baseUrl?: string, maxInlineChars?: number, signal?: AbortSignal }} [options]
  *   `baseUrl` is the file's absolute URL, to base anything left un-inlined on
- *   its folder; `signal` stops reads that haven't started
+ *   its folder; `signal` stops reads that haven't started;
+ *   `chatWorkspaces: false` drops a project's `conversations/<id>/` rule,
+ *   which means nothing in an artifact's folder
  * @returns {Promise<string>} the markup with what could be inlined, inlined
  */
 export async function inlineHtmlAssets(
   html,
   filePath,
   fetchFile,
-  { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS, signal } = {},
+  { baseUrl, maxInlineChars = INLINE_TOTAL_MAX_CHARS, signal, chatWorkspaces = true } = {},
 ) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // The iframe runs scripts, so <noscript> content never shows; don't fetch it.
@@ -89,7 +91,7 @@ export async function inlineHtmlAssets(
   const dir = filePath.slice(0, filePath.lastIndexOf('/') + 1);
   const mayRead = (path) => path.startsWith(dir)
     && !path.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')
-    && (workspaceOf(path) === null || workspaceOf(path) === workspaceOf(filePath));
+    && (!chatWorkspaces || workspaceOf(path) === null || workspaceOf(path) === workspaceOf(filePath));
 
   let budget = maxInlineChars;
   const spend = (text) => {
@@ -257,13 +259,14 @@ export async function inlineHtmlAssets(
  * `rootUrl` + its relative path (a project's `files-raw`, an artifact's
  * drafts), read with the viewer's token.
  * @param {string} html the file's markup
- * @param {{ rootUrl: string, filePath: string, signal?: AbortSignal }} options
+ * @param {{ rootUrl: string, filePath: string, signal?: AbortSignal, chatWorkspaces?: boolean }} options
  */
-export function inlineHtmlFromApi(html, { rootUrl, filePath, signal }) {
+export function inlineHtmlFromApi(html, { rootUrl, filePath, signal, chatWorkspaces }) {
   const urlFor = (path) => rootUrl + path.split('/').map(encodeURIComponent).join('/');
   const fetchFile = (path, readSignal) => fetchAuthenticatedResponse(urlFor(path), { signal: readSignal });
   return inlineHtmlAssets(html, filePath, fetchFile, {
     baseUrl: urlFor(filePath),
     signal,
+    chatWorkspaces,
   });
 }
