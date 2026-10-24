@@ -145,3 +145,11 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(screen.getByRole('button', { name: /Save changes/i })).toBeInTheDocument();
   });
 });
+
+describe('ScheduleTaskModal — what happens when a task misses its time', () => {
+  it('sits behind an info button on the Cadence label, not as text under the field', () => {
+    renderModal();
+    expect(screen.getByRole('button', { name: 'If the server is down at this time' })).toBeInTheDocument();
+    expect(screen.queryByText(/runs once when it’s back/)).not.toBeInTheDocument();
+  });
+});

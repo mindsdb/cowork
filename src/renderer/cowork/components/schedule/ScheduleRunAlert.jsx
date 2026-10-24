@@ -1,6 +1,6 @@
 // `<ScheduleRunAlert>` — what a schedule's detail page says about how its
-// last run went, when there is something to act on: an auto-pause, or a run
-// that failed. Each says what is known about whether the run did anything,
+// last run went, when there is something to act on: a pause with a run still
+// finishing, a missed one-off, an auto-pause, or a run that failed. Each says what is known about whether the run did anything,
 // and offers the run's output (Review run) before anything that runs again.
 //
 // Resume waits for the next scheduled time; Run now / Run again runs once,
@@ -8,6 +8,7 @@
 
 import { Alert, Button } from '../ui';
 import { relativeTime } from '../../lib/formatTime';
+import { missedOnceTitle } from '../../lib/scheduleCopy';
 import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
 
 // Outcomes after which some of the run's actions may have happened.
@@ -17,6 +18,24 @@ export function runAlert(task) {
   const state = scheduleState(task);
   const run = task.lastRun || null;
   const reason = run?.error || task.lastError || null;
+  if (task.running && (state === 'paused' || state === 'auto_paused')) {
+    return {
+      kind: 'finishing',
+      variant: 'info',
+      title: 'Paused — the current run will finish',
+      reason: null,
+      note: 'Nothing runs after it. Stop run ends it now; anything it has already done stays done.',
+    };
+  }
+  if (state === 'missed') {
+    return {
+      kind: 'missed',
+      variant: 'warning',
+      title: missedOnceTitle(),
+      reason: null,
+      note: 'It was more than an hour late, so it didn’t run on its own. Run it now, or edit it to give it a new time.',
+    };
+  }
   if (state === 'auto_paused') {
     return {
       kind: 'auto_paused',
@@ -50,9 +69,13 @@ export function runAlert(task) {
 export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onReviewRun }) {
   const alert = runAlert(task);
   if (!alert) return null;
-  const conversationId = task.lastRun?.conversationId || null;
+  const conversationId = alert.kind === 'finishing' || alert.kind === 'missed'
+    ? null
+    : task.lastRun?.conversationId || null;
   return (
-    <Alert variant={alert.variant} title={alert.title}>
+    // The notice of a run still finishing changes as the run ends, so it is
+    // announced politely; the others are alerts.
+    <Alert variant={alert.variant} title={alert.title} role={alert.variant === 'info' ? 'status' : undefined}>
       <div className="flex flex-col gap-2">
         {alert.reason && <span>{alert.reason}</span>}
         {alert.note && <span>{alert.note}</span>}
@@ -65,6 +88,9 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
           )}
           {alert.kind === 'partial' && (
             <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>Run again</Button>
+          )}
+          {alert.kind === 'missed' && (
+            <Button size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>Run now</Button>
           )}
         </div>
       </div>

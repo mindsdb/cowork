@@ -8,7 +8,8 @@
 import { useEffect, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
+import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 import { productName } from '../../../lib/deploymentBrand';
@@ -197,7 +198,24 @@ export default function ScheduleTaskModal({
           </Field>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label="Cadence">
+            <Field
+              label={(
+                <span className="inline-flex items-center gap-1">
+                  Cadence
+                  {/* What happens when the task can't run at its time: too
+                      long to sit under the field, so it's a tooltip. */}
+                  <Tooltip content={missedRunText(form.cadence)}>
+                    <button
+                      type="button"
+                      aria-label={missedRunLabel()}
+                      className="inline-flex cursor-help border-0 bg-transparent p-0 text-ink-3 hover:text-ink"
+                    >
+                      {Ico.info(12)}
+                    </button>
+                  </Tooltip>
+                </span>
+              )}
+            >
               <Select
                 value={form.cadence}
                 onValueChange={(v) => update('cadence', v)}
