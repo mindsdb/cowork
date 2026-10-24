@@ -72,7 +72,14 @@ export interface OAuthConnectResult {
   expires_in?: number;
   scope?: string;
   token_type?: string;
+  /** The exchange response's remaining fields, for providers that return
+   * identity data there (Notion's workspace_id) rather than from an API. */
+  extra?: Record<string, unknown>;
 }
+
+const TOKEN_RESPONSE_FIELDS = new Set([
+  'access_token', 'refresh_token', 'expires_in', 'scope', 'token_type', 'id_token',
+]);
 
 // Long enough to type credentials (or sign up), short enough that a
 // lost callback — e.g. the user authorized a STALE tab from an earlier
@@ -327,6 +334,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
       token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
+      extra: Object.fromEntries(Object.entries(data).filter(([k]) => !TOKEN_RESPONSE_FIELDS.has(k))),
     };
   } catch (e: any) {
     if (cancelled) return { ok: false, reason: 'cancelled' };

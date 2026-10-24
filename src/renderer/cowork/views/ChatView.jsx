@@ -1885,9 +1885,13 @@ export default function ChatView({
   connectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddGoogleDriveProjectFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
+  onAddNotionProjectPages,
+  onFetchNotionProjectPages,
+  onRemoveNotionProjectPage,
   disabledConnections,
   onUpdateConnectorMute,
   onRemoveAttachment,
@@ -3319,6 +3323,7 @@ export default function ChatView({
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+            onAddNotionPages={onAddNotionPages}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
@@ -3417,6 +3422,9 @@ export default function ChatView({
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+          onAddNotionPages={onAddNotionProjectPages}
+          onFetchNotionPages={onFetchNotionProjectPages}
+          onRemoveNotionPage={onRemoveNotionProjectPage}
         />
       </aside>
 
