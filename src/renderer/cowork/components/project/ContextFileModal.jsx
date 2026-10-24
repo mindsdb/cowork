@@ -48,7 +48,7 @@ import {
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
-import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
+import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -400,12 +400,11 @@ export default function ContextFileModal({
               setMode('binary');
               return;
             }
-            const html = await inlineHtmlAssets(
-              text,
+            const html = await inlineHtmlFromApi(text, {
+              rootUrl: projectFileDownloadUrl(projectName, ''),
               filePath,
-              (path) => fetchAuthenticatedResponse(projectFileDownloadUrl(projectName, path)),
-              { baseUrl: projectFileDownloadUrl(projectName, filePath), signal: reading.signal },
-            );
+              signal: reading.signal,
+            });
             if (cancelled) return;
             setPreviewHtml(html);
             setMode('html');

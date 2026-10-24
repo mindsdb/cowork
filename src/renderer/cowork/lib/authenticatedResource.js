@@ -41,9 +41,10 @@ function assertPrivateApiUrl(url) {
  * JSON APIs, and hand back the response with its body unread, so a caller can
  * read its headers (its Content-Length) before it downloads the body.
  */
-export async function fetchAuthenticatedResponse(url) {
+export async function fetchAuthenticatedResponse(url, options) {
   assertPrivateApiUrl(url);
-  const response = await authFetch(url);
+  // Options (an abort signal) only when given, so other callers' requests are unchanged.
+  const response = await (options ? authFetch(url, options) : authFetch(url));
   if (!response.ok) throw fileRequestError(response);
   return response;
 }
