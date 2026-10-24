@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 
 // MarkdownContent pulls in the platform host bridge, the skills store, and
 // the code/table renderers. None are relevant to math rendering, so stub
@@ -626,5 +626,54 @@ describe('MarkdownContent neutralizeLoopback', () => {
     } finally {
       hostState.isWeb = false;
     }
+  });
+});
+
+describe('MarkdownContent images', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Chat passes no loader: an image keeps the src it was written with, as
+  // the remarkArtifactLocalLinks decision says.
+  it('renders an image as written when no loader is given', () => {
+    const { container } = render(<MarkdownContent text="![x](chart.png)" complete isAssistant />);
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('chart.png');
+    expect(img.getAttribute('alt')).toBe('x');
+  });
+
+  it('shows the image the loader fetched from a blob: URL', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:chart');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const loadImage = vi.fn(async () => new Blob(['png'], { type: 'image/png' }));
+    render(<MarkdownContent text="![Revenue chart](chart.png)" loadImage={loadImage} />);
+
+    const img = await screen.findByRole('img', { name: 'Revenue chart' });
+    expect(img.getAttribute('src')).toBe('blob:chart');
+    expect(loadImage).toHaveBeenCalledWith('chart.png');
+  });
+
+  it('shows the alt text, with no <img>, for a path the loader refuses or a file it cannot load', async () => {
+    const loadImage = vi.fn((src) => (src === 'missing.png'
+      ? Promise.reject(Object.assign(new Error('Could not load file (404)'), { status: 404 }))
+      : null));
+    const { container } = render(
+      <MarkdownContent text={'![Secret](../other/secret.png)\n\n![Missing chart](missing.png)'} loadImage={loadImage} />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Missing chart' })).toHaveTextContent('Missing chart'));
+    expect(screen.getByRole('img', { name: 'Secret' })).toHaveTextContent('Secret');
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('leaves a remote image to the shell, without asking the loader', () => {
+    const loadImage = vi.fn(() => null);
+    const { container } = render(
+      <MarkdownContent text="![Logo](https://cdn.example/logo.png)" loadImage={loadImage} />,
+    );
+    expect(container.querySelector('img').getAttribute('src')).toBe('https://cdn.example/logo.png');
+    expect(loadImage).not.toHaveBeenCalled();
   });
 });
