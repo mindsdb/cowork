@@ -71,6 +71,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -513,10 +514,12 @@ const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
 const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
 
-function nextPollDelay(schedules) {
-  // A run in flight: poll at the floor so the Running state clears soon
-  // after the run finishes — nothing else refreshes it.
-  if ((schedules || []).some((s) => s.running)) return SCHEDULE_POLL_MIN_DELAY_MS;
+export function nextPollDelay(schedules) {
+  // A run in flight, or a failed run waiting to retry: poll at the floor so
+  // the state clears soon after it changes, and an auto-pause that the last
+  // retry triggers is noticed (and notified) within a minute. Nothing else
+  // refreshes it.
+  if ((schedules || []).some((s) => s.running || s.retryAt)) return SCHEDULE_POLL_MIN_DELAY_MS;
   const dueTimes = (schedules || [])
     .filter((s) => s.enabled && s.nextRunAt)
     .map((s) => new Date(s.nextRunAt).getTime())
@@ -5405,6 +5408,18 @@ function AppCore() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures, where the OS allows one; clicking it opens that schedule. Until
+  // the user opens it, the Scheduled Tasks page also says so.
+  const { unseen: unseenAutoPauses, markReviewed: markAutoPauseReviewed } = useAutoPauseNotifications(
+    scheduled,
+    (id) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(id);
+      setRoute('schedule-detail');
+    },
+  );
+
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
@@ -6020,6 +6035,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            unseenAutoPauses={unseenAutoPauses}
             agentLabel={agentLabel}
           />
         )}
@@ -6040,6 +6056,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onReviewedAutoPause={markAutoPauseReviewed}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the

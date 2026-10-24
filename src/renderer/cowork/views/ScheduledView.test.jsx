@@ -219,3 +219,26 @@ describe('ScheduledView — create and empty', () => {
     expect(await screen.findByText('Schedule a task')).toBeInTheDocument();
   });
 });
+
+describe('ScheduledView — unseen auto-pauses', () => {
+  const autoPaused = { ...SCHEDULED[2], state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' };
+
+  it('says a task was paused for failing, and opens it to review', async () => {
+    const { props, user } = setup({ scheduled: [SCHEDULED[0], autoPaused], unseenAutoPauses: [autoPaused] });
+    const box = screen.getByText('“Paused digest” was paused after failing several runs in a row').closest('[role="alert"]');
+    await user.click(within(box).getByRole('button', { name: 'Review' }));
+    expect(props.onOpenSchedule).toHaveBeenCalledWith(autoPaused);
+  });
+
+  it('names each when several were paused', () => {
+    const other = { ...SCHEDULED[0], state: 'auto_paused', autoPausedAt: '2026-10-14T10:00:00Z' };
+    setup({ unseenAutoPauses: [autoPaused, other] });
+    expect(screen.getByText('2 scheduled tasks were paused after failing several runs in a row')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review “Weekly metrics”' })).toBeInTheDocument();
+  });
+
+  it('says nothing once each has been reviewed', () => {
+    setup({ scheduled: [autoPaused], unseenAutoPauses: [] });
+    expect(screen.queryByText(/paused after failing/)).not.toBeInTheDocument();
+  });
+});

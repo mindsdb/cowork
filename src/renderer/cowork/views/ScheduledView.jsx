@@ -22,7 +22,7 @@ import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
-import { PLATFORM_UI } from '../../lib/deployment';
+import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
@@ -46,6 +46,10 @@ export default function ScheduledView({
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  // Auto-paused schedules the user has not opened since they were paused
+  // (useAutoPauseNotifications). Shown here until each is reviewed, so a
+  // pause is not missed when its desktop notification was not.
+  unseenAutoPauses = [],
   agentLabel,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -142,9 +146,11 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={PLATFORM_UI
-          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`
-          : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. Runs that slip while the server is down are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        // Desktop runs its own server, so tasks stop with the app. Every web
+        // build, hosted or self-hosted, runs them on a server that stays up.
+        subtitle={!host.isWeb
+          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while the app was closed, ${agentLabel} runs the latest one when it reopens.`
+          : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -182,6 +188,24 @@ export default function ScheduledView({
         />
       )}
 
+      {unseenAutoPauses.length > 0 && (
+        <Alert
+          variant="danger"
+          className="mx-8 mb-3"
+          title={unseenAutoPauses.length === 1
+            ? `“${unseenAutoPauses[0].title || 'Untitled schedule'}” was paused after failing several runs in a row`
+            : `${unseenAutoPauses.length} scheduled tasks were paused after failing several runs in a row`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {unseenAutoPauses.map((task) => (
+              <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
+                {unseenAutoPauses.length === 1 ? 'Review' : `Review “${task.title || 'Untitled schedule'}”`}
+              </Button>
+            ))}
+          </div>
+        </Alert>
+      )}
+
       {error && (
         <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
       )}
@@ -200,7 +224,7 @@ export default function ScheduledView({
             </span>
           ),
           title: 'No scheduled tasks yet',
-          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them ${PLATFORM_UI ? 'while the desktop app is open' : 'on the server, even with this tab closed'}.`,
+          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them ${host.isWeb ? 'on the server, even with this tab closed' : 'while the desktop app is open'}.`,
           action: (
             <Button variant="primary" onClick={openCreate}>
               {Ico.plus(14)} Schedule your first task
