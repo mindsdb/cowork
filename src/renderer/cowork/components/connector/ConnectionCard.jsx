@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Badge, Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { useConfirm } from '../ConfirmModal';
 
 function ConnectionLogo({ engine, label }) {
   const [failed, setFailed] = useState(null);
@@ -21,20 +22,22 @@ function ConnectionLogo({ engine, label }) {
   );
 }
 
-/* The confirm text before a delete. `shared` is the caller's own connection
-   that others use: they read it live from its creator's vault (cowork-server's
-   LayeredDataVault), so deleting it removes it for them too. The operator's
-   share stays listed under its name, and cowork-server refuses a new
-   connection under that name until the operator stops sharing it. */
+/* The confirm dialog's title and message before a delete. `shared` is the
+   caller's own connection that others use: they read it live from its
+   creator's vault (cowork-server's LayeredDataVault), so deleting it removes
+   it for them too. The operator's share stays listed under its name, and
+   cowork-server refuses a new connection under that name until the operator
+   stops sharing it. */
 export function disconnectPrompt({ engine, name, shared }) {
-  const question = `Disconnect ${engine}/${name}?`;
+  const title = `Disconnect ${engine}/${name}?`;
   return shared
-    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
-    : question;
+    ? { title, message: "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it." }
+    : { title };
 }
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  const [confirm, confirmModal] = useConfirm();
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
@@ -56,7 +59,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
+    if (!(await confirm({ ...disconnectPrompt({ engine, name, shared }), confirmLabel: 'Disconnect', destructive: true }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -88,6 +91,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
             </Button>
           </ItemActions>
         )}
+        {confirmModal}
       </>
     ),
   };

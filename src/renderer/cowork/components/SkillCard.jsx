@@ -50,7 +50,7 @@ const SHARING_KEPT_TEXT = "Saved over the existing skill. Who can use it didn't 
 function SkillModal({ skill, open, onClose }) {
   const body = skill.instructions || skill.skill_md || '_No content._';
   return (
-    <Modal open={open} onClose={onClose} width="640px" labelledBy="skill-card-modal-title">
+    <Modal open={open} onClose={onClose} width="min(640px, 92vw)" labelledBy="skill-card-modal-title">
       <ModalHeader
         id="skill-card-modal-title"
         title={skill.name || skill.slug || 'Skill'}

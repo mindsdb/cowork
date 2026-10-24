@@ -184,7 +184,7 @@ export default function BackendSection({
           </div>
 
           {/* Port + exit code + last attempt chips */}
-          <div className="flex gap-2 pt-0 px-4 pb-[14px] font-[family-name:var(--font-mono)] text-xs">
+          <div className="flex gap-2 pt-0 px-4 pb-[14px] text-xs tabular-nums">
             <div className={CHIP_CLASS}>
               <span className={CHIP_LABEL_CLASS}>Port</span>
               <span className="text-ink">{port ?? '—'}</span>

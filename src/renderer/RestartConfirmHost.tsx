@@ -26,8 +26,7 @@ export default function RestartConfirmHost() {
       <ModalBody>
         <p className="s-body" style={{ margin: 0 }}>{copy.body}</p>
       </ModalBody>
-      <ModalFooter align="flex-end">
-        <Button variant="subtle" onClick={cancel}>{copy.cancelLabel}</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={cancel}>{copy.cancelLabel}</Button>}>
         <Button variant="primary" onClick={() => pending.resolve(true)}>{copy.confirmLabel}</Button>
       </ModalFooter>
     </Modal>

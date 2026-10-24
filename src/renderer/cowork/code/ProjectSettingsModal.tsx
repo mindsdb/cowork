@@ -300,8 +300,7 @@ export function ProjectSettingsModal({
       width={project ? undefined : 'min(560px, 92vw)'}
       maxHeight="min(720px, 88vh)"
       labelledBy="code-project-settings-title"
-      closeOnBackdrop={!busy && !skillsSaving}
-      closeOnEsc={!busy && !skillsSaving}
+      dismissible={!busy && !skillsSaving}
     >
       <ModalHeader
         id="code-project-settings-title"
@@ -454,8 +453,7 @@ export function ProjectSettingsModal({
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>}>
         <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>
           {busy || skillsSaving || playbookBusy
             ? (project ? 'Saving…' : 'Creating…')

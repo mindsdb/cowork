@@ -21,7 +21,7 @@ export default function SharedResourceAttribution({ resource, className = '' }) 
       /* --ink-4 is a placeholder tone and clears only 2.7:1 on the light
          surface, so secondary metadata uses --ink-3 at 12px to hold the
          4.5:1 floor in both themes while staying quieter than body copy. */
-      className={`min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-[12px] leading-[1.45] text-ink-3 ${className}`}
+      className={`min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px] leading-[1.45] text-ink-3 ${className}`}
     >
       {hasCreated && <span className="min-w-0 break-all">Created by {createdBy}</span>}
       {hasModifiedBy && (

@@ -165,8 +165,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>Cancel</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {draft.mode === 'password' ? 'Share protected' : draft.mode === 'restricted' ? 'Share restricted' : 'Share'}
         </Button>
@@ -965,7 +964,7 @@ export default function ArtifactsView({
         skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
         skeletonGridClassName="artifacts-grid"
         empty={{
-          icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
+          icon: Ico.sparkle(20),
           title: 'No artifacts yet',
           // Second line (ENG-2169): the two apps keep separate artifacts, so
           // someone looking for work made in the other one is told where it is.
@@ -975,7 +974,7 @@ export default function ArtifactsView({
               {artifactsNote && <span className="block mt-2 text-ink-4">{artifactsNote}</span>}
             </>
           ),
-          style: { flex: 1 },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (
