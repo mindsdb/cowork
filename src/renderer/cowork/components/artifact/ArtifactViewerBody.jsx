@@ -48,6 +48,7 @@ export function ArtifactViewerBody({
 }) {
   const {
     draftUrl: draftPreviewUrl,
+    contentVersion,
     error: err,
     setError: setErr,
     isText,
@@ -105,8 +106,9 @@ export function ArtifactViewerBody({
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
   // One loader for Preview and Edit's split preview, so switching between
-  // them asks for no image twice.
-  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, artifact?.mtime);
+  // them asks for no image twice. Keyed on the viewer's content version, so a
+  // change to the artifact or a Reload asks again.
+  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, contentVersion);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;

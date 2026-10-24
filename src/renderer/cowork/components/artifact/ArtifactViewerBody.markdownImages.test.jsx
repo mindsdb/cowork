@@ -45,7 +45,7 @@ function png() {
   return { ok: true, status: 200, blob: async () => new Blob(['png'], { type: 'image/png' }) };
 }
 
-function renderBody({ mode = 'preview', text, folder = ORG_FOLDER, mtime = 1700 }) {
+function renderBody({ mode = 'preview', text, folder = ORG_FOLDER, mtime = 1700, reloads = 0 }) {
   const workspace = {
     mode,
     source: { artifactId: 'artifact-1', path: 'report.md', contentType: 'md' },
@@ -63,6 +63,7 @@ function renderBody({ mode = 'preview', text, folder = ORG_FOLDER, mtime = 1700 
   };
   const preview = {
     draftUrl: `${folder}/report.md`,
+    contentVersion: `${mtime}.${reloads}`,
     error: '',
     setError: vi.fn(),
     isText: true,
@@ -130,7 +131,7 @@ describe('ArtifactViewerBody Markdown images', () => {
 
     const img = await screen.findByRole('img', { name: 'Revenue chart' });
     expect(img.getAttribute('src')).toBe('blob:chart');
-    expect(requestedUrls()).toEqual([`https://cowork.example${ORG_FOLDER}/chart.png?v=1700`]);
+    expect(requestedUrls()).toEqual([`https://cowork.example${ORG_FOLDER}/chart.png?v=1700.0`]);
   });
 
   it('shows the same image in the desktop app, from its loopback server', async () => {
@@ -141,7 +142,7 @@ describe('ArtifactViewerBody Markdown images', () => {
     render(renderBody({ text: '![Revenue chart](chart.png)', folder: LOCAL_FOLDER }));
 
     expect((await screen.findByRole('img', { name: 'Revenue chart' })).getAttribute('src')).toBe('blob:chart');
-    expect(requestedUrls()).toEqual([`http://127.0.0.1:26866${LOCAL_FOLDER}/chart.png?v=1700`]);
+    expect(requestedUrls()).toEqual([`http://127.0.0.1:26866${LOCAL_FOLDER}/chart.png?v=1700.0`]);
   });
 
   it('shows the image in Edit\'s split preview, from the request Preview already made', async () => {
@@ -162,7 +163,7 @@ describe('ArtifactViewerBody Markdown images', () => {
     render(renderBody({ text: '![Chart](img/chart.png)' }));
 
     await screen.findByRole('img', { name: 'Chart' });
-    expect(requestedUrls()).toEqual([`https://cowork.example${ORG_FOLDER}/img/chart.png?v=1700`]);
+    expect(requestedUrls()).toEqual([`https://cowork.example${ORG_FOLDER}/img/chart.png?v=1700.0`]);
   });
 
   it.each([
@@ -190,5 +191,20 @@ describe('ArtifactViewerBody Markdown images', () => {
     await waitFor(() => expect(pane).toHaveTextContent('Missing chart'));
     expect(pane.querySelector('img')).toBeNull();
     expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again on Reload, so an image written after the first try shows', async () => {
+    mocks.authFetch.mockResolvedValueOnce({ ok: false, status: 404 }).mockResolvedValue(png());
+    const text = '![Revenue chart](chart.png)';
+    const { rerender } = render(renderBody({ text }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Revenue chart' })).toHaveTextContent('Revenue chart'));
+
+    rerender(renderBody({ text, reloads: 1 }));
+
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Revenue chart' }).getAttribute('src')).toBe('blob:chart'));
+    expect(requestedUrls()).toEqual([
+      `https://cowork.example${ORG_FOLDER}/chart.png?v=1700.0`,
+      `https://cowork.example${ORG_FOLDER}/chart.png?v=1700.1`,
+    ]);
   });
 });

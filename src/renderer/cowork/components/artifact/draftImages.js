@@ -86,10 +86,12 @@ function requireImage(blob) {
 
 /**
  * Loads the images a draft Markdown document names, for MarkdownContent's
- * `loadImage`. Each file is asked for once per `version` (the artifact's
- * `mtime`), a failure included, so the Edit tab's preview doesn't re-request
- * every image as the text above it changes. The cache holds Blobs, not blob:
- * URLs: each image makes and revokes its own, so nothing here outlives it.
+ * `loadImage`. Each file is asked for once per `version` (the viewer's
+ * `<mtime>.<reload count>`), a failure included, so the Edit tab's preview
+ * doesn't re-request every image as the text above it changes, while a
+ * change to the artifact or a Reload asks again. The cache holds Blobs, not
+ * blob: URLs: each image makes and revokes its own, so nothing here outlives
+ * it.
  *
  * @param {string} draftUrl the document's own draft URL (`artifact.draftUrl`)
  * @param {string | number | null | undefined} version
