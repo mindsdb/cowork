@@ -30,6 +30,7 @@ import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liv
 import { liveAppLines } from '../lib/liveAppState';
 import { useLiveAppStates } from '../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
+import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact,
@@ -696,6 +697,8 @@ export default function ArtifactsView({
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
   onArtifactChanged,
+  // Reads the list again; a copy of a shared live app is new to it.
+  onRefreshArtifacts,
   projects = [],
   onOpenProject,
   onAddressWithAgent,
@@ -712,6 +715,8 @@ export default function ArtifactsView({
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
   const linesOf = (a) => liveAppLines(a, { liveApps, states: liveAppStates });
+  // Where a copy made from "Shared with you" goes; boot creates it (hooks/useBootDecisions.js).
+  const generalProjectId = projects.find((p) => p.name === 'general')?.id || null;
   // The live app whose "Share with…" dialog is open.
   const [shareTarget, setShareTarget] = useState(null);
   // By path, so the viewer always shows the current card and closes once the
@@ -978,6 +983,19 @@ export default function ArtifactsView({
           the spacer collapses whenever the body overflows (and by a different
           amount in grid vs list, since their heights differ). */}
       <div className="h-5 shrink-0" />
+
+      {liveApps && generalProjectId && (
+        <SharedLiveAppsSection
+          projectId={generalProjectId}
+          // The copy sorts with the viewer's own artifacts, often below the
+          // fold, so the toast is what says it worked.
+          onDuplicated={() => {
+            showToast({ kind: 'ok', message: 'Duplicated into your General project.' });
+            onRefreshArtifacts?.();
+          }}
+          className="mx-8 mb-6"
+        />
+      )}
 
       {(loading || total > 0) && (
         <FilterRow

@@ -50,7 +50,10 @@ describe('LiveAppShareDialog', () => {
     fireEvent.change(within(dialog).getByLabelText("Colleague's email"), { target: { value: ' ben@example.com ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Share' }));
 
-    const message = await within(dialog).findByText(/^Shared with ben@example.com\. It shows under "Shared with you" with your email/);
+    const message = await within(dialog).findByText(
+      'Shared with ben@example.com. They find it under "Shared with you" on their Live Artifacts page, '
+        + 'with your email, and can duplicate it into a project of their own.',
+    );
     expect(shareLiveApp).toHaveBeenCalledWith({ projectId: 'p1', slug: 'table-counts', email: 'ben@example.com' });
     const done = within(dialog).getByRole('button', { name: 'Done' });
     await waitFor(() => expect(done).toHaveFocus());
@@ -65,7 +68,7 @@ describe('LiveAppShareDialog', () => {
     expect(within(dialog).queryByLabelText("Colleague's email")).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Share' }));
 
-    expect(await within(dialog).findByText(/^Shared with everyone on this stack\./)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/^Shared with everyone on this stack\. They find it under "Shared with you" on their Live Artifacts page/)).toBeInTheDocument();
     expect(shareLiveApp).toHaveBeenCalledWith({ projectId: 'p1', slug: 'table-counts', everyone: true });
   });
 

@@ -21,6 +21,8 @@ vi.mock('../api', () => ({
   fetchLiveAppShares: vi.fn(() => Promise.resolve([])),
   withdrawLiveAppShare: vi.fn(),
   fetchMyLiveApps: vi.fn(() => Promise.resolve(new Map())),
+  fetchSharedLiveApps: vi.fn(() => Promise.resolve([])),
+  duplicateLiveApp: vi.fn(),
 }));
 vi.mock('../../platform/host', () => ({
   host: {
@@ -29,11 +31,12 @@ vi.mock('../../platform/host', () => ({
   },
 }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
-vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
+const toastAdd = vi.hoisted(() => vi.fn());
+vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
 vi.mock('../components/artifact', () => ({ ArtifactViewer: () => null }));
 
 import ArtifactsView from './ArtifactsView';
-import { fetchMyLiveApps, shareLiveApp } from '../api';
+import { duplicateLiveApp, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from '../api';
 import { liveAppStatesFrom } from '../lib/liveAppState';
 import { setLiveApps } from '../../lib/liveApps';
 
@@ -51,6 +54,13 @@ const page = { ...app, id: 'a3', slug: 'weekly', title: 'Weekly KPIs', type: 'ht
 const openKebab = () => fireEvent.click(screen.getByLabelText('Artifact menu'));
 // The page Share item, as both menus label it; not "Share with…".
 const pageShareItem = () => screen.queryByText('Share', { exact: true });
+
+const GENERAL = { id: 'p-general', name: 'general', path: '/general' };
+const shared = {
+  shareId: 's1', slug: 'pipeline-health', name: 'Pipeline Health', description: '',
+  ownerEmail: 'ana@example.com', everyone: false, sharedAt: '2026-10-21T03:00:00Z',
+};
+const sharedList = () => screen.queryByRole('region', { name: 'Shared with you' });
 
 afterEach(() => {
   localStorage.clear();
@@ -163,6 +173,82 @@ describe.each(['grid', 'list'])('%s view', (view) => {
     it("shows the copy's \"received from\" line on its card", () => {
       render(<ArtifactsView artifacts={[copy]} />);
       expect(screen.getByText('Received from ana@example.com')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('"Shared with you" on the page', () => {
+  // Braces: a function returned from beforeEach runs as its teardown.
+  beforeEach(() => { fetchSharedLiveApps.mockResolvedValue([shared]); });
+
+  describe('with live apps off', () => {
+    it('shows no list and never asks for one', async () => {
+      render(<ArtifactsView artifacts={[]} projects={[GENERAL]} />);
+      expect(await screen.findByText('No artifacts yet')).toBeInTheDocument();
+      expect(sharedList()).toBeNull();
+      expect(fetchSharedLiveApps).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('with live apps on', () => {
+    beforeEach(() => setLiveApps(true));
+
+    it('lists what others shared, with who shared it, before the viewer has any artifacts', async () => {
+      render(<ArtifactsView artifacts={[]} projects={[GENERAL]} />);
+      const list = await screen.findByRole('region', { name: 'Shared with you' });
+      expect(within(list).getByText('Pipeline Health')).toBeInTheDocument();
+      expect(within(list).getByText('From ana@example.com')).toBeInTheDocument();
+      expect(within(list).getByRole('button', { name: 'Duplicate Pipeline Health' })).toBeInTheDocument();
+      expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
+    });
+
+    it('lists them above the viewer\'s own artifacts too', async () => {
+      render(<ArtifactsView artifacts={[app]} projects={[GENERAL]} />);
+      const list = await screen.findByRole('region', { name: 'Shared with you' });
+      expect(within(list).getByText('Pipeline Health')).toBeInTheDocument();
+      const own = screen.getByText('Table Row Counts');
+      expect(list.compareDocumentPosition(own) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('shows no list while nobody has shared anything', async () => {
+      fetchSharedLiveApps.mockResolvedValue([]);
+      render(<ArtifactsView artifacts={[]} projects={[GENERAL]} />);
+      await waitFor(() => expect(fetchSharedLiveApps).toHaveBeenCalledTimes(1));
+      expect(sharedList()).toBeNull();
+    });
+
+    it('shows no list without a General project to put the copy in', () => {
+      render(<ArtifactsView artifacts={[]} projects={[{ id: 'p1', name: 'demo', path: '/proj' }]} />);
+      expect(sharedList()).toBeNull();
+      expect(fetchSharedLiveApps).not.toHaveBeenCalled();
+    });
+
+    it('copies nothing when the disclaimer is cancelled', async () => {
+      const onRefreshArtifacts = vi.fn();
+      render(<ArtifactsView artifacts={[]} projects={[GENERAL]} onRefreshArtifacts={onRefreshArtifacts} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(duplicateLiveApp).not.toHaveBeenCalled();
+      expect(onRefreshArtifacts).not.toHaveBeenCalled();
+      expect(toastAdd).not.toHaveBeenCalled();
+    });
+
+    it('says where the copy goes, copies into General on confirm, says it worked, and reads the list again', async () => {
+      duplicateLiveApp.mockResolvedValue(copy);
+      const onRefreshArtifacts = vi.fn();
+      render(<ArtifactsView artifacts={[]} projects={[GENERAL]} onRefreshArtifacts={onRefreshArtifacts} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicate Pipeline Health' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/ana@example.com shared this app\..*Your copy goes to your General project\.$/)).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Duplicate' }));
+
+      await waitFor(() => expect(onRefreshArtifacts).toHaveBeenCalledTimes(1));
+      expect(duplicateLiveApp).toHaveBeenCalledWith({ shareId: 's1', projectId: 'p-general' });
+      expect(toastAdd).toHaveBeenCalledWith({ title: 'Duplicated into your General project.', type: 'success' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
   });
 });
