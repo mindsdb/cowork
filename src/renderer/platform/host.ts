@@ -514,6 +514,9 @@ export async function checkConfigured(): Promise<{
   provider: string;
   // Electron is desktop by definition, so the bridge path leaves this false.
   orgMode?: boolean;
+  // Only a server that issues signed draft links reports them; the bridge
+  // path never does.
+  draftLinks?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -526,11 +529,13 @@ export async function checkConfigured(): Promise<{
     config_ready?: boolean;
     provider?: string;
     org_mode?: boolean;
+    draft_links?: boolean;
   };
   return {
     configured: Boolean(h.config_ready),
     provider: h.provider ?? '',
     orgMode: Boolean(h.org_mode),
+    draftLinks: h.draft_links === true,
   };
 }
 

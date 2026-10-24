@@ -26,7 +26,15 @@ import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
+import {
+  // Aliased: the component keeps its own `artifactRef` (a React ref).
+  artifactRef as artifactWorkspaceRef,
+  createDraftLink,
+  loadArtifactDraftText,
+  loadArtifactDraftDocument,
+} from '../../lib/artifactWorkspaceApi';
+import { DRAFT_LINK_ORIGINS } from '../../../../shared/draft-link-origins';
+import { useDraftLinks } from '../../../lib/draftLinks';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -64,6 +72,23 @@ import {
 // fall back to a monospace block.
 
 
+// The frame's `src` and the new tab's address for a link from
+// `createDraftLink`: an https URL on one of DRAFT_LINK_ORIGINS whose path
+// starts at /_t/, rebuilt from that origin so nothing else in the server's
+// string reaches a frame or a tab. Anything else is an error.
+function draftLinkUrl(link) {
+  const raw = typeof link?.url === 'string' ? link.url : '';
+  let parsed = null;
+  try { parsed = new URL(raw); } catch { parsed = null; }
+  const origin = parsed?.protocol === 'https:'
+    ? DRAFT_LINK_ORIGINS.find((allowed) => allowed === parsed.origin)
+    : undefined;
+  if (!origin || !parsed.pathname.startsWith('/_t/')) {
+    throw new Error('The server returned no draft link.');
+  }
+  return `${origin}${parsed.pathname}${parsed.search}`;
+}
+
 // Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
 // carry over from the artifact the report started from.
 function isSameArtifact(a, b) {
@@ -88,6 +113,11 @@ export function ArtifactViewer({
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const draftPreviewUrl = artifact?.draftUrl || '';
+  // Org web: when the deployment serves drafts on a draft host through signed
+  // links (/health's draft_links), the HTML preview opens one; otherwise the
+  // srcdoc path below stays as it was.
+  const draftLinks = useDraftLinks();
+  const draftLinkEnabled = host.isWeb && draftLinks;
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   // Backend artifacts treat the folder, not the entry html, as the
@@ -121,6 +151,10 @@ export function ArtifactViewer({
   const [textPreview, setTextPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // "Open in a browser tab" failures: shown beside the preview, never in its
+  // place, and cleared when another artifact opens.
+  const [tabError, setTabError] = useState('');
+  useEffect(() => { setTabError(''); }, [open, artifact?.id]);
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -515,6 +549,29 @@ export function ArtifactViewer({
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
+      const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;
+      if (linkRef) {
+        // Navigate the frame to a fresh signed link on the draft host. The
+        // document then carries that host's own CSP, so CDN scripts, web fonts
+        // and remote images load as in a browser tab, and the sandbox below
+        // still has no allow-same-origin. A new link on every open and reload:
+        // each expires in 30 minutes.
+        setPreviewKind('static');
+        createDraftLink(linkRef.projectRef, linkRef.artifactId)
+          .then((link) => {
+            if (cancelled) return;
+            const linked = draftLinkUrl(link);
+            setPreviewUrl(withCommentLayer
+              ? withArtifactCommentFlag(withArtifactVersion(linked, cacheVersion))
+              : withArtifactVersion(linked, cacheVersion));
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
+          })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+      }
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
@@ -632,7 +689,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, draftLinkEnabled]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -766,6 +823,46 @@ export function ArtifactViewer({
   const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
     ? browserTabTarget
     : `${host.getApiOrigin()}${browserTabTarget}`;
+
+  // Org web, unpublished: the authenticated draft URL cannot open in a tab (the
+  // tab carries no bearer), so open a fresh signed link instead. The tab is
+  // opened inside the click, where popup blockers allow it, and its opener is
+  // cut before anything is awaited. `noopener` would make window.open return
+  // null and leave no tab to point at the link. A failure is shown next to the
+  // preview, never in its place, and only while the same artifact is open.
+  const openDraftLinkInTab = async (ref) => {
+    const clicked = artifact;
+    setTabError('');
+    let tab = null;
+    try { tab = window.open('', '_blank'); } catch { tab = null; }
+    if (!tab) {
+      setTabError('The browser blocked the new tab. Allow pop-ups for this site and try again.');
+      return;
+    }
+    tab.opener = null;
+    try {
+      const url = draftLinkUrl(await createDraftLink(ref.projectRef, ref.artifactId));
+      // The tab is pointed at a URL only after draftLinkUrl has pinned it to a
+      // draft host, so this call may navigate a tab directly. Agent-written
+      // URLs (an artifact's publishedUrl) reach a tab only through
+      // host.openExternal, which checks the scheme.
+      tab.location.replace(url);
+    } catch (e) {
+      try { tab.close(); } catch { /* the tab is already gone */ }
+      if (openRef.current && isSameArtifact(artifactRef.current, clicked)) {
+        setTabError(draftPreviewErrorMessage(e, 'Could not open this artifact in a browser.'));
+      }
+    }
+  };
+
+  // Every unpublished draft the server can address opens by link, except a
+  // backend artifact with an action path, which previews through its own
+  // runtime; a card without a full identity cannot ask for a link. Both keep
+  // the old route.
+  const draftLinkRef = !isPublished && draftLinkEnabled && !(isBackendArtifact && hasActionPath)
+    ? artifactWorkspaceRef(artifact)
+    : null;
+
   // On desktop an unpublished artifact CANNOT be opened over the served URL,
   // however well-formed it is: the loopback server requires a bearer token
   // (`require_auth` defaults on in local tenancy), and main injects that token
@@ -788,6 +885,7 @@ export function ArtifactViewer({
   // injection does not reach.
   const onOpenInBrowserTab = () => {
     if (!isPublished && canOpenLocalFile) return onOpenOS();
+    if (draftLinkRef) return openDraftLinkInTab(draftLinkRef);
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
       setErr('Could not open this artifact in a browser.');
@@ -951,6 +1049,9 @@ export function ArtifactViewer({
             ? 'This draft changed elsewhere. Your text is still here; reload the latest revision before saving.'
             : workspace.error}
         </div>
+      )}
+      {tabError && (
+        <div className="artifact-workspace-notice" role="alert">{tabError}</div>
       )}
       {feedbackNotice && (
         <button

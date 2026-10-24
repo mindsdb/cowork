@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   readSettings: vi.fn(),
   saveSettings: vi.fn(),
   setOrgMode: vi.fn(),
+  setDraftLinks: vi.fn(),
   syncSettingsToDb: vi.fn(),
   onboarding: vi.fn(() => <div>Provider onboarding</div>),
 }));
@@ -24,6 +25,9 @@ vi.mock('./platform/host', () => ({ host: {
   accountOwnershipPending: async () => null,
 } }));
 vi.mock('./lib/orgMode', () => ({ setOrgMode: mocks.setOrgMode }));
+// A spy, not the real store: the store starts false, so reading it can't tell
+// a stored false from no call at all.
+vi.mock('./lib/draftLinks', () => ({ setDraftLinks: mocks.setDraftLinks }));
 vi.mock('./lib/syncSettings', () => ({
   syncSettingsToDb: mocks.syncSettingsToDb,
   syncModelsToDbWithRetry: vi.fn(),
@@ -98,5 +102,33 @@ describe('service readiness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
     expectNoProviderSetup();
+  });
+
+  /*
+   * Builds without the platform UI (the Python-served image) boot through this
+   * path, so the draft-links flag from /health has to reach the store here
+   * too, not only in resolveBootTarget.
+   */
+  describe('the draft-links flag', () => {
+    it.each([
+      ['true', { draftLinks: true }, true],
+      ['absent', {}, false],
+    ])('stores what /health reported when the flag is %s', async (_label, flag, stored) => {
+      mocks.checkConfigured.mockResolvedValue({ configured: true, orgMode: true, ...flag });
+      render(<App />);
+      expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+      expect(mocks.setDraftLinks).toHaveBeenLastCalledWith(stored);
+    });
+
+    it('reads off when /health fails, and on once Try again reaches a server that issues draft links', async () => {
+      mocks.checkConfigured.mockRejectedValueOnce(new Error('Restarting'))
+        .mockResolvedValue({ configured: true, orgMode: true, draftLinks: true });
+      render(<App />);
+      expect(await screen.findByRole('status')).toHaveTextContent('The service is unavailable');
+      expect(mocks.setDraftLinks).toHaveBeenLastCalledWith(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+      expect(mocks.setDraftLinks).toHaveBeenLastCalledWith(true);
+    });
   });
 });
