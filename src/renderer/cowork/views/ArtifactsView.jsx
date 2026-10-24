@@ -25,6 +25,12 @@ import { projectNameOf } from '../lib/artifactProject';
 import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
+import { useLiveApps } from '../../lib/liveApps';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
+import { LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines } from '../lib/liveAppState';
+import { useLiveAppStates } from '../hooks/useLiveAppStates';
+import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
+import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact,
@@ -217,7 +223,7 @@ async function downloadWithFeedback(artifact, toastManager) {
   }
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false }) {
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
   /*
@@ -278,6 +284,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // own artifact, so ArtifactStatus renders exactly what it did before.
   const authorship = artifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
+  // A duplicated live app says whose it was, in the line a web app leaves empty.
+  const received = liveLines?.received ?? null;
   // Open the live thing: published URL, else served URL, else local file. In org
   // mode the last fallback is skipped — there is no local file the user can reach,
   // and `privateUrl` is empty there by construction.
@@ -324,9 +332,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             </div>
             <div
               className="flex items-baseline min-w-0 font-[family-name:var(--font-body)] text-[12px] leading-[1.2] min-h-[1.2em]"
-              title={secondary ? secondary.name + secondary.ext : undefined}
+              title={received || (secondary ? secondary.name + secondary.ext : undefined)}
             >
-              {secondary && (
+              {received ? (
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{received}</span>
+              ) : secondary && (
                 <>
                   <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{secondary.name}</span>
                   <span className="shrink-0 text-ink-4">{secondary.ext}</span>
@@ -355,8 +365,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             publishable={publishable}
             onRetry={onRetry}
             authorship={authorship}
+            // A live app has no page link to report; its state line says what matters.
+            pageBadge={!liveAppCard}
           />
         </div>
+        {liveLines?.state && (
+          <div className="font-[family-name:var(--font-body)] text-[12px] leading-[1.35] text-ink-3">{liveLines.state}</div>
+        )}
       </div>
 
       {/* Footer — project origin + last-updated, divided from the body. */}
@@ -447,7 +462,10 @@ function ArtifactTitle({ artifact }) {
   return <span title={base}>{base}</span>;
 }
 
-function ArtifactFileName({ artifact }) {
+function ArtifactFileName({ artifact, liveLines = null }) {
+  /* A live app's state, and whom a duplicated one came from, in the line a web app leaves empty. */
+  const live = liveLines ? [liveLines.state, liveLines.received].filter(Boolean).join(' · ') : '';
+  if (live) return <span className="min-w-0 truncate text-ink-3" title={live}>{live}</span>;
   const { secondary } = splitArtifactName(artifact);
   if (!secondary) return null;
   return (
@@ -487,7 +505,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false }) {
+function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
@@ -499,6 +517,7 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false })
         publishable={isPublishableArtifact(artifact)}
         onRetry={onRetry}
         inlineChanges={inlineChanges}
+        pageBadge={pageBadge}
         // "Another member" / "Unknown owner" tag (ENG-2979). Null for the
         // viewer's own artifact.
         authorship={artifactAuthorship(artifact.capabilities)}
@@ -536,7 +555,7 @@ function ArtifactActions({ onOpen, menuItems }) {
 
 // The list view's menu. Built separately from the grid's (in the view) — the
 // two have always offered different items; the org-mode gate covers both.
-function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
+function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onShareLiveApp, onLaunchLiveApp, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   return [
@@ -584,7 +603,8 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
       icon: Ico.refresh(14),
       onClick: onUpdate,
     },
-    !published && isPublishableArtifact(artifact) && {
+    // A live app shares through "Share with…": cowork-server refuses it as a page.
+    !published && isPublishableArtifact(artifact) && !isLiveAppCard(artifact, liveApps) && {
       id: 'publish',
       label: 'Share',
       icon: Ico.upload(14),
@@ -595,6 +615,19 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
       label: 'Stop sharing',
       icon: Ico.upload(14),
       onClick: onUnpublish,
+    },
+    onShareLiveApp && canShareLiveApp(artifact, liveApps) && {
+      id: 'share-live-app',
+      label: SHARE_LIVE_APP_LABEL,
+      icon: Ico.userPlus(14),
+      onClick: onShareLiveApp,
+    },
+    // Only for an app that isn't running (canLaunchLiveApp), so the caller passes it or not.
+    onLaunchLiveApp && {
+      id: 'launch-live-app',
+      label: LAUNCH_LIVE_APP_LABEL,
+      icon: Ico.play(14),
+      onClick: onLaunchLiveApp,
     },
     onDelete && { divider: true },
     onDelete && {
@@ -614,11 +647,13 @@ function rowMenuItems({ artifact, orgMode, onOpen, onOpenShared, onPreview, onRe
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false }) {
   const { orgMode, toastManager, published, openBest, openOutside } = useArtifactOpen(artifact, onOpenViewer);
+  const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
     artifact,
     orgMode,
+    liveApps,
     onOpen: openBest,
     onOpenShared: () => openUrl(artifact.publishedUrl),
     onPreview: () => onOpenViewer?.(artifact),
@@ -628,6 +663,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     onPublish: () => doPublish?.(artifact),
     onUnpublish: () => doUnpublish?.(artifact),
     onUpdate: () => doUpdate?.(artifact),
+    onShareLiveApp: doShareLiveApp ? () => doShareLiveApp(artifact) : undefined,
+    onLaunchLiveApp: doLaunchLiveApp ? () => doLaunchLiveApp(artifact) : undefined,
     onDelete: doDelete && artifact?.capabilities?.canEdit !== false
       ? () => doDelete(artifact)
       : undefined,
@@ -640,12 +677,18 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     <ListItem
       leading={<ArtifactIcon artifact={artifact} size={16} />}
       title={<ArtifactTitle artifact={artifact} />}
-      description={<ArtifactFileName artifact={artifact} />}
+      description={<ArtifactFileName artifact={artifact} liveLines={liveLines} />}
       onActivate={openBest}
       actions={<ArtifactActions onOpen={openOutside} menuItems={menuItems} />}
       meta={(
         <>
-          <ArtifactStatusSlot artifact={artifact} phase={phase} onRetry={onRetry} inlineChanges />
+          <ArtifactStatusSlot
+            artifact={artifact}
+            phase={phase}
+            onRetry={onRetry}
+            inlineChanges
+            pageBadge={!liveAppCard}
+          />
           <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
           <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
         </>
@@ -662,6 +705,8 @@ export default function ArtifactsView({
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
   onArtifactChanged,
+  // Reads the list again; a copy of a shared live app is new to it.
+  onRefreshArtifacts,
   projects = [],
   onOpenProject,
   onAddressWithAgent,
@@ -674,6 +719,21 @@ export default function ArtifactsView({
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
+  // App hands down a new list after each turn, so the states re-read with it.
+  const liveAppStates = useLiveAppStates(liveApps, list);
+  const linesOf = (a) => liveAppLines(a, { liveApps, states: liveAppStates });
+  // Launch asks the agent in a chat of the app's project, behind the usual card.
+  const launchLiveApp = onAddressWithAgent
+    ? (a) => onAddressWithAgent({ artifact: a, prompt: launchLiveAppPrompt(a) })
+    : null;
+  const launchOf = (a) => (launchLiveApp && canLaunchLiveApp(a, { liveApps, states: liveAppStates })
+    ? launchLiveApp
+    : undefined);
+  // Where a copy made from "Shared with you" goes; boot creates it (hooks/useBootDecisions.js).
+  const generalProjectId = projects.find((p) => p.name === 'general')?.id || null;
+  // The live app whose "Share with…" dialog is open.
+  const [shareTarget, setShareTarget] = useState(null);
   // By path, so the viewer always shows the current card and closes once the
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
@@ -939,6 +999,19 @@ export default function ArtifactsView({
           amount in grid vs list, since their heights differ). */}
       <div className="h-5 shrink-0" />
 
+      {liveApps && generalProjectId && (
+        <SharedLiveAppsSection
+          projectId={generalProjectId}
+          // The copy sorts with the viewer's own artifacts, often below the
+          // fold, so the toast is what says it worked.
+          onDuplicated={() => {
+            showToast({ kind: 'ok', message: 'Duplicated into your General project.' });
+            onRefreshArtifacts?.();
+          }}
+          className="mx-8 mb-6"
+        />
+      )}
+
       {(loading || total > 0) && (
         <FilterRow
           search={
@@ -996,6 +1069,8 @@ export default function ArtifactsView({
                 phase={statusByPath[a.path]}
                 onRetry={() => handlePublish(a)}
                 onOpenProject={onOpenProject}
+                liveLines={linesOf(a)}
+                liveAppCard={isLiveAppCard(a, liveApps)}
               />
             ))}
           </div>
@@ -1010,11 +1085,15 @@ export default function ArtifactsView({
                 onPublish={handlePublish}
                 onUnpublish={handleUnpublish}
                 onUpdate={handleUpdate}
+                onShareLiveApp={setShareTarget}
+                onLaunchLiveApp={launchOf(a)}
                 onDelete={handleTrash}
                 onOpenProject={onOpenProject}
                 phase={statusByPath[a.path]}
                 onRetry={() => handlePublish(a)}
                 isMacPlatform={isMacPlatform}
+                liveLines={linesOf(a)}
+                liveAppCard={isLiveAppCard(a, liveApps)}
               />
             ))}
           </ListGroup>
@@ -1031,6 +1110,10 @@ export default function ArtifactsView({
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
       />
+
+      {shareTarget && (
+        <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
+      )}
 
       {publishTarget && (
         <PublishDialog
@@ -1072,7 +1155,8 @@ export default function ArtifactsView({
               icon: Ico.power(14),
               onClick: () => handleUnpublish(a),
             });
-          } else if (isHtml) {
+          } else if (isHtml && !isLiveAppCard(a, liveApps)) {
+            // A live app shares through "Share with…": cowork-server refuses it as a page.
             items.push({
               id: 'publish',
               label: busyA ? 'Sharing…' : 'Share',
@@ -1146,6 +1230,23 @@ export default function ArtifactsView({
               label: 'Download',
               icon: Ico.download(14),
               onClick: () => downloadWithFeedback(a, toastManager),
+            });
+          }
+          if (canShareLiveApp(a, liveApps)) {
+            items.push({
+              id: 'share-live-app',
+              label: SHARE_LIVE_APP_LABEL,
+              icon: Ico.userPlus(14),
+              onClick: () => setShareTarget(a),
+            });
+          }
+          const launch = launchOf(a);
+          if (launch) {
+            items.push({
+              id: 'launch-live-app',
+              label: LAUNCH_LIVE_APP_LABEL,
+              icon: Ico.play(14),
+              onClick: () => launch(a),
             });
           }
           if (canManage) {
