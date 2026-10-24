@@ -15,6 +15,10 @@ The frontend and backend are developed and released independently. At runtime, t
 
 ---
 
+## Shared projects
+
+On deployments with selective project sharing, a recipient sees shared projects in Projects with a read-only file view. Files are addressed by project UUID, so an owned project with the same name stays separate. Received projects show the last eight characters of that UUID on their cards and file views, with the full project ID in a tooltip, to distinguish equal names without revealing owner identities. Shared projects are excluded from task, schedule and move pickers, and send handlers reject them. HTML is shown as text; downloads use authenticated requests. The view rechecks access on focus and every 15 seconds, clearing its contents if access is revoked or a recheck gets no answer within 10 seconds. The server enforces these restrictions and must support `/shared-projects/{id}/files`; older deployments keep their existing project behavior.
+
 ## Environments
 
 MindsHub Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.

@@ -47,7 +47,7 @@ import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
-import { canUseSharedResource } from './lib/sharedResourceAccess';
+import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
@@ -576,7 +576,7 @@ function searchRecents(tasks, projects) {
   return [
     ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
       .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
-    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.name, title: projectLabel(project) })),
+    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
 }
 
@@ -630,6 +630,7 @@ function AppCore() {
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
+  const runnableProjects = useMemo(() => projects.filter(canRunProject), [projects]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   // False until the first artifacts fetch settles, so Live Artifacts shows
@@ -1948,6 +1949,7 @@ function AppCore() {
   // (selectedProject is resolved from its id by the project route, so null here.)
   const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  const runnableSelectedProject = canRunProject(selectedProject) ? selectedProject : null;
   // The project-detail id currently being resolved from the fetched list, or
   // null once settled. Distinct from `selectedProject` (which the whole app
   // reads and the URL bridge mirrors): while this differs from the selection we
@@ -2246,7 +2248,7 @@ function AppCore() {
     projectDetailPending != null &&
     !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
-  const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
+  const currentTaskProject = resolveTaskProject(currentTask, runnableProjects) || runnableSelectedProject;
   const currentTaskModel = currentTask?.model
     ? (currentTask.model === MODEL_ROUTER_ID
         ? MODEL_ROUTER
@@ -2714,8 +2716,8 @@ function AppCore() {
               _client_only: true,
             },
           ],
-      projectName: selectedProject?.name || 'general',
-      projectPath: selectedProject?.path || null,
+      projectName: runnableSelectedProject?.name || 'general',
+      projectPath: runnableSelectedProject?.path || null,
       model: selectedModel?.id || null,
       reasoningEffort: selectedEffort || null,
       attachments: [],
@@ -2991,8 +2993,8 @@ function AppCore() {
               _client_only: true,
             },
           ],
-      projectName: selectedProject?.name || 'general',
-      projectPath: selectedProject?.path || null,
+      projectName: runnableSelectedProject?.name || 'general',
+      projectPath: runnableSelectedProject?.path || null,
       model: selectedModel?.id || null,
       reasoningEffort: selectedEffort || null,
       attachments: [],
@@ -3060,7 +3062,7 @@ function AppCore() {
     fetchGoogleDriveReferenceFiles,
     removeGoogleDriveFileReference,
   } = useGoogleDrivePicker({
-    selectedProject,
+    selectedProject: runnableSelectedProject,
     currentTask,
     setComposerAttachments,
     setActiveTaskId,
@@ -3297,8 +3299,8 @@ function AppCore() {
     refreshSchedules().catch(() => {});
   }, [refreshSchedules]);
 
-  const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
-  const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
+  const attachmentProjectPath = currentTask?.projectPath || runnableSelectedProject?.path || null;
+  const attachmentProjectName = currentTask?.projectName || runnableSelectedProject?.name || null;
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
@@ -3381,8 +3383,9 @@ function AppCore() {
   // errors here surface through the composer's existing inline error UI
   // (same as any other send failure) — no separate toast plumbing needed.
   const launchCodingModeTask = async (text, meta) => {
-    let generalProject = projects.find((p) => p.name === 'general');
-    const effectiveProject = selectedProject || generalProject;
+    let generalProject = runnableProjects.find((p) => p.name === 'general');
+    const effectiveProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null) || generalProject;
+    if (!canRunProject(effectiveProject)) throw new Error('Only the owner can run tasks in this shared project.');
     if (!effectiveProject?.path) {
       throw new Error('Pick a project with a folder before launching Claude Code.');
     }
@@ -3431,7 +3434,7 @@ function AppCore() {
   // place. Returns null rather than throwing so a caller can surface an
   // actionable error instead of sending against a project that isn't there.
   const ensureGeneralProject = async () => {
-    const existing = projects.find((p) => p.name === 'general');
+    const existing = runnableProjects.find((p) => p.name === 'general');
     if (existing) return existing;
     try {
       await createProject('general');
@@ -3439,7 +3442,7 @@ function AppCore() {
       if (Array.isArray(fresh)) setProjects(fresh);
       // createProject resolved, so `general` exists even if this refetch came
       // back stale — fall back to a name-only record so the caller adopts it.
-      return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
+      return (fresh || []).find((p) => canRunProject(p) && p.name === 'general') || { name: 'general' };
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "ensuregeneralproject_could_not_bootstrap_general_project", '[ensureGeneralProject] could not bootstrap general project', e);
@@ -3449,6 +3452,9 @@ function AppCore() {
 
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text, meta) => {
+    if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
+      throw new Error('Only the owner can run tasks in this shared project.');
+    }
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
     }
@@ -3456,8 +3462,8 @@ function AppCore() {
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
-      const generalFallback = projects.find((p) => p.name === 'general');
-      const requestedProject = meta?.project || selectedProject;
+      const generalFallback = runnableProjects.find((p) => p.name === 'general');
+      const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
       const effectiveProjectName = requestedProject?.name || 'general';
       const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
       const effectiveProjectPath = requestedProject?.path
@@ -3492,8 +3498,8 @@ function AppCore() {
     // task into "general" (server provisions it on startup). If for
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
-    let generalProject = projects.find((p) => p.name === 'general');
-    const requestedProject = meta?.project || selectedProject;
+    let generalProject = runnableProjects.find((p) => p.name === 'general');
+    const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
     if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
@@ -3807,6 +3813,8 @@ function AppCore() {
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
     if (!targetTask) return false;
+    const targetProject = projects.find((project) => project.id === targetTask.projectId);
+    if (targetProject && !canRunProject(targetProject)) return false;
     const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
@@ -3958,7 +3966,7 @@ function AppCore() {
     // resolves the same project a live send to it would (parity — otherwise
     // even the on-screen task's own follow-up loses the fallback on drain).
     const taskProject = opts.targetTask
-      ? (resolveTaskProject(targetTask, projects) || selectedProject)
+      ? (resolveTaskProject(targetTask, runnableProjects) || runnableSelectedProject)
       : currentTaskProject;
     let taskProjectName = targetTask.projectName
       || (taskProject?.name)
@@ -5410,7 +5418,7 @@ function AppCore() {
     if (result.type === 'task' || (result.type === 'pin' && result.route === 'task')) {
       selectTask(result.id);
     } else if (result.type === 'project') {
-      const project = projects.find((p) => p.name === result.id || p.path === result.id);
+      const project = projects.find((p) => p.id === result.id || p.name === result.id || p.path === result.id);
       if (project) setSelectedProject(project);
       setRoute('projects');
     } else if (result.type === 'attachment' && result.sessionId) {
@@ -5671,7 +5679,7 @@ function AppCore() {
           onRenameTask={handleRenameTask}
           onDeleteTask={handleDeleteTask}
           onMoveTaskToProject={handleOpenMoveModal}
-          projects={projects}
+          projects={runnableProjects}
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
@@ -5759,13 +5767,13 @@ function AppCore() {
             onSelectTask={selectTask}
             onClearActive={clearActive}
             onSend={handleSendFromHome}
-            project={selectedProject}
+            project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
             effort={selectedEffort}
             onEffortChange={setSelectedEffort}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
@@ -5870,7 +5878,7 @@ function AppCore() {
               setSelectedProject(null);
               setRoute('projects');
             }}
-            projects={projects}
+            projects={runnableProjects}
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
@@ -5951,7 +5959,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              handleSendFromHome(text, meta);
+              return handleSendFromHome(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -5987,9 +5995,9 @@ function AppCore() {
         {route === 'scheduled' && (
           <ScheduledView
             scheduled={scheduled}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
-            selectedProject={selectedProject}
+            selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
             onUpdate={handleUpdateSchedule}
@@ -6012,7 +6020,7 @@ function AppCore() {
         {route === 'schedule-detail' && (
           <ScheduleDetailView
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
@@ -6053,7 +6061,7 @@ function AppCore() {
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             loading={!artifactsLoaded}
-            projects={projects}
+            projects={runnableProjects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
@@ -6070,7 +6078,7 @@ function AppCore() {
         {route === 'tasks' && (
           <TasksView
             tasks={tasks}
-            projects={projects}
+            projects={runnableProjects}
             schedules={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
@@ -6103,9 +6111,9 @@ function AppCore() {
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
-            projects={projects}
+            projects={runnableProjects}
             kind={route}
-            project={selectedProject}
+            project={canRunProject(selectedProject) ? selectedProject : null}
             onRefreshArtifacts={reloadArtifacts}
             agentLabel={agentLabel}
           />
@@ -6352,7 +6360,7 @@ function AppCore() {
       <MoveToProjectModal
         open={!!moveModalTask}
         task={moveModalTask}
-        projects={projects}
+        projects={runnableProjects}
         onClose={() => setMoveModalTask(null)}
         onConfirm={handleConfirmMove}
       />
