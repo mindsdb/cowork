@@ -45,4 +45,8 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   posthog: {
     clientIdVar: 'POSTHOG_CLIENT_ID',
   },
+  figma: {
+    clientIdVar: 'FIGMA_CLIENT_ID',
+    clientSecretVar: 'FIGMA_CLIENT_SECRET',
+  },
 };
