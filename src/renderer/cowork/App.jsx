@@ -71,6 +71,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -5407,6 +5408,19 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
+
+  // Hold off idle sleep while a scheduled run is in flight, about to fire, or
+  // waiting to retry, unless the user turned it off in Settings. Desktop only;
+  // a no-op on web. Said again on every poll (`scheduled` is a new list each
+  // time): the shell lets a hold lapse when it stops hearing it.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+    enabled: settings.scheduleKeepAwake !== false,
+  });
+  useEffect(() => {
+    host.setScheduleKeepAwake(keepAwake);
+  }, [keepAwake, scheduled]);
+  useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
 
   // A desktop notification when the server pauses a schedule after repeated
   // failures, where the OS allows one; clicking it opens that schedule. Until
