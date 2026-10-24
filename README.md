@@ -116,6 +116,8 @@ parent/
 
 ```bash
 npm install
+# Electron no longer downloads its binary on install; fetch it once.
+npx install-electron --no
 
 # Build everything (main + renderer)
 npm run build
@@ -1531,7 +1533,7 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 
 | Layer     | Tech                                   |
 | --------- | -------------------------------------- |
-| Framework | Electron 34                            |
+| Framework | Electron 45                            |
 | Renderer  | React 19 + TypeScript + Vite 6         |
 | Backend   | FastAPI (Python, [`cowork-server`](https://pypi.org/project/cowork-server/) via PyPI) |
 | Markdown  | marked 17                              |

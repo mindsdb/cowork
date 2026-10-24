@@ -19,7 +19,11 @@ import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
-import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
+import {
+  assessShellSupport,
+  MIN_MACOS_FOR_LATEST_SHELL,
+  type ShellSupportVerdict,
+} from '../../shared/shell-support';
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
@@ -644,7 +648,25 @@ export interface UpdateStatus {
 // an unsubscribe function. Web returns a no-op unsubscriber.
 export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
   if (isElectron && typeof bridge.onUpdateStatus === 'function') {
-    return bridge.onUpdateStatus(cb);
+    let active = true;
+    const unsubscribe = bridge.onUpdateStatus((status: UpdateStatus) => {
+      if (status?.phase !== 'shell-available') {
+        cb(status);
+        return;
+      }
+      void shellUpdatesBlocked().then((blocked) => {
+        if (!active || blocked) return;
+        try {
+          cb(status);
+        } catch (error) {
+          diagnostic("renderer.platform.host", "WARNING", "host_update_status_callback_failed", '[host] an update status callback threw', error);
+        }
+      });
+    });
+    return () => {
+      active = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }
   return () => {};
 }
@@ -706,6 +728,7 @@ export interface ShellUpdate {
 // explicit "Check for updates" passes it, so a shell published after launch is
 // reported on legacy shells too; mount-time callers share the one launch fetch.
 export async function getShellUpdate(options: { fresh?: boolean } = {}): Promise<ShellUpdate | null> {
+  if (isElectron && await shellUpdatesBlocked()) return null;
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
     return s?.available && s.latestVersion
@@ -771,6 +794,62 @@ async function shellUpdateFromManifest(fresh = false): Promise<ShellUpdate | nul
   }
 }
 
+// The macOS major version from Chromium's UA client hints. Shells already in
+// the field cannot gain a bridge member, and the UA string is frozen at
+// 10_15_7, so this is the only source an OTA bundle can read. Null off macOS
+// (the value is not a macOS version there), without the API, or on an
+// unparseable value. Probed once per renderer lifetime.
+let macosMajorProbe: Promise<number | null> | null = null;
+
+async function probeMacosMajor(): Promise<number | null> {
+  try {
+    const uaData = (navigator as Navigator & {
+      userAgentData?: { getHighEntropyValues?: (hints: string[]) => Promise<{ platformVersion?: unknown }> };
+    }).userAgentData;
+    if (typeof uaData?.getHighEntropyValues !== 'function') return null;
+    const { platformVersion } = await uaData.getHighEntropyValues(['platformVersion']);
+    const major = Number.parseInt(String(platformVersion ?? '').split('.')[0], 10);
+    return Number.isFinite(major) && major > 0 ? major : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getMacosMajor(): Promise<number | null> {
+  if (getPlatform() !== 'darwin') return Promise.resolve(null);
+  if (!macosMajorProbe) {
+    macosMajorProbe = probeMacosMajor().then((major) => {
+      if (major === null) {
+        diagnostic("renderer.platform.host", "WARNING", "host_macos_version_unreadable", '[host] could not read the macOS version; shell offers stay visible');
+      }
+      return major;
+    });
+  }
+  return macosMajorProbe;
+}
+
+// The newest shell needs macOS N+ and the update feed and installer refuse
+// older macOS, so any shell offer there is a dead end. The check needs no
+// manifest or build kind, so it holds before any verdict and on every channel.
+// An unreadable macOS version never blocks.
+async function shellUpdatesBlocked(): Promise<boolean> {
+  const major = await getMacosMajor();
+  return major !== null && major < MIN_MACOS_FOR_LATEST_SHELL;
+}
+
+function withoutShellOffer(summary: UpdateCheckSummary): UpdateCheckSummary {
+  const { shellVersion: _version, shellDownloadUrl: _url, ...rest } = summary;
+  return {
+    ...rest,
+    shellUpdateAvailable: false,
+    updateAvailable: !!summary.uiUpdateAvailable || !!summary.serverUpdateAvailable,
+  };
+}
+
+function idleWhenBlocked(snapshot: ShellAutoUpdateSnapshot, blocked: boolean): ShellAutoUpdateSnapshot {
+  return blocked ? { ...snapshot, phase: 'idle' } : snapshot;
+}
+
 // Is the installed shell inside the supported desktop window (ENG-1047)?
 //
 // Runs in the UI bundle on purpose: it is the only code that reaches shells
@@ -793,6 +872,7 @@ export async function getShellSupport(): Promise<ShellSupportVerdict | null> {
       latestShellVersion: latest,
       source: info.source,
       buildKind: info.buildKind,
+      macosMajor: await getMacosMajor(),
     });
   } catch {
     return null;
@@ -846,28 +926,48 @@ const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
 
 export async function getShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
   if (isElectron && typeof bridge.getShellAutoUpdate === 'function') {
-    return bridge.getShellAutoUpdate();
+    const snapshot = await bridge.getShellAutoUpdate();
+    return idleWhenBlocked(snapshot, await shellUpdatesBlocked());
   }
   return DISABLED_SHELL_AUTO_UPDATE;
 }
 
 export function onShellAutoUpdate(cb: (snapshot: ShellAutoUpdateSnapshot) => void): () => void {
   if (isElectron && typeof bridge.onShellAutoUpdate === 'function') {
-    return bridge.onShellAutoUpdate(cb);
+    let active = true;
+    // Chained so snapshots reach cb in the order they arrived.
+    let queue: Promise<void> = Promise.resolve();
+    const unsubscribe = bridge.onShellAutoUpdate((snapshot: ShellAutoUpdateSnapshot) => {
+      queue = queue.then(async () => {
+        const blocked = await shellUpdatesBlocked();
+        if (!active) return;
+        try {
+          cb(idleWhenBlocked(snapshot, blocked));
+        } catch (error) {
+          diagnostic("renderer.platform.host", "WARNING", "host_shell_auto_update_callback_failed", '[host] a shell auto-update callback threw', error);
+        }
+      });
+    });
+    return () => {
+      active = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }
   return () => {};
 }
 
 export async function checkShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
   if (isElectron && typeof bridge.checkShellAutoUpdate === 'function') {
-    return bridge.checkShellAutoUpdate();
+    const snapshot = await bridge.checkShellAutoUpdate();
+    return idleWhenBlocked(snapshot, await shellUpdatesBlocked());
   }
   return DISABLED_SHELL_AUTO_UPDATE;
 }
 
 export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
   if (isElectron && typeof bridge.downloadShellAutoUpdate === 'function') {
-    return bridge.downloadShellAutoUpdate();
+    const snapshot = await bridge.downloadShellAutoUpdate();
+    return idleWhenBlocked(snapshot, await shellUpdatesBlocked());
   }
   return DISABLED_SHELL_AUTO_UPDATE;
 }
@@ -885,6 +985,11 @@ export async function installShellAutoUpdate(hooks: { onProceed?: () => void } =
 // via redeploy, ENG-852), so it resolves to a benign "up to date" and the
 // Settings control is hidden there.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  const summary = await checkForUpdatesUnfiltered();
+  return isElectron && await shellUpdatesBlocked() ? withoutShellOffer(summary) : summary;
+}
+
+async function checkForUpdatesUnfiltered(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
     const reply = await bridge.checkForUpdate();
     if (reply && typeof reply === 'object' && 'ok' in reply) {
