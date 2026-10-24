@@ -26,11 +26,15 @@ vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
 vi.mock('./server-auth', () => ({ authHeader: vi.fn(() => ({})) }));
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('./server-release-install', () => ({
+  lockedServerInstallArgs: vi.fn((_uv: string, args: string[]) => args),
+}));
 vi.mock('http');
 vi.mock('https');
 
-import { forgetServerCapability, startServer } from './server-process';
+import { forgetServerCapability, startServer, isServerRunning } from './server-process';
 import { buildKind } from './cowork-home';
+import { lockedServerInstallArgs } from './server-release-install';
 import {
   maybeUpdateServer,
   repairServerInstall,
@@ -71,10 +75,18 @@ function mockAuthProbe(statusCode: number) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("LOG_LEVEL", "INFO");
   mockAuthProbe(200);
 });
 
 afterEach(() => {
+  for (const call of vi.mocked(cp.execFile).mock.calls) {
+    const args = call[1];
+    if (Array.isArray(args) && args[0] === 'tool' && args[1] === 'install') {
+      expect(lockedServerInstallArgs).toHaveBeenCalledWith(call[0], args);
+    }
+  }
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
   delete process.env.UV_TOOL_DIR; // not covered by the setup-env scrub patterns
 });
@@ -114,7 +126,8 @@ describe('maybeUpdateServer (orchestration)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
   });
 
-  it('git update that fails health check rolls back by pinning the EXACT prior commits', async () => {
+  it.each([true, false])('Git rollback preserves the prior sources (Anton from Git: %s)', async (antonFromGit) => {
+    if (!antonFromGit) vi.stubEnv('ANTON_REF', 'explicit-new-branch');
     const OLD_COWORK = 'a'.repeat(40);
     const OLD_ANTON = 'b'.repeat(40);
     const NEW_COWORK = 'c'.repeat(40);
@@ -124,7 +137,7 @@ describe('maybeUpdateServer (orchestration)', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true); // uv binary + site-packages
     vi.mocked(fs.readdirSync).mockReturnValue([
       'cowork_server-0.1.12.dist-info',
-      'anton_agent-1.0.0.dist-info',
+      ...(antonFromGit ? ['anton_agent-1.0.0.dist-info'] : []),
     ] as never);
     vi.mocked(fs.readFileSync).mockImplementation(((p: string) =>
       JSON.stringify({
@@ -175,12 +188,12 @@ describe('maybeUpdateServer (orchestration)', () => {
     // without a "conflicting URLs" abort and regardless of its version.
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(2);
-    expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
+    expect(installs[0]).toContain(`git+https://github.com/mindsdb/cowork-server.git@${NEW_COWORK}`);
     expect(installs[1]).toContain(`git+https://github.com/mindsdb/cowork-server.git@${OLD_COWORK}`);
 
-    // The initial install carries no override; the rollback sets UV_OVERRIDE.
-    expect(installEnvs[0]?.UV_OVERRIDE).toBeFalsy();
-    expect(installEnvs[1]?.UV_OVERRIDE).toBeTruthy();
+    // Both the update and rollback bind the recorded Git selections.
+    expect(installEnvs[0]?.UV_OVERRIDE).toBeTruthy();
+    expect(Boolean(installEnvs[1]?.UV_OVERRIDE)).toBe(antonFromGit);
 
     // The rollback's override file was written with the exact prior anton commit.
     const overrideWrites = vi
@@ -190,7 +203,7 @@ describe('maybeUpdateServer (orchestration)', () => {
       overrideWrites.some((c) =>
         c.includes(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`),
       ),
-    ).toBe(true);
+    ).toBe(antonFromGit);
 
     // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
@@ -280,123 +293,39 @@ describe('uv-unresolvable bails are loud', () => {
   });
 });
 
-describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () => {
-  // A PyPI-channel install where cowork-server is current but a newer
-  // anton-agent has published — the case that was invisible before ENG-1094.
-  const COWORK_META =
-    'Metadata-Version: 2.1\nName: cowork-server\n' +
-    'Requires-Dist: anton-agent<3,>=2.26.6.30.1\nRequires-Dist: fastapi>=0.100\n';
-
-  // `antonReleases === null` makes the anton-agent PyPI request fail (404),
-  // simulating an inconclusive anton lookup while cowork-server is current.
-  function installPypiChannel(antonReleases: Record<string, unknown[]> | null) {
+describe('PyPI releases keep the server and Anton selection together', () => {
+  it.each([false, true])('ignores standalone Anton releases (installed contract: %s)', async (hasContract) => {
     process.env.UV_TOOL_DIR = '/fake/uv/tools';
-    // Everything on disk exists EXCEPT direct_url.json — its absence is what
-    // makes readVcsInfo return null and select the PyPI channel.
-    vi.mocked(fs.existsSync).mockImplementation(((p: string) => !String(p).endsWith('direct_url.json')) as never);
+    vi.mocked(fs.existsSync).mockImplementation(((p: string) => {
+      if (String(p).endsWith('direct_url.json')) return false;
+      if (String(p).endsWith('release-requirements.txt')) return hasContract;
+      return true;
+    }) as never);
     vi.mocked(fs.readdirSync).mockReturnValue([
       'cowork_server-0.26.7.27.1.dist-info',
       'anton_agent-2.26.7.27.1.dist-info',
     ] as never);
-    vi.mocked(fs.readFileSync).mockImplementation(((p: string) =>
-      (String(p).endsWith('METADATA') ? COWORK_META : '')) as never);
-    mockPypi((url) =>
-      url.includes('/anton-agent/')
-        ? (antonReleases === null ? null : JSON.stringify({ releases: antonReleases }))
-        // cowork-server info.version == installed → cowork is up-to-date.
-        : JSON.stringify({ info: { version: '0.26.7.27.1' }, releases: { '0.26.7.27.1': [{}] } }));
-  }
-
-  function mockUv(): string[][] {
-    const execCalls: string[][] = [];
+    vi.mocked(fs.readFileSync).mockReturnValue('Requires-Dist: anton-agent<3,>=2.26.6.30.1\n');
+    mockPypi((url) => url.includes('/anton-agent/')
+      ? JSON.stringify({ releases: { '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] } })
+      : JSON.stringify({ info: { version: '0.26.7.27.1' }, releases: { '0.26.7.27.1': [{}] } }));
     vi.mocked(cp.execFile).mockImplementation(((
-      cmd: string,
-      args: string[],
-      _opts: unknown,
+      _cmd: string, args: string[], _opts: unknown,
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
-      execCalls.push([cmd, ...args]);
-      if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.7.27.1\n', '');
-      else cb(null, '', ''); // uv tool install → success
+      cb(null, args[0] === 'tool' && args[1] === 'list' ? 'cowork-server v0.26.7.27.1\n' : '', '');
       return {} as never;
     }) as never);
-    return execCalls;
-  }
 
-  it('applies a newer anton-agent while cowork-server stays pinned to its current version', async () => {
-    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
-    const execCalls = mockUv();
-
-    const result = await maybeUpdateServer();
-
-    expect(result).toEqual({ updated: true, previousVersion: '2.26.7.27.1', newVersion: '2.26.7.27.2', component: 'anton-agent' });
-    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
-    expect(installs).toHaveLength(1);
-    // Same cowork-server version; the newer anton is forced as a direct requirement.
-    expect(installs[0]).toContain('cowork-server==0.26.7.27.1');
-    expect(installs[0]).toContain('--with');
-    expect(installs[0]).toContain('anton-agent==2.26.7.27.2');
-  });
-
-  it('checkForServerUpdate names the anton-agent component and its versions', async () => {
-    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
-    mockUv();
-    await expect(checkForServerUpdate()).resolves.toEqual({
-      updateAvailable: true,
-      currentVersion: '2.26.7.27.1',
-      latestVersion: '2.26.7.27.2',
-      component: 'anton-agent',
-    });
-  });
-
-  it('checkForServerUpdate flags error (not "up to date") when the anton lookup is inconclusive', async () => {
-    // cowork-server is current, but the anton PyPI request fails. Collapsing that
-    // into a plain "no update" would let the on-demand UI say "You're up to date"
-    // for an inconclusive check — flag it as an error instead (PR #533 review).
-    installPypiChannel(null);
-    mockUv();
     await expect(checkForServerUpdate()).resolves.toEqual({
       updateAvailable: false,
       currentVersion: '0.26.7.27.1',
       latestVersion: '0.26.7.27.1',
       component: 'cowork-server',
-      error: true,
     });
-  });
-
-  it('maybeUpdateServer skips silently when the anton lookup is inconclusive', async () => {
-    // The apply path fails closed on an inconclusive anton lookup — no install,
-    // no error surfaced; the next check/poll retries.
-    installPypiChannel(null);
-    const execCalls = mockUv();
     await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
-    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
-  });
-
-  it('never offers an anton newer than cowork-server allows (3.0.0 blocked by <3)', async () => {
-    installPypiChannel({ '2.26.7.27.1': [{}], '3.0.0': [{}] });
-    const execCalls = mockUv();
-    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
-    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
-  });
-
-  it('rolls back to the prior anton when the new one fails its health check', async () => {
-    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
-    const execCalls = mockUv();
-    vi.mocked(startServer)
-      .mockResolvedValueOnce({ ok: false, reason: 'health check failed' } as never)
-      .mockResolvedValueOnce({ ok: true, port: 26866 } as never);
-
-    const result = await maybeUpdateServer();
-
-    expect(result.updated).toBe(false);
-    expect(result.previousVersion).toBe('2.26.7.27.1');
-    expect(result.error).toContain('New anton failed to start');
-    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
-    expect(installs).toHaveLength(2);
-    expect(installs[0]).toContain('anton-agent==2.26.7.27.2'); // forward
-    expect(installs[1]).toContain('anton-agent==2.26.7.27.1'); // rollback
-    expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+    expect(lockedServerInstallArgs).not.toHaveBeenCalled();
+    expect(vi.mocked(https.get).mock.calls.every(([url]) => !String(url).includes('/anton-agent/'))).toBe(true);
   });
 });
 
@@ -543,7 +472,7 @@ describe('repairServerInstall (orchestration)', () => {
     expect(forgottenBeforeInstall).toBe(true);
   });
 
-  it('reinstalls from git (exact configured ref) when the venv carries vcs_info', async () => {
+  it('repairs the exact installed Git commit instead of the configured moving ref', async () => {
     process.env.UV_TOOL_DIR = '/fake/uv/tools';
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readdirSync).mockReturnValue(['cowork_server-0.1.12.dist-info'] as never);
@@ -567,7 +496,7 @@ describe('repairServerInstall (orchestration)', () => {
 
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(1);
-    expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
+    expect(installs[0]).toContain(`git+https://github.com/mindsdb/cowork-server.git@${'a'.repeat(40)}`);
     expect(installs[0]).toContain('--reinstall');
   });
 
@@ -587,6 +516,30 @@ describe('repairServerInstall (orchestration)', () => {
     }) as never);
 
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
+  });
+
+  it('asks uv for an uncoloured tools dir, since forced colour wins over NO_COLOR', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push(args);
+      if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    await repairServerInstall(BROKEN);
+
+    const toolDirCalls = execCalls.filter((args) => args[0] === 'tool' && args[1] === 'dir');
+    expect(toolDirCalls.length).toBeGreaterThan(0);
+    for (const args of toolDirCalls) expect(args).toEqual(['tool', 'dir', '--color', 'never']);
   });
 });
 
@@ -662,6 +615,54 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     expect(installs[0]).toContain(`cowork-server==${STABLE}`);
   });
 
+  it('restarts the untouched prior server after a preflight-only failure', async () => {
+    installOnPypiChannel(RC);
+    vi.mocked(isServerRunning).mockReturnValueOnce(true);
+    let installs = 0;
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, args: string[], _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (args[0] === 'tool' && args[1] === 'list') cb(null, `cowork-server v${RC}\n`, '');
+      else if (args[0] === 'tool' && args[1] === 'install') {
+        installs += 1;
+        cb(Object.assign(new Error('preflight failed'), { code: 2 }), '', 'Cannot cache rollback wheel: offline');
+      } else cb(null, '', '');
+      return {} as never;
+    }) as never);
+    expect((await maybeUpdateServer()).updated).toBe(false);
+    expect(installs).toBe(1);
+    expect(startServer).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])('restores the prior release before starting after install verification fails (rollback fails: %s)', async (rollbackFails) => {
+    installOnPypiChannel(RC);
+    const calls: string[][] = [];
+    let installs = 0;
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, args: string[], _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      calls.push(args);
+      if (args[0] === 'tool' && args[1] === 'list') cb(null, `cowork-server v${RC}\n`, '');
+      else if (args[0] === 'tool' && args[1] === 'install') {
+        installs += 1;
+        const failed = installs === 1 || rollbackFails;
+        cb(failed ? new Error('verification failed') : null, '', failed ? 'Installed inventory differs' : '');
+      } else cb(null, '', '');
+      return {} as never;
+    }) as never);
+    const result = await maybeUpdateServer();
+    expect(result.outcome).toBe(rollbackFails ? 'rollback-failed' : 'rolled-back');
+    const installed = calls.filter((args) => args[0] === 'tool' && args[1] === 'install');
+    expect(installed).toHaveLength(2);
+    expect(installed[1]).toContain(`cowork-server==${RC}`);
+    expect(startServer).toHaveBeenCalledTimes(rollbackFails ? 0 : 1);
+    if (!rollbackFails) {
+      expect(vi.mocked(startServer).mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(lockedServerInstallArgs).mock.invocationCallOrder.at(-1)!);
+    }
+  });
+
   it('restores the pre-release when the stable server refuses to boot', async () => {
     installOnPypiChannel(RC);
     const execCalls = mockUv(RC);
@@ -677,14 +678,13 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     expect(installs).toHaveLength(2);
     expect(installs[0]).toContain(`cowork-server==${STABLE}`);
     expect(installs[1]).toContain(`cowork-server==${RC}`);
-    // The rc wheel's exact anton pin is restated so the rollback resolves.
-    expect(installs[1]).toContain('anton-agent==0.9.5rc1');
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(expect.any(String), installs[1].slice(1));
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
   });
 
-  it('rollback does not depend on PyPI being reachable after the upgrade starts', async () => {
-    // The rc wheel's anton pin must be resolved before the venv is touched:
-    // fetching it mid-rollback fails open and the rollback cannot resolve.
+  it('rollback passes the prior release without another discovery lookup', async () => {
+    // The orchestrator passes the exact prior release to the consumer even
+    // when the release-discovery endpoint is unavailable during rollback.
     const net = { dead: false };
     installOnPypiChannel(RC, { net });
     const execCalls = mockUv(RC, () => { net.dead = true; });
@@ -698,7 +698,7 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const installs = installCalls(execCalls);
     expect(installs).toHaveLength(2);
     expect(installs[1]).toContain(`cowork-server==${RC}`);
-    expect(installs[1]).toContain('anton-agent==0.9.5rc1');
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(expect.any(String), installs[1].slice(1));
   });
 
   it('leaves a staging-ring build on the rc stream (rc to rc updates still apply)', async () => {
@@ -729,11 +729,11 @@ describe('stream repair — prod install stranded on a pre-release', () => {
 
     // The check runs on every boot, so its log alone must answer: which
     // stream, which versions, what the repair is about to do.
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('build=prod');
-    expect(line).toContain(`cowork-server=${RC}`);
-    expect(line).toContain('anton-agent=0.9.5');
-    expect(line).toContain(`repairing to ${STABLE}`);
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.build_channel).toBe('prod');
+    expect(line.server_version).toBe(RC);
+    expect(line.agent_version).toBe('0.9.5');
+    expect(line).toMatchObject({ outcome: 'repair', target_version: STABLE });
   });
 
   it('checkForServerUpdate logs the deferred verdict when PyPI is unreachable on an off-stream install', async () => {
@@ -746,9 +746,9 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const result = await checkForServerUpdate();
 
     expect(result.updateAvailable).toBe(false);
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain(`cowork-server=${RC}`);
-    expect(line).toContain('PyPI was unreachable');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.server_version).toBe(RC);
+    expect(line.outcome).toBe('no-latest-version');
   });
 
   it('reads the anton version for the log via the uv-resolved tools dir, not the platform guess', async () => {
@@ -765,8 +765,8 @@ describe('stream repair — prod install stranded on a pre-release', () => {
 
     await checkForServerUpdate();
 
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('anton-agent=0.9.5');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.agent_version).toBe('0.9.5');
   });
 
   it('checkForServerUpdate logs the on-stream verdict on a healthy prod install', async () => {
@@ -777,9 +777,9 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const result = await checkForServerUpdate();
 
     expect(result.updateAvailable).toBe(false);
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('build=prod');
-    expect(line).toContain('on stream, nothing to repair');
+    const line = log.mock.calls.map((c) => JSON.parse(String(c[0]))).find((event) => event.event === 'server_version_check');
+    expect(line.build_channel).toBe('prod');
+    expect(line.outcome).toBe('on-stream');
   });
 
   it('never reinstalls a prod build already on a stable version, even with PyPI unreachable', async () => {
@@ -802,7 +802,7 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const installs = installCalls(execCalls);
     expect(installs).toHaveLength(1);
     expect(installs[0]).toContain(`cowork-server==${RC}`);
-    expect(installs[0]).toContain('anton-agent==0.9.5rc1');
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(expect.any(String), installs[0].slice(1));
   });
 
   it('boot repair on a staging-ring build still re-pins the installed pre-release', async () => {
@@ -815,6 +815,6 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const installs = installCalls(execCalls);
     expect(installs).toHaveLength(1);
     expect(installs[0]).toContain(`cowork-server==${RC}`);
-    expect(installs[0]).toContain('anton-agent==0.9.5rc1');
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(expect.any(String), installs[0].slice(1));
   });
 });

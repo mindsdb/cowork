@@ -5,7 +5,20 @@ import userEvent from '@testing-library/user-event';
 const spies = vi.hoisted(() => ({
   fetchProjects: vi.fn(),
   fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+  drivePickerProject: vi.fn(),
 }));
+
+// The real hook, with the project App hands it recorded.
+vi.mock('./hooks/useGoogleDrivePicker', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useGoogleDrivePicker: (context, deps) => {
+      spies.drivePickerProject(context.selectedProject);
+      return actual.useGoogleDrivePicker(context, deps);
+    },
+  };
+});
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -97,6 +110,7 @@ async function settle() {
 beforeEach(() => {
   spies.fetchProjects.mockReset().mockResolvedValue([{ ...general }]);
   spies.fetchHealth.mockClear();
+  spies.drivePickerProject.mockClear();
 });
 
 describe('the projects route on a cold load', () => {
@@ -114,6 +128,19 @@ describe('the projects route on a cold load', () => {
     await user.click(screen.getByRole('button', { name: /New task/ }));
     await screen.findByText(`Runnable: ${general.id}`);
     expect(screen.queryByText('Runnable: shared-id')).not.toBeInTheDocument();
+  });
+
+  it('never hands a shared project to the Drive picker, so Drive files are not tagged with it', async () => {
+    const user = userEvent.setup();
+    const shared = { id: 'shared-id', name: 'planning', shared: true, path: '', capabilities: { canRun: false } };
+    spies.fetchProjects.mockResolvedValue([general, shared]);
+    window.history.replaceState(null, '', '/projects/shared-id');
+    render(<App />);
+    await screen.findByText('Selected project: planning');
+    await user.click(screen.getByRole('button', { name: /New task/ }));
+    await screen.findByText(`Runnable: ${general.id}`);
+    expect(spies.drivePickerProject).toHaveBeenCalled();
+    expect(spies.drivePickerProject.mock.calls.filter(([project]) => project?.id === shared.id)).toEqual([]);
   });
 
   it("lands on the grid with no selection for a project link the caller can't open", async () => {
