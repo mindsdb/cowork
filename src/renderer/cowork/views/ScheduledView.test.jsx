@@ -242,3 +242,44 @@ describe('ScheduledView — unseen auto-pauses', () => {
     expect(screen.queryByText(/paused after failing/)).not.toBeInTheDocument();
   });
 });
+
+describe('ScheduledView — save and run once', () => {
+  it('creates the task, then runs the new task once', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const { props, user } = setup({ onCreate });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1'));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ prompt: 'try it' });
+  });
+});
+
+describe('ScheduledView — needs attention first', () => {
+  const failedRun = { status: 'failed', outcome: 'failed_during_execution', error: 'boom' };
+  const rows = [
+    { ...SCHEDULED[0], state: 'active' },
+    { ...SCHEDULED[1], state: 'active', lastRun: failedRun },
+    { ...SCHEDULED[2], state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' },
+  ];
+
+  it('puts tasks that need you in their own group above the rest', () => {
+    setup({ scheduled: rows });
+    const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('section');
+    expect(within(attention).getByText('Alpha sweep')).toBeInTheDocument();
+    expect(within(attention).getByText('Paused digest')).toBeInTheDocument();
+    const rest = screen.getByRole('heading', { name: 'Everything else' }).closest('section');
+    expect(within(rest).getByText('Weekly metrics')).toBeInTheDocument();
+  });
+
+  it('shows one plain list when nothing needs attention', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.queryByRole('heading', { name: 'Needs attention' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Everything else' })).toBeNull();
+  });
+
+  it('reads each schedule in words with its next run', () => {
+    setup({ scheduled: [rows[0]] });
+    expect(screen.getByText(/^Every Friday at 9:00 AM · next /)).toBeInTheDocument();
+  });
+});
