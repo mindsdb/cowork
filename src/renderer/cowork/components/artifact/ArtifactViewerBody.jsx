@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
+import { useDraftImageLoader } from './draftImages';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
@@ -47,6 +48,7 @@ export function ArtifactViewerBody({
 }) {
   const {
     draftUrl: draftPreviewUrl,
+    contentVersion,
     error: err,
     setError: setErr,
     isText,
@@ -103,6 +105,10 @@ export function ArtifactViewerBody({
   // until the user has been told exactly that and said yes.
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
+  // One loader for Preview and Edit's split preview, so switching between
+  // them asks for no image twice. Keyed on the viewer's content version, so a
+  // change to the artifact or a Reload asks again.
+  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, contentVersion);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -130,6 +136,7 @@ export function ArtifactViewerBody({
       onChange={workspace.setDraft}
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
+      loadImage={loadDraftImage}
     />
   ) : null;
 
@@ -150,7 +157,7 @@ export function ArtifactViewerBody({
         }}
       >
         {textExt === '.md' ? (
-          <MarkdownContent text={textPreview.content} id={artifact.path} />
+          <MarkdownContent text={textPreview.content} id={artifact.path} loadImage={loadDraftImage} />
         ) : textExt === '.csv' && csvPreview ? (
           <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
         ) : (

@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Error boundary specifically for the data-vault form panel. The
 // panel renders user-controlled markdown blocks (the `data-vault-form`
 // JSON spec from anton's response) — a malformed spec or a render
@@ -20,7 +21,7 @@ export class FormErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     // eslint-disable-next-line no-console
-    console.error('[DataVaultFormPanel] render crash', error, info);
+    diagnostic("renderer.cowork.components.datavault.FormErrorBoundary", "ERROR", "datavaultformpanel_render_crash", '[DataVaultFormPanel] render crash', error, info);
   }
 
   render() {

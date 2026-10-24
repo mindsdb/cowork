@@ -21,6 +21,12 @@ SPA_DIR = Path(os.environ.get("COWORK_SPA_DIR", "/app/dist/renderer-web"))
 _provider_tests = os.environ.get("COWORK_PROVIDER_TESTS_ENABLED", "true")
 if _provider_tests not in {"true", "false"}:
     raise ValueError("COWORK_PROVIDER_TESTS_ENABLED must be 'true' or 'false'.")
+# Whether a build without the platform UI shows the composer's model picker: "default" starts each
+# new conversation on the operator's model, "open" keeps the user's last pick. "off" writes no tag,
+# so the shell stays as the build made it.
+_model_picker = os.environ.get("COWORK_MODEL_PICKER", "off")
+if _model_picker not in {"off", "default", "open"}:
+    raise ValueError("COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
 
 if SPA_DIR.exists():
     # Subdirectories that the SPA build emits — served by StaticFiles so
@@ -51,8 +57,12 @@ if SPA_DIR.exists():
         # Refuse a changed template rather than silently losing the operator's choice.
         if html.count("<head>") != 1 or "cowork-provider-tests-enabled" in html:
             raise ValueError("The SPA shell needs one <head> and no provider-testing metadata.")
-        meta = f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">'
-        html = html.replace("<head>", f"<head>\n    {meta}", 1)
+        if "cowork-model-picker" in html:
+            raise ValueError("The SPA shell needs no model-picker metadata.")
+        metas = [f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">']
+        if _model_picker != "off":
+            metas.append(f'<meta name="cowork-model-picker" content="{_model_picker}">')
+        html = html.replace("<head>", "<head>" + "".join(f"\n    {meta}" for meta in metas), 1)
         return HTMLResponse(html, headers={"Cache-Control": "no-store", "X-Cowork-Spa-Shell": "1"})
 
     @app.get("/health")

@@ -1,4 +1,6 @@
+import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
@@ -454,6 +456,13 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
 /** Default page size for the paginated /items envelope. Matches
  * the server's own default so the two agree without either side needing to
  * repeat the number. */
@@ -505,9 +514,11 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
   //
   // Only warmed when a caller is actually listening. Seven of the eight
   // `fetchSessions` call sites want the list and nothing else (every task
@@ -515,27 +526,36 @@ export async function fetchSessions({ onItems } = {}) {
   // every one away, which is 50 wasted requests on the app's most common
   // interaction.
   if (onItems) {
-    for (const c of conversations.slice(0, EAGER)) {
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
       // Bounded like every other transcript fetch. Warming the FULL history of
       // the 50 most recent conversations moved the unbounded fetch from
       // task-open to startup rather than removing it — and it pre-filled a long
       // conversation so completely that neither the loading state nor
       // "load earlier" ever engaged for the tasks most likely to be opened.
       req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
-        .then((r) => {
-          const page = _pageFromItemsResponse(r);
-          onItems(c.id, _hydrateAssistantEvents(page.items), {
-            hasMoreMessages: page.hasMore,
-            messagesCursor: page.nextBefore,
-          });
-        })
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
         .catch(() => {});
-    }
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
   }
 
   // Guarded: the outer try/catch that used to wrap this whole function is gone,
@@ -551,7 +571,7 @@ export async function fetchSessions({ onItems } = {}) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
         // eslint-disable-next-line no-console
-        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        diagnostic("renderer.cowork.api", "WARNING", "fetchsessions_skipped_a_malformed_conversation_row", '[fetchSessions] skipped a malformed conversation row', c?.id, err);
         return null;
       }
     })
@@ -711,9 +731,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // MODEL_ROUTER_ID never leaves the renderer — it's how the
           // composer represents "let this account's Settings decide"
           // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that. With platform UI off, all callers use
+          // model as exactly that. With platform UI off, only the operator's
+          // picker (lib/modelPicker) sends a model, and App hands it only the
+          // models that picker offers. With it off, all callers use
           // operator-configured role settings, including restored tasks.
-          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
@@ -1919,12 +1941,12 @@ export async function fetchDatasources() {
 // retired ConnectView still imports them; they are unreachable in the
 // current routing. Remove when ConnectView is fully deleted.
 export async function saveDatasource(_payload) {
-  console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "savedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'saveDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { ok: true };
 }
 
 export async function validateDatasource(_payload) {
-  console.warn('validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "validatedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'validateDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { valid: true };
 }
 

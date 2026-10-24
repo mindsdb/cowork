@@ -429,11 +429,13 @@ export function ArtifactViewer({
   // serve URL — same CSP workaround as AttachmentThumbnail (fetch + blob:,
   // since a direct loopback <img src> is blocked). `withArtifactVersion` busts the
   // fetch on a content change or a manual reload, matching the iframe/text
-  // cache-busting below.
+  // cache-busting below. A Markdown document's own images key on the same
+  // version (ArtifactViewerBody), so Reload fetches them again too.
+  const contentVersion = `${artifact?.mtime ?? 0}.${reloadNonce}`;
   const isImage = isImageArtifact(artifact);
   const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
   const imageUrl = imageRawUrl
-    ? withArtifactVersion(imageRawUrl, `${artifact?.mtime ?? 0}.${reloadNonce}`)
+    ? withArtifactVersion(imageRawUrl, contentVersion)
     : '';
   const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
 
@@ -867,6 +869,7 @@ export function ArtifactViewer({
   };
   const previewModel = {
     draftUrl: draftPreviewUrl,
+    contentVersion,
     error: err,
     setError: setErr,
     isText,
