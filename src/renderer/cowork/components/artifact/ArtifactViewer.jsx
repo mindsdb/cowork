@@ -36,7 +36,7 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useLiveApps } from '../../../lib/liveApps';
 import { useLiveApp } from '../../hooks/useLiveApp';
-import { liveAppViewerNotice } from '../../lib/liveAppState';
+import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
@@ -773,6 +773,18 @@ export function ArtifactViewer({
     catch (e) { setErr(e?.message || 'Open failed'); }
   };
 
+  // Launch asks the agent in a chat of the app's project, which launches it
+  // behind the usual card; the viewer closes so the chat shows.
+  const onLaunchLiveApp = async () => {
+    try {
+      const started = await onAddressWithAgent({ artifact, prompt: launchLiveAppPrompt(artifact), conversationId });
+      if (started === false) setErr('Connect an agent provider, then try launching this app again.');
+      else onClose?.();
+    } catch (e) {
+      setErr(e?.message || 'Could not ask the agent to launch this app');
+    }
+  };
+
   // The link-pill arrow: a live app → its address; published → open the
   // public URL; otherwise → open the local/served preview.
   const onOpenInBrowser = () => {
@@ -921,7 +933,9 @@ export function ArtifactViewer({
     csv: csvPreview,
     onDownload,
     onOpenOS,
-    liveApp: liveAppView ? { notice: liveAppNotice, onOpen: onOpenLiveApp } : null,
+    liveApp: liveAppView
+      ? { notice: liveAppNotice, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
+      : null,
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,

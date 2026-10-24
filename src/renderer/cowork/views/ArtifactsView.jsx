@@ -27,7 +27,7 @@ import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { useLiveApps } from '../../lib/liveApps';
 import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
-import { liveAppLines } from '../lib/liveAppState';
+import { LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines } from '../lib/liveAppState';
 import { useLiveAppStates } from '../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
 import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
@@ -555,7 +555,7 @@ function ArtifactActions({ onOpen, menuItems }) {
 
 // The list view's menu. Built separately from the grid's (in the view) — the
 // two have always offered different items; the org-mode gate covers both.
-function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onShareLiveApp, onDelete, busy = false, isMacPlatform = false }) {
+function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onShareLiveApp, onLaunchLiveApp, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   return [
@@ -622,6 +622,13 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
       icon: Ico.userPlus(14),
       onClick: onShareLiveApp,
     },
+    // Only for an app that isn't running (canLaunchLiveApp), so the caller passes it or not.
+    onLaunchLiveApp && {
+      id: 'launch-live-app',
+      label: LAUNCH_LIVE_APP_LABEL,
+      icon: Ico.play(14),
+      onClick: onLaunchLiveApp,
+    },
     onDelete && { divider: true },
     onDelete && {
       id: 'delete',
@@ -640,7 +647,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false }) {
   const { orgMode, toastManager, published, openBest, openOutside } = useArtifactOpen(artifact, onOpenViewer);
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -657,6 +664,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     onUnpublish: () => doUnpublish?.(artifact),
     onUpdate: () => doUpdate?.(artifact),
     onShareLiveApp: doShareLiveApp ? () => doShareLiveApp(artifact) : undefined,
+    onLaunchLiveApp: doLaunchLiveApp ? () => doLaunchLiveApp(artifact) : undefined,
     onDelete: doDelete && artifact?.capabilities?.canEdit !== false
       ? () => doDelete(artifact)
       : undefined,
@@ -715,6 +723,13 @@ export default function ArtifactsView({
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
   const linesOf = (a) => liveAppLines(a, { liveApps, states: liveAppStates });
+  // Launch asks the agent in a chat of the app's project, behind the usual card.
+  const launchLiveApp = onAddressWithAgent
+    ? (a) => onAddressWithAgent({ artifact: a, prompt: launchLiveAppPrompt(a) })
+    : null;
+  const launchOf = (a) => (launchLiveApp && canLaunchLiveApp(a, { liveApps, states: liveAppStates })
+    ? launchLiveApp
+    : undefined);
   // Where a copy made from "Shared with you" goes; boot creates it (hooks/useBootDecisions.js).
   const generalProjectId = projects.find((p) => p.name === 'general')?.id || null;
   // The live app whose "Share with…" dialog is open.
@@ -1071,6 +1086,7 @@ export default function ArtifactsView({
                 onUnpublish={handleUnpublish}
                 onUpdate={handleUpdate}
                 onShareLiveApp={setShareTarget}
+                onLaunchLiveApp={launchOf(a)}
                 onDelete={handleTrash}
                 onOpenProject={onOpenProject}
                 phase={statusByPath[a.path]}
@@ -1222,6 +1238,15 @@ export default function ArtifactsView({
               label: SHARE_LIVE_APP_LABEL,
               icon: Ico.userPlus(14),
               onClick: () => setShareTarget(a),
+            });
+          }
+          const launch = launchOf(a);
+          if (launch) {
+            items.push({
+              id: 'launch-live-app',
+              label: LAUNCH_LIVE_APP_LABEL,
+              icon: Ico.play(14),
+              onClick: () => launch(a),
             });
           }
           if (canManage) {

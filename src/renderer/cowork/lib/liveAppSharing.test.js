@@ -62,7 +62,7 @@ describe('who shared it', () => {
   });
 
   it('says when the owner shared it with everyone', () => {
-    expect(sharedByLine({ ownerEmail: 'ana@example.com', everyone: true })).toBe('From ana@example.com · shared with everyone');
+    expect(sharedByLine({ ownerEmail: 'ana@example.com', everyone: true })).toBe('From ana@example.com · for everyone');
   });
 
   it('falls back to "Another member" when the server names nobody', () => {
@@ -72,8 +72,8 @@ describe('who shared it', () => {
   });
 
   it('gives a copy its "received from" line and leaves every other artifact without one', () => {
-    expect(receivedFromLine(app({ receivedFrom: { email: 'ana@example.com' } }))).toBe('Received from ana@example.com');
-    expect(receivedFromLine(app({ receivedFrom: { email: '' } }))).toBe('Received from Another member');
+    expect(receivedFromLine(app({ receivedFrom: { email: 'ana@example.com' } }))).toBe('Duplicated from ana@example.com');
+    expect(receivedFromLine(app({ receivedFrom: { email: '' } }))).toBe('Duplicated from Another member');
     expect(receivedFromLine(app({ receivedFrom: null }))).toBe(null);
     expect(receivedFromLine(app())).toBe(null);
   });
@@ -88,7 +88,7 @@ describe('the duplicate disclaimer', () => {
     const shared = { name: 'Pipeline Health', slug: 'pipeline-health', ownerEmail: 'ana@example.com' };
     expect(duplicateDisclaimerTitle(shared)).toBe('Duplicate "Pipeline Health"?');
     expect(duplicateDisclaimer(shared)).toBe(
-      'ana@example.com shared this app. Your copy runs with your own connections '
+      'ana@example.com lets you duplicate this app. Your copy runs with your own connections '
       + 'and can use whatever they can use. Review it before you launch it.',
     );
   });
@@ -97,12 +97,14 @@ describe('the duplicate disclaimer', () => {
 describe('sharedLiveAppsFrom', () => {
   it('keeps the entries the rail can act on, in the server order', () => {
     expect(sharedLiveAppsFrom([
-      { shareId: 's2', slug: 'b', name: 'B', description: 'd', ownerEmail: 'ana@example.com', everyone: true, sharedAt: 't2' },
+      { shareId: 's2', slug: 'b', name: 'B', description: 'd', ownerEmail: 'ana@example.com', everyone: true, sharedAt: 't2',
+        yourCopy: { projectId: 'p1', slug: 'b-2' } },
       { slug: 'no-share-id', name: 'Dropped' },
-      { shareId: 's1', slug: 'a' },
+      { shareId: 's1', slug: 'a', yourCopy: { projectId: 'p1' } },
     ])).toEqual([
-      { shareId: 's2', slug: 'b', name: 'B', description: 'd', ownerEmail: 'ana@example.com', everyone: true, sharedAt: 't2' },
-      { shareId: 's1', slug: 'a', name: 'a', description: '', ownerEmail: '', everyone: false, sharedAt: '' },
+      { shareId: 's2', slug: 'b', name: 'B', description: 'd', ownerEmail: 'ana@example.com', everyone: true, sharedAt: 't2',
+        yourCopy: { projectId: 'p1', slug: 'b-2' } },
+      { shareId: 's1', slug: 'a', name: 'a', description: '', ownerEmail: '', everyone: false, sharedAt: '', yourCopy: null },
     ]);
   });
 

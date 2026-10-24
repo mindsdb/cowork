@@ -35,6 +35,9 @@ import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
  *   member shared with.
  * @property {boolean} everyone Shared with everyone on the stack, not by name.
  * @property {string} sharedAt
+ * @property {{ projectId: string, slug: string } | null} yourCopy The
+ *   caller's copy from this share, while it exists: one per person, so the
+ *   list offers no second Duplicate.
  */
 
 /**
@@ -55,11 +58,11 @@ import { OTHER_ACTOR_LABEL } from './sharedResourceAccess';
  * @typedef {{ email: string }} ReceivedFrom
  */
 
-export const SHARE_LIVE_APP_LABEL = 'Share with…';
+export const SHARE_LIVE_APP_LABEL = 'Let others duplicate…';
 export const SHARE_WITH_ONE = 'one';
 export const SHARE_WITH_EVERYONE = 'everyone';
 export const SHARE_WITH_EVERYONE_LABEL = 'Everyone on this stack';
-export const SHARED_WITH_YOU_LABEL = 'Shared with you';
+export const SHARED_WITH_YOU_LABEL = 'Apps you can duplicate';
 // Live Artifacts spans every project, so a copy made there goes to General.
 export const COPY_GOES_TO_GENERAL = 'Your copy goes to your General project.';
 
@@ -101,13 +104,13 @@ export function ownerLabel(email) {
 }
 
 /**
- * Who shared an app in "Shared with you", and whether it went to everyone.
+ * Who let the viewer duplicate an app, in "Apps you can duplicate", and whether it went to everyone.
  *
  * @param {SharedLiveApp | null | undefined} app
  */
 export function sharedByLine(app) {
   const from = `From ${ownerLabel(app?.ownerEmail)}`;
-  return app?.everyone === true ? `${from} · shared with everyone` : from;
+  return app?.everyone === true ? `${from} · for everyone` : from;
 }
 
 /**
@@ -118,7 +121,7 @@ export function sharedByLine(app) {
 export function receivedFromLine(artifact) {
   const from = artifact?.receivedFrom;
   if (!from || typeof from !== 'object') return null;
-  return `Received from ${ownerLabel(from.email)}`;
+  return `Duplicated from ${ownerLabel(from.email)}`;
 }
 
 /**
@@ -136,13 +139,14 @@ export function duplicateDisclaimerTitle(app) {
 }
 
 /**
- * What the colleague confirms before cowork-server copies the app. "Shared",
- * not "built": a received copy can be shared on, and its sharer didn't write it.
+ * What the colleague confirms before cowork-server copies the app. "Lets you
+ * duplicate", not "built": a received copy can be passed on, and the person
+ * passing it on didn't write it.
  *
  * @param {SharedLiveApp | null | undefined} app
  */
 export function duplicateDisclaimer(app) {
-  return `${ownerLabel(app?.ownerEmail)} shared this app. Your copy runs with your own connections `
+  return `${ownerLabel(app?.ownerEmail)} lets you duplicate this app. Your copy runs with your own connections `
     + 'and can use whatever they can use. Review it before you launch it.';
 }
 
@@ -165,6 +169,9 @@ export function sharedLiveAppsFrom(data) {
       ownerEmail: String(item.ownerEmail ?? ''),
       everyone: item.everyone === true,
       sharedAt: String(item.sharedAt ?? ''),
+      yourCopy: item.yourCopy && typeof item.yourCopy.slug === 'string' && item.yourCopy.slug
+        ? { projectId: String(item.yourCopy.projectId ?? ''), slug: item.yourCopy.slug }
+        : null,
     }));
 }
 

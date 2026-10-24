@@ -92,7 +92,7 @@ describe('fetchSharedLiveApps', () => {
     ]));
 
     await expect(fetchSharedLiveApps()).resolves.toEqual([
-      { shareId: 's1', slug: 'pipeline-health', name: 'Pipeline Health', description: '', ownerEmail: 'ana@example.com', everyone: false, sharedAt: 't' },
+      { shareId: 's1', slug: 'pipeline-health', name: 'Pipeline Health', description: '', ownerEmail: 'ana@example.com', everyone: false, sharedAt: 't', yourCopy: null },
     ]);
     expect(fetch.mock.calls[0][0]).toBe('http://127.0.0.1:26866/api/v1/artifacts/shared-live-apps');
   });

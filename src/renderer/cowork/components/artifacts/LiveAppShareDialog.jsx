@@ -1,8 +1,7 @@
 /*
- * "Share with…" for a live app: the owner names one colleague by email, or
- * shares it with everyone on the stack, and they can then duplicate it from
- * "Shared with you". The dialog also lists the app's current shares, each with
- * "Stop sharing". Nobody opens the owner's running app: the edge serves it
+ * "Let others duplicate…" for a live app: the owner names one colleague by
+ * email, or everyone on the stack, and they can then duplicate it from "Apps
+ * you can duplicate". The dialog also lists who can, each with "Stop". Nobody opens the owner's running app: the edge serves it
  * only to the person cowork-server's access check names as its launcher. Each
  * copy runs with its new owner's own connections. Used by the artifacts view
  * and the rail's Artifacts card.
@@ -27,12 +26,12 @@ import {
  * stopping a share leaves the copies already made.
  */
 const AUDIENCE_NOTE = {
-  [SHARE_WITH_ONE]: 'They see your email beside the app, and can duplicate it until you stop sharing.',
+  [SHARE_WITH_ONE]: 'They see your email beside the app, and can duplicate it until you stop.',
   [SHARE_WITH_EVERYONE]: 'Everyone on this stack, including people who join later, sees your email beside the app, '
-    + 'and can duplicate it until you stop sharing.',
+    + 'and can duplicate it until you stop.',
 };
-const COPY_NOTE = 'Each copy is the app as it is when they duplicate it, including changes you make after sharing, '
-  + 'and runs with its new owner\'s connections. Stopping a share keeps the copies already made. '
+const COPY_NOTE = 'Each copy is the app as it is when they duplicate it, including changes you make before then, '
+  + 'and runs with its new owner\'s connections. Stopping keeps the copies already made. '
   + 'Nobody else opens your running app.';
 
 const DONE_MESSAGE_ID = 'live-app-share-done';
@@ -52,7 +51,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
   const [announcement, setAnnouncement] = useState('');
 
   /*
-   * The Share button that had focus is gone once the share succeeds, so focus
+   * The Allow button that had focus is gone once the share succeeds, so focus
    * moves to Done, and the message it describes is read out with it. A ref,
    * not autoFocus: the Modal's focus handling has already run by then.
    */
@@ -109,9 +108,9 @@ export function LiveAppShareDialog({ artifact, onClose }) {
         slug,
         ...(everyone ? { everyone: true } : { email: email.trim() }),
       });
-      setSharedWith(everyone ? SHARE_WITH_EVERYONE_LABEL.toLowerCase() : (share?.email || email.trim()));
+      setSharedWith(everyone ? SHARE_WITH_EVERYONE_LABEL : (share?.email || email.trim()));
     } catch (e) {
-      setError(e?.message || "Couldn't share this app.");
+      setError(e?.message || "Couldn't let them duplicate this app.");
     } finally {
       setBusy(false);
     }
@@ -124,7 +123,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     const next = shares[at + 1] || shares[at - 1] || null;
     const drop = () => {
       setShares((prev) => prev.filter((s) => s.shareId !== share.shareId));
-      setAnnouncement(`Stopped sharing with ${who}.`);
+      setAnnouncement(`${who} can no longer duplicate it.`);
       setFocusAfterStop({ shareId: next?.shareId || '' });
     };
     setWithdrawing(share.shareId);
@@ -136,7 +135,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     } catch (e) {
       // A 404 means the share is already gone, which is what the owner asked for.
       if (e?.status === 404) drop();
-      else setError(e?.message || "Couldn't stop this share.");
+      else setError(e?.message || "Couldn't stop that.");
     } finally {
       setWithdrawing('');
     }
@@ -152,12 +151,12 @@ export function LiveAppShareDialog({ artifact, onClose }) {
       closeOnBackdrop={!locked}
       closeOnEsc={!locked}
     >
-      <ModalHeader id="live-app-share-title" title="Share this app" subtitle={title} onClose={close} />
+      <ModalHeader id="live-app-share-title" title="Let others duplicate this app" subtitle={title} onClose={close} />
       <ModalBody>
         <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
         {sharedWith ? (
           <div id={DONE_MESSAGE_ID} className="s-body">
-            {`Shared with ${sharedWith}. They find it under "${SHARED_WITH_YOU_LABEL}" on their Live Artifacts page, with your email, and can duplicate it into a project of their own.`}
+            {`${sharedWith} can now duplicate it. They find it under "${SHARED_WITH_YOU_LABEL}" on their Live Artifacts page, with your email.`}
           </div>
         ) : (
           <form
@@ -194,8 +193,8 @@ export function LiveAppShareDialog({ artifact, onClose }) {
             {error && <Alert variant="danger">{error}</Alert>}
             {sharesError && <p className="m-0 text-xs text-ink-3">{sharesError}</p>}
             {shares.length > 0 && (
-              <section aria-label="Shared with" className="grid gap-1">
-                <h3 className="m-0 text-[11px] font-semibold text-ink-4">Shared with</h3>
+              <section aria-label="Who can duplicate it" className="grid gap-1">
+                <h3 className="m-0 text-[11px] font-semibold text-ink-4">Who can duplicate it</h3>
                 <ul className="m-0 p-0 list-none grid gap-1">
                   {shares.map((share) => {
                     const who = shareAudienceLabel(share);
@@ -207,11 +206,11 @@ export function LiveAppShareDialog({ artifact, onClose }) {
                           variant="subtle"
                           className="shrink-0"
                           data-share-id={share.shareId}
-                          aria-label={`Stop sharing with ${who}`}
+                          aria-label={`Stop letting ${who} duplicate it`}
                           disabled={locked}
                           onClick={() => stopSharing(share)}
                         >
-                          {withdrawing === share.shareId ? 'Stopping…' : 'Stop sharing'}
+                          {withdrawing === share.shareId ? 'Stopping…' : 'Stop'}
                         </Button>
                       </li>
                     );
@@ -232,7 +231,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
           <>
             <Button variant="subtle" onClick={close} disabled={locked}>Cancel</Button>
             <Button variant="primary" onClick={submit} disabled={!canShare}>
-              {busy ? 'Sharing…' : 'Share'}
+              {busy ? 'Allowing…' : 'Allow'}
             </Button>
           </>
         )}

@@ -8,6 +8,7 @@ import { CommentsPanel, CommentsToolbar } from './comments';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -40,8 +41,9 @@ function PreviewPlaceholder() {
 }
 
 // A live app runs only at its own address, never inside Cowork, so its viewer
-// names that address while it runs, or says why it isn't running.
-function LiveAppPanel({ notice, onOpen }) {
+// names that address while it runs, or says why it isn't running and offers
+// Launch, which asks the agent.
+function LiveAppPanel({ notice, onOpen, onLaunch }) {
   if (!notice) return <PreviewPlaceholder />;
   const address = notice.address ? new URL(notice.address) : null;
   return (
@@ -55,6 +57,12 @@ function LiveAppPanel({ notice, onOpen }) {
           <Button onClick={onOpen} title={address.href}>
             {Ico.arrowUpRight(14)}
             {address.host}
+          </Button>
+        )}
+        {notice.canLaunch && onLaunch && (
+          <Button onClick={onLaunch}>
+            {Ico.play(14)}
+            {LAUNCH_LIVE_APP_LABEL}
           </Button>
         )}
       </div>
@@ -162,7 +170,7 @@ export function ArtifactViewerBody({
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
   ) : liveApp ? (
-    <LiveAppPanel notice={liveApp.notice} onOpen={liveApp.onOpen} />
+    <LiveAppPanel notice={liveApp.notice} onOpen={liveApp.onOpen} onLaunch={liveApp.onLaunch} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />

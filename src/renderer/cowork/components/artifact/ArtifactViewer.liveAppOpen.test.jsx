@@ -89,7 +89,12 @@ vi.mock('./ArtifactViewerHeader', () => ({
 }));
 vi.mock('./ArtifactViewerBody', () => ({
   ArtifactViewerBody: ({ preview }) => (
-    <div data-testid="body">{preview.liveApp ? preview.liveApp.notice?.text ?? 'loading' : 'preview'}</div>
+    <div>
+      <div data-testid="body">{preview.liveApp ? preview.liveApp.notice?.text ?? 'loading' : 'preview'}</div>
+      {preview.liveApp?.notice?.canLaunch && preview.liveApp.onLaunch && (
+        <button type="button" onClick={preview.liveApp.onLaunch}>launch</button>
+      )}
+    </div>
   ),
 }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
@@ -146,6 +151,33 @@ describe("the viewer's preview and open controls on a live app", () => {
     expect(screen.getByTestId('body').textContent).toBe('Stopped. Ask your agent to relaunch it.');
     expect(screen.queryByText('tab')).toBe(null);
     expect(screen.queryByText('menu')).toBe(null);
+  });
+
+  it('offers Launch on a stopped app, which asks the agent and closes the viewer', async () => {
+    setLiveApps(true);
+    api.fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([{ ...launch, state: 'stopped', stoppedAt: '', stopReasonText: '' }]));
+    const onAddressWithAgent = vi.fn(async () => true);
+    const onClose = vi.fn();
+    render(<ArtifactViewer open artifact={app} onClose={onClose} onAddressWithAgent={onAddressWithAgent} />);
+    await act(async () => {});
+
+    await act(async () => { fireEvent.click(screen.getByText('launch')); });
+
+    expect(onAddressWithAgent).toHaveBeenCalledWith({
+      artifact: app, prompt: 'Launch the live app `server-time-a440c451`.', conversationId: null,
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('offers no Launch while the app runs, or with no agent to ask', async () => {
+    setLiveApps(true);
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} onAddressWithAgent={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.queryByText('launch')).toBe(null);
+
+    api.fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([{ ...launch, state: 'stopped', stoppedAt: '', stopReasonText: '' }]));
+    await openViewer();
+    expect(screen.queryByText('launch')).toBe(null);
   });
 
   it('matches the app by its project as well as its slug', async () => {

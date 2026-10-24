@@ -1,5 +1,5 @@
 /*
- * "Shared with you" on the Live Artifacts page: the same list as the chat
+ * "Apps you can duplicate" on the Live Artifacts page: the same list as the chat
  * rail's card (rail/SharedLiveApps.jsx), so a person whom someone shared an
  * app with finds it where they look for artifacts, also before they have any
  * of their own. ArtifactsView renders it only on a deployment that runs live
@@ -9,9 +9,8 @@
  */
 
 import Ico from '../Icons';
-import { Button } from '../ui';
 import { ListGroup, ListItem, ListNotice } from '../collection';
-import { useSharedLiveApps } from '../rail/SharedLiveApps';
+import { SharedAppAction, useSharedLiveApps } from '../rail/SharedLiveApps';
 import { COPY_GOES_TO_GENERAL, SHARED_WITH_YOU_LABEL, sharedByLine } from '../../lib/liveAppSharing';
 
 export function SharedLiveAppsSection({ projectId, onDuplicated, className }) {
@@ -33,11 +32,7 @@ export function SharedLiveAppsSection({ projectId, onDuplicated, className }) {
               leading={Ico.globe(16)}
               title={app.name}
               description={sharedByLine(app)}
-              actions={(
-                <Button size="sm" variant="tinted" aria-label={`Duplicate ${app.name}`} onClick={() => choose(app)}>
-                  Duplicate
-                </Button>
-              )}
+              actions={<SharedAppAction app={app} onChoose={choose} size="sm" />}
             />
           ))}
         </ListGroup>

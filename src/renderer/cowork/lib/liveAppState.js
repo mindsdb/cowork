@@ -10,7 +10,7 @@
  */
 
 import { isBackendArtifact } from './artifactKinds';
-import { receivedFromLine } from './liveAppSharing';
+import { canShareLiveApp, receivedFromLine } from './liveAppSharing';
 
 /**
  * One app of the caller's, as `GET /live-apps/mine` lists it.
@@ -127,26 +127,51 @@ function httpAddress(address) {
  * otherwise says why it isn't running and what to do, as the card says it.
  *
  * `address` is the running app's http(s) address, or '' when there is
- * nothing to open. Null until the read answers.
+ * nothing to open. `canLaunch` is whether the app is known not to run, so the
+ * viewer offers Launch. Null until the read answers.
  *
  * @param {{ status: 'off' | 'loading' | 'ready' | 'failed', state?: LiveAppState }} read
  * @param {{ now?: Date }} [options] The current time, for tests.
- * @returns {{ address: string, text: string } | null}
+ * @returns {{ address: string, text: string, canLaunch: boolean } | null}
  */
 export function liveAppViewerNotice(read, { now = new Date() } = {}) {
   if (read.status === 'failed') {
-    return { address: '', text: "Couldn't check whether this app is running. Reload to try again." };
+    return { address: '', text: "Couldn't check whether this app is running. Reload to try again.", canLaunch: false };
   }
   if (read.status !== 'ready') return null;
   const { state } = read;
   if (state?.state === 'running') {
     const address = httpAddress(state.address);
     return address
-      ? { address, text: 'This live app runs at its own address.' }
-      : { address: '', text: 'This live app is running. Ask your agent for its address.' };
+      ? { address, text: 'This live app runs at its own address.', canLaunch: false }
+      : { address: '', text: 'This live app is running. Ask your agent for its address.', canLaunch: false };
   }
-  if (state?.state === 'stopped') return { address: '', text: liveAppStateLine(state, { now }) };
-  return { address: '', text: "This live app isn't running. Ask your agent to launch it." };
+  if (state?.state === 'stopped') return { address: '', text: liveAppStateLine(state, { now }), canLaunch: true };
+  return { address: '', text: "This live app isn't running. Ask your agent to launch it.", canLaunch: true };
+}
+
+export const LAUNCH_LIVE_APP_LABEL = 'Launch';
+
+/**
+ * What Launch asks the agent, in a chat of the app's project: the agent
+ * launches it behind the usual card, so the person approves it as before.
+ *
+ * @param {{ slug?: string } | null | undefined} artifact
+ */
+export function launchLiveAppPrompt(artifact) {
+  return `Launch the live app \`${artifact?.slug || ''}\`.`;
+}
+
+/**
+ * Whether a card offers Launch: the viewer's own full-stack app, on a
+ * deployment that runs live apps, that isn't running.
+ *
+ * @param {object} artifact An artifact card.
+ * @param {{ liveApps: boolean, states: Map<string, LiveAppState> }} context
+ */
+export function canLaunchLiveApp(artifact, { liveApps, states }) {
+  return canShareLiveApp(artifact, liveApps)
+    && states.get(liveAppKey(artifact.projectId, artifact.slug))?.state !== 'running';
 }
 
 /**

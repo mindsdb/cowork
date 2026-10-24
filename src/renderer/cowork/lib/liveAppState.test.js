@@ -123,7 +123,7 @@ describe('liveAppLines', () => {
   it("gives a full-stack card its state and whom it came from", () => {
     expect(liveAppLines(card, { liveApps: true, states })).toEqual({
       state: 'Live at app1.view.localhost:8080',
-      received: 'Received from ana@example.com',
+      received: 'Duplicated from ana@example.com',
     });
   });
 
@@ -140,6 +140,7 @@ describe('liveAppViewerNotice', () => {
     expect(liveAppViewerNotice(ready(running), { now: NOW })).toEqual({
       address: 'http://app1.view.localhost:8080/',
       text: 'This live app runs at its own address.',
+      canLaunch: false,
     });
   });
 
@@ -147,6 +148,7 @@ describe('liveAppViewerNotice', () => {
     expect(liveAppViewerNotice(ready(stopped), { now: NOW })).toEqual({
       address: '',
       text: 'Stopped 12:04 UTC, no requests for 2 h. Ask your agent to relaunch it.',
+      canLaunch: true,
     });
   });
 
@@ -154,6 +156,7 @@ describe('liveAppViewerNotice', () => {
     expect(liveAppViewerNotice(ready(undefined))).toEqual({
       address: '',
       text: "This live app isn't running. Ask your agent to launch it.",
+      canLaunch: true,
     });
   });
 
@@ -162,6 +165,7 @@ describe('liveAppViewerNotice', () => {
       expect(liveAppViewerNotice(ready({ ...running, address }))).toEqual({
         address: '',
         text: 'This live app is running. Ask your agent for its address.',
+        canLaunch: false,
       });
     }
   });
@@ -170,6 +174,7 @@ describe('liveAppViewerNotice', () => {
     expect(liveAppViewerNotice({ status: 'failed' })).toEqual({
       address: '',
       text: "Couldn't check whether this app is running. Reload to try again.",
+      canLaunch: false,
     });
   });
 

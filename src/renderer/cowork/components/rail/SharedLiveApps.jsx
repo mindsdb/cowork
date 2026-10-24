@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Button } from '../ui';
+import { useToastManager } from '../ui/Toast';
 import { ConfirmModal } from '../ConfirmModal';
 import { RailCard } from './RailCard';
 import { duplicateLiveApp, fetchSharedLiveApps } from '../../api';
@@ -71,7 +72,7 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
           onFinal();
           return;
         }
-        if (!loaded.current) setLoadError("Couldn't load the apps shared with you.");
+        if (!loaded.current) setLoadError("Couldn't load the apps you can duplicate.");
       });
   }, []);
 
@@ -101,12 +102,19 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
     try {
       const card = await duplicateLiveApp({ shareId: app.shareId, projectId });
       noteArtifactCreated(card);
+      // One copy per person per share: the entry says so at once, and the
+      // server's list confirms it.
+      setApps((prev) => prev.map((a) => (a.shareId === app.shareId
+        ? { ...a, yourCopy: { projectId: String(projectId), slug: String(card?.slug ?? '') } }
+        : a)));
+      load();
       onDuplicated?.(card);
       setPending(null);
     } catch (e) {
       setDuplicateError(e?.message || "Couldn't duplicate this app.");
-      // The share or the owner's app may be gone; the server's list knows.
-      if (e?.status === 404) load();
+      // The share or the owner's app may be gone (404), or a copy already
+      // exists (409); the server's list knows either way.
+      if (e?.status === 404 || e?.status === 409) load();
     } finally {
       setBusy(false);
     }
@@ -135,8 +143,43 @@ export function useSharedLiveApps({ projectId, refreshKey = null, onDuplicated, 
   return { apps, loadError, choose, disclaimer };
 }
 
+/**
+ * An entry's action: Duplicate, or, once the viewer has a copy, a
+ * "Duplicated" that does nothing. The server refuses a second copy too.
+ */
+export function SharedAppAction({ app, onChoose, size = 'xs' }) {
+  if (app.yourCopy) {
+    return (
+      <Button
+        size={size}
+        variant="subtle"
+        disabled
+        aria-label={`You have a copy of ${app.name}`}
+        title="You have a copy. Delete it to duplicate the app again."
+      >
+        Duplicated
+      </Button>
+    );
+  }
+  return (
+    <Button size={size} variant="tinted" aria-label={`Duplicate ${app.name}`} onClick={() => onChoose(app)}>
+      Duplicate
+    </Button>
+  );
+}
+
 export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
-  const { apps, loadError, choose, disclaimer } = useSharedLiveApps({ projectId, refreshKey, onDuplicated });
+  const toastManager = useToastManager();
+  const { apps, loadError, choose, disclaimer } = useSharedLiveApps({
+    projectId,
+    refreshKey,
+    // The copy lands in this project's Artifacts card, which may be scrolled
+    // or closed, so the toast is what says it worked.
+    onDuplicated: (card) => {
+      toastManager.add({ title: 'Duplicated into this project.', type: 'success' });
+      onDuplicated?.(card);
+    },
+  });
 
   // One tree shape whether or not the card shows, so the disclaimer never remounts.
   const showCard = apps.length > 0 || Boolean(loadError);
@@ -158,14 +201,7 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
                     <span className="text-sm text-ink truncate">{app.name}</span>
                     <span className="text-[11px] leading-[1.35] text-ink-4 [overflow-wrap:anywhere]">{sharedByLine(app)}</span>
                   </span>
-                  <Button
-                    size="xs"
-                    variant="tinted"
-                    aria-label={`Duplicate ${app.name}`}
-                    onClick={() => choose(app)}
-                  >
-                    Duplicate
-                  </Button>
+                  <SharedAppAction app={app} onChoose={choose} />
                 </li>
               ))}
             </ul>
