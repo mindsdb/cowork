@@ -834,6 +834,43 @@ describe('NewTaskPanel', () => {
     expect(onCreate).toHaveBeenCalledWith(expect.not.objectContaining({ repositorySetup: expect.anything() }));
   });
 
+  it('starts a project task in the project’s default mode, keeps a choice for this task, and resets it on another project', async () => {
+    localStorage.setItem('mindshub-code:workspace-mode', 'worktree');
+    const user = userEvent.setup();
+    vi.mocked(codingApi.workspaceModes).mockResolvedValue({ supported: ['worktree', 'in_place'], default: 'worktree' });
+    const localProject = { ...project, default_workspace_mode: 'in_place' as const };
+    const other = { ...project, id: 'project-2', name: 'Other', default_workspace_mode: null };
+    const props = {
+      busy: false,
+      error: '',
+      defaultEngineId: 'codex',
+      defaultModel: 'gpt-5.6-sol',
+      models,
+      modelMeta,
+      projects: [localProject, other],
+      onProjectChange: vi.fn(),
+      onOpenProjectSettings: vi.fn(),
+      onCreate: vi.fn(async () => {}),
+    };
+    const picker = () => screen.getByRole('combobox', { name: 'Where the task works' });
+    const view = render(<NewTaskPanel {...props} selectedProjectId={localProject.id} />);
+
+    // The project's default beats the remembered Worktree.
+    await waitFor(() => expect(picker()).toHaveTextContent('Local'));
+    await waitFor(() => expect(picker()).toBeEnabled());
+    await user.click(picker());
+    await user.click(await screen.findByRole('option', { name: 'Worktree' }));
+    expect(picker()).toHaveTextContent('Worktree');
+
+    // Another project with no default uses the remembered choice.
+    view.rerender(<NewTaskPanel {...props} selectedProjectId={other.id} />);
+    await waitFor(() => expect(picker()).toHaveTextContent('Worktree'));
+
+    // Back on the first project, the choice made there no longer applies.
+    view.rerender(<NewTaskPanel {...props} selectedProjectId={localProject.id} />);
+    await waitFor(() => expect(picker()).toHaveTextContent('Local'));
+  });
+
   it('offers a direct route to create another Code Project', async () => {
     const user = userEvent.setup();
     const onProjectChange = vi.fn();
