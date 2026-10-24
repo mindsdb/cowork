@@ -39,6 +39,7 @@ export function ArtifactViewerHeader({
     canOpenInBrowserTab,
     canOpenLocalFile,
     isBackendArtifact,
+    isLiveApp,
     backendPort,
     artifact,
     deleteBusy,
@@ -172,7 +173,7 @@ export function ArtifactViewerHeader({
                 onClick: onReload,
               },
               ...(canOpenInBrowser ? [{
-                label: isPublished ? 'Open shared link' : 'Open in browser',
+                label: isPublished && !isLiveApp ? 'Open shared link' : 'Open in browser',
                 icon: Ico.arrowUpRight(14),
                 onClick: onOpenInBrowser,
               }] : []),

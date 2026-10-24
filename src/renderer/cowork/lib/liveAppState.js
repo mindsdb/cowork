@@ -109,6 +109,46 @@ export function liveAppStateLine(state, { now = new Date() } = {}) {
   return `${reason ? `${stopped}, ${reason}` : stopped}. Ask your agent to relaunch it.`;
 }
 
+/** The address when it is an http(s) URL, else ''. It is opened in a new tab. */
+function httpAddress(address) {
+  try {
+    const url = new URL(address);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * What a live app's viewer shows in place of a preview, and what its open
+ * controls open. A live app runs only at its own address: the deployment
+ * refuses the in-Cowork preview, and the serve route's copy of its page has no
+ * backend. So while the app runs the viewer names that address, and
+ * otherwise says why it isn't running and what to do, as the card says it.
+ *
+ * `address` is the running app's http(s) address, or '' when there is
+ * nothing to open. Null until the read answers.
+ *
+ * @param {{ status: 'off' | 'loading' | 'ready' | 'failed', state?: LiveAppState }} read
+ * @param {{ now?: Date }} [options] The current time, for tests.
+ * @returns {{ address: string, text: string } | null}
+ */
+export function liveAppViewerNotice(read, { now = new Date() } = {}) {
+  if (read.status === 'failed') {
+    return { address: '', text: "Couldn't check whether this app is running. Reload to try again." };
+  }
+  if (read.status !== 'ready') return null;
+  const { state } = read;
+  if (state?.state === 'running') {
+    const address = httpAddress(state.address);
+    return address
+      ? { address, text: 'This live app runs at its own address.' }
+      : { address: '', text: 'This live app is running. Ask your agent for its address.' };
+  }
+  if (state?.state === 'stopped') return { address: '', text: liveAppStateLine(state, { now }) };
+  return { address: '', text: "This live app isn't running. Ask your agent to launch it." };
+}
+
 /**
  * A card's live-app lines, or null for a card that has none: live apps are
  * off, or it isn't a full-stack app. The rail and the Live Artifacts page both
