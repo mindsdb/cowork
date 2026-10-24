@@ -56,6 +56,18 @@ interface DownloadedTargetEvidence {
 type GetWindow = () => BrowserWindow | null;
 
 let controller: ShellAutoUpdater | null = null;
+const snapshotListeners = new Set<(snapshot: ShellUpdateSnapshot) => void>();
+
+/** Called at once with the current snapshot, then on every change. */
+export function onShellAutoUpdateSnapshot(listener: (snapshot: ShellUpdateSnapshot) => void): () => void {
+  snapshotListeners.add(listener);
+  listener(getShellAutoUpdateSnapshot());
+  return () => { snapshotListeners.delete(listener); };
+}
+
+function publishSnapshot(snapshot: ShellUpdateSnapshot): void {
+  snapshotListeners.forEach((listener) => listener(snapshot));
+}
 // Target of a boot auto-install that already failed. Kept until the target
 // changes or installs, and carried into every evidence write for it.
 let priorBootInstallTarget: string | null = null;
@@ -236,6 +248,7 @@ export function configureShellAutoUpdate(options: {
           ? 'not-packaged'
           : 'unsupported-channel-or-platform',
     };
+    publishSnapshot(currentSnapshot);
     return currentSnapshot;
   }
 
@@ -281,6 +294,7 @@ export function configureShellAutoUpdate(options: {
       currentSnapshot = snapshot;
       writeEvidence(snapshot);
       liveWindow(options.getWindow)?.webContents.send(IPC.SHELL_UPDATE_STATUS, snapshot);
+      publishSnapshot(snapshot);
     },
     onFailure(report) {
       // Full detail, stack included, to the app log ONLY — never the UI (which
@@ -309,6 +323,7 @@ export function configureShellAutoUpdate(options: {
     },
   });
   diagnostic("main.shell-auto-update-runtime", "INFO", "shell_updater_configured_feed_mode", `[shell-updater] configured ${feed.channel} feed (${feed.url}, mode: ${mode})`);
+  publishSnapshot(currentSnapshot);
   return currentSnapshot;
 }
 

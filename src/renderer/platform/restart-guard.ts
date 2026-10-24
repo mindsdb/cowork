@@ -56,10 +56,9 @@ export function confirmRestart(report: RestartConfirmation): Promise<boolean> {
   });
 }
 
-/** What a guarded restart resolved to: main's boolean, or `'cancelled'` when
- *  the person kept their tasks running. A cancel is not a failure, so callers
- *  that show an error on `false` must not show one here. */
-export type GuardedRestartResult = boolean | 'cancelled';
+/** `'cancelled'` and `'stale'` are not failures: callers that show an error on
+ *  `false` must not show one for them. */
+export type GuardedRestartResult = boolean | 'cancelled' | 'stale';
 
 /** Run a restart request through the confirmation. `invoke` sends the request
  *  to main; it is called again with `force` after a yes. Boolean answers pass
@@ -76,11 +75,13 @@ export async function guardRestart(
   } = {},
 ): Promise<GuardedRestartResult> {
   const first = await invoke({});
+  if (first === 'stale') return 'stale';
   if (!needsRestartConfirmation(first)) return Boolean(first);
   const confirmed = await confirmRestart(first);
   if (!confirmed) return 'cancelled';
   hooks.onProceed?.();
   const second = await invoke({ force: true });
+  if (second === 'stale') return 'stale';
   // Main does not ask twice when forced; a report here means an older shell
   // that ignores `force`, and the safe reading of that is "not restarted".
   return needsRestartConfirmation(second) ? false : Boolean(second);

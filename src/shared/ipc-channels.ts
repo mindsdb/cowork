@@ -45,6 +45,11 @@ export const IPC = {
   // launch.
   UPDATE_JOURNAL_DRAIN: 'update:journal-drain',
   UPDATE_JOURNAL_ACK: 'update:journal-ack',
+  // The coordinator's state and apply. The channels above keep emitting for
+  // older renderers.
+  UPDATE_STATE: 'update:state',
+  UPDATE_STATE_GET: 'update:state-get',
+  UPDATE_APPLY: 'update:apply',
 
   // Renderer awaits this before leaving the loading screen, so a boot-time
   // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).

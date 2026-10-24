@@ -1,136 +1,159 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput, type OtaStatus, type ShellSnapshot } from './update-coordinator';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
+
+// Every case drives the real reducer, so the banner is asserted against the
+// state the sidebar and Settings actually receive.
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+type Loose = { ota?: Partial<OtaStatus> | null; shellAuto?: Partial<ShellSnapshot> | null; shellManual?: { version?: string; debInstaller?: boolean } | null };
+function bannerFor(input: Loose, options: { dismissed?: string | null } = {}) {
+  const shell = input.shellAuto
+    ? { mode: 'auto' as const, channel: 'prod' as const, currentVersion: '1.0.0', ...input.shellAuto } as ShellSnapshot
+    : null;
+  const state = coordinateUpdates({
+    ...EMPTY_UPDATE_INPUT,
+    ...legacyOtaInput((input.ota as OtaStatus | null | undefined) ?? null),
+    shell,
+    shellManual: input.shellManual?.version ? { version: input.shellManual.version } : null,
+  });
+  return deriveUpdateBanner(state, { debInstaller: input.shellManual?.debInstaller, dismissedManualVersion: options.dismissed ?? null });
+}
 
 describe('deriveUpdateBanner', () => {
   it('returns null when nothing is pending', () => {
-    expect(deriveUpdateBanner({})).toBeNull();
-    expect(deriveUpdateBanner({ ota: null, shellAuto: null, shellManual: null })).toBeNull();
-    expect(deriveUpdateBanner({ ota: { phase: 'reloading' } })).toBeNull();
-    expect(deriveUpdateBanner({ ota: { phase: 'downloading' } })).toBeNull();
+    expect(deriveUpdateBanner(null)).toBeNull();
+    expect(bannerFor({})).toBeNull();
+    expect(bannerFor({ ota: null, shellAuto: null, shellManual: null })).toBeNull();
+    expect(bannerFor({ ota: { phase: 'reloading' } })).toBeNull();
+    expect(bannerFor({ ota: { phase: 'downloading' } })).toBeNull();
   });
 
   describe('OTA only', () => {
-    it('available → single "Restart" banner with version', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' } });
-      expect(b).toMatchObject({ kind: 'ota-ready', tone: 'ready', actionLabel: 'Restart', action: 'apply-ota', disabled: false, dismissible: false });
-      expect(b?.title).toContain('0.26.8.1');
+    it('available → single "Restart now" banner, layer-agnostic title', () => {
+      const b = bannerFor({ ota: { phase: 'available', version: '0.26.8.1' } });
+      expect(b).toMatchObject({ kind: 'ota-ready', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'reload', disabled: false, dismissible: false, version: '0.26.8.1' });
     });
 
     it('error → amber "Try again" banner', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'error', version: '0.26.8.1' } });
-      expect(b).toMatchObject({ kind: 'ota-error', tone: 'error', actionLabel: 'Try again', action: 'apply-ota' });
+      const b = bannerFor({ ota: { phase: 'error', version: '0.26.8.1' } });
+      expect(b).toMatchObject({ kind: 'ota-error', tone: 'error', actionLabel: 'Try again', action: 'reload' });
+      expect(b?.title).toContain('0.26.8.1');
     });
 
-    it('omits the version suffix when unknown', () => {
-      expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.title).toBe('Update ready');
+    it('names the server component when that is what moves', () => {
+      const b = bannerFor({ ota: { phase: 'available', serverUpdate: true, serverVersion: '0.26.8.1', serverComponent: 'anton-agent' } });
+      expect(b?.version).toBe('anton-agent 0.26.8.1');
     });
 
     it('ota-ready hints the next-launch path; ota-error does not', () => {
-      expect(deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' } })?.hint)
-        .toBe('Reloads the app to finish updating to 0.26.8.1. It also applies on its own the next time you open the app.');
-      expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.hint)
-        .toContain('the next time you open the app');
-      expect(deriveUpdateBanner({ ota: { phase: 'error', version: 'ui-1' } })?.hint).toBeUndefined();
+      expect(bannerFor({ ota: { phase: 'available', version: '0.26.8.1' } })?.hint)
+        .toBe('Restarts the app to finish updating to 0.26.8.1. It also applies on its own the next time you open the app.');
+      expect(bannerFor({ ota: { phase: 'available' } })?.hint).toContain('the next time you open the app');
+      expect(bannerFor({ ota: { phase: 'error', version: 'ui-1' } })?.hint).toBeUndefined();
     });
   });
 
   describe('shell auto-update only', () => {
     it('available → "Download"', () => {
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'available' } });
-      expect(b).toMatchObject({ kind: 'shell-auto', tone: 'ready', title: 'New app version available', actionLabel: 'Download', action: 'shell-auto', disabled: false });
+      const b = bannerFor({ shellAuto: { phase: 'available' } });
+      expect(b).toMatchObject({ kind: 'shell-auto', tone: 'ready', title: 'New version available', actionLabel: 'Download', action: 'download', disabled: false });
     });
 
     it('downloading → progress, disabled, no action, with percent', () => {
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'downloading', progress: { percent: 42.4 } } });
+      const b = bannerFor({ shellAuto: { phase: 'downloading', progress: { percent: 42.4 } } });
       expect(b).toMatchObject({ kind: 'shell-auto', tone: 'progress', actionLabel: null, action: null, disabled: true });
       expect(b?.title).toBe('Downloading update (42%)');
     });
 
     it('downloading without a percent falls back to an ellipsis', () => {
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'downloading' } })?.title).toBe('Downloading update…');
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'downloading', progress: { percent: null } } })?.title).toBe('Downloading update…');
+      expect(bannerFor({ shellAuto: { phase: 'downloading' } })?.title).toBe('Downloading update…');
+      expect(bannerFor({ shellAuto: { phase: 'downloading', progress: { percent: null } } })?.title).toBe('Downloading update…');
     });
 
-    it('ready-to-install → "Restart now"', () => {
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } });
-      expect(b).toMatchObject({ tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false });
+    it('ready-to-install → "Restart now", the same words as the OTA restart', () => {
+      const b = bannerFor({ shellAuto: { phase: 'ready-to-install' } });
+      expect(b).toMatchObject({ tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'relaunch', disabled: false });
     });
 
     it('ready-to-install after an aborted install says why and offers Try again', () => {
-      const b = deriveUpdateBanner({ shellAuto: {
-        phase: 'ready-to-install', mode: 'auto', version: '25.9.1',
+      const b = bannerFor({ shellAuto: {
+        phase: 'ready-to-install', mode: 'auto', targetVersion: '25.9.1',
         errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
       } });
-      expect(b).toMatchObject({ tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false });
+      expect(b).toMatchObject({ tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'relaunch', disabled: false });
       expect(b?.hint).toBe('Last restart attempt failed: installer launch failed. The update is still downloaded. Try again to restart.');
       // No message: still says it failed, still offers the retry.
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', errorCode: 'update-request-failed' } })?.hint)
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install', errorCode: 'update-request-failed' } })?.hint)
         .toBe('The last restart attempt failed. The update is still downloaded. Try again to restart.');
     });
 
     it('ready-to-install in auto mode hints the install-on-quit path', () => {
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto', version: '25.9.1' } })?.hint)
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install', mode: 'auto', targetVersion: '25.9.1' } })?.hint)
         .toBe('The new version (25.9.1) is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.');
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto' } })?.hint)
-        .toContain('the next time you quit the app');
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install', mode: 'auto' } })?.hint).toContain('the next time you quit the app');
     });
 
     it('ready-to-install in manual mode promises no install on quit', () => {
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'manual', version: '25.9.1' } })?.hint)
-        .toBeUndefined();
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } })?.hint).toBeUndefined();
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install', mode: 'manual', targetVersion: '25.9.1' } })?.hint).toBeUndefined();
     });
 
     it('no hint on in-flight or failed shell phases', () => {
-      for (const phase of ['available', 'downloading', 'installing']) {
-        expect(deriveUpdateBanner({ shellAuto: { phase } })?.hint).toBeUndefined();
+      for (const phase of ['available', 'downloading', 'installing'] as const) {
+        expect(bannerFor({ shellAuto: { phase } })?.hint).toBeUndefined();
       }
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.hint).toBeUndefined();
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.hint).toBeUndefined();
     });
 
     it('installing → progress, disabled', () => {
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'installing' } });
+      const b = bannerFor({ shellAuto: { phase: 'installing' } });
       expect(b).toMatchObject({ tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true });
     });
 
-    it('recoverable failure → "Retry"; terminal failure → "Download" (routes to installer)', () => {
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', actionLabel: 'Retry', action: 'shell-auto' });
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: false, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', actionLabel: 'Download', action: 'shell-auto' });
-    });
-
-    it('a failed phase owns the TOP slot only when targetVersion proves an update was found', () => {
-      expect(shellAutoOwnsBanner({ phase: 'failed', recoverable: true, targetVersion: 'sh-1' })).toBe(true);
-      expect(shellAutoOwnsBanner({ phase: 'failed', recoverable: true })).toBe(false);
-      expect(shellAutoOwnsBanner({ phase: 'ready-to-install' })).toBe(true);
-      expect(shellAutoOwnsBanner({ phase: 'idle' })).toBe(false);
+    it('recoverable failure → "Retry"; terminal failure → "Download" (routes to installer page)', () => {
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', title: 'Update failed', actionLabel: 'Retry', action: 'retry' });
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: false, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', title: 'Update failed', actionLabel: 'Download', action: 'open-download-page', dismissible: false });
     });
 
     it('a targetless failure is still SHOWN (Retry survives a failed retry check), not dropped', () => {
-      // Minor fix: a retry check clears targetVersion; if it also fails, the
-      // Retry affordance must not vanish.
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true } });
-      expect(b).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry', action: 'shell-auto' });
+      const b = bannerFor({ shellAuto: { phase: 'failed', recoverable: true } });
+      expect(b).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry', action: 'retry' });
     });
 
     it('passive phases surface no shell banner', () => {
-      for (const phase of ['disabled', 'idle', 'checking', 'complete']) {
-        expect(deriveUpdateBanner({ shellAuto: { phase } })).toBeNull();
+      for (const phase of ['disabled', 'idle', 'checking', 'complete'] as const) {
+        expect(bannerFor({ shellAuto: { phase } })).toBeNull();
       }
     });
   });
 
   describe('shell manual notice only', () => {
     it('renders a dismissible "Download" banner', () => {
-      const b = deriveUpdateBanner({ shellManual: { version: '0.26.8.2' } });
-      expect(b).toMatchObject({ kind: 'shell-manual', actionLabel: 'Download', action: 'download-installer', dismissible: true });
+      const b = bannerFor({ shellManual: { version: '0.26.8.2' } });
+      expect(b).toMatchObject({ kind: 'shell-manual', actionLabel: 'Download', action: 'open-download-page', dismissible: true });
       expect(b?.title).toContain('0.26.8.2');
     });
 
+    it('is the only banner a dismissal can hide, per version', () => {
+      expect(bannerFor({ shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' })).toBeNull();
+      expect(bannerFor({ shellManual: { version: '0.26.8.3' } }, { dismissed: '0.26.8.2' })?.kind).toBe('shell-manual');
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install', targetVersion: 'v' } }, { dismissed: 'v' })?.kind).toBe('shell-auto');
+    });
+
+    it('a dismissed notice does not hide a reload pending behind it', () => {
+      // The notice outranks the reload in the ladder, but dismissal applies to
+      // the notice alone: the Restart underneath still shows, as before.
+      const b = bannerFor({ ota: { phase: 'available', version: '0.26.8.1' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' });
+      expect(b).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.8.1' });
+      // A retryable OTA failure shows through too; a rolled-back bundle does not.
+      expect(bannerFor({ ota: { phase: 'error', version: '0.26.8.1' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' })).toMatchObject({ kind: 'ota-error', action: 'reload' });
+      expect(bannerFor({ ota: { phase: 'rolled-back' }, shellManual: { version: '0.26.8.2' } }, { dismissed: '0.26.8.2' })).toBeNull();
+    });
+
     it('carries the caller\'s .deb flag so both surfaces name the real install step', () => {
-      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: true } })?.debInstaller).toBe(true);
-      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: false } })?.debInstaller).toBe(false);
-      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2' } })?.debInstaller).toBe(false);
+      expect(bannerFor({ shellManual: { version: '0.26.8.2', debInstaller: true } })?.debInstaller).toBe(true);
+      expect(bannerFor({ shellManual: { version: '0.26.8.2', debInstaller: false } })?.debInstaller).toBe(false);
+      expect(bannerFor({ shellManual: { version: '0.26.8.2' } })?.debInstaller).toBe(false);
     });
   });
 
@@ -146,81 +169,69 @@ describe('deriveUpdateBanner', () => {
 
   describe('shell-first priority (the double-banner bug)', () => {
     it('an active shell auto-update suppresses an available OTA banner', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' }, shellAuto: { phase: 'available' } });
-      expect(b?.kind).toBe('shell-auto');
+      expect(bannerFor({ ota: { phase: 'available', version: '0.26.8.1' }, shellAuto: { phase: 'available' } })?.kind).toBe('shell-auto');
     });
 
     it('a shell ready-to-install wins over an OTA error too', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'error' }, shellAuto: { phase: 'ready-to-install' } });
-      expect(b?.kind).toBe('shell-auto');
+      expect(bannerFor({ ota: { phase: 'error' }, shellAuto: { phase: 'ready-to-install' } })?.kind).toBe('shell-auto');
     });
 
     it('every active shell phase suppresses OTA (failed needs a real target)', () => {
       for (const phase of SHELL_AUTO_BANNER_PHASES) {
-        const b = deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: { phase, targetVersion: 'sh-1' } });
-        expect(b?.kind).toBe('shell-auto');
+        expect(bannerFor({ ota: { phase: 'available' }, shellAuto: { phase, targetVersion: 'sh-1' } })?.kind).toBe('shell-auto');
       }
     });
 
     it('a check-only shell failure does NOT outrank OTA (feed outage must not hide Restart)', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true } });
-      expect(b?.kind).toBe('ota-ready');
+      expect(bannerFor({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true } })?.kind).toBe('ota-ready');
     });
 
     it('a check that produced no answer raises no banner at all, while a rejected check still offers Retry', () => {
-      for (const errorCode of ['check-stalled']) {
-        expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode } })).toBeNull();
-      }
-      // A failed download keeps its target and stays actionable whatever its code.
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'download-stalled', targetVersion: 'sh-1' } }))
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'check-stalled' } })).toBeNull();
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'download-stalled', targetVersion: 'sh-1' } }))
         .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' } }))
+      expect(bannerFor({ shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' } }))
         .toMatchObject({ tone: 'error', actionLabel: 'Retry' });
     });
 
     it('a check-only shell failure does NOT outrank the manual notice either', () => {
-      const b = deriveUpdateBanner({ shellManual: { version: 'man-1' }, shellAuto: { phase: 'failed', recoverable: true } });
-      expect(b?.kind).toBe('shell-manual');
+      expect(bannerFor({ shellManual: { version: 'man-1' }, shellAuto: { phase: 'failed', recoverable: true } })?.kind).toBe('shell-manual');
     });
 
     it('a real failed shell update (with target) still suppresses OTA', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-2' } });
-      expect(b?.kind).toBe('shell-auto');
+      expect(bannerFor({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-2' } })?.kind).toBe('shell-auto');
     });
 
     it('the manual notice suppresses OTA (unchanged historical behavior)', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available' }, shellManual: { version: '0.26.8.2' } });
-      expect(b?.kind).toBe('shell-manual');
+      expect(bannerFor({ ota: { phase: 'available' }, shellManual: { version: '0.26.8.2' } })?.kind).toBe('shell-manual');
     });
 
     it('OTA surfaces only once no shell update is pending (passive shell phase)', () => {
-      const b = deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: { phase: 'idle' }, shellManual: null });
-      expect(b?.kind).toBe('ota-ready');
+      expect(bannerFor({ ota: { phase: 'available' }, shellAuto: { phase: 'idle' }, shellManual: null })?.kind).toBe('ota-ready');
     });
 
     it('an active auto-update outranks a stray manual notice', () => {
-      const b = deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' }, shellManual: { version: '0.26.8.2' } });
-      expect(b?.kind).toBe('shell-auto');
+      expect(bannerFor({ shellAuto: { phase: 'ready-to-install' }, shellManual: { version: '0.26.8.2' } })?.kind).toBe('shell-auto');
     });
   });
 
-  it('never returns more than one banner for any combination of the three sources', () => {
-    const otaStates = [null, { phase: 'available' }, { phase: 'error' }, { phase: 'idle' }];
-    const autoStates = [null, { phase: 'idle' }, { phase: 'available' }, { phase: 'downloading' }, { phase: 'ready-to-install' }, { phase: 'installing' }, { phase: 'failed', recoverable: true }, { phase: 'failed', recoverable: false }, { phase: 'failed', recoverable: true, targetVersion: 'sh-1' }, { phase: 'complete' }];
+  it('never returns more than one banner, and at most one restart, for any combination of the three sources', () => {
+    const otaStates = [null, { phase: 'available' as const, version: 'ui' }, { phase: 'error' as const }, { phase: 'idle' as const }];
+    const autoStates: Array<Partial<ShellSnapshot> | null> = [null, { phase: 'idle' }, { phase: 'available' }, { phase: 'downloading' }, { phase: 'ready-to-install' }, { phase: 'installing' }, { phase: 'failed', recoverable: true }, { phase: 'failed', recoverable: false }, { phase: 'failed', recoverable: true, targetVersion: 'sh-1' }, { phase: 'complete' }];
     const manualStates = [null, { version: '0.26.8.2' }];
     for (const ota of otaStates) {
       for (const shellAuto of autoStates) {
         for (const shellManual of manualStates) {
-          const b = deriveUpdateBanner({ ota, shellAuto, shellManual });
-          // Always a single object or null — never two banners.
+          const b = bannerFor({ ota, shellAuto, shellManual });
           expect(b === null || typeof b === 'object').toBe(true);
+          if (b?.actionLabel === 'Restart now') expect(['reload', 'relaunch']).toContain(b.action);
         }
       }
     }
   });
 
-  // Drives the real reducer so the target-clearing behavior the ranking depends
-  // on can't silently change underneath deriveUpdateBanner.
+  // Drives the real shell reducer so the target-clearing behavior the ranking
+  // depends on can't silently change underneath the coordinator.
   describe('sequence: download failure → Retry → check failure (against the real state machine)', () => {
     it('keeps Retry alive and never hides OTA across the retry', () => {
       let s: ShellUpdateSnapshot = { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '1.0.0' };
@@ -231,19 +242,41 @@ describe('deriveUpdateBanner', () => {
       // A real download failure retains the target → owns the top slot over OTA.
       expect(s.phase).toBe('failed');
       expect(s.targetVersion).toBe('2.0.0');
-      expect(deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('shell-auto');
+      expect(bannerFor({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('shell-auto');
 
       // Retry starts a fresh check, clearing the target; the check then fails.
       s = transitionShellUpdate(s, { type: 'CHECK_REQUESTED', trigger: 'retry' });
       expect(s.targetVersion).toBeUndefined();
       s = transitionShellUpdate(s, { type: 'FAILED', code: 'check-failed', recoverable: true });
       expect(s.phase).toBe('failed');
-      expect(s.targetVersion).toBeUndefined();
 
       // Now targetless: it must no longer hide OTA…
-      expect(deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('ota-ready');
+      expect(bannerFor({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('ota-ready');
       // …but the Retry affordance survives when nothing else is pending.
-      expect(deriveUpdateBanner({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
+      expect(bannerFor({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
     });
+  });
+});
+
+describe('deriveUpdateBanner: what a dismissed notice or a rollback leaves showing', () => {
+  const notice = { version: '0.26.8.2' };
+  it.each<[string, Loose, Record<string, unknown> | null]>([
+    ['a failed auto-update behind the notice offers Retry', { shellAuto: { phase: 'failed', recoverable: true, errorCode: 'update-request-failed' }, shellManual: notice }, { kind: 'shell-auto', tone: 'error', actionLabel: 'Retry', action: 'retry' }],
+    ['a terminal one offers the installer', { shellAuto: { phase: 'failed', recoverable: false, errorCode: 'unsupported-install' }, shellManual: notice }, { kind: 'shell-auto', actionLabel: 'Download', action: 'open-download-page' }],
+    ['a check that produced no answer raises nothing', { shellAuto: { phase: 'failed', recoverable: true, errorCode: 'check-stalled' }, shellManual: notice }, null],
+    ['a pending OTA still wins the slot', { ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true }, shellManual: notice }, { kind: 'ota-ready', action: 'reload' }],
+  ])('%s', (_name, input, expected) => {
+    const b = bannerFor(input, { dismissed: notice.version });
+    if (expected === null) expect(b).toBeNull();
+    else expect(b).toMatchObject(expected);
+  });
+
+  it('a rolled-back UI keeps the Restart for a server update pending beside it', () => {
+    expect(bannerFor({ ota: { phase: 'rolled-back', version: '2.26.10.8.1' } })).toBeNull();
+    expect(deriveUpdateBanner(coordinateUpdates({
+      ...EMPTY_UPDATE_INPUT,
+      otaOffer: { ui: null, server: { version: '0.26.10.7.1' } },
+      otaApply: { phase: 'rolled-back', version: '2.26.10.8.1' },
+    }))).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.10.7.1' });
   });
 });
