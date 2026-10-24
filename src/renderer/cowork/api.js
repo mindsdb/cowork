@@ -1,5 +1,6 @@
 import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
@@ -730,9 +731,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // MODEL_ROUTER_ID never leaves the renderer — it's how the
           // composer represents "let this account's Settings decide"
           // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that. With platform UI off, all callers use
+          // model as exactly that. With platform UI off, only the operator's
+          // picker (lib/modelPicker) sends a model, and App hands it only the
+          // models that picker offers. With it off, all callers use
           // operator-configured role settings, including restored tasks.
-          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
