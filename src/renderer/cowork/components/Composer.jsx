@@ -13,9 +13,9 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
+  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
 } from '../lib/modelCatalog';
-import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import Select from './ui/Select.jsx';
@@ -28,6 +28,7 @@ import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { modelPickerMode } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
@@ -428,12 +429,35 @@ export default function Composer({
   // so this only applies to the Anton-routed picker.
   const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
 
+  // With platform UI off, the operator's picker (lib/modelPicker) shows only
+  // the models the operator offers. With none offered it shows nothing at
+  // all, never the Settings shortcut, which that build hides.
+  const operatorPicker = modelPickerMode() !== 'off';
+  const operatorModels = useMemo(
+    () => (operatorPicker ? offeredModels(models, modelMeta?.modelEnabled) : []),
+    [operatorPicker, models, modelMeta?.modelEnabled],
+  );
+  const showModelControl = PLATFORM_UI || operatorModels.length > 0;
+
   // Flat options for <ModelSelect> — the same searchable, bounded-height,
   // provider-grouped picker the Settings model rows use (ui/Combobox).
   // ModelSelect groups internally (lib/modelCatalog), so this only builds the
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
+    if (operatorPicker && !isClaudeCode) {
+      // The operator's own model leads, pinned above every section: no
+      // MindsHub group and no settings gear, since this build has neither.
+      return [
+        {
+          value: MODEL_ROUTER_ID,
+          label: OPERATOR_DEFAULT_LABEL,
+          title: 'Runs on the model your operator set',
+          pin: 'top',
+        },
+        ...buildModelPickerOptions(operatorModels, modelMeta),
+      ];
+    }
     const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
@@ -474,7 +498,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels]);
 
   // True once the picked model isn't valid for Claude Code — nothing
   // picked yet, or still Model Router (hidden from the picker once this
@@ -1387,7 +1411,7 @@ export default function Composer({
                 lives in one place. `modelReadOnly` (defaults to
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
-            {PLATFORM_UI && (modelReadOnly ? (
+            {showModelControl && (modelReadOnly ? (
               <span className="meta-pill" title="Model is fixed for this task">
                 <span>{model?.name ?? 'Model'}</span>
               </span>
@@ -1424,8 +1448,12 @@ export default function Composer({
                 // Falls back to unselected (rather than a synthesized
                 // "model-router" row) if the current pick isn't a valid
                 // option right now — e.g. Model Router was picked, then the
-                // harness pill switched to Claude Code, which hides it.
-                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                // harness pill switched to Claude Code, which hides it. Under
+                // the operator's picker, a model it no longer offers shows as
+                // the operator's own, which is what App then sends.
+                value={modelPickerOptions.some((o) => o.value === model?.id)
+                  ? model.id
+                  : (operatorPicker ? MODEL_ROUTER_ID : '')}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });

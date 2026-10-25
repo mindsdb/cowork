@@ -106,6 +106,8 @@ import { recommendedModelOptions, providerValueToType,
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
+import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
+import { modelPickerMode } from '../lib/modelPicker';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -1663,6 +1665,15 @@ function AppCore() {
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }));
   }, [mindsModels, settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // The operator's picker (lib/modelPicker), read once: the page keeps the
+  // mode it loaded with. Under it, a question sends only a model the picker
+  // offers; any other, such as a reopened conversation's saved model the
+  // operator has since removed, runs on the operator's model instead of being
+  // refused. Without it this is the identity, and api.js sends no model.
+  const [pickerMode] = useState(modelPickerMode);
+  const sendableModelId = useCallback((id) => (
+    pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
+  ), [pickerMode, models, settings.modelEnabled]);
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -2248,7 +2259,7 @@ function AppCore() {
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
   const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
   const currentTaskModel = currentTask?.model
-    ? (currentTask.model === MODEL_ROUTER_ID
+    ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
@@ -3452,6 +3463,10 @@ function AppCore() {
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
     }
+    // Every new conversation starts here, so in the operator picker's default
+    // mode the next one starts on the operator's model again. This send still
+    // reads the pick it rendered with.
+    if (pickerMode === 'default') setSelectedModel(MODEL_ROUTER);
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
@@ -3653,7 +3668,7 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
-      model: selectedModel?.id,
+      model: sendableModelId(selectedModel?.id),
       reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
@@ -3996,10 +4011,10 @@ function AppCore() {
     // picker, so only a live send to the task on screen may inherit it; a
     // drained off-screen task must not pick up whatever model the current
     // view happens to show — it falls through to the server default instead.
-    const taskModel = opts.modelOverride
+    const taskModel = sendableModelId(opts.modelOverride
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
-      || null;
+      || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
     // override, else the task's own saved pick, else — only for a live
     // send to the task on screen — the home composer's current pick.
@@ -6052,6 +6067,7 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
+            onRefreshArtifacts={reloadArtifacts}
             loading={!artifactsLoaded}
             projects={projects}
             agentLabel={agentLabel}

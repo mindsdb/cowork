@@ -41,6 +41,7 @@ export function ArtifactViewerHeader({
     canOpenInBrowserTab,
     canOpenLocalFile,
     isBackendArtifact,
+    isLiveApp,
     backendPort,
     artifact,
     deleteBusy,
@@ -58,10 +59,11 @@ export function ArtifactViewerHeader({
      its default app instead, as it always has. Org mode serves no file a tab
      can load without the bearer, so there a tab opens only the shared page,
      as Live Artifacts' arrow does. A published artifact opens its shared
-     page, which a tab always shows. */
-  const canOpenAsTab = orgMode
+     page, which a tab always shows. A live app opens at the address where it
+     runs, which is a page in every mode, not a file a tab could save. */
+  const canOpenAsTab = isLiveApp || (orgMode
     ? isPublished
-    : (!host.isWeb || isPublished || canShowInBrowserTab(artifact));
+    : (!host.isWeb || isPublished || canShowInBrowserTab(artifact)));
   const exportFormats = artifactExportFormats(workspace, artifact);
   const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
   const openMenuItems = [

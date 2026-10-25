@@ -77,6 +77,12 @@ const withoutUrl = {
   actions: { ...props.actions, canOpenInBrowserTab: false },
 };
 
+// A running live app, never shared as a page: the arrow opens its address.
+const liveApp = {
+  ...props,
+  actions: { ...props.actions, isBackendArtifact: true, isLiveApp: true },
+};
+
 afterEach(() => {
   setOrgMode(false);
   onOpenInBrowserTab.mockClear();
@@ -96,6 +102,13 @@ describe('open in a browser tab', () => {
     render(<ArtifactViewerHeader {...props} />);
 
     expect(screen.queryByRole('button', { name: 'Open in a browser tab' })).toBeNull();
+  });
+
+  it('is offered on Cloud for a live app nobody shared as a page, since it opens where the app runs', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...liveApp} />);
+
+    expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
   });
 
   it('is offered on desktop too', () => {

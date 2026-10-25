@@ -1,5 +1,6 @@
 import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
@@ -17,6 +18,8 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -455,6 +458,13 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
 /** Default page size for the paginated /items envelope. Matches
  * the server's own default so the two agree without either side needing to
  * repeat the number. */
@@ -506,9 +516,11 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
   //
   // Only warmed when a caller is actually listening. Seven of the eight
   // `fetchSessions` call sites want the list and nothing else (every task
@@ -516,27 +528,36 @@ export async function fetchSessions({ onItems } = {}) {
   // every one away, which is 50 wasted requests on the app's most common
   // interaction.
   if (onItems) {
-    for (const c of conversations.slice(0, EAGER)) {
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
       // Bounded like every other transcript fetch. Warming the FULL history of
       // the 50 most recent conversations moved the unbounded fetch from
       // task-open to startup rather than removing it — and it pre-filled a long
       // conversation so completely that neither the loading state nor
       // "load earlier" ever engaged for the tasks most likely to be opened.
       req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
-        .then((r) => {
-          const page = _pageFromItemsResponse(r);
-          onItems(c.id, _hydrateAssistantEvents(page.items), {
-            hasMoreMessages: page.hasMore,
-            messagesCursor: page.nextBefore,
-          });
-        })
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
         .catch(() => {});
-    }
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
   }
 
   // Guarded: the outer try/catch that used to wrap this whole function is gone,
@@ -712,9 +733,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // MODEL_ROUTER_ID never leaves the renderer — it's how the
           // composer represents "let this account's Settings decide"
           // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that. With platform UI off, all callers use
+          // model as exactly that. With platform UI off, only the operator's
+          // picker (lib/modelPicker) sends a model, and App hands it only the
+          // models that picker offers. With it off, all callers use
           // operator-configured role settings, including restored tasks.
-          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
@@ -2266,6 +2289,76 @@ export async function activateArtifactVersion(path, md5) {
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
+
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
 }
 
 export async function fetchBrowseStatus() {

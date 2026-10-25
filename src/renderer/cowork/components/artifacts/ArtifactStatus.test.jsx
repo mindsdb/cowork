@@ -237,3 +237,28 @@ describe('ArtifactStatus authorship tag (ENG-2979)', () => {
     }
   });
 });
+describe('ArtifactStatus without a page badge (a live app shares through "Share with…")', () => {
+  const app = { publishedUrl: '', type: 'fullstack-stateless-app' };
+
+  it('drops the idle "Not shared" badge', () => {
+    const { container } = render(<ArtifactStatus artifact={app} pageBadge={false} />);
+    expect(screen.queryByText('Not shared')).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still shows a phase, such as a delete in progress', () => {
+    render(<ArtifactStatus artifact={app} phase="deleting" pageBadge={false} />);
+    expect(screen.getByText('Deleting…')).toBeInTheDocument();
+  });
+
+  it('still tags an app that is not the viewer\'s', () => {
+    render(<ArtifactStatus artifact={app} pageBadge={false} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    expect(screen.getByText('Another member')).toBeInTheDocument();
+    expect(screen.queryByText('Not shared')).toBeNull();
+  });
+
+  it('keeps the access badge once the app is published', () => {
+    render(<ArtifactStatus artifact={{ ...app, publishedUrl: 'https://pages.example/a', accessMode: 'public' }} pageBadge={false} />);
+    expect(screen.getByText('Public')).toBeInTheDocument();
+  });
+});
