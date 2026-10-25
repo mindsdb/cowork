@@ -1,6 +1,6 @@
 import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
-import { modelPickerMode } from '../lib/modelPicker';
+import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
@@ -722,6 +722,20 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
+  // MODEL_ROUTER_ID never leaves the renderer — it's how the
+  // composer represents "let this account's Settings decide"
+  // (modelCatalog.js). The server already treats a null/absent
+  // model as exactly that. With platform UI off, only the operator's
+  // picker (lib/modelPicker) sends a model, and App hands it only the
+  // models that picker offers. With it off, all callers use
+  // operator-configured role settings, including restored tasks.
+  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  // A per-task effort is available with platform UI on, and under the
+  // operator's picker for an effort it lets users pick on the model this
+  // question sends, a retried task's saved effort included. Omit the key
+  // otherwise so this request cannot override role settings.
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
   (async () => {
     try {
       bumpIdle();
@@ -730,22 +744,13 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          // MODEL_ROUTER_ID never leaves the renderer — it's how the
-          // composer represents "let this account's Settings decide"
-          // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that. With platform UI off, only the operator's
-          // picker (lib/modelPicker) sends a model, and App hands it only the
-          // models that picker offers. With it off, all callers use
-          // operator-configured role settings, including restored tasks.
-          model: ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: sentModel,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // A per-task effort is available only with platform UI on. Omit
-          // the key otherwise so this request cannot override role settings.
-          ...(PLATFORM_UI && reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

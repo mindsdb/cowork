@@ -8,7 +8,10 @@ This wrapper imports the cowork-server app and adds SPA routes on top.
 Run with: uvicorn spa_wrapper:app --host 0.0.0.0 --port 26866
 """
 
+import json
 import os
+import re
+from html import escape as html_escape
 from pathlib import Path
 
 from fastapi import HTTPException, Request
@@ -27,6 +30,34 @@ if _provider_tests not in {"true", "false"}:
 _model_picker = os.environ.get("COWORK_MODEL_PICKER", "off")
 if _model_picker not in {"off", "default", "open"}:
     raise ValueError("COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
+
+
+def _model_efforts_meta(value: str, planning_model: str, coding_model: str) -> str | None:
+    """The composer's effort control under the picker: VALUE, a JSON object of each model's efforts
+    users may pick, and "Operator default"'s, those both PLANNING_MODEL and CODING_MODEL list, since
+    a question with no model runs on both and the server gives its effort to both. None when unset."""
+    if not value:
+        return None
+    if _model_picker == "off":
+        raise ValueError("COWORK_MODEL_EFFORTS needs COWORK_MODEL_PICKER 'default' or 'open'.")
+    rule = "COWORK_MODEL_EFFORTS must be a JSON object of model ids to lists of lowercase efforts."
+    try:
+        models = json.loads(value)
+    except json.JSONDecodeError:
+        raise ValueError(rule) from None
+    if not isinstance(models, dict) or not all(
+        isinstance(efforts, list) and all(isinstance(effort, str) and re.fullmatch(r"[a-z]+", effort) for effort in efforts)
+        for efforts in models.values()
+    ):
+        raise ValueError(rule)
+    planning, coding = models.get(planning_model, []), models.get(coding_model, [])
+    return json.dumps({"models": models, "operatorDefault": [effort for effort in planning if effort in coding]})
+
+
+# Read once, at start: the container's role models come from the same environment as the server's.
+_model_efforts = _model_efforts_meta(
+    os.environ.get("COWORK_MODEL_EFFORTS", ""), os.environ.get("PLANNING_MODEL", ""), os.environ.get("CODING_MODEL", "")
+)
 
 if SPA_DIR.exists():
     # Subdirectories that the SPA build emits — served by StaticFiles so
@@ -57,11 +88,13 @@ if SPA_DIR.exists():
         # Refuse a changed template rather than silently losing the operator's choice.
         if html.count("<head>") != 1 or "cowork-provider-tests-enabled" in html:
             raise ValueError("The SPA shell needs one <head> and no provider-testing metadata.")
-        if "cowork-model-picker" in html:
+        if "cowork-model-picker" in html or "cowork-model-efforts" in html:
             raise ValueError("The SPA shell needs no model-picker metadata.")
         metas = [f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">']
         if _model_picker != "off":
             metas.append(f'<meta name="cowork-model-picker" content="{_model_picker}">')
+        if _model_efforts is not None:
+            metas.append(f'<meta name="cowork-model-efforts" content="{html_escape(_model_efforts)}">')
         html = html.replace("<head>", "<head>" + "".join(f"\n    {meta}" for meta in metas), 1)
         return HTMLResponse(html, headers={"Cache-Control": "no-store", "X-Cowork-Spa-Shell": "1"})
 

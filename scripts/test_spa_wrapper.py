@@ -1,7 +1,10 @@
 """Exercise the Docker SPA wrapper's real routes with an isolated cowork-server app."""
 
+from html import unescape
 import importlib.util
+import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -16,6 +19,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 META_NAME = "cowork-provider-tests-enabled"
 PICKER_META_NAME = "cowork-model-picker"
+EFFORTS_META_NAME = "cowork-model-efforts"
 
 
 class SpaWrapperTests(unittest.TestCase):
@@ -33,7 +37,7 @@ class SpaWrapperTests(unittest.TestCase):
         (self.spa / "assets/main.js").write_bytes(b"console.log('bundle');\n")
         (self.spa / "brand/brand.js").write_bytes(b"window.COWORK_DEPLOYMENT_BRAND = {};\n")
 
-    def client(self, value=None, model_picker=None):
+    def client(self, value=None, model_picker=None, **extra):
         server = ModuleType("cowork.server")
         server.app = FastAPI()
 
@@ -52,6 +56,7 @@ class SpaWrapperTests(unittest.TestCase):
             environment["COWORK_PROVIDER_TESTS_ENABLED"] = value
         if model_picker is not None:
             environment["COWORK_MODEL_PICKER"] = model_picker
+        environment.update(extra)
         with patch.dict(os.environ, environment, clear=True), patch.dict(
             sys.modules, {"cowork": ModuleType("cowork"), "cowork.server": server}
         ):
@@ -181,6 +186,63 @@ class SpaWrapperTests(unittest.TestCase):
 
     def test_a_template_that_already_names_the_model_picker_is_refused(self):
         html = self.html.replace("<head>", f"<head><meta name='{PICKER_META_NAME}' content='open'>")
+        (self.spa / "index-web.html").write_text(html, encoding="utf-8")
+        with self.client("false", "default") as client, self.assertRaises(ValueError) as error:
+            client.get("/")
+        self.assertEqual(str(error.exception), "The SPA shell needs no model-picker metadata.")
+
+    def efforts_meta(self, response):
+        """The efforts tag's content, read back as the renderer's DOM reads it."""
+        found = re.findall(rf'<meta name="{EFFORTS_META_NAME}" content="([^"]*)">', response.text)
+        self.assertEqual(len(found), 1)
+        self.assertLess(response.text.index(EFFORTS_META_NAME), response.text.index("<script"))
+        return json.loads(unescape(found[0]))
+
+    def test_model_efforts_reach_every_shell_url_with_the_operator_defaults_shared_efforts(self):
+        efforts = {"opus-5-5": ["xhigh"], "gpt-5.6-luna": ["low", "medium"], "gpt-luna-5-6": ["medium", "low"]}
+        for planning, coding, shared in (
+            ("gpt-5.6-luna", "gpt-luna-5-6", ["low", "medium"]),
+            ("gpt-5.6-luna", "gpt-5.6-luna", ["low", "medium"]),
+            ("gpt-5.6-luna", "opus-5-5", []),
+            # A role model the operator lets users pick no effort on.
+            ("gpt-5.6-luna", "claude-haiku-5-5", []),
+        ):
+            with self.client("false", "default", COWORK_MODEL_EFFORTS=json.dumps(efforts),
+                             PLANNING_MODEL=planning, CODING_MODEL=coding) as client:
+                for path in ("/", "/c/conversation-id"):
+                    with self.subTest(coding=coding, path=path):
+                        self.assertEqual(self.efforts_meta(client.get(path)),
+                                         {"models": efforts, "operatorDefault": shared})
+
+    def test_model_ids_that_html_would_read_reach_the_renderer_as_written(self):
+        efforts = {'op"us<5>&5\'': ["xhigh"]}
+        with self.client("false", "open", COWORK_MODEL_EFFORTS=json.dumps(efforts)) as client:
+            response = client.get("/")
+        self.assertEqual(self.efforts_meta(response), {"models": efforts, "operatorDefault": []})
+        self.assertNotIn("<5>", response.text)
+
+    def test_without_model_efforts_the_shell_has_no_effort_tag(self):
+        for model_picker in ("default", "open"):
+            with self.subTest(model_picker=model_picker), self.client("false", model_picker,
+                                                                      COWORK_MODEL_EFFORTS="") as client:
+                self.assertNotIn(EFFORTS_META_NAME, client.get("/").text)
+
+    def test_model_efforts_without_the_picker_fail(self):
+        for model_picker in (None, "off"):
+            with self.subTest(model_picker=model_picker), self.assertRaises(ValueError) as error:
+                self.client("false", model_picker, COWORK_MODEL_EFFORTS='{"opus-5-5": ["xhigh"]}')
+            self.assertEqual(str(error.exception), "COWORK_MODEL_EFFORTS needs COWORK_MODEL_PICKER 'default' or 'open'.")
+
+    def test_malformed_model_efforts_fail_without_echoing_them(self):
+        for value in ("opus-5-5=xhigh", "[]", '["xhigh"]', '{"opus-5-5": "xhigh"}', '{"opus-5-5": ["XHIGH"]}',
+                      '{"opus-5-5": ["x high"]}', '{"opus-5-5": [1]}', '{"opus-5-5": ["xhigh"]'):
+            with self.subTest(value=value), self.assertRaises(ValueError) as error:
+                self.client("false", "default", COWORK_MODEL_EFFORTS=value)
+            self.assertEqual(str(error.exception),
+                             "COWORK_MODEL_EFFORTS must be a JSON object of model ids to lists of lowercase efforts.")
+
+    def test_a_template_that_already_names_the_model_efforts_is_refused(self):
+        html = self.html.replace("<head>", f"<head><meta name='{EFFORTS_META_NAME}' content='{{}}'>")
         (self.spa / "index-web.html").write_text(html, encoding="utf-8")
         with self.client("false", "default") as client, self.assertRaises(ValueError) as error:
             client.get("/")
