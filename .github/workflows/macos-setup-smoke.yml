@@ -1,0 +1,146 @@
+name: macOS published setup smoke
+
+on:
+  workflow_call:
+    inputs:
+      channels:
+        type: string
+        default: prod,stable
+      expected-url:
+        description: Public package URL returned by this pipeline's macOS upload
+        type: string
+        default: ''
+      expected-version:
+        description: Prod release tag; blank for Stable and nightly runs
+        type: string
+        default: ''
+  schedule:
+    - cron: '30 7 * * *'
+  workflow_dispatch:
+    inputs:
+      channels:
+        type: choice
+        options: [prod, stable, 'prod,stable']
+        default: prod,stable
+      snapshot-url:
+        description: Optional historical Stable package URL; select stable only
+        type: string
+        default: ''
+      snapshot-sha256:
+        description: Independently recorded SHA-256 for that historical snapshot
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      channels: ${{ steps.channels.outputs.channels }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: channels
+        env:
+          CHANNELS: ${{ inputs.channels || 'prod,stable' }}
+          EXPECTED_URL: ${{ inputs.expected-url }}
+          EXPECTED_VERSION: ${{ inputs.expected-version }}
+          SNAPSHOT_URL: ${{ inputs.snapshot-url }}
+          SNAPSHOT_SHA256: ${{ inputs.snapshot-sha256 }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from 'node:fs';
+          import { channels } from './scripts/macos-setup-contract.mjs';
+          const selected = channels(process.env.CHANNELS);
+          if (selected.length !== 1 && (process.env.EXPECTED_URL || process.env.EXPECTED_VERSION || process.env.SNAPSHOT_URL)) {
+            throw new Error('A pinned package requires exactly one channel.');
+          }
+          if (Boolean(process.env.SNAPSHOT_URL) !== Boolean(process.env.SNAPSHOT_SHA256)) {
+            throw new Error('Historical snapshots require both a URL and checksum.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `channels=${JSON.stringify(selected)}\n`);
+          JS
+
+  install:
+    name: macOS setup (${{ matrix.channel }})
+    needs: select
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: ${{ fromJSON(needs.select.outputs.channels) }}
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The downloaded app contains its own native modules and Electron binary.
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci --ignore-scripts
+      - name: Install the published package and run its setup
+        env:
+          MACOS_SETUP_CHANNEL: ${{ matrix.channel }}
+          MACOS_SETUP_EXPECTED_URL: ${{ inputs.expected-url }}
+          MACOS_SETUP_EXPECTED_VERSION: ${{ inputs.expected-version }}
+          MACOS_SETUP_SNAPSHOT_URL: ${{ inputs.snapshot-url }}
+          MACOS_SETUP_SNAPSHOT_SHA256: ${{ inputs.snapshot-sha256 }}
+        run: npm run test:macos-setup
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-setup-${{ matrix.channel }}
+          path: test-results/macos-setup-${{ matrix.channel }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+  summarize:
+    needs: [select, install]
+    if: ${{ !cancelled() && needs.select.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      failed: ${{ steps.summary.outputs.failed }}
+      label: ${{ steps.summary.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        continue-on-error: true # A runner/setup failure can precede artifact creation.
+        with:
+          pattern: macos-setup-*
+          path: test-results
+      - id: summary
+        env:
+          CHANNELS: ${{ inputs.channels || 'prod,stable' }}
+          INSTALL_RESULT: ${{ needs.install.result }}
+        run: node scripts/macos-setup-summary.mjs
+
+  notify:
+    needs: [select, install, summarize]
+    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || needs.summarize.outputs.failed == 'true') }}
+    permissions:
+      contents: read
+      actions: read
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: ${{ needs.summarize.outputs.label || 'macOS setup (runner or evidence collection failure; logs in run artifacts)' }}
+      status: failed
+      # Every failed setup gets evidence; a release-freeze window must not hide it.
+      freeze-scoped: false
+      force-post: true
+      runs-on: ubuntu-latest
+    secrets: inherit

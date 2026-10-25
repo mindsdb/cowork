@@ -114,6 +114,19 @@ jobs:
       artifact_name: ${{ needs.build-macos.outputs.artifact_name }}
     secrets: inherit
 
+  macos-setup:
+    needs: upload-macos
+    if: ${{ inputs.build_kind == 'stable' || inputs.build_kind == 'prod' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/macos-setup-smoke.yml
+    with:
+      channels: ${{ inputs.build_kind }}
+      expected-url: ${{ needs.upload-macos.outputs.download_url }}
+      expected-version: ${{ inputs.app_version }}
+    secrets: inherit
+
   build-windows:
     if: inputs.windows
     uses: ./.github/workflows/build-windows-installer.yml

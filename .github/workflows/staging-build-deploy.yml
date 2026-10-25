@@ -38,6 +38,9 @@ jobs:
 
   build-installers:
     needs: [run-unit-tests]
+    permissions:
+      contents: read
+      actions: read # nested setup-failure notification
     uses: ./.github/workflows/build-installers.yml
     with:
       # stable -> the PyPI rc stream, following cowork-server's publish-staging

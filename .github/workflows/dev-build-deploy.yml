@@ -127,6 +127,9 @@ jobs:
   # URL on the PR. So every platform opts in, linux included.
   build-installers:
     needs: [gate]
+    permissions:
+      contents: read
+      actions: read # reusable workflow permission ceiling; setup skips preview builds
     if: >-
       ${{ needs.gate.outputs.run == 'true'
           && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')

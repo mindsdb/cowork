@@ -55,6 +55,9 @@ jobs:
 
   build-installers:
     needs: [auto-release]
+    permissions:
+      contents: read
+      actions: read # nested setup-failure notification
     uses: ./.github/workflows/build-installers.yml
     with:
       # prod -> the PyPI stable stream: immutable, versioned, yankable, and no
