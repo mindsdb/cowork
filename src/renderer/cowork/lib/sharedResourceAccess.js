@@ -11,6 +11,11 @@ export function canUseSharedResource(resource, capability, isWeb = host.isWeb) {
   return !isWeb;
 }
 
+/** Older servers have no selective shares; their existing projects remain runnable. */
+export function canRunProject(project) {
+  return !project?.shared && project?.capabilities?.canRun !== false;
+}
+
 /**
  * Desktop historically treats both default project names as system-owned.
  * Cowork Cloud has one immutable project, `general`; a hosted project named

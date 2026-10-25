@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -1742,5 +1742,23 @@ describe('updateSettings committed result', () => {
     const result = await updateSettings({ greeting: 'Submitted greeting' });
     expect(result.status).toBe('ok');
     expect(result.settings.greeting).toBe('Canonical greeting');
+  });
+});
+
+/* The shared-project view rechecks access with this list, one request at a time.
+   A request that never settles would hold every later recheck, so files whose
+   access was revoked would stay on screen. */
+describe('listSharedProjectFiles gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('rejects after SHORT_REQUEST_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(10 * 60_000, { files: [] }));
+
+    let outcome = 'pending';
+    listSharedProjectFiles('project-id').then(() => { outcome = 'resolved'; }, () => { outcome = 'rejected'; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(outcome).toBe('rejected');
   });
 });
