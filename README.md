@@ -1009,8 +1009,11 @@ visible, and when you return to it. This works on every page without sending a
 chat message, including for someone who has never launched an app. It runs only
 when `/health` reports `live_apps`. The server retains each notice until a visible
 toast has displayed it and Cowork acknowledges its id. Failed reads and
-acknowledgements retry; repeated replies do not create duplicate toasts. A change
-to the authenticated scope clears the previous person's notice.
+acknowledgements retry; after each failed read the next check waits twice as long,
+up to one minute, and a successful read returns to 15 seconds. Repeated replies do
+not create duplicate toasts. A new refusal closes a notice already acknowledged, so
+the next one shows as new. A change to the authenticated scope clears the previous
+person's notice.
 
 ---
 

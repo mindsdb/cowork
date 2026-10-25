@@ -13,7 +13,8 @@ vi.mock('../../../shared/diagnostics', () => ({ diagnostic: vi.fn() }));
 
 const MESSAGE = 'A live-app slot is available. Ask your agent to launch your app again.';
 const pending = { scope: 'person-a', waiting: true, notice: null };
-const available = { ...pending, notice: { id: 'notice-1', message: MESSAGE } };
+const available = { scope: 'person-a', waiting: false, notice: { id: 'notice-1', message: MESSAGE } };
+const unavailable = () => Object.assign(new Error('unavailable'), { status: 503 });
 let displayedAtAcknowledgement;
 
 function Watcher({ accountScope }) {
@@ -120,16 +121,132 @@ describe('live-app availability notices', () => {
     expect(screen.getByText(MESSAGE)).toBeInTheDocument();
   });
 
-  it('keeps the current notice through a failed read and retries on the next tick', async () => {
+  it('keeps the current notice through a failed read and retries after a longer delay', async () => {
     fetchLiveAppAvailability.mockResolvedValue(available);
     render(<App />);
     await settle();
     fetchLiveAppAvailability.mockRejectedValueOnce(new Error('offline'));
     await tick();
     expect(screen.getByText(MESSAGE)).toBeInTheDocument();
-    await tick();
+    await tick(30_000);
     expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(3);
     expect(screen.getAllByText(MESSAGE)).toHaveLength(1);
+  });
+
+  it('closes an acknowledged notice when a later refusal replaces it', async () => {
+    fetchLiveAppAvailability.mockResolvedValue(available);
+    render(<App />);
+    await settle();
+    expect(screen.getByText(MESSAGE)).toBeInTheDocument();
+    expect(acknowledgeLiveAppAvailability).toHaveBeenCalledExactlyOnceWith('notice-1');
+
+    fetchLiveAppAvailability.mockResolvedValue(pending);
+    await tick();
+    await tick(1_000);
+    expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
+
+    fetchLiveAppAvailability.mockResolvedValue({ ...available, notice: { id: 'notice-2', message: MESSAGE } });
+    await tick();
+    expect(screen.getAllByText(MESSAGE)).toHaveLength(1);
+    expect(acknowledgeLiveAppAvailability).toHaveBeenLastCalledWith('notice-2');
+  });
+
+  it('keeps an acknowledged notice when the server stops reporting it', async () => {
+    fetchLiveAppAvailability.mockResolvedValue(available);
+    render(<App />);
+    await settle();
+    expect(acknowledgeLiveAppAvailability).toHaveBeenCalledExactlyOnceWith('notice-1');
+
+    fetchLiveAppAvailability.mockResolvedValue({ scope: 'person-a', waiting: false, notice: null });
+    await tick();
+    await tick(1_000);
+    expect(screen.getByText(MESSAGE)).toBeInTheDocument();
+  });
+
+  it('keeps an unacknowledged notice when a later refusal replaces it', async () => {
+    fetchLiveAppAvailability.mockResolvedValue(available);
+    acknowledgeLiveAppAvailability.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    await settle();
+    expect(screen.getByText(MESSAGE)).toBeInTheDocument();
+
+    fetchLiveAppAvailability.mockResolvedValue(pending);
+    await tick();
+    await tick(1_000);
+    expect(screen.getByText(MESSAGE)).toBeInTheDocument();
+    expect(acknowledgeLiveAppAvailability).toHaveBeenCalledTimes(2);
+  });
+
+  it('doubles the delay after each failed read up to one minute', async () => {
+    fetchLiveAppAvailability.mockRejectedValue(unavailable());
+    render(<App />);
+    await settle();
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(1);
+    for (const [calls, delay] of [[2, 30_000], [3, 60_000], [4, 60_000], [5, 60_000]]) {
+      await tick(delay - 1);
+      expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(calls - 1);
+      await tick(1);
+      expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(calls);
+    }
+  });
+
+  it('returns to the normal delay after a successful read', async () => {
+    fetchLiveAppAvailability.mockRejectedValue(unavailable());
+    render(<App />);
+    await settle();
+    await tick(30_000);
+    await tick(60_000);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(3);
+
+    fetchLiveAppAvailability.mockResolvedValue(pending);
+    await tick(60_000);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(4);
+    await tick(14_999);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(4);
+    await tick(1);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(5);
+  });
+
+  it('reads at once when the tab becomes visible during a backoff', async () => {
+    fetchLiveAppAvailability.mockRejectedValue(unavailable());
+    render(<App />);
+    await settle();
+    await tick(30_000);
+    await tick(60_000);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(3);
+
+    act(() => visibility('hidden'));
+    fetchLiveAppAvailability.mockResolvedValue(available);
+    act(() => visibility('visible'));
+    await settle();
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(4);
+    expect(screen.getByText(MESSAGE)).toBeInTheDocument();
+    await tick();
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(5);
+  });
+
+  it('schedules no read after unmount', async () => {
+    fetchLiveAppAvailability.mockRejectedValue(unavailable());
+    const view = render(<App />);
+    await settle();
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    await tick(600_000);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('schedules nothing when a read finishes after unmount', async () => {
+    const read = deferred();
+    fetchLiveAppAvailability.mockReturnValueOnce(read.promise);
+    const view = render(<App />);
+    await settle();
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { read.resolve(pending); });
+    expect(vi.getTimerCount()).toBe(0);
+    await tick(600_000);
+    expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(1);
   });
 
   it('drops an old in-flight result when the browser account identity changes', async () => {
