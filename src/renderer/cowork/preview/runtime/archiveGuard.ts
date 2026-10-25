@@ -1,0 +1,435 @@
+/*
+ * The archive guard the runtime runs before render(), as contract.ts states it:
+ * on every file that starts with PK and on every other file JSZip opens as an
+ * archive. It takes every file that starts with PK, not only PK\x03\x04,
+ * because SheetJS unzips any file that starts with PK and two bytes below 9,
+ * whether JSZip opens it or not.
+ *
+ * The guard reads the end record, the central directory and each entry's local
+ * header itself, so it checks what JSZip and SheetJS each read, not only the
+ * entries JSZip shows. It refuses with parse-failed an archive that two zip
+ * readers could read differently:
+ * - an end record cut short at the end of the file, a central directory that
+ *   doesn't end where the end record starts (bytes prepended or moved, which
+ *   JSZip skips and a reader that trusts the stated offsets doesn't), or an end
+ *   record that counts a different number of entries than the directory holds;
+ * - an end record that states a disk number other than 0, for its own disk or
+ *   the directory's. JSZip reads 0xFFFF in either as a ZIP64 marker and reads
+ *   the directory a ZIP64 end record points to, which the guard never reads;
+ * - a name listed twice;
+ * - a local header that is missing, or that states another name, method or
+ *   sizes than its directory record. When its flags say a data descriptor
+ *   follows the data, both sizes may be 0, and a deflated entry's uncompressed
+ *   size may instead be the directory's, as Info-ZIP writes to a pipe, since
+ *   SheetJS sizes only its inflate buffer by it. A stored entry keeps both at
+ *   0: SheetJS reads its data by the local compressed size, so it reads such
+ *   an entry as empty where JSZip reads its data. The guard accepts that
+ *   difference, since SheetJS reads less than JSZip, not more;
+ * - an extra field whose stated length runs past the entry's extra fields,
+ *   since JSZip reads its value on into the bytes that follow;
+ * - a ZIP64 extra field, which JSZip and SheetJS apply differently;
+ * - a Unicode Path extra field (0x7075) that names something other than the
+ *   entry's own name. JSZip names the entry from that field, while SheetJS
+ *   and the guard's other checks read the name itself;
+ * - a name whose bytes aren't UTF-8. With no Buffer, as in the frame, JSZip
+ *   decodes names with pako's decoder, which reads an overlong or broken
+ *   sequence as another character (C0 AE as '.', C0 AF as '/'), so the name
+ *   it lists can differ from the bytes SheetJS and the rules below read;
+ * - a name JSZip lists as another: one with a . or .. segment, or an empty
+ *   segment inside it, which JSZip resolves away while SheetJS keeps the name
+ *   as it is;
+ * - an entry JSZip reads as a directory, and so drops, that holds data;
+ * - an entry whose deflate stream runs past its stated compressed size
+ *   (SheetJS inflates until the stream ends, not until that size), or that
+ *   inflates to another size than it states.
+ *
+ * It also refuses an entry whose data runs past the start of the central
+ * directory. No zip writer makes one, and both readers read it the same way,
+ * but refusing it means the guard never depends on JSZip failing to read
+ * past the end of the file.
+ *
+ * It never trusts the sizes an archive declares. It inflates the data of every
+ * directory record, directories and empty entries included, counts the bytes
+ * that come out, and stops with zip-limit as soon as a count passes a cap. So a
+ * renderer library that unzips the file itself, such as SheetJS, inflates only
+ * bytes this guard counted.
+ *
+ * Nor does it trust the entry count an end record states. JSZip reads central
+ * records for as long as their signature follows, and shifts its start when
+ * the offsets skip bytes before the archive. So a file with an end record and
+ * more than maxZipEntries central directory signatures anywhere in it ends in
+ * zip-limit before JSZip reads the directory, whatever the file starts with.
+ * In a file that starts with PK, an end record whose 16-bit entry count is
+ * past maxZipEntries, which includes the ZIP64 marker 0xFFFF, also ends in
+ * zip-limit before JSZip reads it. JSZip refuses any other file whose end
+ * record states 0xFFFF without a ZIP64 record, so the guard returns null.
+ */
+import JSZip from 'jszip';
+
+import type { GuardedZip, PreviewError, PreviewLimits } from '../contract';
+import { isPreviewError, previewError } from '../errors';
+
+export type ArchiveLimits = Pick<PreviewLimits, 'maxInflatedBytes' | 'maxZipEntryInflatedBytes' | 'maxZipEntries'>;
+
+export interface ArchiveGuardOptions {
+  limits: ArchiveLimits;
+  signal: AbortSignal;
+  /* Called after each entry, so the parent's progress watchdog sees a large
+     archive still moving. */
+  onEntry?: (done: number, total: number) => void;
+}
+
+const LOCAL_FILE_HEADER = 0x04034b50;
+const CENTRAL_FILE_HEADER = 0x02014b50;
+const END_RECORD_SIZE = 22;
+const CENTRAL_HEADER_SIZE = 46;
+const LOCAL_HEADER_SIZE = 30;
+const STORED = 0;
+const DEFLATED = 8;
+const DATA_DESCRIPTOR_FLAG = 0x0008;
+const ZIP64_EXTRA_FIELD = 0x0001;
+const UNICODE_PATH_EXTRA_FIELD = 0x7075;
+/* A Unicode Path field holds a version byte and the CRC-32 of the entry's
+   name, then the name it gives the entry. */
+const UNICODE_PATH_NAME_START = 5;
+const DOS_DIRECTORY_ATTRIBUTE = 0x10;
+const MADE_BY_UNIX = 3;
+const UNIX_DIRECTORY_MODE = 0x4000;
+const SLASH = 0x2f;
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+/* Deflated data goes to DecompressionStream in pieces this size, so one piece
+   inflates to at most about 16 MiB before the guard counts it. */
+const INFLATE_INPUT_CHUNK = 16 * 1024;
+
+/* One central directory record, as the guard reads it. */
+interface CentralRecord {
+  versionMadeBy: number;
+  method: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  externalAttributes: number;
+  localOffset: number;
+  name: Uint8Array;
+  extra: Uint8Array;
+}
+
+/* A directory record whose local header agrees with it, and the data its
+   local header leads to, which is where JSZip and SheetJS both read it. */
+interface CheckedEntry {
+  record: CentralRecord;
+  data: Uint8Array<ArrayBuffer>;
+}
+
+function startsLikeArchive(bytes: ArrayBuffer): boolean {
+  const start = new Uint8Array(bytes, 0, Math.min(2, bytes.byteLength));
+  return start[0] === 0x50 && start[1] === 0x4b;
+}
+
+/* The offset of the last end-of-central-directory signature, which is the one
+   JSZip and SheetJS both read, or -1 when there is none. Both look for it up
+   to four bytes from the end of the file. */
+function endRecordOffset(bytes: Uint8Array): number {
+  for (let offset = bytes.length - 4; offset >= 0; offset -= 1) {
+    if (bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x05 && bytes[offset + 3] === 0x06) {
+      return offset;
+    }
+  }
+  return -1;
+}
+
+/* How many central directory signatures the file holds anywhere, counting no
+   further than one past `stopAfter`. Each record JSZip reads starts with this
+   signature at its own offset, so the count bounds how many entries JSZip
+   builds, wherever it starts reading. */
+function centralSignatureCount(bytes: Uint8Array, stopAfter: number): number {
+  let count = 0;
+  for (let offset = 0; offset + 4 <= bytes.length && count <= stopAfter; offset += 1) {
+    if (bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x01 && bytes[offset + 3] === 0x02) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function tooManyEntries(limits: ArchiveLimits): PreviewError {
+  return previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`);
+}
+
+/* Reads the central directory records from `offset` to `end`, the way JSZip
+   reads them, or returns null when a header is missing or runs past `end`. It
+   stops once the count passes `stopAfter`. */
+function readDirectory(bytes: Uint8Array, offset: number, end: number, stopAfter: number): CentralRecord[] | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const records: CentralRecord[] = [];
+  let next = offset;
+  while (next < end && records.length <= stopAfter) {
+    if (next + CENTRAL_HEADER_SIZE > end || view.getUint32(next, true) !== CENTRAL_FILE_HEADER) return null;
+    const nameStart = next + CENTRAL_HEADER_SIZE;
+    const extraStart = nameStart + view.getUint16(next + 28, true);
+    const commentStart = extraStart + view.getUint16(next + 30, true);
+    records.push({
+      versionMadeBy: view.getUint16(next + 4, true),
+      method: view.getUint16(next + 10, true),
+      compressedSize: view.getUint32(next + 20, true),
+      uncompressedSize: view.getUint32(next + 24, true),
+      externalAttributes: view.getUint32(next + 38, true),
+      localOffset: view.getUint32(next + 42, true),
+      name: bytes.subarray(nameStart, extraStart),
+      extra: bytes.subarray(extraStart, commentStart),
+    });
+    next = commentStart + view.getUint16(next + 32, true);
+  }
+  return next === end || records.length > stopAfter ? records : null;
+}
+
+/* The values of the extra fields with this id. It walks the fields the way
+   SheetJS does, reading a field header wherever four bytes remain, so it sees
+   every field JSZip sees too. */
+function extraFields(extra: Uint8Array, id: number): Uint8Array[] {
+  const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
+  const values: Uint8Array[] = [];
+  for (let at = 0; at + 4 <= extra.length; at += 4 + view.getUint16(at + 2, true)) {
+    if (view.getUint16(at, true) === id) values.push(extra.subarray(at + 4, at + 4 + view.getUint16(at + 2, true)));
+  }
+  return values;
+}
+
+/* Whether a field's stated length runs past the end of these extra fields.
+   JSZip reads such a field's value on into the bytes that follow, such as the
+   entry's comment, where the guard would read a shorter one. */
+function runsPastExtraFields(extra: Uint8Array): boolean {
+  const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
+  for (let at = 0; at + 4 <= extra.length; at += 4 + view.getUint16(at + 2, true)) {
+    if (at + 4 + view.getUint16(at + 2, true) > extra.length) return true;
+  }
+  return false;
+}
+
+function hasZip64Field(extra: Uint8Array): boolean {
+  return extraFields(extra, ZIP64_EXTRA_FIELD).length > 0;
+}
+
+/* Whether a Unicode Path field in these extra fields names other bytes than
+   `name`. A field too short to hold a name names nothing, which differs too. */
+function namesAnotherEntry(extra: Uint8Array, name: Uint8Array): boolean {
+  return extraFields(extra, UNICODE_PATH_EXTRA_FIELD)
+    .some((value) => !sameBytes(value.subarray(UNICODE_PATH_NAME_START), name));
+}
+
+/* Whether the name's bytes are UTF-8. The fatal decoder throws on any other
+   bytes, overlong sequences included. */
+function isUtf8(name: Uint8Array): boolean {
+  try {
+    UTF8.decode(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* Whether JSZip lists the entry under another name than its own. JSZip
+   resolves each name it lists (utils.resolve): it drops a . segment and an
+   empty one other than the first and last, and a .. segment drops the one
+   before it. The name is UTF-8 by now (isUtf8), which writes / and . only as
+   those bytes, so the guard decodes one byte to one character and splits
+   that. */
+function jszipRewritesName(name: Uint8Array): boolean {
+  const segments = new TextDecoder('latin1').decode(name).split('/');
+  return segments.some((segment, index) => segment === '.' || segment === '..'
+    || (segment === '' && index !== 0 && index !== segments.length - 1));
+}
+
+/* Whether JSZip reads the record as a directory, and so drops its data: the
+   DOS directory attribute, a Unix directory mode, or a name ending in '/'. */
+function readsAsDirectory(record: CentralRecord): boolean {
+  const unixMode = record.versionMadeBy >> 8 === MADE_BY_UNIX ? record.externalAttributes >>> 16 : 0;
+  return (record.externalAttributes & DOS_DIRECTORY_ATTRIBUTE) !== 0
+    || (unixMode & UNIX_DIRECTORY_MODE) !== 0
+    || record.name[record.name.length - 1] === SLASH;
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, index) => byte === b[index]);
+}
+
+/* Reads the local header a directory record points to and returns the entry's
+   data. It throws parse-failed for each local header and directory rule in
+   the header comment. */
+function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, directoryOffset: number): CheckedEntry {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const at = record.localOffset;
+  if (at + LOCAL_HEADER_SIZE > directoryOffset || view.getUint32(at, true) !== LOCAL_FILE_HEADER) {
+    throw previewError('parse-failed', 'An archive entry has no local header.');
+  }
+  const flags = view.getUint16(at + 6, true);
+  const compressedSize = view.getUint32(at + 18, true);
+  const uncompressedSize = view.getUint32(at + 22, true);
+  const nameStart = at + LOCAL_HEADER_SIZE;
+  const extraStart = nameStart + view.getUint16(at + 26, true);
+  const dataStart = extraStart + view.getUint16(at + 28, true);
+  const sameSizes = compressedSize === record.compressedSize && uncompressedSize === record.uncompressedSize;
+  const sizesInDescriptor = (flags & DATA_DESCRIPTOR_FLAG) !== 0 && compressedSize === 0
+    && (uncompressedSize === 0 || (record.method === DEFLATED && uncompressedSize === record.uncompressedSize));
+  if (view.getUint16(at + 8, true) !== record.method
+    || !sameBytes(bytes.subarray(nameStart, extraStart), record.name)
+    || !(sameSizes || sizesInDescriptor)) {
+    throw previewError('parse-failed', "An archive entry's local header differs from its directory record.");
+  }
+  if (runsPastExtraFields(record.extra) || runsPastExtraFields(bytes.subarray(extraStart, dataStart))) {
+    throw previewError('parse-failed', "An archive entry's extra field runs past the entry's extra fields.");
+  }
+  if (hasZip64Field(record.extra) || hasZip64Field(bytes.subarray(extraStart, dataStart))) {
+    throw previewError('parse-failed', 'An archive entry carries a ZIP64 extra field.');
+  }
+  if (namesAnotherEntry(record.extra, record.name) || namesAnotherEntry(bytes.subarray(extraStart, dataStart), record.name)) {
+    throw previewError('parse-failed', "An archive entry's Unicode Path field names another entry.");
+  }
+  if (!isUtf8(record.name)) {
+    throw previewError('parse-failed', "An archive entry's name isn't UTF-8.");
+  }
+  if (jszipRewritesName(record.name)) {
+    throw previewError('parse-failed', "An archive entry's name has a segment JSZip resolves away.");
+  }
+  if (readsAsDirectory(record) && record.uncompressedSize !== 0) {
+    throw previewError('parse-failed', 'An archive directory entry holds data.');
+  }
+  if (dataStart + record.compressedSize > directoryOffset) {
+    throw previewError('parse-failed', "An archive entry's data runs into the central directory.");
+  }
+  return { record, data: bytes.subarray(dataStart, dataStart + record.compressedSize) };
+}
+
+/*
+ * Reads the archive's end record, central directory and local headers, and
+ * returns each entry. It throws zip-limit past maxZipEntries, and parse-failed
+ * when the end record is cut short or states a disk other than 0, when the
+ * directory doesn't run from its stated offset to the end record or holds a
+ * different number of entries than the end record counts, or when
+ * checkedEntry refuses an entry.
+ */
+function checkedEntries(buffer: ArrayBuffer, limits: ArchiveLimits): CheckedEntry[] {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const end = endRecordOffset(bytes);
+  if (end < 0) throw previewError('parse-failed', 'The archive has no end record.');
+  if (end + END_RECORD_SIZE > bytes.length) throw previewError('parse-failed', "The archive's end record is cut short.");
+  const diskNumber = view.getUint16(end + 4, true);
+  const directoryDisk = view.getUint16(end + 6, true);
+  const entriesOnDisk = view.getUint16(end + 8, true);
+  const entries = view.getUint16(end + 10, true);
+  const directorySize = view.getUint32(end + 12, true);
+  const directoryOffset = view.getUint32(end + 16, true);
+  if (Math.max(entriesOnDisk, entries) > limits.maxZipEntries) throw tooManyEntries(limits);
+  if (diskNumber !== 0 || directoryDisk !== 0) {
+    throw previewError('parse-failed', "The archive's end record states another disk.");
+  }
+  if (directoryOffset + directorySize !== end) {
+    throw previewError('parse-failed', "The archive's directory isn't where its end record says.");
+  }
+  const records = readDirectory(bytes, directoryOffset, end, limits.maxZipEntries);
+  if (records && records.length > limits.maxZipEntries) throw tooManyEntries(limits);
+  if (!records || records.length !== entries || records.length !== entriesOnDisk) {
+    throw previewError('parse-failed', "The archive's end record miscounts its entries.");
+  }
+  return records.map((record) => checkedEntry(bytes, record, directoryOffset));
+}
+
+/* The data as a stream of small pieces, so DecompressionStream inflates one
+   piece at a time, as fast as the guard reads what comes out. */
+function inputPieces(data: Uint8Array<ArrayBuffer>): ReadableStream<BufferSource> {
+  let offset = 0;
+  return new ReadableStream<BufferSource>({
+    pull(controller) {
+      if (offset >= data.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(data.subarray(offset, offset + INFLATE_INPUT_CHUNK));
+      offset += INFLATE_INPUT_CHUNK;
+    },
+  });
+}
+
+/*
+ * Inflates one entry's data and returns how many bytes came out. It rejects
+ * with zip-limit, carrying `limitMessage`, once the count passes `cap`,
+ * without inflating the rest. It rejects with parse-failed when the deflate
+ * stream is cut short, which is how a stream that runs past the entry's
+ * stated compressed size shows.
+ */
+async function inflatedSize({ record, data }: CheckedEntry, cap: number, limitMessage: string, signal: AbortSignal): Promise<number> {
+  if (record.method === STORED) {
+    if (data.length > cap) throw previewError('zip-limit', limitMessage);
+    return data.length;
+  }
+  if (record.method !== DEFLATED) throw previewError('parse-failed', 'An archive entry uses an unknown compression method.');
+  const reader = inputPieces(data).pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  let size = 0;
+  try {
+    for (let piece = await reader.read(); !piece.done; piece = await reader.read()) {
+      size += piece.value.length;
+      if (size > cap) throw previewError('zip-limit', limitMessage);
+      if (signal.aborted) throw previewError('internal', 'The preview was stopped.');
+    }
+  } catch (error) {
+    reader.cancel().catch(() => undefined);
+    throw isPreviewError(error) ? error : previewError('parse-failed', 'An archive entry does not inflate.');
+  }
+  return size;
+}
+
+function guardedZip(zip: JSZip): GuardedZip {
+  const files = Object.values(zip.files).filter((entry) => !entry.dir);
+  const byName = new Map(files.map((entry) => [entry.name, entry]));
+  const names = Object.freeze(files.map((entry) => entry.name));
+  return {
+    names: () => names,
+    bytes: async (name) => (await byName.get(name)?.async('uint8array')) ?? null,
+    text: async (name) => (await byName.get(name)?.async('string')) ?? null,
+  };
+}
+
+/*
+ * Returns the checked archive, or null when the file is not an archive. Every
+ * entry has inflated within the caps by the time it returns, so a later read
+ * through the GuardedZip inflates the same bounded bytes again.
+ */
+export async function guardArchive(bytes: ArrayBuffer, { limits, signal, onEntry }: ArchiveGuardOptions): Promise<GuardedZip | null> {
+  /* Both checks run before JSZip reads the directory, so a huge entry count
+     fails before JSZip builds every entry. The signature count runs on every
+     file with an end record, because JSZip reads the directory of any such
+     file, whatever it starts with. A file that starts like an archive also
+     has its directory and local headers checked. */
+  const view = new Uint8Array(bytes);
+  if (endRecordOffset(view) >= 0 && centralSignatureCount(view, limits.maxZipEntries) > limits.maxZipEntries) {
+    throw tooManyEntries(limits);
+  }
+  const archiveStart = startsLikeArchive(bytes);
+  let entries = archiveStart ? checkedEntries(bytes, limits) : null;
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(bytes);
+  } catch {
+    if (archiveStart) {
+      throw previewError('parse-failed', 'The file starts like an archive but does not open as one.');
+    }
+    return null;
+  }
+  entries ??= checkedEntries(bytes, limits);
+  if (Object.keys(zip.files).length !== entries.length) {
+    throw previewError('parse-failed', 'The archive lists an entry name twice.');
+  }
+  let total = 0;
+  for (const [index, entry] of entries.entries()) {
+    const remaining = limits.maxInflatedBytes - total;
+    const size = limits.maxZipEntryInflatedBytes <= remaining
+      ? await inflatedSize(entry, limits.maxZipEntryInflatedBytes, `An entry inflates past ${limits.maxZipEntryInflatedBytes} bytes.`, signal)
+      : await inflatedSize(entry, remaining, `The archive inflates past ${limits.maxInflatedBytes} bytes.`, signal);
+    if (size !== entry.record.uncompressedSize) {
+      throw previewError('parse-failed', 'An archive entry inflates to another size than it states.');
+    }
+    total += size;
+    onEntry?.(index + 1, entries.length);
+  }
+  return guardedZip(zip);
+}

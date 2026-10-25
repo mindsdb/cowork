@@ -78,12 +78,13 @@ vi.mock('./comments', () => ({
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => workspaceMock,
 }));
-// The header's two open controls: the one beside the mode tabs and the ⋯ menu's.
+// The header's open control beside the mode tabs. The ⋯ menu has no open
+// entry: Download, Open and Show in folder are visible controls, and this
+// arrow opens what "Open in browser" did.
 vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ actions }) => (
     <div>
       {actions.canOpenInBrowserTab && <button type="button" onClick={actions.onOpenInBrowserTab}>tab</button>}
-      {actions.canOpenInBrowser && <button type="button" onClick={actions.onOpenInBrowser}>menu</button>}
     </div>
   ),
 }));
@@ -134,14 +135,13 @@ describe("the viewer's preview and open controls on a live app", () => {
   });
   afterEach(() => setLiveApps(false));
 
-  it('names a running app instead of asking for the preview, and both controls open its address', async () => {
+  it('names a running app instead of asking for the preview, and the open control opens its address', async () => {
     setLiveApps(true);
     await openViewer();
     expect(api.mountArtifactPreview).not.toHaveBeenCalled();
     expect(screen.getByTestId('body').textContent).toBe('This live app runs at its own address.');
     fireEvent.click(screen.getByText('tab'));
-    fireEvent.click(screen.getByText('menu'));
-    expect(host.openExternal.mock.calls).toEqual([[ADDRESS], [ADDRESS]]);
+    expect(host.openExternal.mock.calls).toEqual([[ADDRESS]]);
   });
 
   it('offers nothing to open while the app is stopped, and never the serve route\'s copy', async () => {
@@ -150,7 +150,6 @@ describe("the viewer's preview and open controls on a live app", () => {
     await openViewer();
     expect(screen.getByTestId('body').textContent).toBe('Stopped. Ask your agent to relaunch it.');
     expect(screen.queryByText('tab')).toBe(null);
-    expect(screen.queryByText('menu')).toBe(null);
   });
 
   it('offers Launch on a stopped app, which asks the agent and closes the viewer', async () => {

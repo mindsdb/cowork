@@ -27,6 +27,9 @@ jobs:
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
+  document-preview:
+    uses: ./.github/workflows/document-preview.yml
+
   build-deploy:
     needs: [run-unit-tests]
     permissions:
@@ -55,7 +58,7 @@ jobs:
 
   notify:
     # Alert the eng channel if ANY job in the staging pipeline fails. A called
-    # workflow reports failure when any job inside it failed, so three entries
+    # workflow reports failure when any job inside it failed, so four entries
     # cover the whole graph.
     # One job covers both outcomes: a `uses:` job cannot branch on status, so
     # the aggregate result picks the failed or recovered message, and a
@@ -63,7 +66,7 @@ jobs:
     #
     # It cannot cover a run that never started (`startup_failure`, zero jobs) —
     # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
-    needs: [run-unit-tests, build-deploy, build-installers]
+    needs: [run-unit-tests, document-preview, build-deploy, build-installers]
     if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: read

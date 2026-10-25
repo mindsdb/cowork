@@ -10,6 +10,7 @@ import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
 import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -80,6 +81,7 @@ export function ArtifactViewerBody({
   const {
     draftUrl: draftPreviewUrl,
     contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -178,6 +180,8 @@ export function ArtifactViewerBody({
     </div>
   ) : liveApp ? (
     <LiveAppPanel notice={liveApp.notice} onOpen={liveApp.onOpen} onLaunch={liveApp.onLaunch} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />

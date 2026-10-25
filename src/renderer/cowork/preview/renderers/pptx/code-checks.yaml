@@ -1,0 +1,66 @@
+# Text the slide preview's code must never hold, and packages the repository
+# must never depend on. Each `pattern` is a JavaScript regular expression
+# source, and `flags` its optional flags. `catches` lists code a pattern must
+# match, each spelling of what it bans that a narrower pattern would let past.
+#
+# source: matched against each renderer file other than tests.
+# packages: matched against every package name in package.json and
+#           package-lock.json.
+#
+# The bundle checks live in ../../bundleChecks.yaml, run on the bundle that
+# ships.
+
+source:
+  # Slide text goes in through textContent only.
+  - name: innerHTML
+    pattern: '\binnerHTML\b'
+  - name: outerHTML
+    pattern: '\bouterHTML\b'
+  - name: insertAdjacentHTML
+    pattern: '\binsertAdjacentHTML\b'
+  - name: document.write
+    pattern: '\bdocument\.write'
+  - name: createContextualFragment
+    pattern: '\bcreateContextualFragment\b'
+  - name: a style written as one string
+    pattern: '\bcssText\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?[`''"]style|\.style\s*=(?!=)|\[\s*[`''"]style[`''"]\s*\]\s*=(?!=)'
+    flags: i
+    catches:
+      - el.style.cssText = text
+      - el.style = text
+      - 'el["style"] = text'
+      - "el.setAttribute('style', text)"
+      - "el.setAttribute('STYLE', text)"
+      - el.setAttribute(`style`, text)
+      - "el.setAttributeNS(null, 'style', text)"
+      - "el.setAttributeNS(SVG_NS, 'style', text)"
+  # Nothing in a slide is a link, and no picture is followed through r:link.
+  - name: an anchor element
+    pattern: "createElement\\(\\s*['\"]a['\"]"
+  - name: an href
+    pattern: '\bhref\b'
+    flags: i
+  - name: a read of an r:link attribute
+    pattern: "[`'\"](?:\\w+:)?link[`'\"]"
+    catches:
+      - "relationshipAttr(blip, 'link')"
+      - relationshipAttr(blip, `link`)
+      - "blip.getAttribute('r:link')"
+      - 'blip.getAttributeNS(namespace, "link")'
+  # Nothing in the frame may reach the network or start a thread.
+  - name: a fetch call
+    pattern: '\bfetch\b'
+  - name: XMLHttpRequest
+    pattern: '\bXMLHttpRequest\b'
+  - name: a Worker
+    pattern: 'Worker\b'
+  # The archive comes only from ctx.openZip, after the runtime's guard.
+  - name: an import of JSZip
+    pattern: "from\\s+['\"]jszip['\"]"
+
+packages:
+  # The slide preview is Cowork's own code on DOMParser and the runtime's
+  # archive, so no package that reads or draws PowerPoint files is installed.
+  - name: a PowerPoint package
+    pattern: 'ppt|powerpoint'
+    flags: i

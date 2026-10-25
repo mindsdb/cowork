@@ -1,0 +1,118 @@
+# PDF fixtures for the document preview harness (e2e/document-preview/harness.ts).
+# Each entry names a .pdf file in this folder, and make-fixtures.mjs writes
+# every one of them. A paintedRegion is a box on one page's canvas, in
+# fractions of its width and height from the top-left corner, that must hold
+# pixels other than the white page background.
+
+# Three Letter pages, each with a line of Helvetica text, which pdf.js draws
+# from the bundled standard fonts. The region is page 1's text line.
+- name: three pages
+  file: three-pages.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 3
+    truncated: false
+    paintedRegion: { page: 1, left: 0.11, top: 0.1, width: 0.33, height: 0.05 }
+
+# One scanned image each, decoded by pdf.js's no-wasm fallbacks: JBIG2 (an MMR
+# generic region), CCITT Group 4, and JPEG 2000. Each region is the image box.
+- name: JBIG2 image
+  file: jbig2-page.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    paintedRegion: { page: 1, left: 0.12, top: 0.21, width: 0.76, height: 0.29 }
+
+- name: CCITT image
+  file: ccitt-page.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    paintedRegion: { page: 1, left: 0.12, top: 0.21, width: 0.76, height: 0.29 }
+
+- name: JPX image
+  file: jpx-page.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    paintedRegion: { page: 1, left: 0.12, top: 0.21, width: 0.76, height: 0.29 }
+
+# Japanese text in a CID font the file names (KozMinPro-Regular) but doesn't
+# embed, encoded through the predefined UniJIS-UCS2-H CMap with no ToUnicode
+# map. The region is the text line.
+- name: UniJIS-UCS2-H text
+  file: unijis-ucs2-h.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    paintedRegion: { page: 1, left: 0.11, top: 0.14, width: 0.4, height: 0.1 }
+
+# Chinese text in the same shape: STSong-Light, not embedded, UniGB-UCS2-H,
+# no ToUnicode map. The region is the text line.
+- name: unembedded UniGB-UCS2-H text
+  file: unigb-ucs2-h.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    paintedRegion: { page: 1, left: 0.11, top: 0.14, width: 0.4, height: 0.1 }
+
+# 501 pages of 14,400 by 14,400 points, the largest page a PDF allows, one page
+# past the page cap. The region is page 1's centre square.
+- name: 501 pages at the largest page size
+  file: pages-501-max-size.pdf
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 500
+    truncated: true
+    paintedRegion: { page: 1, left: 0.3, top: 0.3, width: 0.4, height: 0.4 }
+
+# Link annotations whose URI actions aim at Google hosts, loopback by address
+# and by name, and a path on the app's own origin.
+- name: URI links
+  file: uri-links.pdf
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+
+# JavaScript in the open action, the document's named scripts, a page-open
+# action and a link, each aimed at an outside host.
+- name: JavaScript actions
+  file: script-actions.pdf
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+
+# A catalog whose page tree holds no page: /Count 0 and an empty /Kids.
+- name: no pages
+  file: no-pages.pdf
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+# Three pages whose page tree lists page 1's content stream as page 2. pdf.js
+# opens the file and counts three pages, then can't read page 2, so the
+# preview fails rather than show a blank page as rendered.
+- name: page tree listing a stream as a page
+  file: wrong-page-kid.pdf
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+# A PDF header followed by nothing a PDF reader can parse.
+- name: not a PDF document
+  file: not-a-document.pdf
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed

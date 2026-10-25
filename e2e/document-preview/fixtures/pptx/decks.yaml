@@ -1,0 +1,183 @@
+# The decks behind the committed .pptx fixtures. make-fixtures.mjs builds each
+# one with deck.ts and writes it as `file`. Boxes are [x, y, width, height] in
+# EMU on a 12,192,000 by 6,858,000 slide. Colors and link targets are written
+# into the file as given, so the hostile values below land in it unescaped by
+# meaning.
+
+# Slide parts 1 to 3 hold the second, third and first slide; sldIdLst lists
+# them as 3, 1, 2, so only a renderer that follows sldIdLst shows them in order.
+- file: three-slides.pptx
+  deck:
+    order: [3, 1, 2]
+    images:
+      swatch.png: iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAGElEQVR42mNwKTqCFb2tNcSKGEY1DAoNANCv3elsETTYAAAAAElFTkSuQmCC
+    slides:
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: 'Second slide: a picture and a table' }]
+          - kind: picture
+            box: [838200, 1825625, 4800600, 2700338]
+            descr: Two color swatch
+            image: swatch.png
+          - kind: table
+            box: [6096000, 1825625, 5257800, 1371600]
+            rows:
+              - [Region, Revenue]
+              - [North, '120']
+              - [South, '95']
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: 'Third slide: a chart' }]
+          - kind: chart
+            box: [838200, 1825625, 10515600, 4351338]
+            color: 4472C4
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: 'First slide: a quarterly review' }]
+          - kind: text
+            box: [838200, 2286000, 10515600, 1371600]
+            paragraphs:
+              - { text: Three slides in presentation order, size: 28 }
+
+# Shapes drawn later sit on top: three overlapping boxes, then a group whose two
+# children overlap inside its own child coordinates.
+- file: overlapping-shapes.pptx
+  deck:
+    slides:
+      - shapes:
+          - kind: text
+            box: [1524000, 1143000, 4572000, 3048000]
+            fill: A5A5A5
+            paragraphs: [{ text: Back shape, size: 24 }]
+          - kind: text
+            box: [3048000, 1905000, 4572000, 3048000]
+            geometry: ellipse
+            fill: ED7D31
+            paragraphs: [{ text: Middle shape, size: 24, align: ctr }]
+          - kind: text
+            box: [4572000, 2667000, 4572000, 3048000]
+            rotation: 15
+            fill: 4472C4
+            line: '000000'
+            paragraphs: [{ text: Front shape, size: 24, color: FFFFFF }]
+          - kind: group
+            box: [8382000, 457200, 3048000, 2286000]
+            childBox: [0, 0, 4000, 3000]
+            shapes:
+              - kind: text
+                box: [0, 0, 3000, 2000]
+                fill: 70AD47
+                paragraphs: [{ text: Group back }]
+              - kind: text
+                box: [1000, 1000, 3000, 2000]
+                fill: FFC000
+                paragraphs: [{ text: Group front }]
+
+- file: rtl-text.pptx
+  deck:
+    slides:
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: Right-to-left text }]
+          - kind: text
+            box: [838200, 1825625, 10515600, 3048000]
+            paragraphs:
+              - { text: مرحبا بالعالم, rtl: true, align: r, lang: ar-SA, size: 36 }
+              - { text: שלום עולם, rtl: true, align: r, lang: he-IL, size: 36 }
+              - { text: A left-to-right line, align: l, size: 24 }
+
+# Video and audio stored inside the package. Their parts hold placeholder
+# bytes, since the preview never reads them.
+- file: media.pptx
+  deck:
+    slides:
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: Video and audio }]
+          - kind: video
+            box: [838200, 1825625, 5029200, 2828925]
+            embedded: clip.mp4
+          - kind: audio
+            box: [6324600, 1825625, 1828800, 1828800]
+            embedded: sound.m4a
+
+# One slide more than the preview's slide cap draws, each slide reading
+# "Slide <n>".
+- file: past-slide-cap.pptx
+  deck:
+    numberedSlides: 301
+
+# A presentation part cut off mid-element, so it isn't well-formed XML.
+- file: corrupt.pptx
+  deck:
+    numberedSlides: 1
+    presentationXml: >-
+      <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <p:sldIdLst><p:sldId id="256" r:id="rId2"
+
+# Pictures, video and audio that point outside the package: r:link, an External
+# r:embed, an r:embed whose internal Target is a URL, and one whose Target
+# climbs above the package root. The targets are the hosts a hostile file aims
+# at: docs.google.com, drive.google.com, the harness origin standing in for the
+# Cowork origin, localhost and 127.0.0.1. Text runs carry hyperlinks too.
+- file: linked-media.pptx
+  deck:
+    slides:
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: Linked media }]
+          - kind: picture
+            box: [838200, 1825625, 2438400, 1828800]
+            link: https://example.com/pptx-linked-picture.png
+          - kind: picture
+            box: [3429000, 1825625, 2438400, 1828800]
+            externalEmbed: https://docs.google.com/pptx-external-embed.png
+          - kind: picture
+            box: [6019800, 1825625, 2438400, 1828800]
+            embedTarget: https://drive.google.com/pptx-internal-url.png
+          - kind: picture
+            box: [8610600, 1825625, 2438400, 1828800]
+            embedTarget: ../../../pptx-outside-package.png
+          - kind: video
+            box: [838200, 3810000, 2438400, 1371600]
+            link: http://localhost:5210/pptx-linked-video.mp4
+          - kind: audio
+            box: [3429000, 3810000, 1371600, 1371600]
+            link: http://127.0.0.1:5210/pptx-linked-audio.m4a
+          - kind: text
+            box: [5181600, 3810000, 6172200, 1828800]
+            paragraphs:
+              - { text: A link to a document, link: 'https://docs.google.com/document/d/pptx-hyperlink' }
+              - { text: A script link, link: "javascript:parent.postMessage('pptx-javascript-link','*')" }
+              - { text: A link to the page origin, link: 'http://127.0.0.1:5210/pptx-origin-link' }
+
+# A chart whose series color is markup and CSS aimed at a renderer that pastes
+# colors into SVG or styles, beside a shape whose fill, run color and typeface
+# carry the same kind of payload.
+- file: chart-color.pptx
+  deck:
+    slides:
+      - shapes:
+          - kind: text
+            placeholder: title
+            paragraphs: [{ text: Chart color }]
+          - kind: chart
+            box: [838200, 1825625, 6096000, 4351338]
+            color: >-
+              4472C4"/><img src="https://example.com/pptx-chart-color.png"
+              onerror="parent.postMessage('pptx-chart-color','*')
+          - kind: text
+            box: [7239000, 1825625, 4114800, 2286000]
+            fill: 'FF0000;background:url(https://example.com/pptx-fill-color.png)'
+            paragraphs:
+              - text: A shape with hostile colors
+                color: '00FF00" style="background:url(https://example.com/pptx-run-color.png)'
+                font: 'Calibri", sans-serif; background: url(https://example.com/pptx-font.png); x: "'
