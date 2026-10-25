@@ -8,12 +8,10 @@
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import type { PreviewLimits } from '../../contract';
+import { previewError } from '../../errors';
 
 /* PDF points to CSS pixels: 72 points and 96 CSS pixels each make one inch. */
 const CSS_PIXELS_PER_POINT = 96 / 72;
-
-/* A page's size when pdf.js can't read it: US Letter, in points. */
-const FALLBACK_PAGE = { width: 612, height: 792 };
 
 /* How long the column's size and the screen's pixel ratio must stay put
    before drawn pages are checked against them. */
@@ -100,7 +98,7 @@ export class PageWindow {
 
 interface PageSlot {
   element: HTMLDivElement;
-  page: PDFPageProxy | null;
+  page: PDFPageProxy;
   canvas: HTMLCanvasElement | null;
   task: RenderTask | null;
 }
@@ -139,20 +137,21 @@ export class PdfPages {
   }
 
   /* Adds a placeholder for each of the first `count` pages, sized from its
-     own page box, and reports each one through progress. */
+     own page box, and reports each one through progress. A page pdf.js can't
+     read ends the preview in parse-failed: a blank slot in a rendered preview
+     would offer no download and say nothing. */
   async layOut(count: number, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
-    let size: PageSize = FALLBACK_PAGE;
     for (let number = 1; number <= count; number += 1) {
       signal.throwIfAborted();
-      const page = await this.pdf.getPage(number).catch(() => null);
-      if (page) {
-        const { width, height } = page.getViewport({ scale: 1 });
-        size = { width, height };
-      }
+      const page = await this.pdf.getPage(number).catch((error: unknown) => {
+        signal.throwIfAborted();
+        throw previewError('parse-failed', "A page of this PDF can't be read.", { cause: error });
+      });
+      const { width, height } = page.getViewport({ scale: 1 });
       const element = document.createElement('div');
       element.className = 'cowork-pdf-page';
       element.dataset.pageNumber = String(number);
-      element.style.aspectRatio = `${size.width} / ${size.height}`;
+      element.style.aspectRatio = `${width} / ${height}`;
       this.#column.append(element);
       this.#slots.set(number, { element, page, canvas: null, task: null });
       this.#numbers.set(element, number);
@@ -198,7 +197,7 @@ export class PdfPages {
      and decoded images for the new draw. */
   #redrawResized(): void {
     for (const [number, slot] of this.#slots) {
-      if (!this.#window.isDrawn(number) || !slot.page || !slot.canvas) continue;
+      if (!this.#window.isDrawn(number) || !slot.canvas) continue;
       const { width } = this.#canvasSize(slot.element, slot.page);
       if (Math.abs(width - slot.canvas.width) <= slot.canvas.width * REDRAW_WIDTH_CHANGE) continue;
       this.#dropCanvas(slot);
@@ -216,7 +215,7 @@ export class PdfPages {
 
   async #draw(number: number): Promise<void> {
     const slot = this.#slots.get(number);
-    if (!slot?.page) return;
+    if (!slot) return;
     const page = slot.page;
     const size = this.#canvasSize(slot.element, page);
     const canvas = document.createElement('canvas');
@@ -241,7 +240,7 @@ export class PdfPages {
   #release(number: number): void {
     const slot = this.#slots.get(number);
     if (!slot) return;
-    if (!slot.task) slot.page?.cleanup();
+    if (!slot.task) slot.page.cleanup();
     this.#dropCanvas(slot);
   }
 

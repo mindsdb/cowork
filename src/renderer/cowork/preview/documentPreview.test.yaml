@@ -135,6 +135,10 @@ archiveGuard:
         - { name: xl/my..book.xml, size: 1024 }
         - { name: .rels/file., size: 1024 }
       names: [xl/my..book.xml, .rels/file.]
+    - case: a UTF-8 name outside ASCII
+      entries:
+        - { name: xl/média.xml, size: 1024 }
+      names: [xl/média.xml]
   # Shapes two zip readers read differently: SheetJS's own zip reader inflates
   # data that JSZip drops, cuts short or never finds. The guard refuses each
   # with parse-failed before a renderer reads it.
@@ -201,6 +205,21 @@ archiveGuard:
     - case: a name with an empty segment inside it
       entries:
         - { name: xl//workbook.xml, size: 1024 }
+    # Names that aren't UTF-8. With no Buffer, as in the frame, JSZip reads
+    # each as another: C0 AE as '.', C0 AF as '/', and C0 before a '/' as one
+    # '/'. Vitest has a Buffer, so these rows check the guard, not JSZip.
+    - case: a name with an overlong .. segment
+      entries:
+        - { name: "x/\xC0\xAE\xC0\xAE/word/document.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name with an overlong . segment
+      entries:
+        - { name: "\xC0\xAE/xl/workbook.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name with a broken sequence before a /, which reads as one /
+      entries:
+        - { name: "xl/\xC0/workbook.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name holding data that ends in an overlong /, which reads as a directory
+      entries:
+        - { name: "word/document.xml\xC0\xAF", nameEncoding: latin1, size: 1024 }
     - case: a file that starts with PK but not PK\x03\x04 and ends in a cut-short end record
       entries:
         - { name: xl/bomb.xml, size: 1024 }

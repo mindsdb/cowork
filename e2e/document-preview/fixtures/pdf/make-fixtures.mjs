@@ -47,12 +47,14 @@ const ONE_LETTER_PAGE = '<< /Type /Pages /Count 1 /Kids [3 0 R] /MediaBox [0 0 6
 const HELVETICA = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
 
 /* Three Letter pages, each with a line of Helvetica text, which pdf.js draws
-   from its bundled standard fonts, and a blue box. */
-function threePages() {
+   from its bundled standard fonts, and a blue box. `kids` are the object
+   numbers the page tree lists, pages 4, 6 and 8 unless a fixture lists
+   another object in a page's place. */
+function threePages(kids = [4, 6, 8]) {
   const numbers = [1, 2, 3];
   return pdf([
     CATALOG,
-    `<< /Type /Pages /Count 3 /MediaBox [0 0 612 792] /Kids [${numbers.map((number) => `${2 + 2 * number} 0 R`).join(' ')}] /Resources << /Font << /F1 3 0 R >> >> >>`,
+    `<< /Type /Pages /Count 3 /MediaBox [0 0 612 792] /Kids [${kids.map((kid) => `${kid} 0 R`).join(' ')}] /Resources << /Font << /F1 3 0 R >> >> >>`,
     HELVETICA,
     ...numbers.flatMap((number) => [
       `<< /Type /Page /Parent 2 0 R /Contents ${3 + 2 * number} 0 R >>`,
@@ -253,6 +255,9 @@ export function pdfFixtureFiles() {
     ['script-actions.pdf', scriptActions()],
     /* A catalog whose page tree holds no page. */
     ['no-pages.pdf', pdf([CATALOG, '<< /Type /Pages /Count 0 /Kids [] >>'])],
+    /* Three pages whose page tree lists page 1's content stream as page 2:
+       pdf.js opens the file and counts three pages, then can't read page 2. */
+    ['wrong-page-kid.pdf', threePages([4, 5, 8])],
     /* A PDF header and nothing a reader can parse after it. */
     ['not-a-document.pdf', '%PDF-1.7\nThis file has a PDF header and nothing a PDF reader can parse.\n'],
   ];

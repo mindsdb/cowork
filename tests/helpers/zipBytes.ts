@@ -11,6 +11,10 @@ export interface ZipSizes {
 
 export interface ZipEntryInput {
   name: string;
+  /* How the headers write `name` and `localName`: UTF-8, or latin1, one byte
+     per character, so a test can write a name that isn't UTF-8, such as an
+     overlong '.'. */
+  nameEncoding?: 'utf-8' | 'latin1';
   data: Uint8Array;
   /* Stored as is instead of deflated. */
   store?: boolean;
@@ -96,6 +100,13 @@ function unicodePathField(name: Uint8Array, path: string): Uint8Array {
   return field;
 }
 
+/* A name as the headers write it: UTF-8, or one byte per character. */
+function nameBytes(text: string, encoding: ZipEntryInput['nameEncoding'] = 'utf-8'): Uint8Array {
+  if (encoding === 'utf-8') return new TextEncoder().encode(text);
+  if ([...text].some((char) => char.charCodeAt(0) > 0xff)) throw new Error(`A latin1 name holds a character past U+00FF: ${text}`);
+  return Uint8Array.from(text, (char) => char.charCodeAt(0));
+}
+
 function concat(parts: readonly Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let at = 0;
@@ -117,8 +128,8 @@ export function zipBytes(
   const directory: Uint8Array[] = [];
   let offset = lead.length;
   for (const entry of entries) {
-    const name = new TextEncoder().encode(entry.name);
-    const localName = new TextEncoder().encode(entry.localName ?? entry.name);
+    const name = nameBytes(entry.name, entry.nameEncoding);
+    const localName = nameBytes(entry.localName ?? entry.name, entry.nameEncoding);
     const body = entry.store ? entry.data : new Uint8Array(deflateRawSync(entry.data));
     const method = entry.store ? 0 : 8;
     const flags = entry.dataDescriptor ? DATA_DESCRIPTOR_FLAG : 0;

@@ -31,6 +31,10 @@
  * - a Unicode Path extra field (0x7075) that names something other than the
  *   entry's own name. JSZip names the entry from that field, while SheetJS
  *   and the guard's other checks read the name itself;
+ * - a name whose bytes aren't UTF-8. With no Buffer, as in the frame, JSZip
+ *   decodes names with pako's decoder, which reads an overlong or broken
+ *   sequence as another character (C0 AE as '.', C0 AF as '/'), so the name
+ *   it lists can differ from the bytes SheetJS and the rules below read;
  * - a name JSZip lists as another: one with a . or .. segment, or an empty
  *   segment inside it, which JSZip resolves away while SheetJS keeps the name
  *   as it is;
@@ -92,6 +96,7 @@ const DOS_DIRECTORY_ATTRIBUTE = 0x10;
 const MADE_BY_UNIX = 3;
 const UNIX_DIRECTORY_MODE = 0x4000;
 const SLASH = 0x2f;
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
 /* Deflated data goes to DecompressionStream in pieces this size, so one piece
    inflates to at most about 16 MiB before the guard counts it. */
 const INFLATE_INPUT_CHUNK = 16 * 1024;
@@ -211,11 +216,23 @@ function namesAnotherEntry(extra: Uint8Array, name: Uint8Array): boolean {
     .some((value) => !sameBytes(value.subarray(UNICODE_PATH_NAME_START), name));
 }
 
+/* Whether the name's bytes are UTF-8. The fatal decoder throws on any other
+   bytes, overlong sequences included. */
+function isUtf8(name: Uint8Array): boolean {
+  try {
+    UTF8.decode(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* Whether JSZip lists the entry under another name than its own. JSZip
    resolves each name it lists (utils.resolve): it drops a . segment and an
    empty one other than the first and last, and a .. segment drops the one
-   before it. A / or . byte is that character in every encoding a name can
-   use, so the guard decodes one byte to one character and splits that. */
+   before it. The name is UTF-8 by now (isUtf8), which writes / and . only as
+   those bytes, so the guard decodes one byte to one character and splits
+   that. */
 function jszipRewritesName(name: Uint8Array): boolean {
   const segments = new TextDecoder('latin1').decode(name).split('/');
   return segments.some((segment, index) => segment === '.' || segment === '..'
@@ -266,6 +283,9 @@ function checkedEntry(bytes: Uint8Array<ArrayBuffer>, record: CentralRecord, dir
   }
   if (namesAnotherEntry(record.extra, record.name) || namesAnotherEntry(bytes.subarray(extraStart, dataStart), record.name)) {
     throw previewError('parse-failed', "An archive entry's Unicode Path field names another entry.");
+  }
+  if (!isUtf8(record.name)) {
+    throw previewError('parse-failed', "An archive entry's name isn't UTF-8.");
   }
   if (jszipRewritesName(record.name)) {
     throw previewError('parse-failed', "An archive entry's name has a segment JSZip resolves away.");

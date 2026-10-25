@@ -99,6 +99,16 @@
     outcome: error
     errorCode: parse-failed
 
+# Three pages whose page tree lists page 1's content stream as page 2. pdf.js
+# opens the file and counts three pages, then can't read page 2, so the
+# preview fails rather than show a blank page as rendered.
+- name: page tree listing a stream as a page
+  file: wrong-page-kid.pdf
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
 # A PDF header followed by nothing a PDF reader can parse.
 - name: not a PDF document
   file: not-a-document.pdf

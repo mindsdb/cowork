@@ -961,7 +961,7 @@ export function ArtifactViewer({
     source: {
       url: withArtifactVersion(
         isAbsoluteArtifactPreviewUrl(draftPreviewUrl) ? draftPreviewUrl : `${host.getApiOrigin()}${draftPreviewUrl}`,
-        `${artifact.mtime ?? 0}.${reloadNonce}`,
+        contentVersion,
       ),
       previewType: documentType,
       filename: title || 'file',

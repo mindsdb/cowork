@@ -145,7 +145,7 @@ const ARCHIVE_OPTIONS_CASE_KEYS = new Set(Object.keys({
   case: true, archive: true,
 } satisfies Record<keyof ArchiveOptionsCaseData, true>));
 const ARCHIVE_ENTRY_KEYS = new Set(Object.keys({
-  name: true, size: true, store: true, externalAttributes: true, centralSizes: true, localName: true,
+  name: true, nameEncoding: true, size: true, store: true, externalAttributes: true, centralSizes: true, localName: true,
   localMethod: true, localSizes: true, dataDescriptor: true, zip64Extra: true, unicodePath: true,
   localUnicodePath: true,
 } satisfies Record<keyof ArchiveEntryData, true>));

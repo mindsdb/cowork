@@ -154,6 +154,18 @@ describe('the pdf renderer', () => {
     expect(ctx.root.childNodes).toHaveLength(0);
   });
 
+  it('fails with parse-failed for a PDF whose page tree lists a stream as a page, and destroys the document', async () => {
+    const actual = await vi.importActual<typeof import('pdfjs-dist/legacy/build/pdf.mjs')>('pdfjs-dist/legacy/build/pdf.mjs');
+    let destroy: MockInstance | undefined;
+    vi.mocked(pdfjs.getDocument).mockImplementationOnce((params) => {
+      const task = actual.getDocument(params);
+      destroy = vi.spyOn(task, 'destroy');
+      return task;
+    });
+    await expect(renderer.render(fixtureBytes('wrong-page-kid.pdf'), context())).rejects.toMatchObject({ code: 'parse-failed' });
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+
   it('fails with unsupported for a PDF that needs a password', async () => {
     const destroy = vi.fn(async () => undefined);
     vi.mocked(pdfjs.getDocument).mockReturnValueOnce({
