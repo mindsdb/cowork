@@ -93,6 +93,8 @@ jobs:
           command: npm ci
       - name: Typecheck (main + renderer)
         run: npm run typecheck
+      - name: Published macOS setup smoke contract
+        run: npm run test:macos-setup-contract
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
       - name: Unit + component tests + coverage
