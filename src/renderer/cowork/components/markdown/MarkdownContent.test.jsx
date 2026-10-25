@@ -197,6 +197,23 @@ describe('isArtifactLocalPath — dead-by-construction pod shapes (ENG-2421)', (
     expect(isArtifactLocalPath('http://127.0.0.1.:8000/x', { web: true })).toBe(true);
   });
 
+  it('keeps a link to the same self-hosted stack live from a page that stack serves, on web', () => {
+    // The stack's edge serves cowork., view. and app<n>.view.localhost on one port.
+    const page = new URL('http://cowork.localhost:8080/chat/42');
+    expect(isArtifactLocalPath('http://view.localhost:8080/a/3f9c2e', { web: true, page })).toBe(false);
+    expect(isArtifactLocalPath('http://app1.view.localhost:8080/', { web: true, page })).toBe(false);
+    // The runtime's own port, another port or scheme, and bare loopback names stay inert.
+    expect(isArtifactLocalPath('http://127.0.0.1:41043/', { web: true, page })).toBe(true);
+    expect(isArtifactLocalPath('http://view.localhost:3000/a/3f9c2e', { web: true, page })).toBe(true);
+    expect(isArtifactLocalPath('https://view.localhost:8080/a/3f9c2e', { web: true, page })).toBe(true);
+    expect(isArtifactLocalPath('http://localhost:8080/', { web: true, page })).toBe(true);
+    expect(isArtifactLocalPath('http://127.0.0.1:8080/', { web: true, page })).toBe(true);
+    // A page on a bare loopback name or a real host is no stack page: every loopback link stays inert.
+    for (const other of ['http://localhost:8080/', 'https://cowork.example.com/']) {
+      expect(isArtifactLocalPath('http://view.localhost:8080/a/3f9c2e', { web: true, page: new URL(other) })).toBe(true);
+    }
+  });
+
   it('keeps loopback clickable on desktop, where the sidecar and app dev servers are real', () => {
     expect(isArtifactLocalPath('http://127.0.0.1:26866/api/v1/artifacts/x/budget.xlsx', { web: false })).toBe(false);
     expect(isArtifactLocalPath('http://localhost:3000/', { web: false })).toBe(false);
@@ -261,6 +278,28 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
       expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
       expect(container.textContent).toContain('Download it here');
     } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+  it('renders a published link from the same stack as a live link on a self-hosted page', () => {
+    hostState.isWeb = true;
+    const before = window.location.href;
+    window.happyDOM.setURL('http://cowork.localhost:8080/chat/42');
+    try {
+      const { container } = render(
+        <MarkdownContent
+          text={'[Open the demo](http://view.localhost:8080/a/3f9c2e) or [the backend](http://127.0.0.1:41043/).'}
+          complete
+          isAssistant
+        />,
+      );
+      const links = container.querySelectorAll('a');
+      expect(links.length).toBe(1);
+      expect(links[0].getAttribute('href')).toBe('http://view.localhost:8080/a/3f9c2e');
+      expect(container.querySelector(`span[title*="${PANEL_HINT}"]`).textContent).toBe('the backend');
+    } finally {
+      window.happyDOM.setURL(before);
       hostState.isWeb = false;
     }
   });
