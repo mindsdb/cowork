@@ -12,6 +12,7 @@ import { TextSelectionComment } from './workspace/TextSelectionComment';
 import { LiveAppPreview } from './LiveAppPreview';
 import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -82,6 +83,7 @@ export function ArtifactViewerBody({
   const {
     draftUrl: draftPreviewUrl,
     contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -180,6 +182,8 @@ export function ArtifactViewerBody({
     </div>
   ) : liveApp ? (
     <LiveAppPanel {...liveApp} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />

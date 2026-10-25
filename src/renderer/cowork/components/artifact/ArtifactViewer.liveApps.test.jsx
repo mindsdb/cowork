@@ -4,7 +4,7 @@
  * the viewer's header offers no page Share for it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -62,6 +62,7 @@ vi.mock('./publish/usePublish', () => ({
     busy: false,
   }),
 }));
+const layer = vi.hoisted(() => ({ options: null }));
 vi.mock('./comments', () => ({
   useArtifactComments: () => ({
     threads: [], viewer: null, unreadCount: 0,
@@ -69,13 +70,18 @@ vi.mock('./comments', () => ({
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
-  useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
+  useArtifactCommentLayer: (_frame, options) => { layer.options = options; return { exitMode: vi.fn() }; },
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
   useArtifactWorkspace: () => workspaceMock,
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ publication }) => <div data-testid="publishable">{String(publication?.publishable)}</div>,
+  ArtifactViewerHeader: ({ publication, review }) => (
+    <>
+      <div data-testid="publishable">{String(publication?.publishable)}</div>
+      <button onClick={review?.onToggle}>Comments</button>
+    </>
+  ),
 }));
 vi.mock('./ArtifactViewerBody', () => ({ ArtifactViewerBody: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
@@ -124,5 +130,23 @@ describe('the viewer\'s page Share on a live app', () => {
     setLiveApps(true);
     render(<ArtifactViewer open artifact={page} onClose={vi.fn()} />);
     expect(offersPageShare()).toBe(true);
+  });
+});
+
+describe('comments on a live app', () => {
+  afterEach(() => setLiveApps(false));
+
+  it("accept no frame's comment intents while the pane shows the app", () => {
+    setLiveApps(true);
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Comments'));
+    expect(layer.options.enabled).toBe(false);
+  });
+
+  it('still open for a static page', () => {
+    setLiveApps(true);
+    render(<ArtifactViewer open artifact={page} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Comments'));
+    expect(layer.options.enabled).toBe(true);
   });
 });

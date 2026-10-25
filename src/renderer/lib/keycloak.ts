@@ -1,5 +1,5 @@
 import Keycloak from 'keycloak-js';
-import { closeLiveAppPreviews } from '../cowork/lib/liveAppPreview';
+import { closeLiveAppPreviews, closeLiveAppPreviewsForSignOut } from '../cowork/lib/liveAppPreview';
 import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
@@ -504,6 +504,8 @@ export function __resetOrganizationTransitionForTests(): void {
 // no-op on legacy tenant hosts that render without the Keycloak wrapper.
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
-  await closeLiveAppPreviews();
+  // Never blocked by the preview revoke: a stuck sign-out would keep this
+  // browser's session for the next person at the machine.
+  await closeLiveAppPreviewsForSignOut();
   await keycloak.logout({ redirectUri });
 };

@@ -52,7 +52,9 @@ describe('launch-bound app preview', () => {
     message('ready');
     expect(send).toHaveBeenCalledWith({ type: 'live-app-preview', event: 'intent', nonce, launchId, token: intent }, origin);
     expect(iframe.src).not.toContain(intent);
-    expect(iframe.sandbox.toString()).toBe('allow-scripts allow-same-origin allow-forms allow-modals');
+    expect(iframe.sandbox.toString()).toBe('allow-scripts allow-same-origin allow-forms allow-modals allow-downloads');
+    expect(iframe.getAttribute('allow')).toBe('clipboard-write');
+    expect(iframe.src).toBe(`${origin}/_live_app/preview/bootstrap#${nonce}/${launchId}/${encodeURIComponent(window.location.origin)}`);
   });
 
   it('opens sign-in only on a click and forwards the grant from that popup only', async () => {
@@ -61,8 +63,8 @@ describe('launch-bound app preview', () => {
     const { iframe, nonce, message } = await mount();
     message('sign-in');
     expect(open).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Sign in to preview'));
-    expect(open.mock.calls[0][0]).toBe(`${origin}/_live_app/preview/authorize#${nonce}/${launchId}`);
+    fireEvent.click(screen.getByText('Show the app here'));
+    expect(open.mock.calls[0][0]).toBe(`${origin}/_live_app/preview/authorize#${nonce}/${launchId}/${encodeURIComponent(window.location.origin)}`);
     const send = vi.spyOn(iframe.contentWindow, 'postMessage').mockImplementation(() => {});
     const data = { type: 'live-app-preview', event: 'grant', nonce, launchId, grant };
     message('grant', { source: window, data });
@@ -96,7 +98,7 @@ describe('launch-bound app preview', () => {
   it('removes an app when its next lease renewal is refused', async () => {
     const { iframe, message } = await mount();
     message('connected');
-    api.keepLiveAppPreview.mockRejectedValue(new Error('revoked'));
+    api.keepLiveAppPreview.mockRejectedValue(Object.assign(new Error('revoked'), { status: 403 }));
     vi.useFakeTimers();
     // Re-render with a new launch to install the timer under the fake clock.
     const other = render(<LiveAppPreview origin={origin} launchId="22222222-2222-4222-8222-222222222222" onOpen={() => {}} />);
@@ -110,6 +112,41 @@ describe('launch-bound app preview', () => {
     expect(api.keepLiveAppPreview).toHaveBeenCalledWith('lease');
     expect(other.container.querySelector('iframe')).toBeNull();
     expect(iframe.style.visibility).toBe('visible');
+  });
+
+  it('keeps a connected app through a failed renewal and gives up only near the lease end', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { iframe, message } = await mount();
+    message('connected');
+    api.keepLiveAppPreview.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { status: 503 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(screen.getByTitle('Live app preview')).toBe(iframe);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(api.keepLiveAppPreview).toHaveBeenCalledTimes(2);
+    expect(iframe.style.visibility).toBe('visible');
+    api.keepLiveAppPreview.mockRejectedValue(new Error('offline'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000 + 45000); });
+    expect(screen.queryByTitle('Live app preview')).toBeNull();
+    expect(screen.getByText(/Couldn't connect to this app/)).toBeTruthy();
+  });
+
+  it("shows the server's reason when it refuses a preview", async () => {
+    api.createLiveAppPreview.mockRejectedValue(Object.assign(
+      new Error("App previews aren't set up on this server. Open the app in your browser."), { status: 503 }));
+    render(<LiveAppPreview origin={origin} launchId={launchId} reloadKey={0} onOpen={() => {}} />);
+    expect(await screen.findByText(/App previews aren't set up on this server/)).toBeTruthy();
+    expect(screen.queryByTitle('Live app preview')).toBeNull();
+  });
+
+  it('shows why the sign-in window was refused, such as another account', async () => {
+    const popup = { postMessage: vi.fn(), close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(popup);
+    const { nonce, message } = await mount();
+    message('sign-in');
+    fireEvent.click(screen.getByText('Show the app here'));
+    const reason = 'Sign in to the app viewer with the account that launched this app.';
+    message('failed', { source: popup, data: { type: 'live-app-preview', event: 'failed', nonce, launchId, message: reason } });
+    expect(screen.getByText(reason)).toBeTruthy();
   });
 
   it('closes immediately on an account transition and revokes on unmount', async () => {
