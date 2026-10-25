@@ -18,11 +18,10 @@ defaults:
   run:
     shell: bash
 
-# Cancel any existing runs of this workflow on the same branch/pr
-# We always want to build/deploy/test a new commit over an older one
+# Finish checking every published package before the next release starts.
 concurrency:
   group: ${{ github.workflow_ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-unit-tests:
