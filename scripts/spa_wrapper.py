@@ -8,15 +8,15 @@ This wrapper imports the cowork-server app and adds SPA routes on top.
 Run with: uvicorn spa_wrapper:app --host 0.0.0.0 --port 26866
 """
 
-import json
 import os
-import re
 from html import escape as html_escape
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, StringConstraints, TypeAdapter, ValidationError
 
 from cowork.server import app  # noqa: F401 — re-exported for uvicorn
 
@@ -32,6 +32,20 @@ if _model_picker not in {"off", "default", "open"}:
     raise ValueError("COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
 
 
+# A reasoning effort, such as medium or xhigh: lowercase letters alone.
+Effort = Annotated[str, StringConstraints(pattern=r"^[a-z]+$")]
+ModelEfforts = dict[str, list[Effort]]
+_MODEL_EFFORTS = TypeAdapter(ModelEfforts)
+
+
+class OperatorEfforts(BaseModel):
+    """The cowork-model-efforts tag, as the composer reads it (OperatorEfforts in
+    src/renderer/lib/modelPicker.ts): the efforts users may pick on each model, and on "Operator default"."""
+
+    models: ModelEfforts
+    operator_default: list[Effort] = Field(serialization_alias="operatorDefault")
+
+
 def _model_efforts_meta(value: str, planning_model: str, coding_model: str) -> str | None:
     """The composer's effort control under the picker: VALUE, a JSON object of each model's efforts
     users may pick, and "Operator default"'s, those both PLANNING_MODEL and CODING_MODEL list, since
@@ -42,16 +56,12 @@ def _model_efforts_meta(value: str, planning_model: str, coding_model: str) -> s
         raise ValueError("COWORK_MODEL_EFFORTS needs COWORK_MODEL_PICKER 'default' or 'open'.")
     rule = "COWORK_MODEL_EFFORTS must be a JSON object of model ids to lists of lowercase efforts."
     try:
-        models = json.loads(value)
-    except json.JSONDecodeError:
+        models = _MODEL_EFFORTS.validate_json(value)
+    except ValidationError:
         raise ValueError(rule) from None
-    if not isinstance(models, dict) or not all(
-        isinstance(efforts, list) and all(isinstance(effort, str) and re.fullmatch(r"[a-z]+", effort) for effort in efforts)
-        for efforts in models.values()
-    ):
-        raise ValueError(rule)
     planning, coding = models.get(planning_model, []), models.get(coding_model, [])
-    return json.dumps({"models": models, "operatorDefault": [effort for effort in planning if effort in coding]})
+    tag = OperatorEfforts(models=models, operator_default=[effort for effort in planning if effort in coding])
+    return tag.model_dump_json(by_alias=True)
 
 
 # Read once, at start: the container's role models come from the same environment as the server's.

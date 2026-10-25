@@ -215,7 +215,7 @@ class SpaWrapperTests(unittest.TestCase):
                                          {"models": efforts, "operatorDefault": shared})
 
     def test_model_ids_that_html_would_read_reach_the_renderer_as_written(self):
-        efforts = {'op"us<5>&5\'': ["xhigh"]}
+        efforts = {'op"us<5>&5\'é': ["xhigh"]}
         with self.client("false", "open", COWORK_MODEL_EFFORTS=json.dumps(efforts)) as client:
             response = client.get("/")
         self.assertEqual(self.efforts_meta(response), {"models": efforts, "operatorDefault": []})
