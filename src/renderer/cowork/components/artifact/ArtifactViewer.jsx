@@ -34,6 +34,9 @@ import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useLiveApps } from '../../../lib/liveApps';
+import { useLiveApp } from '../../hooks/useLiveApp';
+import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
@@ -83,6 +86,7 @@ export function ArtifactViewer({
   resolveRepairConversation = null,
 }) {
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
@@ -127,6 +131,14 @@ export function ArtifactViewer({
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // With live apps on, a full-stack app runs only at its own address, so the
+  // viewer names that address instead of mounting a preview, and its open
+  // controls go there (`liveAppViewerNotice`). Reload reads the state again.
+  const liveAppView = liveApps && isBackendArtifact;
+  const liveAppNotice = liveAppViewerNotice(
+    useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce }),
+  );
+  const liveAppAddress = liveAppNotice?.address || '';
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
   // comment-placement mode, the inbox sidebar, marker visibility, leaving.
@@ -410,7 +422,13 @@ export function ArtifactViewer({
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
-  const publishable = isPublishableArtifact(artifact);
+  /*
+   * With live apps on, a full-stack app shares through "Share with…" on its
+   * card, and cowork-server refuses to publish one as a page, so the header
+   * offers no page Share until it is published (it never is, unless that
+   * happened before live apps were turned on).
+   */
+  const publishable = isPublishableArtifact(artifact) && !(liveApps && isBackendArtifact && !pub.publishedUrl);
   const canManage = workspace.capabilities
     ? workspace.capabilities.canEdit !== false
     : artifact?.capabilities
@@ -501,6 +519,11 @@ export function ArtifactViewer({
     if (isImage) {
       // The `imageSrc` hook above does its own fetch keyed on `imageUrl`;
       // nothing to mount server-side for a plain image file.
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+    if (liveAppView) {
+      // Nothing to mount: the deployment refuses a live app's in-Cowork preview.
       setLoading(false);
       return () => { cancelled = true; };
     }
@@ -632,7 +655,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, liveAppView, reloadNonce]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -684,7 +707,9 @@ export function ArtifactViewer({
   // server, or in web, the path is on the server box, so we fall back to
   // the HTTP serve/published URL.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
-  const canOpenInBrowser = isPublished || canOpenLocalFile || !!artifact?.serveUrl;
+  const canOpenInBrowser = liveAppView
+    ? !!liveAppAddress
+    : isPublished || canOpenLocalFile || !!artifact?.serveUrl;
 
   // Open the artifact's containing folder in the OS file manager.
   const onOpenFolder = async () => {
@@ -743,9 +768,31 @@ export function ArtifactViewer({
     }
   };
 
-  // The link-pill arrow: published → open the public URL; otherwise → open
-  // the local/served preview.
-  const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
+  // A running live app's own address; the controls that call this show only
+  // while there is one.
+  const onOpenLiveApp = async () => {
+    try { await host.openExternal(liveAppAddress); }
+    catch (e) { setErr(e?.message || 'Open failed'); }
+  };
+
+  // Launch asks the agent in a chat of the app's project, which launches it
+  // behind the usual card; the viewer closes so the chat shows.
+  const onLaunchLiveApp = async () => {
+    try {
+      const started = await onAddressWithAgent({ artifact, prompt: launchLiveAppPrompt(artifact), conversationId });
+      if (started === false) setErr('Connect an agent provider, then try launching this app again.');
+      else onClose?.();
+    } catch (e) {
+      setErr(e?.message || 'Could not ask the agent to launch this app');
+    }
+  };
+
+  // The link-pill arrow: a live app → its address; published → open the
+  // public URL; otherwise → open the local/served preview.
+  const onOpenInBrowser = () => {
+    if (liveAppView) return onOpenLiveApp();
+    return isPublished ? onOpenPublished() : onOpenOS();
+  };
 
   // "Open this artifact in a browser tab", for the control beside the mode
   // tabs. It exists separately from the ⋯ menu's "Open in browser" because
@@ -754,8 +801,11 @@ export function ArtifactViewer({
   // Preference order: the published URL is what the artifact *is* and what a
   // person would share; the served URL is desktop's local HTTP view; the
   // authenticated draft URL is org mode's route to an artifact nobody has
-  // published yet.
-  const browserTabTarget = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // published yet. A live app has one address, where it runs; a copy of its
+  // page anywhere else has no backend.
+  const browserTabTarget = liveAppView
+    ? liveAppAddress
+    : pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
   // ...but only `publishedUrl` carries its own origin; the server returns
   // `serveUrl` and `draftUrl` origin-relative. Web tolerates that because
   // `window.open` resolves against the page, and desktop no longer reaches
@@ -787,7 +837,7 @@ export function ArtifactViewer({
   // This control leaves the window entirely, which is the one case that
   // injection does not reach.
   const onOpenInBrowserTab = () => {
-    if (!isPublished && canOpenLocalFile) return onOpenOS();
+    if (!isPublished && canOpenLocalFile && !liveAppView) return onOpenOS();
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
       setErr('Could not open this artifact in a browser.');
@@ -856,6 +906,7 @@ export function ArtifactViewer({
     canOpenInBrowserTab: !!browserTabUrl,
     canOpenLocalFile,
     isBackendArtifact,
+    isLiveApp: liveAppView,
     backendPort,
     artifact,
     deleteBusy,
@@ -885,6 +936,9 @@ export function ArtifactViewer({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp: liveAppView
+      ? { notice: liveAppNotice, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
+      : null,
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,

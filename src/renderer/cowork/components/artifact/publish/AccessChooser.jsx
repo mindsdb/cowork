@@ -17,6 +17,7 @@ import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
+import { isEmailShaped } from '../../../lib/emailAddress';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -57,7 +58,6 @@ export function isOwnerOnlySelection(artifact) {
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
 // semicolons; trims, lowercases, de-dupes; partitions valid vs invalid.
-const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function parseEmailList(raw) {
   const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
   const seen = new Set();
@@ -66,7 +66,7 @@ export function parseEmailList(raw) {
   for (const p of parts) {
     if (seen.has(p)) continue;
     seen.add(p);
-    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
+    (isEmailShaped(p) ? valid : invalid).push(p);
   }
   return { valid, invalid };
 }
