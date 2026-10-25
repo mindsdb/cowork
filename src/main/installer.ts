@@ -16,7 +16,7 @@ import {
   coworkServerBinCandidates,
   findOnPath,
   resolveUv,
-  getInstalledVersion,
+  inspectInstalledVersion,
   writeUvOverrides,
 } from './uv-paths';
 
@@ -217,7 +217,7 @@ function sendInstallCancelled(win: BrowserWindow) {
 export type ServerInstallCheck =
   | { installed: true; binary: string | null }
   | { installed: false; reason: 'binary-missing' }
-  | { installed: false; reason: 'version-unknown'; binary: string }
+  | { installed: false; reason: 'version-unknown'; binary: string; detail: string }
   | { installed: false; reason: 'below-minimum'; binary: string; version: string; minVersion: string };
 
 export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> {
@@ -241,11 +241,12 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
   // An outdated version may be missing new dependencies (e.g. alembic)
   // and crash on import, so we treat it as "not installed" to trigger
   // the installer which does --force --reinstall.
-  const version = await getInstalledVersion();
-  if (!version) {
-    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", '[installer] cowork-server version could not be determined, reinstall needed');
-    return { installed: false, reason: 'version-unknown', binary };
+  const probe = await inspectInstalledVersion();
+  if (probe.version === null) {
+    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", `[installer] cowork-server version could not be determined (${probe.reason}), reinstall needed`);
+    return { installed: false, reason: 'version-unknown', binary, detail: probe.reason };
   }
+  const { version } = probe;
   const minVersion = getMinServerVersion();
   if (!meetsMinVersion(version, minVersion)) {
     diagnostic("main.installer", "INFO", "installer_cowork_server_is_below_minimum_needs_upgrade",
@@ -548,7 +549,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       if (check.reason === 'binary-missing') {
         sendLog(win, 'ERROR: cowork-server binary not found after installation.\n');
       } else if (check.reason === 'version-unknown') {
-        sendLog(win, `ERROR: cowork-server was found at ${check.binary}, but its version could not be determined via uv.\n`);
+        sendLog(win, `ERROR: cowork-server was found at ${check.binary}, but its version could not be determined via uv.\nCause: ${check.detail}\n`);
       } else {
         sendLog(win, `ERROR: cowork-server v${check.version} at ${check.binary} is below the required minimum v${check.minVersion}.\n`);
       }

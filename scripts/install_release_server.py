@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,7 @@ import zipfile
 REPOSITORY = "https://github.com/mindsdb/cowork-server.git"
 CONTRACT_MEMBER = "cowork/release-requirements.txt"
 MAX_DOWNLOAD = 64 * 1024 * 1024
+CACHE_NAME = ".cowork-release-contracts"
 
 
 @dataclass(frozen=True)
@@ -254,9 +256,26 @@ print(json.dumps({"identity": identity, "contract": contract}))
 '''
 
 
+def contract_cache(tools_dir: Path) -> Path:
+    """Keep release state beside uv's tool environments, never among them."""
+    # uv reads every folder in its tool directory as a tool, and `uv tool list`
+    # (where the app reads the installed version) fails on one it cannot name.
+    # Move a cache an older installer left there, marker and snapshots included.
+    cache = tools_dir.parent / CACHE_NAME
+    legacy = tools_dir / CACHE_NAME
+    if legacy.is_dir():
+        cache.mkdir(exist_ok=True)
+        for entry in legacy.iterdir():
+            # Entries are keyed by release identity; the cache's copy wins.
+            if not (cache / entry.name).exists():
+                entry.rename(cache / entry.name)
+        shutil.rmtree(legacy)
+    return cache
+
+
 def snapshot_installed(uv: str, tools_dir: Path) -> Path:
     """Retain the actual legacy environment solely for repair and rollback."""
-    cache = tools_dir / ".cowork-release-contracts"
+    cache = contract_cache(tools_dir)
     if (cache / "install-incomplete").exists():
         return cache
     python = tools_dir / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -326,7 +345,7 @@ def install(uv: str, arguments: list[str], python: Path | None = None, state: In
     if not python:
         # A forced-colour env (FORCE_COLOR, CLICOLOR_FORCE) wins over NO_COLOR in uv.
         tools_dir = Path(subprocess.check_output([uv, "tool", "dir", "--color", "never"], text=True).strip())
-        state.changed = (tools_dir / ".cowork-release-contracts/install-incomplete").exists()
+        state.changed = (contract_cache(tools_dir) / "install-incomplete").exists()
         cache = snapshot_installed(uv, tools_dir)
     with tempfile.TemporaryDirectory(prefix="cowork-release-") as temporary:
         directory = Path(temporary)

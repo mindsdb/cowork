@@ -259,29 +259,47 @@ export { compareVersions } from './update-logic';
 const VERSION_PROBE_ATTEMPTS = 2;
 const VERSION_PROBE_RETRY_DELAY_MS = 2000;
 
-function probeInstalledVersion(uvBin: string): Promise<string | null> {
+/** The installed cowork-server version, or why `uv tool list` gave none. */
+export type InstalledVersionProbe =
+  | { version: string }
+  | { version: null; reason: string };
+
+function probeInstalledVersion(uvBin: string): Promise<InstalledVersionProbe> {
   return new Promise((resolve) => {
     // NO_COLOR: a forced-color env (concurrently sets FORCE_COLOR in dev)
     // makes uv emit ANSI codes that break the parser's anchored regex.
     const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
-    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      resolve(parseInstalledVersion(stdout));
+    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout, stderr) => {
+      if (err) {
+        // uv's own first line says what it refused, e.g. a folder in the
+        // tool dir that it cannot read as a tool.
+        const said = String(stderr).split('\n').map((line) => line.trim()).find(Boolean);
+        resolve({ version: null, reason: `uv tool list failed: ${said ?? err.message}` });
+        return;
+      }
+      const version = parseInstalledVersion(stdout);
+      resolve(version ? { version } : { version: null, reason: 'uv tool list does not list cowork-server' });
     });
   });
 }
 
-/** Get the installed cowork-server version from `uv tool list`. */
-export async function getInstalledVersion(uv?: string): Promise<string | null> {
+/** Read the installed cowork-server version from `uv tool list`, keeping
+ *  uv's reason when it has none so a failed check can say why. */
+export async function inspectInstalledVersion(uv?: string): Promise<InstalledVersionProbe> {
   // resolveUv covers uv installed via winget/scoop/pip, which lives outside
   // every probed dir but still resolves on PATH. Without the fallback the
   // post-install verification reported "binary not found" for a perfectly
-  // good install (ENG-1293). Null when uv is truly absent, exactly as before.
+  // good install.
   const uvBin = uv ?? await resolveUv();
-  if (!uvBin) return null;
+  if (!uvBin) return { version: null, reason: 'uv was not found' };
   for (let attempt = 1; ; attempt += 1) {
-    const version = await probeInstalledVersion(uvBin);
-    if (version || attempt >= VERSION_PROBE_ATTEMPTS) return version;
+    const probe = await probeInstalledVersion(uvBin);
+    if (probe.version !== null || attempt >= VERSION_PROBE_ATTEMPTS) return probe;
     await new Promise((resolve) => setTimeout(resolve, VERSION_PROBE_RETRY_DELAY_MS));
   }
+}
+
+/** Get the installed cowork-server version from `uv tool list`. */
+export async function getInstalledVersion(uv?: string): Promise<string | null> {
+  return (await inspectInstalledVersion(uv)).version;
 }

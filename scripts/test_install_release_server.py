@@ -133,14 +133,47 @@ class ReleaseTests(unittest.TestCase):
     def test_incomplete_install_cannot_replace_saved_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            cache = root / ".cowork-release-contracts"
+            tools = root / "tools"
+            cache = root / installer.CACHE_NAME
             cache.mkdir()
             (cache / "install-incomplete").touch()
-            python = root / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             python.parent.mkdir(parents=True)
             python.touch()
             with patch.object(installer.subprocess, "run", side_effect=AssertionError("Rejected environment was inspected for snapshot")):
-                self.assertEqual(installer.snapshot_installed("uv", root), cache)
+                self.assertEqual(installer.snapshot_installed("uv", tools), cache)
+
+    def test_cache_left_among_tools_moves_beside_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tools = root / "tools"
+            legacy = tools / installer.CACHE_NAME
+            legacy.mkdir(parents=True)
+            (legacy / "install-incomplete").touch()
+            moved = hashlib.sha256(b"cowork-server==1.0.0").hexdigest() + ".txt"
+            (legacy / moved).write_text(CONTRACT)
+            kept = hashlib.sha256(b"cowork-server==2.0.0").hexdigest() + ".txt"
+            (legacy / kept).write_text("stale\n")
+            cache = root / installer.CACHE_NAME
+            cache.mkdir()
+            (cache / kept).write_text(CONTRACT)
+            self.assertEqual(installer.contract_cache(tools), cache)
+            self.assertFalse(legacy.exists())
+            self.assertTrue((cache / "install-incomplete").is_file())
+            self.assertEqual((cache / moved).read_text(), CONTRACT)
+            self.assertEqual((cache / kept).read_text(), CONTRACT)
+
+    def test_moved_incomplete_marker_still_reports_a_changed_install(self):
+        # The app rolls back on exit 1 and keeps the old server on exit 2, so a
+        # marker lost in the move would leave a half-replaced server running.
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory) / "tools"
+            (tools / installer.CACHE_NAME).mkdir(parents=True)
+            (tools / installer.CACHE_NAME / "install-incomplete").touch()
+            with patch.object(installer.subprocess, "check_output", return_value=str(tools)), patch.object(installer, "prepare", side_effect=ValueError("missing contract")), patch.object(installer.subprocess, "run") as run, patch.object(sys, "argv", ["installer", "--", "tool", "install", "cowork-server==1.0.0"]):
+                self.assertEqual(installer.main(), 1)
+                run.assert_not_called()
+            self.assertTrue((Path(directory) / installer.CACHE_NAME / "install-incomplete").is_file())
 
     def test_cli_reports_preflight_failure_without_replacement(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(installer.subprocess, "check_output", return_value=directory), patch.object(installer, "prepare", side_effect=ValueError("missing contract")), patch.object(installer.subprocess, "run") as run, patch.object(sys, "argv", ["installer", "--", "tool", "install", "cowork-server==1.0.0"]):
@@ -320,6 +353,11 @@ class ReleaseTests(unittest.TestCase):
                 python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                 version = actual_output([str(python), "-c", "from importlib.metadata import version; print(version('fixture-dependency'))"], text=True)
                 self.assertEqual(version.strip(), "1.0.0")
+                # The app reads the installed version from this listing, which
+                # uv refuses to print while a non-tool folder sits among tools.
+                listing = actual_run([shutil.which("uv"), "tool", "list"], capture_output=True, text=True)
+                self.assertEqual(listing.returncode, 0, listing.stderr)
+                self.assertIn("cowork-server v1.0.0", listing.stdout)
                 # An override must not hide the server's original Anton range:
                 # reject the incompatible Git source before touching a working tool.
                 candidate = root / "cowork_server-2.0.0-py3-none-any.whl"
@@ -337,7 +375,7 @@ class ReleaseTests(unittest.TestCase):
                         installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==2.0.0"], state=state)
                     self.assertFalse(state.changed, "incompatible source reached live tool replacement")
                     self.assertEqual(tool_files(), before)
-                    self.assertFalse((tools / ".cowork-release-contracts/install-incomplete").exists())
+                    self.assertFalse((root / installer.CACHE_NAME / "install-incomplete").exists())
                     native_rejected = root / "native-rejected" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                     with self.assertRaises(subprocess.CalledProcessError):
                         installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==2.0.0"], native_rejected)
@@ -349,7 +387,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(version.strip(), "1.0.0")
                 with patch.object(installer, "verify", side_effect=ValueError("rejected inventory")), patch.object(sys, "argv", ["installer", "--uv", shutil.which("uv"), "--", "tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"]):
                     self.assertEqual(installer.main(), 1)
-                marker = tools / ".cowork-release-contracts/install-incomplete"
+                marker = root / installer.CACHE_NAME / "install-incomplete"
                 self.assertTrue(marker.is_file())
                 installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"])
                 self.assertFalse(marker.exists())
