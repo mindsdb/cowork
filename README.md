@@ -1387,7 +1387,9 @@ gh workflow run macos-setup-smoke.yml --ref staging -f channels=stable
 gh workflow run macos-setup-smoke.yml --ref main -f channels=prod
 ```
 
-For a historical negative check, select `stable` and provide `snapshot-url` plus its independently recorded `snapshot-sha256`. The URL must name a public macOS Stable snapshot. That run must fail normally, retain the failing setup step, and send the same notification. `uv-tool-list.log` also records the resolver's underlying error when an older app's Verify message omits it. This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
+For a historical check, select `stable` and provide `snapshot-url` plus its independently recorded `snapshot-sha256`. The URL must name a public macOS Stable snapshot. A failure keeps the failing setup step and sends the same notification. `uv-tool-list.log` also records the resolver's underlying error when an older app's Verify message omits it; `uv-version.log` records the installed uv version. Pinning the app does not pin the uv bootstrap or server packages it downloads today, so an old app may no longer reproduce an older failure. A dependency replay must be recorded separately from the ordinary user path.
+
+This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
 
 ### Workflow files
 

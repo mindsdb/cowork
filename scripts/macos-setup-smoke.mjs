@@ -209,6 +209,7 @@ try {
   }
   const uv = profile && join(profile, '.local/bin/uv');
   if (uv && existsSync(uv)) {
+    try { save('uv-version.log', (await execute(uv, ['--version'], { env: appEnvironment, timeout: 15_000 })).stdout); } catch (error) { save('uv-version.log', error.message); }
     const toolRoot = channel === 'stable' ? join(profile, '.cowork-stable/uv') : join(profile, '.local/share/uv');
     try {
       const diagnostic = await execute(uv, ['tool', 'list'], { env: { ...appEnvironment, UV_TOOL_DIR: join(toolRoot, 'tools') }, timeout: 15_000 });
