@@ -80,6 +80,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Schedules run main's copy; a Stable package comes from staging, so test it with staging's harness.
+          ref: ${{ github.event_name == 'schedule' && matrix.channel == 'stable' && 'staging' || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -139,7 +141,9 @@ jobs:
     with:
       env-name: ${{ needs.summarize.outputs.label || 'macOS setup (runner or evidence collection failure; logs in run artifacts)' }}
       status: failed
-      # Every failed setup gets evidence; a release-freeze window must not hide it.
+      # Post every setup failure, including outside the freeze window. The prior-run
+      # lookup reads the calling pipeline's history, so force-post keeps an earlier red
+      # run from collapsing this step-specific alert.
       freeze-scoped: false
       force-post: true
       runs-on: ubuntu-latest

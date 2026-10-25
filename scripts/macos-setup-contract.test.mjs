@@ -21,6 +21,13 @@ test('all four real steps must finish, including cold uv bootstrap', () => {
   assert.throws(() => assertSetupPassed(warm), /Install uv.*existing uv/);
 });
 
+test('the log lines and step ids this contract reads still come from the installer', () => {
+  const installer = readFileSync(resolve('src/main/installer.ts'), 'utf8');
+  for (const id of Object.keys(STEP_NAMES)) assert.ok(installer.includes(`id: '${id}'`), id);
+  assert.ok(installer.includes('uv not found. Installing...'));
+  assert.ok(installer.includes('uv installed at '));
+});
+
 test('INSTALL_DONE and a true return cannot hide a Start server warning', () => {
   const result = completed();
   result.steps[3].status = 'warning';

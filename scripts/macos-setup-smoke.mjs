@@ -1,4 +1,4 @@
-import { _electron } from 'playwright';
+import { _electron } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
