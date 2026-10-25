@@ -131,13 +131,9 @@ export function ArtifactViewer({
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
-  // With live apps on, a full-stack app runs only at its own address, so the
-  // viewer names that address instead of mounting a preview, and its open
-  // controls go there (`liveAppViewerNotice`). Reload reads the state again.
   const liveAppView = liveApps && isBackendArtifact;
-  const liveAppNotice = liveAppViewerNotice(
-    useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce }),
-  );
+  const liveAppRead = useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce });
+  const liveAppNotice = liveAppViewerNotice(liveAppRead);
   const liveAppAddress = liveAppNotice?.address || '';
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
@@ -937,7 +933,7 @@ export function ArtifactViewer({
     onDownload,
     onOpenOS,
     liveApp: liveAppView
-      ? { notice: liveAppNotice, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
+      ? { notice: liveAppNotice, state: liveAppRead.state, reloadKey: reloadNonce, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
       : null,
     url: previewUrl,
     doc: previewDoc,

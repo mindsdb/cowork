@@ -1,4 +1,5 @@
 import Keycloak from 'keycloak-js';
+import { closeLiveAppPreviews } from '../cowork/lib/liveAppPreview';
 import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
@@ -409,6 +410,7 @@ export async function switchWebOrganization(
   let response: Response;
   let transitionId: string;
   try {
+    await closeLiveAppPreviews();
     transitionId = await beginOrganizationTransition(
       nonEmptyString(keycloak.subject) ?? nonEmptyString(keycloak.tokenParsed?.sub),
     );
@@ -502,5 +504,6 @@ export function __resetOrganizationTransitionForTests(): void {
 // no-op on legacy tenant hosts that render without the Keycloak wrapper.
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
+  await closeLiveAppPreviews();
   await keycloak.logout({ redirectUri });
 };

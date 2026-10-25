@@ -19,6 +19,9 @@ const instance = vi.hoisted(() => ({
 }));
 vi.mock('keycloak-js', () => ({ default: vi.fn(function () { return instance; }) }));
 
+const previews = vi.hoisted(() => ({ closeLiveAppPreviews: vi.fn(async () => {}) }));
+vi.mock('../cowork/lib/liveAppPreview', () => previews);
+
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 import {
   __resetOrganizationTransitionForTests,
@@ -103,6 +106,7 @@ function signedIn(options: {
 }
 
 beforeEach(() => {
+  previews.closeLiveAppPreviews.mockReset().mockResolvedValue(undefined);
   __resetOrganizationTransitionForTests();
   lockHeld = false;
   locks.request.mockClear();
@@ -141,6 +145,24 @@ describe('keycloak logout()', () => {
       expect.objectContaining({ redirectUri: expect.any(String) }),
     );
   });
+});
+
+it('revokes app previews before ending the account session', async () => {
+  keycloak.authenticated = true;
+  let release: () => void = () => {};
+  previews.closeLiveAppPreviews.mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+  const pending = logout();
+  expect(instance.logout).not.toHaveBeenCalled();
+  release();
+  await pending;
+  expect(instance.logout).toHaveBeenCalledOnce();
+});
+
+it('does not leave preview leases behind when revocation cannot be confirmed', async () => {
+  keycloak.authenticated = true;
+  previews.closeLiveAppPreviews.mockRejectedValueOnce(new Error('unavailable'));
+  await expect(logout()).rejects.toThrow('unavailable');
+  expect(instance.logout).not.toHaveBeenCalled();
 });
 
 describe('getAccessToken()', () => {
