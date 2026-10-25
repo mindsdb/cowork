@@ -55,6 +55,7 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
+import { useLiveAppAvailability } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
 import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
@@ -3100,6 +3101,7 @@ function AppCore() {
   });
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
+  useLiveAppAvailability(codeSkillScopeKey);
 
   // undefined (never a real accountId or the null of "signed out") so the
   // very first render always runs the check below at least once.

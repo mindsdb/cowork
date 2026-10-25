@@ -20,6 +20,7 @@ import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
+import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -2320,6 +2321,19 @@ export function publishTargetPath(artifact) {
  * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
  * A refusal's sentence comes back as the thrown error's message.
  */
+
+/** Availability is advisory; a subsequent launch still needs admission. */
+export async function fetchLiveAppAvailability() {
+  return liveAppAvailabilityFrom(await req('/live-apps/availability', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, cache: 'no-store' }));
+}
+
+/** Called only after a visible toast has displayed this durable notice. */
+export async function acknowledgeLiveAppAvailability(noticeId) {
+  return req(`/live-apps/availability/${encodeURIComponent(noticeId)}/ack`, {
+    method: 'POST',
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
 
 /*
  * The caller's own live apps and whether each is running, for the cards'
