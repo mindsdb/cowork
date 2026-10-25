@@ -243,7 +243,7 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
   // the installer which does --force --reinstall.
   const probe = await inspectInstalledVersion();
   if (probe.version === null) {
-    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", `[installer] cowork-server version could not be determined (${probe.reason}), reinstall needed`);
+    diagnostic("main.installer", "INFO", "installer_cowork_server_version_could_not_be_determined_reinstall_needed", '[installer] cowork-server version could not be determined, reinstall needed');
     return { installed: false, reason: 'version-unknown', binary, detail: probe.reason };
   }
   const { version } = probe;

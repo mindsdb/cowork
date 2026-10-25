@@ -147,6 +147,25 @@ describe('inspectInstalledVersion — why there is no version', () => {
     }
   });
 
+  it('keeps only the first line of Node\'s message when uv wrote no stderr', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(cp.execFile).mockImplementation(((
+        cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => {
+        cb(Object.assign(new Error(`Command failed: ${cmd} tool list\n`), { killed: true, signal: 'SIGTERM' }), '', '');
+        return {} as never;
+      }) as never);
+
+      const pending = inspectInstalledVersion('/usr/bin/uv');
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toEqual({ version: null, reason: 'uv tool list failed: Command failed: /usr/bin/uv tool list' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('says the listing lacks cowork-server when uv answers without it', async () => {
     vi.useFakeTimers();
     try {

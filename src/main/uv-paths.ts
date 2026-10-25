@@ -272,9 +272,10 @@ function probeInstalledVersion(uvBin: string): Promise<InstalledVersionProbe> {
     execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout, stderr) => {
       if (err) {
         // uv's own first line says what it refused, e.g. a folder in the
-        // tool dir that it cannot read as a tool.
-        const said = String(stderr).split('\n').map((line) => line.trim()).find(Boolean);
-        resolve({ version: null, reason: `uv tool list failed: ${said ?? err.message}` });
+        // tool dir that it cannot read as a tool. Without stderr (a timeout
+        // kill), take the first line of Node's `Command failed: <cmd>` message.
+        const said = String(stderr || err.message).split('\n').map((line) => line.trim()).find(Boolean);
+        resolve({ version: null, reason: `uv tool list failed: ${said}` });
         return;
       }
       const version = parseInstalledVersion(stdout);
