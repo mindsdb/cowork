@@ -47,11 +47,19 @@ export function removalPlan(entries) {
   return [...plan.filter((entry) => entry.store === 'AuthRoot'), ...plan.filter((entry) => entry.store === 'Root')];
 }
 
-/** The trimmed runner must trust, and download, what a fresh install does before setup starts. */
-export function assertTrimmed({ entries, rootAutoUpdateOff }) {
-  if (rootAutoUpdateOff.policy || rootAutoUpdateOff.setting) throw new Error('Windows root downloads are still turned off.');
+/** Checked while the image still blocks root downloads, so no root can come back yet. */
+export function assertRemoved({ entries }) {
   const downloaded = entries.filter((entry) => entry.store === 'LocalMachine\\AuthRoot');
   if (downloaded.length) throw new Error(`${downloaded.length} downloaded roots remain in LocalMachine\\AuthRoot.`);
+}
+
+/**
+ * The trimmed runner must trust, and download, what a fresh install does before setup starts.
+ * Once downloads are back on, any program on the runner may bring back other roots, as on a
+ * fresh machine; only the named roots would hide the failure this smoke exists to catch.
+ */
+export function assertTrimmed({ entries, rootAutoUpdateOff }) {
+  if (rootAutoUpdateOff.policy || rootAutoUpdateOff.setting) throw new Error('Windows root downloads are still turned off.');
   const visible = entries.filter(named);
   if (visible.length) {
     throw new Error(`Still trusted after trimming: ${visible.map((entry) => `${ON_DEMAND_ROOTS[entry.thumbprint.toUpperCase()]} in ${entry.store}`).join(', ')}.`);
