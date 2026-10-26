@@ -33,18 +33,25 @@ const SECRET_PATTERNS = [
   // Authorization headers, before the generic rule. The generic one would
   // consume the scheme word and stamp [redacted] beside an intact credential,
   // which reads as handled and is worse than leaving the line alone.
-  [/\b(authorization[^\S\n]*[=:][^\S\n]*)(?:(bearer|basic|token|digest)[^\S\n]+)?\S+/gi,
-    (_m, head, scheme) => `${head}${scheme ? `${scheme} ` : ''}${REDACTED}`],
+  // The name and value may be quoted, as a JSON or Python dict of headers prints them.
+  [/\b(authorization["']?[^\S\n]*[=:][^\S\n]*)(["']?)(?:(bearer|basic|token|digest)[^\S\n]+)?(?:[^\s"'\\]|\\.)+/gi,
+    (_m, head, quote, scheme) => `${head}${quote}${scheme ? `${scheme} ` : ''}${REDACTED}`],
   // Bearer tokens anywhere else.
   [/\b(bearer[^\S\n]+)[\w.\-~+/]{8,}={0,2}/gi, `$1${REDACTED}`],
   // Provider key shapes that are recognisable on their own.
   [/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, REDACTED],
   [/\b(gh[pousr]_[A-Za-z0-9]{16,})/g, REDACTED],
+  // Google API keys, which Gemini uses: AIza and 35 more characters.
+  [/\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g, REDACTED],
   // Quoted values, which may contain spaces. Python's dict and repr output is
-  // single-quoted, so both styles are admitted.
+  // single-quoted, so both styles are admitted. Each ends only at its own
+  // unescaped quote, so `it's` and `\"` inside a value do not end it early.
   [new RegExp(
-    `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)(["'])([^"'\n]*)\\3`,
-    'gim'), `$1$2$3${REDACTED}$3`],
+    `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)"(?:[^"\\\\\n]|\\\\.)*"`,
+    'gim'), `$1$2"${REDACTED}"`],
+  [new RegExp(
+    `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)'(?:[^'\\\\\n]|\\\\.)*'`,
+    'gim'), `$1$2'${REDACTED}'`],
   // Bare values. A name preceded by `/` is skipped: `/api/v1/secret: 200` is a
   // request path and a status code, not a key and a secret.
   // The name is matched with its prefix, not on a word boundary:

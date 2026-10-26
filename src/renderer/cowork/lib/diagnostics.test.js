@@ -65,10 +65,34 @@ describe('scrubLog', () => {
     }
   });
 
+  it('redacts the credential in a quoted Authorization header, as a dict of headers prints it', () => {
+    for (const line of [
+      "{'Authorization': 'Basic dXNlcjpodW50ZXIyc2VjcmV0'}",
+      '{"Authorization": "Basic dXNlcjpodW50ZXIyc2VjcmV0", "Accept": "*/*"}',
+    ]) {
+      const out = scrubLog(line);
+      expect(out).not.toMatch(/dXNlcjpodW50ZXIyc2VjcmV0/);
+      expect(out).toMatch(/Authorization["']: ["']Basic \[redacted\]["']/);
+    }
+  });
+
   it('redacts a quoted value that contains spaces', () => {
     expect(scrubLog('password="hunter two three"')).not.toMatch(/hunter two three/);
     expect(scrubLog("password='hunter two three'")).not.toMatch(/hunter two three/);
     expect(scrubLog('{"api_key": "AIza abc def"}')).not.toMatch(/AIza abc def/);
+  });
+
+  it('redacts a quoted value through the other quote and escaped quotes', () => {
+    expect(scrubLog(`password="it's a secret"`)).toBe('password="[redacted]"');
+    expect(scrubLog('{"password":"abc\\"SUPERSECRET"}')).toBe('{"password":"[redacted]"}');
+    expect(scrubLog("{'password': 'it\\'s hidden'}")).toBe("{'password': '[redacted]'}");
+  });
+
+  it('redacts a Google API key that appears on its own', () => {
+    const key = 'AIzaSyA1234567890abcdefghijklmnopqrstuv';
+    expect(scrubLog(`ValueError: invalid key ${key} rejected`)).toBe(
+      'ValueError: invalid key [redacted] rejected',
+    );
   });
 
   it('leaves the identifiers a diagnostics log exists to carry', () => {
