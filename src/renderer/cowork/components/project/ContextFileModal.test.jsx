@@ -353,9 +353,11 @@ describe('ContextFileModal reopened after an edit was left open', () => {
     await show({ open: false, filePath: 'notes.md' });
   };
 
+  /* On web a file with no text is one this viewer has no preview for, so it
+     downloads with the note. */
   it.each([
     ['fails', Object.assign(new Error('Internal error'), { status: 500 }), 'Internal error'],
-    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), "can't be displayed inline"],
+    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), 'No preview for this file type; downloaded instead.'],
   ])('offers no Save on a file the read %s, and never writes it', async (_label, failure, shown) => {
     await editThenClose();
     vi.mocked(readProjectFile).mockRejectedValueOnce(failure);
@@ -439,14 +441,19 @@ describe('ContextFileModal showing an attached file as text', () => {
     expect(readProjectFile).not.toHaveBeenCalled();
   });
 
-  it('shows bytes that are not UTF-8 text in the binary panel, which promises no actions it lacks', async () => {
+  /* On desktop an attachment saves through the page's own fetch: the OS
+     browser that Open would hand its raw URL to carries no server token. */
+  it('shows bytes that are not UTF-8 text in the binary panel, with the Download it promises and no Open', async () => {
     mocks.fetchAuthenticatedResponse.mockResolvedValueOnce(
       fileResponse(new Blob([new Uint8Array([0x25, 0x50, 0xff, 0xfe])], { type: 'application/pdf' })),
     );
     await renderAttachment({ title: 'rates.pdf', filePath: 'rates.pdf' });
     expect(document.querySelector('pre')).toBeNull();
     expect(document.body.textContent).toContain("can't be displayed inline");
-    expect(document.body.textContent).not.toContain('actions below');
+    expect(document.body.textContent).toContain('actions below');
+    const labels = buttonLabels();
+    expect(labels.some((label) => label.endsWith('Download'))).toBe(true);
+    expect(labels.some((label) => /Open$/.test(label))).toBe(false);
   });
 
   it('refuses a file whose Content-Length is past the inline cap without reading its body', async () => {

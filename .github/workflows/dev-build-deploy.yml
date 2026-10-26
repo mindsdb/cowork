@@ -82,6 +82,10 @@ jobs:
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
+  document-preview:
+    # Ungated for the same reason as the unit tests; it needs no secrets.
+    uses: ./.github/workflows/document-preview.yml
+
   workflow-lint:
     # actionlint, the caller/callee permission check, and a zizmor audit, shared
     # with every other service repo. Ungated for the same reason as the tests.
@@ -127,6 +131,9 @@ jobs:
   # URL on the PR. So every platform opts in, linux included.
   build-installers:
     needs: [gate]
+    permissions:
+      contents: read
+      actions: read # reusable workflow permission ceiling; setup skips preview builds
     if: >-
       ${{ needs.gate.outputs.run == 'true'
           && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
