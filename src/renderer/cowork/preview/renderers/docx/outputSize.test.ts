@@ -7,10 +7,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { previewLimits } from '../../limits';
 import {
   estimateOutputNodes,
-  outputNodeBudget,
   type ParsedElement,
   type ParsedSection,
   type ParsedStyle,
@@ -187,13 +185,5 @@ describe('estimateOutputNodes', () => {
     let deepest: ParsedElement = { type: 'text' };
     for (let depth = 0; depth < 100_000; depth += 1) deepest = { type: 'run', children: [deepest] };
     expect(estimateOutputNodes(parsedDocument({ body: [deepest] }))).toBe(1 + 100_001 + PAGE);
-  });
-});
-
-describe('outputNodeBudget', () => {
-  it('derives the budget from maxInflatedBytes, 128 bytes a node', () => {
-    const limits = previewLimits({ touch: false });
-    expect(outputNodeBudget(limits)).toBe(2_097_152);
-    expect(outputNodeBudget({ ...limits, maxInflatedBytes: 128 * 1000 })).toBe(1000);
   });
 });

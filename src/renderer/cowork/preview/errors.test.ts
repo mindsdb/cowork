@@ -5,7 +5,14 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import type { PreviewErrorCode } from './contract';
-import { isPreviewError, isPreviewErrorCode, PREVIEW_ERROR_CODES, previewError } from './errors';
+import {
+  isPreviewError,
+  isPreviewErrorCode,
+  isPreviewFailureLimit,
+  PREVIEW_ERROR_CODES,
+  PREVIEW_FAILURE_LIMITS,
+  previewError,
+} from './errors';
 
 const CODES: PreviewErrorCode[] = ['too-large', 'zip-limit', 'parse-failed', 'unsupported', 'timeout', 'internal'];
 
@@ -51,9 +58,23 @@ describe('previewError', () => {
     expect(previewError('zip-limit').message).toBe('zip-limit');
   });
 
+  it('carries the limit it names, and the cause, and no limit key when it names none', () => {
+    const cause = new Error('inner');
+    const error = previewError('too-large', 'Too many nodes.', { limit: 'maxDocxNodes', cause });
+    expect(error).toMatchObject({ code: 'too-large', limit: 'maxDocxNodes', cause });
+    expect(previewError('parse-failed', 'bad', { cause })).not.toHaveProperty('limit');
+  });
+
   it('keeps the cause it is given', () => {
     const cause = new Error('the library threw');
     expect(previewError('parse-failed', 'This file is not a readable PDF.', { cause }).cause).toBe(cause);
+  });
+});
+
+describe('isPreviewFailureLimit', () => {
+  it('accepts each limit whose breach ends a preview, and nothing else', () => {
+    for (const limit of Object.keys(PREVIEW_FAILURE_LIMITS)) expect(isPreviewFailureLimit(limit)).toBe(true);
+    for (const value of ['maxSheets', 'toString', '', undefined, 1]) expect(isPreviewFailureLimit(value)).toBe(false);
   });
 });
 

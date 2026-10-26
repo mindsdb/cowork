@@ -215,6 +215,22 @@ describe('render outcomes', () => {
     expect(message).toMatchObject({ type: 'error', code: 'internal' });
   });
 
+  it('reports too-large from a renderer with the frame-owned limit it names', async () => {
+    const { message, token } = await outcomeOf(async () => {
+      throw previewError('too-large', 'This document is too large to preview.', { limit: 'maxDocxNodes' });
+    });
+    expect(message).toEqual({ token, type: 'error', code: 'too-large', limit: 'maxDocxNodes', detail: 'This document is too large to preview.' });
+  });
+
+  it.each([
+    { label: 'no limit', limit: undefined },
+    { label: "the parent's byte cap", limit: 'maxBytes' as const },
+  ])('reports too-large from a renderer that names $label as internal', async ({ limit }) => {
+    const { message } = await outcomeOf(async () => { throw previewError('too-large', 'too large', { limit }); });
+    expect(message).toMatchObject({ type: 'error', code: 'internal' });
+    expect(message).not.toHaveProperty('limit');
+  });
+
   it('reports a summary for another type as internal', async () => {
     const { message } = await outcomeOf(async () => ({ type: 'pdf', units: 1, truncated: false }));
     expect(message).toMatchObject({ type: 'error', code: 'internal' });
@@ -231,7 +247,7 @@ describe('archive guard before render', () => {
 
     sendDocument(session, token, zipBytes([{ name: 'word/document.xml', data: new Uint8Array(1) }], { statedEntries: 20_000 }));
 
-    expect(await session.next()).toMatchObject({ type: 'error', code: 'zip-limit' });
+    expect(await session.next()).toMatchObject({ type: 'error', code: 'zip-limit', limit: 'maxZipEntries' });
     expect(docx.render).not.toHaveBeenCalled();
   });
 

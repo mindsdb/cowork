@@ -30,24 +30,24 @@ const PAGE_STYLES = `
 export interface PageSize { width: number; height: number }
 export interface CanvasSize { width: number; height: number; scale: number }
 
-/* The longest canvas side the preview makes. A browser leaves a canvas blank
-   past a side limit of its own, 32,767 pixels in Firefox, and 16,384 stays
-   under each. */
-export const MAX_CANVAS_SIDE = 16_384;
+export type CanvasLimits = Pick<PreviewLimits, 'maxPdfCanvasPixels' | 'maxPdfCanvasSide'>;
 
 /*
  * The canvas for a page shown cssWidth CSS pixels wide: the page's scale at
  * the screen's pixel ratio, lowered when needed so width * height stays within
- * maxPixels and neither side passes MAX_CANVAS_SIDE. Both sides are whole
- * pixels and at least 1. Since neither side passes MAX_CANVAS_SIDE, a side
- * raised to 1 pixel still keeps the area within any maxPixels of at least
- * MAX_CANVAS_SIDE.
+ * maxPdfCanvasPixels and neither side passes maxPdfCanvasSide. A browser
+ * leaves a canvas blank past a side limit of its own, 32,767 pixels in
+ * Firefox, and maxPdfCanvasSide, 16,384, stays under each. Both sides are
+ * whole pixels and at least 1. Since neither side passes maxPdfCanvasSide, a
+ * side raised to 1 pixel still keeps the area within any maxPdfCanvasPixels
+ * of at least maxPdfCanvasSide.
  */
-export function pageCanvasSize(page: PageSize, cssWidth: number, pixelRatio: number, maxPixels: number): CanvasSize {
+export function pageCanvasSize(page: PageSize, cssWidth: number, pixelRatio: number, limits: CanvasLimits): CanvasSize {
+  const maxPixels = limits.maxPdfCanvasPixels;
   const scale = Math.min(
     (cssWidth * pixelRatio) / page.width,
     Math.sqrt(maxPixels / (page.width * page.height)),
-    MAX_CANVAS_SIDE / Math.max(page.width, page.height),
+    limits.maxPdfCanvasSide / Math.max(page.width, page.height),
   );
   const height = Math.max(1, Math.floor(page.height * scale));
   const width = Math.max(1, Math.min(Math.floor(page.width * scale), Math.floor(maxPixels / height)));
@@ -211,7 +211,7 @@ export class PdfPages {
   #canvasSize(element: HTMLElement, page: PDFPageProxy): CanvasSize {
     const box = page.getViewport({ scale: 1 });
     const cssWidth = element.clientWidth || box.width * CSS_PIXELS_PER_POINT;
-    return pageCanvasSize(box, cssWidth, window.devicePixelRatio || 1, this.limits.maxPdfCanvasPixels);
+    return pageCanvasSize(box, cssWidth, window.devicePixelRatio || 1, this.limits);
   }
 
   /* Each draw runs under the parent's draw watchdog, so a page whose draw

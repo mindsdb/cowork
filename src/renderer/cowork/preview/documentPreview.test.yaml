@@ -94,6 +94,17 @@ unsafeSrcdocScriptText:
 # Error codes whose reason the failure note names, one sentence each.
 reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]
 
+# Limits whose breach ends a preview, with the code that names each and the
+# value the failure note must name, as limits.json sets it.
+failureLimits:
+  - { limit: maxBytes, code: too-large, names: 32 MiB }
+  - { limit: maxDocxNodes, code: too-large, names: '2,097,152 elements' }
+  - { limit: maxInflatedBytes, code: zip-limit, names: 256 MiB }
+  - { limit: maxZipEntryInflatedBytes, code: zip-limit, names: 64 MiB }
+  - { limit: maxZipEntries, code: zip-limit, names: '10,000 parts' }
+  - { limit: readyTimeoutMs, code: timeout, names: 10 seconds }
+  - { limit: progressTimeoutMs, code: timeout, names: 20 seconds }
+
 # Ways a component could read the window's size; the preview reads none.
 windowSizeReads: [innerWidth, innerHeight, outerWidth, outerHeight, matchMedia, screen.]
 

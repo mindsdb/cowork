@@ -6,14 +6,15 @@
  * the file's bytes over it. It checks the token, never event.source.
  *
  * With no ready within readyTimeoutMs, or no message from the frame for
- * progressTimeoutMs, it removes the frame and reports timeout; the policy
- * never changes. The draws the frame reports are timed too, before or after
- * rendered: a draw open for progressTimeoutMs of the page being visible,
- * with no draw ending in that time, removes the frame with timeout. A frame
- * that loads a second time was navigated or reloaded, so it is rebuilt with a
- * new token, at most once per mount; a third load removes it and reports
- * internal. An error the frame reports leaves the frame in place, so the
- * caller decides what replaces it.
+ * progressTimeoutMs, it removes the frame and reports timeout, naming the
+ * watchdog that fired; the policy never changes. The draws the frame reports
+ * are timed too, before or after rendered: a draw open for progressTimeoutMs
+ * of the page being visible, with no draw ending in that time, removes the
+ * frame with timeout, naming progressTimeoutMs. A frame that loads a second
+ * time was navigated or reloaded, so it is rebuilt with a new token, at most
+ * once per mount; a third load removes it and reports internal. An error the
+ * frame reports leaves the frame in place, so the caller decides what
+ * replaces it.
  */
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -21,7 +22,7 @@ import type {
   DocumentPreviewType,
   ParentPort,
   ParentToFrame,
-  PreviewErrorCode,
+  PreviewFailure,
   RenderSummary,
 } from './contract';
 import { buildPreviewSrcdoc, PREVIEW_FRAME_NAME, PREVIEW_SANDBOX, previewFramePolicy } from './frameDocument';
@@ -36,7 +37,7 @@ export interface DocumentPreviewFrameProps {
   title: string;
   limits?: Readonly<PreviewParentLimits>;
   onRendered(summary: RenderSummary): void;
-  onError(code: PreviewErrorCode, detail?: string): void;
+  onError(failure: PreviewFailure): void;
 }
 
 interface FrameMount {
@@ -85,14 +86,14 @@ export function DocumentPreviewFrame({
     let progressTimer: number | undefined;
     /* One timer per open draw, or none while the page is hidden. */
     const drawTimers = new Map<number, number | undefined>();
-    const readyTimer = window.setTimeout(() => remove('timeout'), limits.readyTimeoutMs);
+    const readyTimer = window.setTimeout(() => remove({ code: 'timeout', limit: 'readyTimeoutMs' }), limits.readyTimeoutMs);
     const stopTimers = () => {
       window.clearTimeout(readyTimer);
       window.clearTimeout(progressTimer);
     };
     const armProgress = () => {
       window.clearTimeout(progressTimer);
-      progressTimer = window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs);
+      progressTimer = window.setTimeout(() => remove({ code: 'timeout', limit: 'progressTimeoutMs' }), limits.progressTimeoutMs);
     };
     const settle = () => {
       if (settled) return false;
@@ -109,16 +110,18 @@ export function DocumentPreviewFrame({
       return true;
     };
     /* The parent's own failures remove the frame, after rendered too. */
-    function remove(code: PreviewErrorCode, detail?: string) {
+    function remove(failure: PreviewFailure) {
       if (!end()) return;
       setRemoved(true);
-      handlers.current.onError(code, detail);
+      handlers.current.onError(failure);
     }
     /* pdf.js steps a draw on requestAnimationFrame, which stops while the
        page is hidden, so a draw's clock runs only while the page is visible. */
     const armDraw = (id: number) => {
       window.clearTimeout(drawTimers.get(id));
-      const timer = document.hidden ? undefined : window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs);
+      const timer = document.hidden
+        ? undefined
+        : window.setTimeout(() => remove({ code: 'timeout', limit: 'progressTimeoutMs' }), limits.progressTimeoutMs);
       drawTimers.set(id, timer);
     };
     const armDraws = () => {
@@ -127,7 +130,7 @@ export function DocumentPreviewFrame({
     const startDraw = (id: number) => {
       if (drawTimers.has(id)) return;
       if (drawTimers.size >= MAX_OPEN_DRAWS) {
-        remove('internal', 'The preview frame reported more open draws than a renderer runs.');
+        remove({ code: 'internal', detail: 'The preview frame reported more open draws than a renderer runs.' });
         return;
       }
       armDraw(id);
@@ -177,7 +180,7 @@ export function DocumentPreviewFrame({
         if (settle()) handlers.current.onRendered(message.summary);
       } else if (settle()) {
         end();
-        handlers.current.onError(message.code, message.detail);
+        handlers.current.onError({ code: message.code, limit: message.limit, detail: message.detail });
       }
     };
     const onWindowMessage = (event: MessageEvent) => {
@@ -203,7 +206,7 @@ export function DocumentPreviewFrame({
       end();
       if (mount.rebuilt) {
         setRemoved(true);
-        handlers.current.onError('internal', 'The preview frame loaded again after its rebuild.');
+        handlers.current.onError({ code: 'internal', detail: 'The preview frame loaded again after its rebuild.' });
         return;
       }
       setMount({ token: newPreviewToken(), rebuilt: true });

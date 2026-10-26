@@ -30,6 +30,7 @@ function filesFailingWith(code: PreviewErrorCode): string[] {
 
 const PARSE_FAILED = filesFailingWith('parse-failed');
 const UNSUPPORTED = filesFailingWith('unsupported');
+const TOO_LARGE = filesFailingWith('too-large');
 
 /* The fixture whose 2,000 drawings name one 480 KB picture. */
 const PICTURE_PER_REFERENCE = 'picture-per-reference.docx';
@@ -185,10 +186,17 @@ describe('the docx renderer', () => {
     expect(ctx.root.childNodes).toHaveLength(0);
   });
 
-  it('reads the output budget from ctx.limits', async () => {
-    /* 128 inflated bytes buy one node, fewer than any document builds. */
-    const ctx = context({ ...previewLimits({ touch: false }), maxInflatedBytes: 128 });
-    await expect(renderer.render(fixtureBytes('title-and-paragraph.docx'), ctx)).rejects.toMatchObject({ code: 'unsupported' });
+  it.each(TOO_LARGE)('fails %s with too-large, naming maxDocxNodes, before docx-preview lays anything out', async (name) => {
+    const ctx = context();
+    await expect(renderer.render(fixtureBytes(name), ctx)).rejects.toMatchObject({ code: 'too-large', limit: 'maxDocxNodes' });
+    expect(docxPreview.renderDocument).not.toHaveBeenCalled();
+    expect(ctx.root.childNodes).toHaveLength(0);
+  });
+
+  it('reads the output cap from ctx.limits.maxDocxNodes', async () => {
+    /* One node, fewer than any document builds. */
+    const ctx = context({ ...previewLimits({ touch: false }), maxDocxNodes: 1 });
+    await expect(renderer.render(fixtureBytes('title-and-paragraph.docx'), ctx)).rejects.toMatchObject({ code: 'too-large', limit: 'maxDocxNodes' });
     expect(docxPreview.renderDocument).not.toHaveBeenCalled();
   });
 
@@ -343,15 +351,15 @@ describe('the docx renderer', () => {
     expect(styleText).not.toContain('data:image/png');
   });
 
-  it('copies embedded fonts\' data: URLs into style text up to maxInflatedBytes / 16 characters, then loads no more', async () => {
-    /* 16 MiB of inflated bytes buy 1 MiB of font URLs. Two halves fill it
-       exactly, so the small font after them fails before it loads. */
-    const limits = { ...previewLimits({ touch: false }), maxInflatedBytes: 16 * MIB };
+  it('copies embedded fonts\' data: URLs into style text up to maxDocxFontUrlCharacters, then loads no more', async () => {
+    /* Two halves fill the cap exactly, so the small font after them fails
+       before it loads. */
+    const limits = { ...previewLimits({ touch: false }), maxDocxFontUrlCharacters: MIB };
     await expect(renderEmbeddedFonts([MIB / 2, MIB / 2, 1_000], limits)).resolves.toEqual({ loaded: [MIB / 2, MIB / 2], faces: 2 });
   });
 
-  it('fails the first embedded font whose data: URL would pass the budget, and each later one before it loads', async () => {
-    const limits = { ...previewLimits({ touch: false }), maxInflatedBytes: 16 * MIB };
+  it('fails the first embedded font whose data: URL would pass the cap, and each later one before it loads', async () => {
+    const limits = { ...previewLimits({ touch: false }), maxDocxFontUrlCharacters: MIB };
     await expect(renderEmbeddedFonts([MIB / 2, MIB / 2 + 1, 1_000], limits)).resolves.toEqual({ loaded: [MIB / 2, MIB / 2 + 1], faces: 1 });
   });
 

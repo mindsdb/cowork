@@ -48,7 +48,7 @@ async function open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcom
   try {
     bytes = await readPreviewBytes(response, PREVIEW_PARENT_LIMITS.maxBytes, new AbortController().signal);
   } catch (error) {
-    if (isPreviewError(error)) return { outcome: 'error', errorCode: error.code };
+    if (isPreviewError(error)) return { outcome: 'error', errorCode: error.code, ...(error.limit ? { errorLimit: error.limit } : {}) };
     throw error;
   }
   const { previewType, bundle } = await setBundle(set);
@@ -68,9 +68,9 @@ async function open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcom
         bundle={bundle}
         title={`Preview of ${file}`}
         onRendered={(summary) => report({ outcome: 'rendered', summary })}
-        onError={(errorCode) => {
-          if (!reported) report({ outcome: 'error', errorCode });
-          else if (mount === mountCount) laterError = errorCode;
+        onError={({ code, limit }) => {
+          if (!reported) report({ outcome: 'error', errorCode: code, ...(limit ? { errorLimit: limit } : {}) });
+          else if (mount === mountCount) laterError = code;
         }}
       />,
     );

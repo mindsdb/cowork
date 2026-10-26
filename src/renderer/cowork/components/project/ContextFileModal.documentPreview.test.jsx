@@ -53,7 +53,7 @@ vi.mock('../../preview/generated/registry', () => ({
 
 import { readProjectFile, writeProjectFile } from '../../api';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { DOWNLOAD_FAILED_NOTE, PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_FAILURE_REASONS } from '../../preview/DocumentPreview';
+import { DOWNLOAD_FAILED_NOTE, PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_LIMIT_REASONS } from '../../preview/DocumentPreview';
 import ContextFileModal from './ContextFileModal';
 
 const data = documentPreviewData();
@@ -314,7 +314,7 @@ describe('on desktop', () => {
     it('offers Download, not Open, when the preview fails, and downloads only on a click', async () => {
       network.fetchAuthenticatedResponse.mockImplementation(async () => oversizedResponse());
       renderViewer(SURFACES[0].props('plan.xlsx'));
-      const note = (await screen.findByText(PREVIEW_FAILURE_REASONS['too-large'])).closest('.document-preview-note');
+      const note = (await screen.findByText(PREVIEW_LIMIT_REASONS.maxBytes)).closest('.document-preview-note');
       expect(within(note).queryByRole('button', { name: 'Open' })).toBeNull();
       expect(network.downloadAuthenticatedResource).not.toHaveBeenCalled();
       await act(async () => { clickButton(note, 'Download'); });

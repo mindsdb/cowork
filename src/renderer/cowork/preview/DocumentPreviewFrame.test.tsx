@@ -175,8 +175,30 @@ describe('the handshake', () => {
     const { port } = handshake(iframe);
     port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'parse-failed', detail: 'bad sheet' });
     await tick();
-    expect(props.onError).toHaveBeenCalledWith('parse-failed', 'bad sheet');
+    expect(props.onError).toHaveBeenCalledWith({ code: 'parse-failed', detail: 'bad sheet' });
     expect(frames(container)).toHaveLength(1);
+  });
+
+  it('reports too-large from the frame with the renderer limit it names', async () => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit: 'maxDocxNodes' });
+    await tick();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'too-large', limit: 'maxDocxNodes' });
+  });
+
+  it.each([
+    { label: 'no limit', limit: undefined },
+    { label: "the parent's byte cap", limit: 'maxBytes' },
+    { label: 'a name that is no limit', limit: 'toString' },
+  ])('drops a too-large from the frame that names $label', async ({ limit }) => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit });
+    await tick();
+    expect(props.onError).not.toHaveBeenCalled();
   });
 });
 
@@ -187,7 +209,7 @@ describe('the watchdogs', () => {
     act(() => { vi.advanceTimersByTime(PREVIEW_PARENT_LIMITS.readyTimeoutMs - 1); });
     expect(props.onError).not.toHaveBeenCalled();
     act(() => { vi.advanceTimersByTime(1); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'readyTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -206,7 +228,7 @@ describe('the watchdogs', () => {
     expect(props.onError).not.toHaveBeenCalled();
 
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
     expect(srcdoc.startsWith(`<meta http-equiv="Content-Security-Policy" content="${previewFramePolicy(HASH)}">`)).toBe(true);
   });
@@ -243,7 +265,7 @@ describe('the draw watchdog', () => {
     Reflect.deleteProperty(document, 'hidden');
   });
 
-  it(`keeps timing a draw after rendered, and removes the frame with timeout when it hasn't ended within ${progressTimeoutMs} ms`, async () => {
+  it(`keeps timing a draw after rendered, and removes the frame with timeout, naming progressTimeoutMs, when it hasn't ended within ${progressTimeoutMs} ms`, async () => {
     const { container, props, send, wait } = mountedFrame();
     await send({ type: 'rendered', summary: SUMMARY });
     await send({ type: 'draw', id: 0, state: 'start' });
@@ -251,7 +273,7 @@ describe('the draw watchdog', () => {
     expect(props.onError).not.toHaveBeenCalled();
     wait(1);
     expect(props.onRendered).toHaveBeenCalledOnce();
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -261,7 +283,7 @@ describe('the draw watchdog', () => {
     wait(progressTimeoutMs / 2);
     await send({ type: 'rendered', summary: SUMMARY });
     wait(progressTimeoutMs / 2);
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -284,7 +306,7 @@ describe('the draw watchdog', () => {
     await send({ type: 'draw', id: 10, state: 'end' });
     wait(progressTimeoutMs);
     expect(props.onError).toHaveBeenCalledOnce();
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
   });
 
   it('restarts the clock of every open draw when a draw ends, since draws share the frame\'s thread', async () => {
@@ -297,7 +319,7 @@ describe('the draw watchdog', () => {
     wait(progressTimeoutMs - 1);
     expect(props.onError).not.toHaveBeenCalled();
     wait(1);
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
   });
 
   it('stops a draw\'s clock while the page is hidden, and gives it a fresh progressTimeoutMs once it shows', async () => {
@@ -312,7 +334,7 @@ describe('the draw watchdog', () => {
     wait(progressTimeoutMs - 1);
     expect(props.onError).not.toHaveBeenCalled();
     wait(1);
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -336,7 +358,7 @@ describe('the draw watchdog', () => {
     await send({ type: 'draw', id: 1, state: 'start' });
     wait(progressTimeoutMs * 2);
     expect(props.onError).toHaveBeenCalledOnce();
-    expect(props.onError).toHaveBeenCalledWith('parse-failed', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'parse-failed' });
     expect(frames(container)).toHaveLength(1);
   });
 
@@ -347,7 +369,7 @@ describe('the draw watchdog', () => {
     await send({ type: 'draw', id: 0, state: 'start' });
     expect(props.onError).not.toHaveBeenCalled();
     await send({ type: 'draw', id: MAX_OPEN_DRAWS, state: 'start' });
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -376,7 +398,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -402,7 +424,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     expect(frames(container)).toHaveLength(0);
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
   });
 
   it('drops the old token after the rebuild', () => {

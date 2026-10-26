@@ -126,7 +126,7 @@ import { mountArtifactPreview, previewArtifact } from '../../api';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import { loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
-import { PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_FAILED_NOTE, PREVIEW_FAILURE_REASONS } from '../../preview/DocumentPreview';
+import { PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_FAILED_NOTE, PREVIEW_LIMIT_REASONS } from '../../preview/DocumentPreview';
 import { ArtifactViewer } from './ArtifactViewer';
 import { PREVIEW_ONLY } from './workspace/useArtifactWorkspace';
 
@@ -284,7 +284,7 @@ describe('the document branch', () => {
     fetchAuthenticatedResponse.mockImplementation(async () => oversizedResponse());
     renderViewer(xlsx);
     expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
-    expect(screen.getByText(PREVIEW_FAILURE_REASONS['too-large'])).toBeInTheDocument();
+    expect(screen.getByText(PREVIEW_LIMIT_REASONS.maxBytes)).toBeInTheDocument();
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
     expect(downloadArtifactFile).toHaveBeenCalledWith(xlsx, { actionPath: xlsx.canonicalPath });
     expect(previewFrames()).toHaveLength(0);
@@ -303,7 +303,7 @@ describe('the document branch', () => {
     Object.assign(platform, { isWeb: false, isElectron: true, supportsDocumentPreview: true, isLocalApiOrigin: () => true });
     fetchAuthenticatedResponse.mockImplementation(async () => oversizedResponse());
     renderViewer(xlsx);
-    expect(await screen.findByText(PREVIEW_FAILURE_REASONS['too-large'])).toBeInTheDocument();
+    expect(await screen.findByText(PREVIEW_LIMIT_REASONS.maxBytes)).toBeInTheDocument();
     expect(screen.getByText(PREVIEW_FAILED_NOTE)).toBeInTheDocument();
     expect(downloadArtifactFile).not.toHaveBeenCalled();
     /* The note's own Open, not the header's desktop Open beside it. */

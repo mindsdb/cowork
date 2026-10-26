@@ -21,7 +21,7 @@ import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 import { host } from '../../platform/host';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
-import type { DocumentPreviewType, PreviewErrorCode, RenderSummary } from './contract';
+import type { DocumentPreviewType, PreviewErrorCode, PreviewFailure, PreviewFailureLimit, RenderSummary } from './contract';
 import { DocumentPreviewFrame } from './DocumentPreviewFrame';
 import { isPreviewError, previewError } from './errors';
 import { previewBundles } from './generated/registry';
@@ -63,8 +63,13 @@ export const DOWNLOAD_FAILED_NOTE = "Couldn't download this file.";
 
 const MIB = 1024 * 1024;
 
+/* The caps that end a preview or decide truncation are the same on every
+   device. */
+const CAPS = previewLimits({ touch: false });
+
+/* What the note says for a failure that names no limit. */
 export const PREVIEW_FAILURE_REASONS: Readonly<Record<PreviewErrorCode, string>> = {
-  'too-large': `The file is larger than the ${PREVIEW_PARENT_LIMITS.maxBytes / MIB} MiB preview limit.`,
+  'too-large': 'Too large to preview.',
   'zip-limit': "The file unpacks past the preview's archive limits.",
   'parse-failed': "The file can't be read.",
   unsupported: 'The file uses something the preview does not support.',
@@ -72,8 +77,28 @@ export const PREVIEW_FAILURE_REASONS: Readonly<Record<PreviewErrorCode, string>>
   internal: 'The preview stopped on an unexpected error.',
 };
 
-/* The caps that decide truncation are the same on every device. */
-const CAPS = previewLimits({ touch: false });
+const count = (value: number) => value.toLocaleString('en-US');
+
+/* What the note says for a failure past a limit: the limit and its value,
+   from the parent's own caps. The frame names only which limit it passed, so
+   no text from the frame reaches the note. */
+export const PREVIEW_LIMIT_REASONS: Readonly<Record<PreviewFailureLimit, string>> = {
+  maxBytes: `Too large to preview: the file is larger than ${CAPS.maxBytes / MIB} MiB, the preview limit.`,
+  maxInflatedBytes: `Too large to preview: the file unpacks to more than ${CAPS.maxInflatedBytes / MIB} MiB, the preview limit.`,
+  maxZipEntryInflatedBytes:
+    `Too large to preview: a part of the file unpacks to more than ${CAPS.maxZipEntryInflatedBytes / MIB} MiB, the preview limit.`,
+  maxZipEntries: `Too large to preview: the file holds more than ${count(CAPS.maxZipEntries)} parts, the preview limit.`,
+  maxDocxNodes: `Too large to preview: the document would build more than ${count(CAPS.maxDocxNodes)} elements, the preview limit.`,
+  readyTimeoutMs: `The preview took too long: it didn't start within ${CAPS.readyTimeoutMs / 1000} seconds, the preview limit.`,
+  progressTimeoutMs:
+    `The preview took too long: it made no progress for ${CAPS.progressTimeoutMs / 1000} seconds, the preview limit.`,
+};
+
+/* The note's reason line: the limit the file passed when the failure names
+   one, else the code's own reason. */
+export function previewFailureReason({ code, limit }: Pick<PreviewFailure, 'code' | 'limit'>): string {
+  return limit ? PREVIEW_LIMIT_REASONS[limit] : PREVIEW_FAILURE_REASONS[code];
+}
 
 /* What a truncated preview of each type shows, from the summary's units. A
    deck counts the slides it drew, since either the slide cap or the element
@@ -81,14 +106,14 @@ const CAPS = previewLimits({ touch: false });
 const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown(units: number): string; whole: string }>> = {
   xlsx: {
     shown: () =>
-      `Showing up to ${CAPS.maxSheetRows.toLocaleString('en-US')} rows and ${CAPS.maxSheetColumns.toLocaleString('en-US')} columns of each sheet.`,
+      `Showing up to ${count(CAPS.maxSheetRows)} rows and ${count(CAPS.maxSheetColumns)} columns of each sheet.`,
     whole: 'sheet',
   },
   pptx: {
-    shown: (units) => (units === 1 ? 'Showing the first slide.' : `Showing the first ${units.toLocaleString('en-US')} slides.`),
+    shown: (units) => (units === 1 ? 'Showing the first slide.' : `Showing the first ${count(units)} slides.`),
     whole: 'deck',
   },
-  pdf: { shown: () => `Showing the first ${CAPS.maxPdfPages.toLocaleString('en-US')} pages.`, whole: 'file' },
+  pdf: { shown: () => `Showing the first ${count(CAPS.maxPdfPages)} pages.`, whole: 'file' },
   docx: { shown: () => 'Showing part of this document.', whole: 'file' },
 };
 
@@ -98,7 +123,7 @@ export function truncationLine(type: DocumentPreviewType, units: number, downloa
 }
 
 interface FailureProps {
-  code: PreviewErrorCode;
+  failure: Pick<PreviewFailure, 'code' | 'limit'>;
   downloads: boolean;
   download(): Promise<boolean>;
   openInDefaultApp(): void;
@@ -108,7 +133,7 @@ interface FailureProps {
    succeeded. On desktop it offers Open, or Download for a file that
    downloads there, which waits for a click: a desktop download can ask where
    to save, so a failed preview never opens that dialog on its own. */
-function PreviewFailure({ code, downloads, download, openInDefaultApp }: FailureProps) {
+function FailureNote({ failure, downloads, download, openInDefaultApp }: FailureProps) {
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
   const started = useRef(false);
   const downloadsOnFailure = downloads && host.isWeb;
@@ -127,7 +152,7 @@ function PreviewFailure({ code, downloads, download, openInDefaultApp }: Failure
       <p className="document-preview-note-title">
         {downloads && downloaded ? PREVIEW_FAILED_DOWNLOADED_NOTE : PREVIEW_FAILED_NOTE}
       </p>
-      <p className="document-preview-note-reason">{PREVIEW_FAILURE_REASONS[code]}</p>
+      <p className="document-preview-note-reason">{previewFailureReason(failure)}</p>
       {downloads
         ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>Download</Button>
         : <Button onClick={openInDefaultApp}>Open</Button>}
@@ -175,7 +200,7 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
   const downloads = downloadsFile(fileAction);
   const [loaded, setLoaded] = useState<LoadedFile | null>(null);
   const [summary, setSummary] = useState<RenderSummary | null>(null);
-  const [failure, setFailure] = useState<PreviewErrorCode | null>(null);
+  const [failure, setFailure] = useState<PreviewFailure | null>(null);
   const onLoadErrorRef = useRef(onLoadError);
   onLoadErrorRef.current = onLoadError;
 
@@ -201,11 +226,11 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
       ({ bytes, bundle }) => {
         if (signal.aborted) return;
         if (bundle) setLoaded({ bytes, bundle });
-        else setFailure('unsupported');
+        else setFailure({ code: 'unsupported' });
       },
       (error: unknown) => {
         if (signal.aborted) return;
-        if (isPreviewError(error)) setFailure(error.code);
+        if (isPreviewError(error)) setFailure({ code: error.code, limit: error.limit });
         else onLoadErrorRef.current(error);
       },
     );
@@ -213,7 +238,7 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
   }, []);
 
   if (failure) {
-    return <PreviewFailure code={failure} downloads={downloads} download={download} openInDefaultApp={openInDefaultApp} />;
+    return <FailureNote failure={failure} downloads={downloads} download={download} openInDefaultApp={openInDefaultApp} />;
   }
   return (
     <>
@@ -270,8 +295,8 @@ export function DocumentPreview(props: DocumentPreviewProps) {
       <PreviewErrorBoundary
         key={`${source.previewType} ${source.url}`}
         fallback={(
-          <PreviewFailure
-            code="internal"
+          <FailureNote
+            failure={{ code: 'internal' }}
             downloads={downloadsFile(props.fileAction)}
             download={props.download}
             openInDefaultApp={props.openInDefaultApp}

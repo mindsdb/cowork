@@ -17,7 +17,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { previewLimits } from '../../limits';
-import { MAX_CANVAS_SIDE, pageCanvasSize, PageWindow, PdfPages } from './pages';
+import { pageCanvasSize, PageWindow, PdfPages } from './pages';
 
 /* A shown page width in CSS pixels and a screen pixel ratio. */
 interface PageView { cssWidth: number; ratio: number }
@@ -28,33 +28,42 @@ const CASES = load(readFileSync(join(__dirname, 'pages.test.yaml'), 'utf8')) as 
 /* The largest page a PDF allows, in points. */
 const LARGEST_PAGE = 14_400;
 
+const CANVAS = previewLimits({ touch: false });
+const canvas = (maxPdfCanvasPixels: number) => ({ maxPdfCanvasPixels, maxPdfCanvasSide: CANVAS.maxPdfCanvasSide });
+
 describe('pageCanvasSize', () => {
   it('draws a small page at its shown width and the screen pixel ratio', () => {
-    expect(pageCanvasSize({ width: 612, height: 792 }, 816, 2, 16_777_216)).toEqual({ width: 1632, height: 2112, scale: 1632 / 612 });
+    expect(pageCanvasSize({ width: 612, height: 792 }, 816, 2, canvas(16_777_216))).toEqual({ width: 1632, height: 2112, scale: 1632 / 612 });
   });
 
   it.each([false, true])('keeps the largest page within maxPdfCanvasPixels at every view (touch: %s)', (touch) => {
-    const maxPixels = previewLimits({ touch }).maxPdfCanvasPixels;
+    const limits = previewLimits({ touch });
+    const maxPixels = limits.maxPdfCanvasPixels;
     for (const { cssWidth, ratio } of CASES.views) {
-      const size = pageCanvasSize({ width: LARGEST_PAGE, height: LARGEST_PAGE }, cssWidth, ratio, maxPixels);
+      const size = pageCanvasSize({ width: LARGEST_PAGE, height: LARGEST_PAGE }, cssWidth, ratio, limits);
       expect(size.width * size.height).toBeLessThanOrEqual(maxPixels);
       expect(size.width).toBeGreaterThan(0);
     }
   });
 
-  it('keeps a very long, thin page within the cap, at least 1 pixel wide and within MAX_CANVAS_SIDE', () => {
-    const size = pageCanvasSize({ width: 3, height: LARGEST_PAGE }, 800, 4, 4_194_304);
+  it('keeps a very long, thin page within the cap, at least 1 pixel wide and within maxPdfCanvasSide', () => {
+    const size = pageCanvasSize({ width: 3, height: LARGEST_PAGE }, 800, 4, canvas(4_194_304));
     expect(size.width * size.height).toBeLessThanOrEqual(4_194_304);
     expect(size.width).toBeGreaterThanOrEqual(1);
-    expect(size.height).toBeLessThanOrEqual(MAX_CANVAS_SIDE);
+    expect(size.height).toBeLessThanOrEqual(CANVAS.maxPdfCanvasSide);
   });
 
-  it('keeps a page thinner than one pixel within the cap and within MAX_CANVAS_SIDE on both sides', () => {
+  it('keeps a page thinner than one pixel within the cap and within maxPdfCanvasSide on both sides', () => {
     /* pdf.js accepts a MediaBox of [0 0 0.0001 14400]. */
-    const size = pageCanvasSize({ width: 0.0001, height: LARGEST_PAGE }, 800, 2, 16_777_216);
+    const size = pageCanvasSize({ width: 0.0001, height: LARGEST_PAGE }, 800, 2, canvas(16_777_216));
     expect(size.width * size.height).toBeLessThanOrEqual(16_777_216);
-    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(MAX_CANVAS_SIDE);
+    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(CANVAS.maxPdfCanvasSide);
     expect(size.width).toBe(1);
+  });
+
+  it('reads the side cap from limits.maxPdfCanvasSide', () => {
+    const size = pageCanvasSize({ width: 500, height: 1000 }, 816, 2, { maxPdfCanvasPixels: 16_777_216, maxPdfCanvasSide: 500 });
+    expect(size).toEqual({ width: 250, height: 500, scale: 0.5 });
   });
 });
 

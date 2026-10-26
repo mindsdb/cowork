@@ -63,9 +63,15 @@ import yaml from 'js-yaml';
 import type {
   DocumentPreviewType,
   PreviewErrorCode,
+  PreviewFailureLimit,
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
-import { isPreviewErrorCode, PREVIEW_ERROR_CODES } from '../../src/renderer/cowork/preview/errors';
+import {
+  isPreviewErrorCode,
+  isPreviewFailureLimit,
+  PREVIEW_ERROR_CODES,
+  PREVIEW_FAILURE_LIMITS,
+} from '../../src/renderer/cowork/preview/errors';
 import { PREVIEW_PARENT_LIMITS } from '../../src/renderer/cowork/preview/limits';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 
@@ -76,7 +82,7 @@ export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
 export interface CanvasRegion { page: number; left: number; top: number; width: number; height: number }
 
 export interface FixtureExpectation {
-  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; units?: number; minUnits?: number;
+  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; errorLimit?: PreviewFailureLimit; units?: number; minUnits?: number;
   truncated?: boolean; textIncludes?: string[]; textExcludes?: string[]; paintedRegion?: CanvasRegion;
   laterErrorCode?: PreviewErrorCode;
 }
@@ -97,14 +103,14 @@ export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'h
    error instead, reads no text and clicks nothing, since the frame's draw
    holds the frame's thread, and sets `laterErrorCode` to the code it got. */
 export interface PreviewRun {
-  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; summary?: RenderSummary;
+  outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; errorLimit?: PreviewFailureLimit; summary?: RenderSummary;
   text: string; requests: string[]; frameUrlAfterClicks: string; laterErrorCode?: PreviewErrorCode;
 }
 
 /* What the harness page's open(set, file) resolves with. main.tsx sets
    window.coworkPreviewHarness. laterError() is the error the frame of the
    last open() reported after its outcome, or null. */
-export type HarnessOutcome = Pick<PreviewRun, 'outcome' | 'errorCode' | 'summary'>;
+export type HarnessOutcome = Pick<PreviewRun, 'outcome' | 'errorCode' | 'errorLimit' | 'summary'>;
 
 declare global {
   interface Window {
@@ -120,7 +126,8 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const FIXTURE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FIXTURE_KEYS = new Set(['name', 'file', 'kind', 'expect']);
 const EXPECTATION_KEYS = new Set([
-  'outcome', 'errorCode', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion', 'laterErrorCode',
+  'outcome', 'errorCode', 'errorLimit', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion',
+  'laterErrorCode',
 ]);
 const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
 /* How long a click gets to start a navigation or a request before the frame's
@@ -129,10 +136,12 @@ const CLICK_SETTLE_MS = 500;
 /* How long after its outcome a fixture with a laterErrorCode gets to end in
    it: the parent's draw watchdog, plus time for the frame's draw to start. */
 export const LATER_ERROR_WAIT_MS = PREVIEW_PARENT_LIMITS.progressTimeoutMs + 5_000;
-/* The outcomes that end with no preview frame mounted: the parent refuses a
-   too-large file before it mounts one, and its watchdog unmounts the frame on
-   a timeout. */
-const FRAMELESS_ERRORS: ReadonlySet<PreviewErrorCode> = new Set(['too-large', 'timeout']);
+/* Whether an outcome ends with no preview frame mounted: the parent refuses a
+   file past maxBytes before it mounts one, and its watchdog unmounts the frame
+   on a timeout. A renderer's too-large leaves its frame in place. */
+function endsFrameless({ errorCode, errorLimit }: HarnessOutcome): boolean {
+  return errorCode === 'timeout' || (errorCode === 'too-large' && errorLimit === 'maxBytes');
+}
 /* The path prefix of every file under the checkout that the Vite dev server
    serves through /@fs. Vite names a file by its real path. */
 const REPOSITORY_FS_PREFIX = `/@fs${realpathSync(path.resolve(__dirname, '../..'))}/`;
@@ -166,10 +175,15 @@ function readRegion(value: unknown, where: string): CanvasRegion {
 function readExpectation(value: unknown, where: string): FixtureExpectation {
   if (!isRecord(value)) throw new Error(`${where}: expect must be a mapping`);
   checkKeys(value, EXPECTATION_KEYS, where);
-  const { outcome, errorCode, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion, laterErrorCode } = value;
+  const {
+    outcome, errorCode, errorLimit, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion, laterErrorCode,
+  } = value;
   if (outcome !== 'rendered' && outcome !== 'error') throw new Error(`${where}: outcome must be rendered or error`);
   if (errorCode !== undefined && !isPreviewErrorCode(errorCode)) {
     throw new Error(`${where}: errorCode must be one of ${Object.keys(PREVIEW_ERROR_CODES).join(', ')}`);
+  }
+  if (errorLimit !== undefined && !isPreviewFailureLimit(errorLimit)) {
+    throw new Error(`${where}: errorLimit must be one of ${Object.keys(PREVIEW_FAILURE_LIMITS).join(', ')}`);
   }
   if (units !== undefined && typeof units !== 'number') throw new Error(`${where}: units must be a number`);
   if (minUnits !== undefined && typeof minUnits !== 'number') throw new Error(`${where}: minUnits must be a number`);
@@ -183,6 +197,7 @@ function readExpectation(value: unknown, where: string): FixtureExpectation {
   return {
     outcome,
     ...(errorCode === undefined ? {} : { errorCode }),
+    ...(errorLimit === undefined ? {} : { errorLimit }),
     ...(units === undefined ? {} : { units }),
     ...(minUnits === undefined ? {} : { minUnits }),
     ...(truncated === undefined ? {} : { truncated }),
@@ -276,7 +291,7 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
       ([fixtureSet, file]) => window.coworkPreviewHarness!.open(fixtureSet, file),
       [set, fixture.file] as const,
     );
-    if (outcome.errorCode !== undefined && FRAMELESS_ERRORS.has(outcome.errorCode)) {
+    if (endsFrameless(outcome)) {
       /* A frame the watchdog removed never left about:srcdoc unless a
          navigation was seen. */
       return { ...outcome, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc' };
