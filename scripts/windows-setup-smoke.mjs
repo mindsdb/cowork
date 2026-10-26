@@ -54,8 +54,10 @@ async function command(file, args, options = {}) {
   }
 }
 
-function powershell(script, options = {}) {
-  return command('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `$ErrorActionPreference = 'Stop'\n${script}`], options);
+function powershell(script, { env = process.env, ...options } = {}) {
+  // The runner's PSModulePath names PowerShell 7's modules, which hides the Cert: drive from Windows PowerShell.
+  const inherited = Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH'));
+  return command('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `$ErrorActionPreference = 'Stop'\nImport-Module Microsoft.PowerShell.Security\n${script}`], { ...options, env: inherited });
 }
 
 /** The certificates in each store this smoke reads, and whether policy blocks root downloads. */
@@ -138,7 +140,7 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   const { installLocation, executable: executablePath } = installedExecutable(await registrations(), productName);
   save('install.json', { installLocation, executablePath, signer: signature.signer });
   // A launch by the installer would set up the runner's real profile, not the fresh one.
-  const stopped = await powershell(`Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
+  const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
     { env: { ...process.env, COWORK_INSTALL_DIR: installLocation } });
   if (stopped) save('stopped-after-install.txt', stopped);
 
