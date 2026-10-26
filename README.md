@@ -1396,6 +1396,14 @@ For a historical check, select `stable` and provide `snapshot-url` plus its inde
 
 This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
 
+[`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) does the same for the published Windows `.exe`. It runs after each successful Stable or prod Windows upload and nightly at 07:45 UTC on both channels, with the same manifest pinning, nightly `staging` checkout, setup verdict, artifacts (`windows-setup-<channel>`) and failure notice. It requires a valid Authenticode signature, installs the installer silently (`/S`) for the runner's user, finds the executable from its uninstall registration, and opens it with a fresh profile and an allowlisted environment: the home, app-data and temp variables point into the profile, and `PATH` holds only Windows' own folders, so the runner's uv, Python and git stay invisible. Electron's `home` path follows Windows' known folder and stays the runner's; every other path the app reports must be inside the profile.
+
+Before it opens the app, the check trims the runner's root store to what a fresh Windows trusts. Windows ships part of its root list and downloads the rest the first time a program verifies a chain through Windows, but Python's own TLS never asks it to. The hosted image instead holds over 500 roots, including GlobalSign Root CA - R3 (pypi.org) and ISRG Root X1 (raw.githubusercontent.com) among the 14 in `LocalMachine\AuthRoot`, and turns those downloads off with the `DisableRootAutoUpdate` policy. So the check empties `LocalMachine\AuthRoot`, removes both named roots wherever they remain, turns the downloads back on, lists each root it removed, and fails at "Trim root store" if Python's view still holds either. Setup's own Windows downloads, such as the uv installer, can then download the roots they need, as on a fresh machine; `roots-after-setup.json` records which. The other preinstalled roots stay, so a new dependency on one of them would still pass here.
+
+The harness backs up each removed root to `RUNNER_TEMP`, and an `if: always()` step restores the roots and the policy before the job ends. The runner reports the job's end over Windows TLS, so without that step the job stalls until GitHub cancels it.
+
+Hosted runners run Windows Server, not Windows 11, and x64 only; a person's check on Windows 11 stays in the release checklist. Run it the same way as the macOS check (`gh workflow run windows-setup-smoke.yml --ref staging -f channels=stable`); a historical check takes a public Windows Stable snapshot URL and its SHA-256. Its contract tests run on PRs with `npm run test:windows-setup-contract`; `npm run test:windows-setup` refuses local execution because it installs an app and edits the machine's root stores.
+
 ### Workflow files
 
 | Workflow | Trigger | Purpose |
@@ -1411,6 +1419,7 @@ This workflow does not cover authentication, chat, Windows, Linux, or every PR. 
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
 | [`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) | After Stable/prod macOS upload / nightly / manual | Install the published `.pkg` on a fresh profile and require every setup step through Start server to succeed |
+| [`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) | After Stable/prod Windows upload / nightly / manual | Install the published `.exe` on a fresh profile and a fresh machine's root store, and require every setup step through Start server to succeed |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets

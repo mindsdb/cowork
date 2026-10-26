@@ -204,9 +204,9 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   }), 15_000, 'App isolation probe timed out.');
   save('isolation.json', isolation);
   if (!isolation.packaged || await realpath(isolation.executable) !== await realpath(executablePath)) throw new Error('Not running the installed packaged executable.');
-  // Windows resolves Electron's home and appData through its own known-folder API, not
-  // the environment, so they stay the runner's; every path the app writes setup to must not.
-  const { home: _home, appData: _appData, ...appPaths } = isolation.paths;
+  // Electron resolves its home folder through Windows' known-folder API, not the
+  // environment, so it stays the runner's; every path the app writes setup to must not.
+  const { home: _home, ...appPaths } = isolation.paths;
   for (const path of [isolation.nodeHome, isolation.coworkHome, isolation.serverLog, ...Object.values(appPaths), isolation.toolDir, isolation.toolBinDir].filter(Boolean)) {
     if (!within(profile, path)) throw new Error(`App path escapes the fresh profile: ${path}`);
   }
