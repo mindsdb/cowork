@@ -73,6 +73,8 @@ export interface TextShapeSpec {
   /* Writes this many copies of the shape, one when left out. With idx, each
      copy's idx counts up from it. */
   repeat?: number;
+  /* Writes hidden="1" on the shape's p:cNvPr. */
+  hidden?: boolean;
 }
 
 export interface PictureSpec {
@@ -342,9 +344,9 @@ function paragraphXml(paragraph: ParagraphSpec, writer: SlideWriter): string {
   return `<a:p>${pPr}<a:r><a:rPr${rPrAttrs} dirty="0">${color}${font}${link}</a:rPr><a:t>${escapeXml(paragraph.text)}</a:t></a:r></a:p>`;
 }
 
-function nonVisualXml(kind: 'sp' | 'pic' | 'graphicFrame' | 'cxnSp', writer: SlideWriter, name: string, nvPr = '<p:nvPr/>', descr?: string): string {
+function nonVisualXml(kind: 'sp' | 'pic' | 'graphicFrame' | 'cxnSp', writer: SlideWriter, name: string, nvPr = '<p:nvPr/>', descr?: string, hidden = false): string {
   const id = writer.nextShapeId++;
-  const cNvPr = `<p:cNvPr id="${id}" name="${escapeXml(`${name} ${id}`)}"${descr ? ` descr="${escapeXml(descr)}"` : ''}/>`;
+  const cNvPr = `<p:cNvPr id="${id}" name="${escapeXml(`${name} ${id}`)}"${descr ? ` descr="${escapeXml(descr)}"` : ''}${hidden ? ' hidden="1"' : ''}/>`;
   if (kind === 'sp') return `<p:nvSpPr>${cNvPr}<p:cNvSpPr/>${nvPr}</p:nvSpPr>`;
   if (kind === 'pic') return `<p:nvPicPr>${cNvPr}<p:cNvPicPr/>${nvPr}</p:nvPicPr>`;
   if (kind === 'cxnSp') return `<p:nvCxnSpPr>${cNvPr}<p:cNvCxnSpPr/>${nvPr}</p:nvCxnSpPr>`;
@@ -372,7 +374,7 @@ function textShapeCopyXml(shape: TextShapeSpec, idx: number | undefined, writer:
   const style = shape.styled ? AUTOSHAPE_STYLE : '';
   const anchor = shape.anchor === undefined ? '' : ` anchor="${escapeXml(shape.anchor)}"`;
   const paragraphs = shape.paragraphs.map((paragraph) => paragraphXml(paragraph, writer)).join('');
-  return `<p:sp>${nonVisualXml('sp', writer, shape.placeholder ? 'Placeholder' : 'TextBox', ph)}<p:spPr>${spPr}</p:spPr>${style}<p:txBody><a:bodyPr wrap="square"${anchor}/><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+  return `<p:sp>${nonVisualXml('sp', writer, shape.placeholder ? 'Placeholder' : 'TextBox', ph, undefined, shape.hidden)}<p:spPr>${spPr}</p:spPr>${style}<p:txBody><a:bodyPr wrap="square"${anchor}/><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 }
 
 function connectorXml(shape: ConnectorSpec, writer: SlideWriter): string {

@@ -193,12 +193,22 @@ describe('a truncated render', () => {
     mount({ source: { ...SOURCE, previewType: type } });
     const frame = await mountedFrame();
     act(() => frame.onRendered({ type, units: 2, truncated: true }));
-    expect(screen.getByRole('note')).toHaveTextContent(truncationLine(type, true));
+    expect(screen.getByRole('note')).toHaveTextContent(truncationLine(type, 2, true));
+  });
+
+  it('says how many slides a truncated deck drew, whichever cap ended it', async () => {
+    expect(truncationLine('pptx', 300, true)).toBe('Showing the first 300 slides. Download has the full deck.');
+    expect(truncationLine('pptx', 33, false)).toBe('Showing the first 33 slides. Open has the full deck.');
+    expect(truncationLine('pptx', 1, true)).toBe('Showing the first slide. Download has the full deck.');
+    mount({ source: { ...SOURCE, previewType: 'pptx' } });
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'pptx', units: 33, truncated: true }));
+    expect(screen.getByRole('note')).toHaveTextContent('Showing the first 33 slides. Download has the full deck.');
   });
 
   it('says Download has the full sheet on web and Open on desktop', async () => {
-    expect(truncationLine('xlsx', true)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Download has the full sheet.');
-    expect(truncationLine('xlsx', false)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Open has the full sheet.');
+    expect(truncationLine('xlsx', 1, true)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Download has the full sheet.');
+    expect(truncationLine('xlsx', 1, false)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Open has the full sheet.');
     platform.isWeb = false;
     const { props } = mount();
     const frame = await mountedFrame();

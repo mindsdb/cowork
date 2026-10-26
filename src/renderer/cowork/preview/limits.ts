@@ -35,5 +35,6 @@ export function previewLimits(device: PreviewDevice): PreviewLimits {
     maxPdfCanvasPixels: device.touch ? 4_194_304 : 16_777_216,
     maxPdfCanvasesAlive: 6,
     maxSlides: 300,
+    maxSlideElements: 100_000,
   };
 }

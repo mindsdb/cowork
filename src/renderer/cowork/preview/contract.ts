@@ -11,6 +11,7 @@ export interface PreviewLimits {
   maxPdfCanvasPixels: number;       // 16,777,216 per page canvas; 4,194,304 on touch devices
   maxPdfCanvasesAlive: number;      // 6 page canvases drawn at once
   maxSlides: number;                // 300
+  maxSlideElements: number;         // 100,000 read across the deck; past it the summary says truncated: true
   readyTimeoutMs: number;           // 10,000
   progressTimeoutMs: number;        // 20,000
 }
@@ -18,7 +19,12 @@ export interface PreviewLimits {
 /* What `units` counts for each type:
    - xlsx: the sheets shown as tabs.
    - pptx: the slides drawn, at most maxSlides. A larger deck draws the first
-     maxSlides slides and reports truncated: true.
+     maxSlides slides and reports truncated: true. Across the deck the
+     renderer reads at most maxSlideElements elements of the slides' shape
+     trees, tables and text, counting the master's and the layout's again on
+     each slide and counting the ones it doesn't draw. A deck past that ends
+     on the slide where the cap ran out, drawn up to the cap, and reports
+     truncated: true.
    - pdf: the pages laid out, min(numPages, maxPdfPages). Pages draw as they
      scroll into view, with at most maxPdfCanvasesAlive canvases alive, so
      units never counts pages drawn.
