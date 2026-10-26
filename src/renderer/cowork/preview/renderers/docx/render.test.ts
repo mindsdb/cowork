@@ -64,6 +64,7 @@ function context(limits: PreviewLimits = previewLimits({ touch: false }), signal
     progress: vi.fn(),
     openZip: vi.fn(),
     requestAsset: vi.fn(async () => null),
+    beginDraw: vi.fn(() => () => undefined),
   };
 }
 

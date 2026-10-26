@@ -108,6 +108,10 @@ export function readFrameToParent(data: unknown, token: string): FrameToParent |
       return isRequestId(data.requestId) && isAssetName(data.name)
         ? { token, type: 'asset-request', requestId: data.requestId, name: data.name }
         : null;
+    case 'draw':
+      return isRequestId(data.id) && (data.state === 'start' || data.state === 'end')
+        ? { token, type: 'draw', id: data.id, state: data.state }
+        : null;
     case 'error': {
       if (!isFrameErrorCode(data.code)) return null;
       const detail = typeof data.detail === 'string' ? data.detail.slice(0, MAX_ERROR_DETAIL_LENGTH) : undefined;

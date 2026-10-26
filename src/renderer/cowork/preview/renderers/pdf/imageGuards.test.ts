@@ -161,6 +161,7 @@ function context(): RendererContext {
     progress: vi.fn(),
     openZip: vi.fn(),
     requestAsset: vi.fn(async () => null),
+    beginDraw: vi.fn(() => () => undefined),
   };
 }
 

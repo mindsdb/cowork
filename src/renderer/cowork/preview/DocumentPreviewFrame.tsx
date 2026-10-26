@@ -7,10 +7,12 @@
  *
  * With no ready within readyTimeoutMs, or no message from the frame for
  * progressTimeoutMs, it removes the frame and reports timeout; the policy
- * never changes. A frame that loads a second time was navigated or reloaded,
- * so it is rebuilt with a new token, at most once per mount; a third load
- * removes it and reports internal. An error the frame reports leaves the frame
- * in place, so the caller decides what replaces it.
+ * never changes. Each draw the frame reports gets its own progressTimeoutMs,
+ * before or after rendered, and one that hasn't ended by then removes the
+ * frame with timeout too. A frame that loads a second time was navigated or
+ * reloaded, so it is rebuilt with a new token, at most once per mount; a
+ * third load removes it and reports internal. An error the frame reports
+ * leaves the frame in place, so the caller decides what replaces it.
  */
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -41,6 +43,11 @@ interface FrameMount {
   rebuilt: boolean;
 }
 
+/* The PDF preview runs at most maxPdfCanvasesAlive draws at once, plus the
+   cancelled ones still settling, so a frame that reports more open draws
+   than this is removed with internal rather than given a timer for each. */
+export const MAX_OPEN_DRAWS = 64;
+
 export function DocumentPreviewFrame({
   previewType,
   bytes,
@@ -68,9 +75,14 @@ export function DocumentPreviewFrame({
     if (!iframe || removed) return undefined;
     const { token } = mount;
     let channel: MessageChannel | null = null;
+    /* Settled: the frame reported rendered or an error, or it ended, so the
+       ready and progress watchdogs are done. Ended: it failed, was removed or
+       unmounted, so its draws no longer count either. */
     let settled = false;
+    let ended = false;
     let loads = 0;
     let progressTimer: number | undefined;
+    const drawTimers = new Map<number, number>();
     const readyTimer = window.setTimeout(() => remove('timeout'), limits.readyTimeoutMs);
     const stopTimers = () => {
       window.clearTimeout(readyTimer);
@@ -86,12 +98,32 @@ export function DocumentPreviewFrame({
       stopTimers();
       return true;
     };
-    /* The parent's own failures remove the frame. */
+    const end = () => {
+      if (ended) return false;
+      ended = true;
+      settle();
+      for (const timer of drawTimers.values()) window.clearTimeout(timer);
+      drawTimers.clear();
+      return true;
+    };
+    /* The parent's own failures remove the frame, after rendered too. */
     function remove(code: PreviewErrorCode, detail?: string) {
-      if (!settle()) return;
+      if (!end()) return;
       setRemoved(true);
       handlers.current.onError(code, detail);
     }
+    const startDraw = (id: number) => {
+      if (drawTimers.has(id)) return;
+      if (drawTimers.size >= MAX_OPEN_DRAWS) {
+        remove('internal', 'The preview frame reported more open draws than a renderer runs.');
+        return;
+      }
+      drawTimers.set(id, window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs));
+    };
+    const endDraw = (id: number) => {
+      window.clearTimeout(drawTimers.get(id));
+      drawTimers.delete(id);
+    };
     const answerAsset = async (port: MessagePort, requestId: number, name: string) => {
       const { assets } = bundle;
       let assetBytes: ArrayBuffer | null = null;
@@ -113,11 +145,19 @@ export function DocumentPreviewFrame({
         void answerAsset(port, message.requestId, message.name);
         return;
       }
+      if (message.type === 'draw') {
+        if (ended) return;
+        if (!settled) armProgress();
+        if (message.state === 'start') startDraw(message.id);
+        else endDraw(message.id);
+        return;
+      }
       if (message.type === 'progress') {
         if (!settled) armProgress();
       } else if (message.type === 'rendered') {
         if (settle()) handlers.current.onRendered(message.summary);
       } else if (settle()) {
+        end();
         handlers.current.onError(message.code, message.detail);
       }
     };
@@ -141,7 +181,7 @@ export function DocumentPreviewFrame({
     const onLoad = () => {
       loads += 1;
       if (loads < 2) return;
-      settle();
+      end();
       if (mount.rebuilt) {
         setRemoved(true);
         handlers.current.onError('internal', 'The preview frame loaded again after its rebuild.');
@@ -152,8 +192,7 @@ export function DocumentPreviewFrame({
     window.addEventListener('message', onWindowMessage);
     iframe.addEventListener('load', onLoad);
     return () => {
-      settled = true;
-      stopTimers();
+      end();
       window.removeEventListener('message', onWindowMessage);
       iframe.removeEventListener('load', onLoad);
       channel?.port1.close();

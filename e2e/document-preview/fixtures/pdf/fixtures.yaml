@@ -116,3 +116,25 @@
   expect:
     outcome: error
     errorCode: parse-failed
+
+# One page that draws a Form XObject, which draws the next one ten times,
+# seven forms deep, the last filling ten small boxes: no cycle for pdf.js to
+# refuse, but ten million boxes to fill. The preview opens, then the page's
+# draw outlasts progressTimeoutMs, so the parent's draw watchdog removes the
+# frame. pdf-draws.spec.ts runs these two, in full Chromium.
+- name: seven nested forms that fan out
+  file: nested-forms-7.pdf
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    laterErrorCode: timeout
+
+# The same, eight forms deep: a hundred million boxes.
+- name: eight nested forms that fan out
+  file: nested-forms-8.pdf
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    laterErrorCode: timeout

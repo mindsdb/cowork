@@ -5,11 +5,13 @@
  * test-only navigation bundle for 'navigation', and the app's generated
  * registry for a document type. It resolves with the frame's outcome, and the
  * frame stays mounted until the next open(), unless the watchdog removed it.
+ * laterError() returns the error the frame of the last open() reported after
+ * that outcome, which the parent's draw watchdog raises, or null.
  */
 import { createRoot } from 'react-dom/client';
 import navigationBundle from 'virtual:navigation-preview-bundle';
 
-import type { DocumentPreviewType } from '../../src/renderer/cowork/preview/contract';
+import type { DocumentPreviewType, PreviewErrorCode } from '../../src/renderer/cowork/preview/contract';
 import { DocumentPreviewFrame } from '../../src/renderer/cowork/preview/DocumentPreviewFrame';
 import { previewBundles } from '../../src/renderer/cowork/preview/generated/registry';
 import { PREVIEW_PARENT_LIMITS } from '../../src/renderer/cowork/preview/limits';
@@ -25,6 +27,7 @@ interface SetBundle {
 
 const root = createRoot(document.getElementById('root')!);
 let mountCount = 0;
+let laterError: PreviewErrorCode | null = null;
 
 async function setBundle(set: PreviewFixtureSet): Promise<SetBundle> {
   if (set === 'navigation') {
@@ -38,6 +41,7 @@ async function setBundle(set: PreviewFixtureSet): Promise<SetBundle> {
 
 async function open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcome> {
   root.render(null);
+  laterError = null;
   const response = await fetch(`/fixtures/${set}/${file}`);
   if (!response.ok) throw new Error(`No fixture at /fixtures/${set}/${file} (${response.status}).`);
   let bytes: ArrayBuffer;
@@ -49,7 +53,13 @@ async function open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcom
   }
   const { previewType, bundle } = await setBundle(set);
   mountCount += 1;
+  const mount = mountCount;
+  let reported = false;
   return new Promise((resolve) => {
+    const report = (outcome: HarnessOutcome) => {
+      reported = true;
+      resolve(outcome);
+    };
     root.render(
       <DocumentPreviewFrame
         key={mountCount}
@@ -57,11 +67,14 @@ async function open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcom
         bytes={bytes}
         bundle={bundle}
         title={`Preview of ${file}`}
-        onRendered={(summary) => resolve({ outcome: 'rendered', summary })}
-        onError={(errorCode) => resolve({ outcome: 'error', errorCode })}
+        onRendered={(summary) => report({ outcome: 'rendered', summary })}
+        onError={(errorCode) => {
+          if (!reported) report({ outcome: 'error', errorCode });
+          else if (mount === mountCount) laterError = errorCode;
+        }}
       />,
     );
   });
 }
 
-window.coworkPreviewHarness = { open };
+window.coworkPreviewHarness = { open, laterError: () => laterError };

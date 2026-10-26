@@ -148,6 +148,7 @@ function context(limits: Partial<PreviewLimits> = {}, signal = new AbortControll
     progress: vi.fn(),
     openZip: vi.fn(),
     requestAsset: vi.fn(),
+    beginDraw: vi.fn(() => () => undefined),
   };
 }
 

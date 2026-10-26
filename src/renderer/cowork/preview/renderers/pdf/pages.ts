@@ -7,7 +7,7 @@
  */
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-import type { PreviewLimits } from '../../contract';
+import type { PreviewLimits, RendererContext } from '../../contract';
 import { previewError } from '../../errors';
 
 /* PDF points to CSS pixels: 72 points and 96 CSS pixels each make one inch. */
@@ -117,6 +117,7 @@ export class PdfPages {
     private readonly pdf: PDFDocumentProxy,
     root: HTMLElement,
     private readonly limits: PreviewLimits,
+    private readonly beginDraw: RendererContext['beginDraw'],
   ) {
     const style = document.createElement('style');
     style.textContent = PAGE_STYLES;
@@ -213,6 +214,8 @@ export class PdfPages {
     return pageCanvasSize(box, cssWidth, window.devicePixelRatio || 1, this.limits.maxPdfCanvasPixels);
   }
 
+  /* Each draw runs under the parent's draw watchdog, so a page whose draw
+     never ends removes the preview with timeout instead of leaving it blank. */
   async #draw(number: number): Promise<void> {
     const slot = this.#slots.get(number);
     if (!slot) return;
@@ -224,12 +227,14 @@ export class PdfPages {
     slot.element.append(canvas);
     slot.canvas = canvas;
     const task = page.render({ canvas, viewport: page.getViewport({ scale: size.scale }) });
+    const endDraw = this.beginDraw();
     slot.task = task;
     try {
       await task.promise;
     } catch {
       /* A cancelled or failed draw leaves the page blank. */
     } finally {
+      endDraw();
       if (slot.task === task) slot.task = null;
       if (!this.#window.isDrawn(number)) page.cleanup();
     }
