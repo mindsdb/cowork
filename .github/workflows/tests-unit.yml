@@ -62,7 +62,9 @@ jobs:
         shell: pwsh
         run: |
           $saved = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\removed-roots"
-          foreach ($store in 'Root', 'AuthRoot') {
+          # Hosted images keep these roots in Root on some runs and AuthRoot on
+          # others. The Root view includes AuthRoot, so AuthRoot goes first.
+          foreach ($store in 'AuthRoot', 'Root') {
             foreach ($root in 'D69B561148F01C77C54578C10926DF5B856976AD', 'CABD2A79A1076A31F21D253635CB039D4329A5E8') {
               $path = "Cert:\LocalMachine\$store\$root"
               if (Test-Path $path) {
