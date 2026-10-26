@@ -47,10 +47,51 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install the supported resolver and fixture packaging library
-        run: python -m pip install uv==0.7.22 packaging==26.0
-      - name: Verify release installs, rollback and controlled-index failures
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Windows'
+        with:
+          node-version: 22
+      - name: Install the supported resolver and the fixture packaging and TLS libraries
+        run: python -m pip install uv==0.7.22 packaging==26.0 cryptography==50.0.2
+      - name: Verify release installs, rollback, controlled-index failures and download trust
         run: python -m unittest discover -s scripts -p test_install_release_server.py -v
+      # pip, or any Windows HTTPS client, would download these roots again, so
+      # the trim runs after every step that reaches PyPI or GitHub.
+      - name: Remove the roots a fresh Windows downloads only on demand
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $saved = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\removed-roots"
+          # Hosted images keep these roots in Root on some runs and AuthRoot on
+          # others. The Root view includes AuthRoot, so AuthRoot goes first.
+          foreach ($store in 'AuthRoot', 'Root') {
+            foreach ($root in 'D69B561148F01C77C54578C10926DF5B856976AD', 'CABD2A79A1076A31F21D253635CB039D4329A5E8') {
+              $path = "Cert:\LocalMachine\$store\$root"
+              if (Test-Path $path) {
+                Export-Certificate -Cert $path -FilePath "$saved\$store-$root.cer" | Out-Null
+                Remove-Item $path
+                "Removed $root from LocalMachine\$store"
+              }
+            }
+          }
+      - name: Verify real downloads on that store, without and with the runtime's roots
+        if: runner.os == 'Windows'
+        env:
+          COWORK_PUBLIC_ROOTS: ${{ runner.temp }}\public-roots.pem
+        run: |
+          node -e "require('fs').writeFileSync(process.env.COWORK_PUBLIC_ROOTS, require('tls').rootCertificates.join('\n') + '\n')"
+          python -m unittest discover -s scripts -p test_install_release_server.py -k WindowsStoreTests -v
+      # The runner reports the finished job over HTTPS through the same store;
+      # without these roots it can't, and GitHub cancels the job.
+      - name: Restore the removed roots
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:RUNNER_TEMP\removed-roots" -Filter *.cer -ErrorAction SilentlyContinue | ForEach-Object {
+            $store = $_.BaseName.Split('-')[0]
+            Import-Certificate -FilePath $_.FullName -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+            "Restored $($_.BaseName)"
+          }
 
   nginx-logging:
     runs-on: ubuntu-latest
