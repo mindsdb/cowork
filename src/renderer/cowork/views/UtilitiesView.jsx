@@ -25,6 +25,8 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_SHORT_NAME } from '../../../shared/product-name';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -120,6 +122,10 @@ function memoryScopeLabel(memory, projects) {
   return `Project · ${projectLabelByName(projects, memory.projectName)}`;
 }
 
+// A deployment's brand names the product on the pages where memory is a
+// person's own, so the copy below reads it instead of saying Cowork.
+const PRODUCT_NAME = productName(STOCK_SHORT_NAME);
+
 /* Why an entry can't be edited. Memory that is the person's own but only
    deletable is memory their agent saves on its own: the server lets nobody
    hand-write it there. */
@@ -132,8 +138,8 @@ function memoryReadOnlyCopy(memory) {
   }
   if (canUseSharedResource(memory, 'canDelete')) {
     return {
-      note: 'Yours alone. Cowork saves this on its own as you work, so it can\'t be edited. You can delete it.',
-      editTitle: 'Cowork saves this memory on its own, so it can\'t be edited.',
+      note: `Yours alone. ${PRODUCT_NAME} saves this on its own as you work, so it can't be edited. You can delete it.`,
+      editTitle: `${PRODUCT_NAME} saves this memory on its own, so it can't be edited.`,
     };
   }
   return {
@@ -144,7 +150,7 @@ function memoryReadOnlyCopy(memory) {
 
 const RESET_CONFIRM_COPY = {
   title: 'Reset your memory?',
-  message: 'This deletes everything Cowork has learned for you: your profile, rules and lessons, in every project of yours. Your next question starts with nothing learned. The deployment\'s rules stay. This can\'t be undone.',
+  message: `This deletes everything ${PRODUCT_NAME} has learned for you: your profile, rules and lessons, in every project of yours. Your next question starts with nothing learned. The deployment's rules stay. This can't be undone.`,
   confirmLabel: 'Reset my memory',
 };
 
