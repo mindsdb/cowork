@@ -22,7 +22,7 @@ import type {
 import { previewError } from '../errors';
 import { previewLimits } from '../limits';
 import { guardArchive } from './archiveGuard';
-import { frameErrorCode } from './errors';
+import { frameFailure } from './errors';
 import {
   isPreviewToken,
   MAX_ERROR_DETAIL_LENGTH,
@@ -136,7 +136,7 @@ async function renderDocument(session: FrameSession, previewType: DocumentPrevie
     }
     post({ token, type: 'rendered', summary });
   } catch (error) {
-    post({ token, type: 'error', code: frameErrorCode(error), detail: errorDetail(error) });
+    post({ token, type: 'error', ...frameFailure(error), detail: errorDetail(error) });
   }
 }
 

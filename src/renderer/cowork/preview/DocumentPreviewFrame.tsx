@@ -6,8 +6,8 @@
  * the file's bytes over it. It checks the token, never event.source.
  *
  * With no ready within readyTimeoutMs, or no message from the frame for
- * progressTimeoutMs, it removes the frame and reports timeout; the policy
- * never changes. A frame that loads a second time was navigated or reloaded,
+ * progressTimeoutMs, it removes the frame and reports timeout, naming the
+ * watchdog that fired; the policy never changes. A frame that loads a second time was navigated or reloaded,
  * so it is rebuilt with a new token, at most once per mount; a third load
  * removes it and reports internal. An error the frame reports leaves the frame
  * in place, so the caller decides what replaces it.
@@ -19,6 +19,8 @@ import type {
   ParentPort,
   ParentToFrame,
   PreviewErrorCode,
+  PreviewFailure,
+  PreviewFailureLimit,
   RenderSummary,
 } from './contract';
 import { buildPreviewSrcdoc, PREVIEW_FRAME_NAME, PREVIEW_SANDBOX, previewFramePolicy } from './frameDocument';
@@ -33,7 +35,7 @@ export interface DocumentPreviewFrameProps {
   title: string;
   limits?: Readonly<PreviewParentLimits>;
   onRendered(summary: RenderSummary): void;
-  onError(code: PreviewErrorCode, detail?: string): void;
+  onError(failure: PreviewFailure): void;
 }
 
 interface FrameMount {
@@ -71,14 +73,14 @@ export function DocumentPreviewFrame({
     let settled = false;
     let loads = 0;
     let progressTimer: number | undefined;
-    const readyTimer = window.setTimeout(() => remove('timeout'), limits.readyTimeoutMs);
+    const readyTimer = window.setTimeout(() => remove('timeout', 'readyTimeoutMs'), limits.readyTimeoutMs);
     const stopTimers = () => {
       window.clearTimeout(readyTimer);
       window.clearTimeout(progressTimer);
     };
     const armProgress = () => {
       window.clearTimeout(progressTimer);
-      progressTimer = window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs);
+      progressTimer = window.setTimeout(() => remove('timeout', 'progressTimeoutMs'), limits.progressTimeoutMs);
     };
     const settle = () => {
       if (settled) return false;
@@ -87,10 +89,10 @@ export function DocumentPreviewFrame({
       return true;
     };
     /* The parent's own failures remove the frame. */
-    function remove(code: PreviewErrorCode, detail?: string) {
+    function remove(code: PreviewErrorCode, limit: PreviewFailureLimit) {
       if (!settle()) return;
       setRemoved(true);
-      handlers.current.onError(code, detail);
+      handlers.current.onError({ code, limit });
     }
     const answerAsset = async (port: MessagePort, requestId: number, name: string) => {
       const { assets } = bundle;
@@ -118,7 +120,7 @@ export function DocumentPreviewFrame({
       } else if (message.type === 'rendered') {
         if (settle()) handlers.current.onRendered(message.summary);
       } else if (settle()) {
-        handlers.current.onError(message.code, message.detail);
+        handlers.current.onError({ code: message.code, limit: message.limit, detail: message.detail });
       }
     };
     const onWindowMessage = (event: MessageEvent) => {
@@ -144,7 +146,7 @@ export function DocumentPreviewFrame({
       settle();
       if (mount.rebuilt) {
         setRemoved(true);
-        handlers.current.onError('internal', 'The preview frame loaded again after its rebuild.');
+        handlers.current.onError({ code: 'internal', detail: 'The preview frame loaded again after its rebuild.' });
         return;
       }
       setMount({ token: newPreviewToken(), rebuilt: true });

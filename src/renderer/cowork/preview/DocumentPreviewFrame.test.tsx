@@ -175,8 +175,30 @@ describe('the handshake', () => {
     const { port } = handshake(iframe);
     port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'parse-failed', detail: 'bad sheet' });
     await tick();
-    expect(props.onError).toHaveBeenCalledWith('parse-failed', 'bad sheet');
+    expect(props.onError).toHaveBeenCalledWith({ code: 'parse-failed', detail: 'bad sheet' });
     expect(frames(container)).toHaveLength(1);
+  });
+
+  it('reports too-large from the frame with the renderer limit it names', async () => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit: 'maxDocxNodes' });
+    await tick();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'too-large', limit: 'maxDocxNodes' });
+  });
+
+  it.each([
+    { label: 'no limit', limit: undefined },
+    { label: "the parent's byte cap", limit: 'maxBytes' },
+    { label: 'a name that is no limit', limit: 'toString' },
+  ])('drops a too-large from the frame that names $label', async ({ limit }) => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit });
+    await tick();
+    expect(props.onError).not.toHaveBeenCalled();
   });
 });
 
@@ -187,7 +209,7 @@ describe('the watchdogs', () => {
     act(() => { vi.advanceTimersByTime(PREVIEW_PARENT_LIMITS.readyTimeoutMs - 1); });
     expect(props.onError).not.toHaveBeenCalled();
     act(() => { vi.advanceTimersByTime(1); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'readyTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -206,7 +228,7 @@ describe('the watchdogs', () => {
     expect(props.onError).not.toHaveBeenCalled();
 
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
     expect(srcdoc.startsWith(`<meta http-equiv="Content-Security-Policy" content="${previewFramePolicy(HASH)}">`)).toBe(true);
   });
@@ -227,7 +249,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -253,7 +275,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     expect(frames(container)).toHaveLength(0);
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
   });
 
   it('drops the old token after the rebuild', () => {

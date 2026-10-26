@@ -56,6 +56,7 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture, gridText: strin
   expect(run.outcome).toBe(want.outcome);
   if (want.outcome === 'rendered') expect(run.summary?.type).toBe('xlsx');
   if (want.errorCode !== undefined) expect(run.errorCode).toBe(want.errorCode);
+  if (want.errorLimit !== undefined) expect(run.errorLimit).toBe(want.errorLimit);
   if (want.units !== undefined) expect(run.summary?.units).toBe(want.units);
   if (want.minUnits !== undefined) expect(run.summary?.units).toBeGreaterThanOrEqual(want.minUnits);
   if (want.truncated !== undefined) expect(run.summary?.truncated).toBe(want.truncated);

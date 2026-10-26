@@ -13,7 +13,7 @@ import type {
   ParentToFrame,
   RenderSummary,
 } from '../contract';
-import { isFrameErrorCode } from './errors';
+import { readFrameFailure } from './errors';
 
 /* The meta buildPreviewSrcdoc writes the token into, and the frame removes. */
 export const PREVIEW_TOKEN_META_NAME = 'cowork-preview-token';
@@ -109,9 +109,10 @@ export function readFrameToParent(data: unknown, token: string): FrameToParent |
         ? { token, type: 'asset-request', requestId: data.requestId, name: data.name }
         : null;
     case 'error': {
-      if (!isFrameErrorCode(data.code)) return null;
+      const failure = readFrameFailure(data.code, data.limit);
+      if (!failure) return null;
       const detail = typeof data.detail === 'string' ? data.detail.slice(0, MAX_ERROR_DETAIL_LENGTH) : undefined;
-      return { token, type: 'error', code: data.code, ...(detail === undefined ? {} : { detail }) };
+      return { token, type: 'error', ...failure, ...(detail === undefined ? {} : { detail }) };
     }
     default:
       return null;

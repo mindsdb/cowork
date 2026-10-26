@@ -1,5 +1,7 @@
 export type DocumentPreviewType = 'xlsx' | 'docx' | 'pptx' | 'pdf';
 
+/* Every cap a document preview enforces. limits.json holds their values, so
+   documentation that publishes them reads that one file. */
 export interface PreviewLimits {
   maxBytes: number;                 // 32 MiB, counted while streaming
   maxInflatedBytes: number;         // 256 MiB
@@ -7,14 +9,33 @@ export interface PreviewLimits {
   maxZipEntries: number;            // 10,000
   maxSheetRows: number;             // 2,000
   maxSheetColumns: number;          // 200
+  maxSheets: number;                // 256 sheets get a tab; past it the summary says truncated: true
+  maxSheetCellCharacters: number;   // 1,000 characters a cell shows, then an ellipsis
+  maxNumberFormatLength: number;    // 255, Excel's own cap; a cell with a longer format shows its General text
+  maxDocxNodes: number;             // 2,097,152 nodes a Word preview may build; past it the preview ends in too-large
+  maxDocxFontUrlCharacters: number; // 16,777,216 characters of embedded fonts' data: URLs; fonts past it show in a fallback font
+  maxPicturePixels: number;         // 67,108,864 decoded pixels in one picture, in Word, slides and PDF; a larger one isn't drawn
   maxPdfPages: number;              // 500; past it the summary says truncated: true
   maxPdfCanvasPixels: number;       // 16,777,216 per page canvas; 4,194,304 on touch devices
+  maxPdfCanvasSide: number;         // 16,384 pixels on either side of a page canvas
   maxPdfCanvasesAlive: number;      // 6 page canvases drawn at once
   maxSlides: number;                // 300
   maxSlideElements: number;         // 100,000 read across the deck; past it the summary says truncated: true
   readyTimeoutMs: number;           // 10,000
   progressTimeoutMs: number;        // 20,000
 }
+
+/* The caps whose breach ends a preview, rather than cutting it short or
+   leaving a part out. A failure past one names it, so the note can say which
+   limit the file passed. */
+export type PreviewFailureLimit =
+  | 'maxBytes'
+  | 'readyTimeoutMs'
+  | 'progressTimeoutMs'
+  | 'maxInflatedBytes'
+  | 'maxZipEntryInflatedBytes'
+  | 'maxZipEntries'
+  | 'maxDocxNodes';
 
 /* What `units` counts for each type:
    - xlsx: the sheets shown as tabs.
@@ -31,8 +52,9 @@ export interface PreviewLimits {
    - docx: always 1, the one rendered document. */
 export interface RenderSummary { type: DocumentPreviewType; units: number; truncated: boolean }
 
-/* Who raises each code:
-   - too-large: the parent, when the streamed fetch passes maxBytes.
+/* Who raises each code, and the limit it names:
+   - too-large: the parent, when the streamed fetch passes maxBytes; and a
+     renderer, past a cap on what it would build, maxDocxNodes.
    - timeout: the parent, when the frame misses readyTimeoutMs or
      progressTimeoutMs.
    - zip-limit: the runtime's archive guard, past maxInflatedBytes,
@@ -48,9 +70,14 @@ export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'uns
 /* render() fails with a code by rejecting with a PreviewError. errors.ts, the
    one shared helper for preview errors, builds one with previewError and
    recognizes one with isPreviewError. The runtime reports any other rejection
-   as internal. A PreviewError whose code the frame doesn't own (too-large,
-   timeout) is reported as internal too. */
-export interface PreviewError extends Error { code: PreviewErrorCode }
+   as internal. A PreviewError the frame may not raise is reported as internal
+   too: timeout, and too-large without a limit the frame owns (runtime/
+   errors.ts). `limit` names the cap it passed, for the codes above that name
+   one. */
+export interface PreviewError extends Error { code: PreviewErrorCode; limit?: PreviewFailureLimit }
+
+/* How a preview ended when it didn't render, as the parent shows it. */
+export interface PreviewFailure { code: PreviewErrorCode; limit?: PreviewFailureLimit; detail?: string }
 
 export interface GuardedZip {
   names(): readonly string[];
@@ -107,4 +134,4 @@ export type FrameToParent =
   | { token: string; type: 'progress'; done: number; total: number | null }
   | { token: string; type: 'rendered'; summary: RenderSummary }
   | { token: string; type: 'asset-request'; requestId: number; name: string }
-  | { token: string; type: 'error'; code: PreviewErrorCode; detail?: string };
+  | { token: string; type: 'error'; code: PreviewErrorCode; detail?: string; limit?: PreviewFailureLimit };

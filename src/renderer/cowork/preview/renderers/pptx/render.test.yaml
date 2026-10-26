@@ -481,15 +481,15 @@ cases:
       placeholders: [picture]
       images: 0
 
-  # A picture may declare ctx.limits.maxInflatedBytes / 4 pixels. The 16 by 9
-  # PNG's 144 pixels fit 576 bytes and not 575.
+  # A picture may declare ctx.limits.maxPicturePixels pixels. The 16 by 9
+  # PNG's 144 pixels fit a cap of 144 and not 143.
   - name: a picture at the pixel budget ctx.limits sets
     deck:
       images: { shown.png: *png }
       slides:
         - shapes:
             - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
-    limits: { maxInflatedBytes: 576 }
+    limits: { maxPicturePixels: 144 }
     expect:
       units: 1
       placeholders: []
@@ -501,7 +501,7 @@ cases:
       slides:
         - shapes:
             - { kind: picture, box: [0, 0, 3048000, 1714500], image: shown.png }
-    limits: { maxInflatedBytes: 575 }
+    limits: { maxPicturePixels: 143 }
     expect:
       units: 1
       placeholders: [picture]

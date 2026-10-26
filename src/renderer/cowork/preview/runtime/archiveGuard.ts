@@ -71,6 +71,12 @@ import { isPreviewError, previewError } from '../errors';
 
 export type ArchiveLimits = Pick<PreviewLimits, 'maxInflatedBytes' | 'maxZipEntryInflatedBytes' | 'maxZipEntries'>;
 
+/* The cap an entry's inflate counts against, and what passing it says. */
+interface InflateLimit {
+  limit: 'maxInflatedBytes' | 'maxZipEntryInflatedBytes';
+  message: string;
+}
+
 export interface ArchiveGuardOptions {
   limits: ArchiveLimits;
   signal: AbortSignal;
@@ -152,7 +158,7 @@ function centralSignatureCount(bytes: Uint8Array, stopAfter: number): number {
 }
 
 function tooManyEntries(limits: ArchiveLimits): PreviewError {
-  return previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`);
+  return previewError('zip-limit', `The archive lists more than ${limits.maxZipEntries} entries.`, { limit: 'maxZipEntries' });
 }
 
 /* Reads the central directory records from `offset` to `end`, the way JSZip
@@ -352,14 +358,14 @@ function inputPieces(data: Uint8Array<ArrayBuffer>): ReadableStream<BufferSource
 
 /*
  * Inflates one entry's data and returns how many bytes came out. It rejects
- * with zip-limit, carrying `limitMessage`, once the count passes `cap`,
- * without inflating the rest. It rejects with parse-failed when the deflate
+ * with zip-limit, naming `over.limit` and carrying `over.message`, once the
+ * count passes `cap`, without inflating the rest. It rejects with parse-failed when the deflate
  * stream is cut short, which is how a stream that runs past the entry's
  * stated compressed size shows.
  */
-async function inflatedSize({ record, data }: CheckedEntry, cap: number, limitMessage: string, signal: AbortSignal): Promise<number> {
+async function inflatedSize({ record, data }: CheckedEntry, cap: number, over: InflateLimit, signal: AbortSignal): Promise<number> {
   if (record.method === STORED) {
-    if (data.length > cap) throw previewError('zip-limit', limitMessage);
+    if (data.length > cap) throw previewError('zip-limit', over.message, { limit: over.limit });
     return data.length;
   }
   if (record.method !== DEFLATED) throw previewError('parse-failed', 'An archive entry uses an unknown compression method.');
@@ -368,7 +374,7 @@ async function inflatedSize({ record, data }: CheckedEntry, cap: number, limitMe
   try {
     for (let piece = await reader.read(); !piece.done; piece = await reader.read()) {
       size += piece.value.length;
-      if (size > cap) throw previewError('zip-limit', limitMessage);
+      if (size > cap) throw previewError('zip-limit', over.message, { limit: over.limit });
       if (signal.aborted) throw previewError('internal', 'The preview was stopped.');
     }
   } catch (error) {
@@ -423,8 +429,14 @@ export async function guardArchive(bytes: ArrayBuffer, { limits, signal, onEntry
   for (const [index, entry] of entries.entries()) {
     const remaining = limits.maxInflatedBytes - total;
     const size = limits.maxZipEntryInflatedBytes <= remaining
-      ? await inflatedSize(entry, limits.maxZipEntryInflatedBytes, `An entry inflates past ${limits.maxZipEntryInflatedBytes} bytes.`, signal)
-      : await inflatedSize(entry, remaining, `The archive inflates past ${limits.maxInflatedBytes} bytes.`, signal);
+      ? await inflatedSize(entry, limits.maxZipEntryInflatedBytes, {
+        limit: 'maxZipEntryInflatedBytes',
+        message: `An entry inflates past ${limits.maxZipEntryInflatedBytes} bytes.`,
+      }, signal)
+      : await inflatedSize(entry, remaining, {
+        limit: 'maxInflatedBytes',
+        message: `The archive inflates past ${limits.maxInflatedBytes} bytes.`,
+      }, signal);
     if (size !== entry.record.uncompressedSize) {
       throw previewError('parse-failed', 'An archive entry inflates to another size than it states.');
     }

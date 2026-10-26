@@ -37,7 +37,7 @@ interface TransformedPdfjs {
 interface DecodedImage { width: number; height: number }
 
 const LIMITS = previewLimits({ touch: false });
-const IMAGE_CAP = LIMITS.maxInflatedBytes / 4;
+const IMAGE_CAP = LIMITS.maxPicturePixels;
 
 /* A marker segment: its two-byte marker, then a length that counts itself. */
 function segment(marker: number, payload: number[]): number[] {

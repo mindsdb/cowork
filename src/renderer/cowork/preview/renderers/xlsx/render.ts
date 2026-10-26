@@ -10,7 +10,7 @@
  * checking the abort signal between reads. The preview opens on the tab the
  * workbook was saved on when that sheet is visible, else on its first visible
  * sheet. The grid starts at A1 and shows at most maxSheetRows rows and
- * maxSheetColumns columns, and at most MAX_SHEETS sheets get a tab. Every cell
+ * maxSheetColumns columns, and at most maxSheets sheets get a tab. Every cell
  * goes in through textContent, so markup in a cell shows as text and no cell
  * becomes a link. The grid reads each cell's value and number format only,
  * never its formula, hyperlink, comment or rich-text runs, and formats a cell
@@ -41,19 +41,15 @@ const ROWS_PER_BATCH = 100;
    (see laterRuns). Opening a later sheet's tab makes one more read (see
    laterGrid). */
 const MAX_WORKBOOK_READS = 8;
-/* At most this many sheets get a tab, and a workbook with more reports
-   truncated: true. It is a renderer constant for now; a later change to the
-   limits may move it into PreviewLimits. */
-const MAX_SHEETS = 256;
 const ROW_HEADER_WIDTH_PX = 48;
 const COLUMN_WIDTH_PX = 96;
 const ROW_HEIGHT_PX = 22;
-/* Excel's own cap on the length of a number format. SheetJS sets none, and
-   its formatter's time and memory grow with the format's length, so a cell
-   with a longer format shows its General text. */
-const MAX_FORMAT_LENGTH = 255;
-/* A cell shows at most this many characters of its text, then an ellipsis. */
-const MAX_CELL_TEXT = 1_000;
+/* The caps on what one cell shows. maxNumberFormatLength is Excel's own cap
+   on a number format's length. SheetJS sets none, and its formatter's time
+   and memory grow with the format's length, so a cell with a longer format
+   shows its General text. A cell shows at most maxSheetCellCharacters
+   characters of its text, then an ellipsis. */
+type CellLimits = Pick<PreviewLimits, 'maxNumberFormatLength' | 'maxSheetCellCharacters'>;
 
 /* A zip archive's local file header, and an OLE compound file's header, which
    is how an encrypted .xlsx or an old .xls renamed to .xlsx starts. */
@@ -725,13 +721,13 @@ function columnLabel(index: number): string {
    value in the cell's number format. SheetJS keeps an error cell's text as
    the file wrote it, and the format of a built-in format id the file doesn't
    write out, through the edits build.config.mjs makes to it. A cell whose
-   format runs past MAX_FORMAT_LENGTH, or that has none, shows its General
+   format runs past maxNumberFormatLength, or that has none, shows its General
    text. A format SheetJS can't apply shows the value as it is. */
-function formattedText(cell: CellObject, date1904: boolean): string {
+function formattedText(cell: CellObject, date1904: boolean, limits: CellLimits): string {
   if (cell.t === 'e') return typeof cell.w === 'string' && cell.w !== '' ? cell.w : UNKNOWN_ERROR;
   if (cell.t === 'b') return cell.v ? 'TRUE' : 'FALSE';
   if (cell.v === undefined) return '';
-  const format = typeof cell.z === 'string' && cell.z.length <= MAX_FORMAT_LENGTH ? cell.z : 'General';
+  const format = typeof cell.z === 'string' && cell.z.length <= limits.maxNumberFormatLength ? cell.z : 'General';
   try {
     return numberFormatter.format(format, cell.v, { date1904 });
   } catch {
@@ -739,12 +735,13 @@ function formattedText(cell: CellObject, date1904: boolean): string {
   }
 }
 
-/* The text a cell shows, cut at MAX_CELL_TEXT characters. appendRows calls it
-   for the cells in the grid only, a batch at a time. */
-function cellText(cell: CellObject | undefined, date1904: boolean): string {
+/* The text a cell shows, cut at maxSheetCellCharacters characters. appendRows
+   calls it for the cells in the grid only, a batch at a time. */
+function cellText(cell: CellObject | undefined, date1904: boolean, limits: CellLimits): string {
   if (!cell) return '';
-  const text = formattedText(cell, date1904);
-  return text.length > MAX_CELL_TEXT ? `${text.slice(0, MAX_CELL_TEXT)}…` : text;
+  const text = formattedText(cell, date1904, limits);
+  const max = limits.maxSheetCellCharacters;
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
@@ -782,7 +779,7 @@ function gridShell(view: SheetView): Grid {
 
 /* Appends rows from to to as one block: a table of their own with the grid's
    column widths. */
-function appendRows(grid: Grid, view: SheetView, from: number, to: number): void {
+function appendRows(grid: Grid, view: SheetView, from: number, to: number, limits: CellLimits): void {
   const body = element('tbody');
   for (let r = from; r < to; r += 1) {
     const row = element('tr');
@@ -794,7 +791,7 @@ function appendRows(grid: Grid, view: SheetView, from: number, to: number): void
     for (let c = 0; c < view.columnCount; c += 1) {
       const cell = cells?.[c];
       const td = element('td', cell?.t === 'n' ? 'xlsx-number' : undefined);
-      td.textContent = cellText(cell, view.date1904);
+      td.textContent = cellText(cell, view.date1904, limits);
       row.append(td);
     }
     body.append(row);
@@ -849,7 +846,7 @@ function startSheet(workbook: WorkbookFacts, shown: number): number {
 
 /* What readSheets gives: the index and view of the sheet the preview opens
    on, for building its grid, the info of every sheet that gets a tab, in sheet
-   order, whether the workbook has sheets past MAX_SHEETS, and whether it was
+   order, whether the workbook has sheets past maxSheets, and whether it was
    saved uncalculated: a sheet that gets a tab holds a formula, and the
    workbook asks to be calculated when it opens or the formula has no value
    (see holdsUncalculatedFormula). */
@@ -886,15 +883,15 @@ async function readFirstSheet(bytes: Uint8Array, ctx: RendererContext): Promise<
   await nextTask();
   ctx.signal.throwIfAborted();
   const run = readRun(bytes, [0], ctx.limits);
-  const shown = Math.min(run.names.length, MAX_SHEETS);
+  const shown = Math.min(run.names.length, ctx.limits.maxSheets);
   const start = startSheet(run.workbook, shown);
   return { run, shown, start, facts: await sheetPartFacts(archive, run.workbook, shown, start, ctx) };
 }
 
 /* Reads every sheet that gets a tab: the first sheet (see readFirstSheet),
    then the sheet the preview opens on alone if that is another one, then the
-   others up to MAX_SHEETS in runs (see laterRuns), keeping only their info.
-   Sheets past MAX_SHEETS are never parsed. Before each later read it reports
+   others up to maxSheets in runs (see laterRuns), keeping only their info.
+   Sheets past maxSheets are never parsed. Before each later read it reports
    the sheets read so far and stops once the signal aborts. A sheet that shows
    no rows is checked for a drawing. A workbook whose every sheet is
    unreadable fails with parse-failed, since it has nothing to show. */
@@ -934,7 +931,7 @@ async function buildStartGrid(view: SheetView, ctx: RendererContext): Promise<HT
     if (from > 0) await nextTask();
     ctx.signal.throwIfAborted();
     const to = Math.min(from + ROWS_PER_BATCH, view.rowCount);
-    appendRows(grid, view, from, to);
+    appendRows(grid, view, from, to, ctx.limits);
     ctx.progress(to, view.rowCount);
   }
   return grid.root;
@@ -943,13 +940,13 @@ async function buildStartGrid(view: SheetView, ctx: RendererContext): Promise<HT
 /* Appends a later sheet's rows in batches: the first batch at once, then one
    batch per task while keepBuilding() holds. Nothing waits on it, since the
    tab opened after render() resolved. */
-async function appendLaterRows(grid: Grid, view: SheetView, keepBuilding: () => boolean): Promise<void> {
+async function appendLaterRows(grid: Grid, view: SheetView, limits: CellLimits, keepBuilding: () => boolean): Promise<void> {
   for (let from = 0; from < view.rowCount; from += ROWS_PER_BATCH) {
     if (from > 0) {
       await nextTask();
       if (!keepBuilding()) return;
     }
-    appendRows(grid, view, from, Math.min(from + ROWS_PER_BATCH, view.rowCount));
+    appendRows(grid, view, from, Math.min(from + ROWS_PER_BATCH, view.rowCount), limits);
   }
 }
 
@@ -971,7 +968,7 @@ function laterGrid(bytes: Uint8Array, sheet: SheetInfo, index: number, ctx: Rend
   }
   if (view.rowCount === 0) return emptySheet(sheet);
   const grid = gridShell(view);
-  void appendLaterRows(grid, view, () => isOpen() && !ctx.signal.aborted);
+  void appendLaterRows(grid, view, ctx.limits, () => isOpen() && !ctx.signal.aborted);
   return grid.root;
 }
 

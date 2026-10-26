@@ -70,6 +70,7 @@ function expectOutcome(run: PreviewRun, fixture: PreviewFixture): void {
   expect(run.outcome).toBe(want.outcome);
   if (want.outcome === 'rendered') expect(run.summary?.type).toBe('pdf');
   if (want.errorCode !== undefined) expect(run.errorCode).toBe(want.errorCode);
+  if (want.errorLimit !== undefined) expect(run.errorLimit).toBe(want.errorLimit);
   if (want.units !== undefined) expect(run.summary?.units).toBe(want.units);
   if (want.minUnits !== undefined) expect(run.summary?.units).toBeGreaterThanOrEqual(want.minUnits);
   if (want.truncated !== undefined) expect(run.summary?.truncated).toBe(want.truncated);

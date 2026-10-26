@@ -31,7 +31,8 @@ export type PdfDocumentParams = NonNullable<Parameters<typeof getDocument>[0]>;
  * getDocument's options. No cMapUrl, standardFontDataUrl, wasmUrl or iccUrl,
  * so pdf.js builds no URL to fetch; CMaps and fonts come through
  * BinaryDataFactory by name. maxImageSize caps one image's decoded pixels at
- * the inflate budget over 4 bytes a pixel. pdf.js's
+ * maxPicturePixels, the cap the Word and slide previews put on a picture.
+ * pdf.js's
  * PartialEvaluator.buildPaintImageXObject checks it against the Width and
  * Height in the image's dictionary. The guards build.config.mjs adds to the
  * JPEG and JPEG 2000 decoders check it against the size in the image's own
@@ -49,7 +50,7 @@ export function pdfDocumentParams(bytes: ArrayBuffer, ctx: RendererContext): Pdf
     useSystemFonts: false,
     useWasm: false,
     enableXfa: false,
-    maxImageSize: Math.floor(ctx.limits.maxInflatedBytes / BYTES_PER_PIXEL),
+    maxImageSize: ctx.limits.maxPicturePixels,
     canvasMaxAreaInBytes: ctx.limits.maxPdfCanvasPixels * BYTES_PER_PIXEL,
   };
 }

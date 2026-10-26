@@ -9,7 +9,7 @@ import { previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
 import { cleanRenderedNodes, keepLinksInPage } from './clean';
 import { dataUrlHead, declaredImageSize } from './imageSize';
-import { estimateOutputNodes, outputNodeBudget } from './outputSize';
+import { estimateOutputNodes } from './outputSize';
 
 /*
  * docx-preview's defaults put altChunk HTML in an unsandboxed iframe and hand
@@ -60,9 +60,6 @@ function isCompoundFile(bytes: ArrayBuffer): boolean {
   return head.length === COMPOUND_FILE_SIGNATURE.length && COMPOUND_FILE_SIGNATURE.every((byte, index) => head[index] === byte);
 }
 
-/* An RGBA pixel takes 4 bytes. */
-const BYTES_PER_PIXEL = 4;
-
 /* How much of a picture is read for its size. A JPEG's frame header can sit
    behind metadata, such as a colour profile of a few hundred KB. */
 const PICTURE_HEADER_BYTES = 4 * 1024 * 1024;
@@ -108,9 +105,9 @@ function objectUrl(url: string): string {
  * or not. A null source becomes the relative URL "null", which the frame's
  * policy refuses only after the browser has tried it. So a picture the file
  * doesn't hold gets an empty data: image instead, and building the document
- * tries no URL at all. A picture whose header declares more pixels than the
- * inflate budget buys at 4 bytes each, the cap the PDF preview gives pdf.js,
- * gets the empty image too, before the browser decodes it, and so does one
+ * tries no URL at all. A picture whose header declares more pixels than
+ * maxPicturePixels, the cap the PDF preview gives pdf.js, gets the empty
+ * image too, before the browser decodes it, and so does one
  * whose size can't be read.
  *
  * docx-preview also loads a picture again for every element that shows it:
@@ -134,7 +131,7 @@ function objectUrl(url: string): string {
  * revokes the blob: URLs with the frame's document.
  */
 function loadPicturesFromFileOnly(wordDocument: PartLoaders, limits: PreviewLimits): void {
-  const maxPixels = Math.floor(limits.maxInflatedBytes / BYTES_PER_PIXEL);
+  const maxPixels = limits.maxPicturePixels;
   const loadOnce = async (pictures: Map<string, Promise<string>>, part: unknown, id: string, load: () => Promise<string>): Promise<string> => {
     const path = wordDocument.getPathById(part, id);
     /* The loaders load nothing for an id the part doesn't name. */
@@ -161,30 +158,24 @@ function loadPicturesFromFileOnly(wordDocument: PartLoaders, limits: PreviewLimi
 }
 
 /*
- * The data: URL characters of embedded fonts that style text may hold. It
- * comes from a cap the preview already has, maxInflatedBytes, until a limits
- * policy gives Word a PreviewLimits field of its own. A character of a font's
- * URL costs the frame's process far more than a byte: docx-preview builds
- * the style text, cleaning parses it and writes it back, the frame's
- * document parses it again, and the browser loads the URL. With 160 MB of
- * font URLs the frame's process took 1.4 GB in Chromium and 3.2 GB in
- * Firefox. 256 MiB / 16 is 16 MiB, about 12 MB of fonts, and with the same
- * files cut to it the frame's process took at most 480 MB in Chromium and
- * 990 MB in Firefox.
- */
-const INFLATED_BYTES_PER_FONT_URL_CHARACTER = 16;
-
-/*
  * docx-preview's renderFontTable copies an embedded font's data: URL into an
  * @font-face rule for every font reference that names it, so a few KB of
  * fontTable.xml can copy one large part thousands of times. It loads one font
  * at a time and skips a font whose load fails. So the URLs it copies may hold
- * the budget's characters in all: the first font whose URL would pass it
- * fails, each later one fails before it loads, and their text shows in a
- * fallback font.
+ * maxDocxFontUrlCharacters characters in all: the first font whose URL would
+ * pass it fails, each later one fails before it loads, and their text shows
+ * in a fallback font.
+ *
+ * A character of a font's URL costs the frame's process far more than a
+ * byte: docx-preview builds the style text, cleaning parses it and writes it
+ * back, the frame's document parses it again, and the browser loads the URL.
+ * With 160 MB of font URLs the frame's process took 1.4 GB in Chromium and
+ * 3.2 GB in Firefox. The cap, 16,777,216 characters, is about 12 MB of fonts,
+ * and with the same files cut to it the frame's process took at most 480 MB
+ * in Chromium and 990 MB in Firefox.
  */
 function loadFontsWithinBudget(wordDocument: PartLoaders, limits: PreviewLimits): void {
-  let left = Math.floor(limits.maxInflatedBytes / INFLATED_BYTES_PER_FONT_URL_CHARACTER);
+  let left = limits.maxDocxFontUrlCharacters;
   const loadFont = wordDocument.loadFont.bind(wordDocument);
   wordDocument.loadFont = async (id, key) => {
     if (left === 0) throw new Error('The style text holds as many font data: URLs as the preview allows.');
@@ -223,9 +214,10 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
   if (!wordDocument.documentPart?.body) throw previewError('parse-failed', UNREADABLE);
   /* Headers, footers and notes render again per page or per reference, so
      the parsed document, not the file's size, says how much renderDocument
-     would build. Past the budget it builds nothing. */
-  if (estimateOutputNodes(wordDocument) > outputNodeBudget(ctx.limits)) {
-    throw previewError('unsupported', 'This document is too large to preview.');
+     would build. Past maxDocxNodes it builds nothing, and the preview ends in
+     too-large, naming that cap. */
+  if (estimateOutputNodes(wordDocument) > ctx.limits.maxDocxNodes) {
+    throw previewError('too-large', 'This document is too large to preview.', { limit: 'maxDocxNodes' });
   }
   ctx.progress(1, STEPS);
   loadPicturesFromFileOnly(wordDocument, ctx.limits);
