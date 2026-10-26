@@ -11,6 +11,7 @@ const spies = vi.hoisted(() => ({
   fetchSessionResult: vi.fn(),
   streamMessage: vi.fn(),
   streamNewSession: vi.fn(),
+  submitAnswer: vi.fn(async () => ({ status: 'accepted' })),
   repairResults: [],
 }));
 
@@ -44,6 +45,7 @@ vi.mock('./api', async (importOriginal) => ({
   updateSettings: vi.fn(async () => ({})),
   recordTaskVisit: vi.fn(async () => ({})),
   allocateConversationId: vi.fn(() => 'conv-new'),
+  submitAnswer: (...args) => spies.submitAnswer(...args),
   streamMessage: (...args) => {
     spies.streamMessage(...args);
     const handle = { opts: args[args.length - 1], abort: vi.fn() };
@@ -140,7 +142,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 import App from './App';
 import { SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { __resetDraftsForTests } from './lib/draftStore';
-import { clearOptimisticConversation } from './CoworkRouter';
+import { clearOptimisticConversation, isOptimisticConversation } from './CoworkRouter';
 
 const listed = (id, title, extra = {}) => ({
   id,
@@ -205,6 +207,7 @@ beforeEach(() => {
   ];
   spies.streamMessage.mockClear();
   spies.streamNewSession.mockClear();
+  spies.submitAnswer.mockClear();
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async (id) => (
     TITLES[id] ? loadedTask(id, TITLES[id]) : { status: 'not_found' }
@@ -273,6 +276,52 @@ describe('addressing an artifact from Live Artifacts', () => {
     expect(screen.getByTestId('chat-mutes')).toHaveTextContent('[]');
   });
 
+  it("sends the artifact chat's unsent mute toggles after another chat was opened", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openChat(user, 'Alpha task');
+    await user.click(screen.getByRole('button', { name: 'mute gmail' }));
+    await openChat(user, 'Beta task');
+    await waitFor(() => expect(screen.getByTestId('chat-id')).toHaveTextContent('conv-b'));
+    await user.click(screen.getByRole('button', { name: 'mute slack' }));
+
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+    expect(lastStreamOpts().disabledConnections).toEqual([GMAIL]);
+    await waitFor(() => expect(screen.getByTestId('chat-mutes')).toHaveTextContent('["gmail"]'));
+  });
+
+  it("queues the prompt behind a turn waiting on the agent's question instead of answering it", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openChat(user, 'Alpha task');
+    await user.click(screen.getByRole('button', { name: 'send' }));
+    await waitFor(() => expect(streams).toHaveLength(1));
+    const running = streams[0];
+    await act(async () => {
+      running.opts.onEvent({
+        type: 'response.ask_user',
+        question_id: 'ask:1',
+        prompt: 'Which database?',
+        options: [{ value: 'pg', label: 'postgres' }],
+        select: 'one',
+      });
+      await Promise.resolve();
+    });
+
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+    expect(spies.submitAnswer).not.toHaveBeenCalled();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { running.opts.onDone(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1].slice(0, 2)).toEqual(['conv-a', 'fix it']);
+  });
+
   it('loads the chat history before sending, and the loader leaves it alone', async () => {
     spies.sessions = [listed('conv-a', 'Alpha task', { messagesStatus: 'loading' })];
     spies.fetchSessionResult.mockImplementation(async (id) => loadedTask(id, 'Alpha task', [
@@ -315,7 +364,7 @@ describe('addressing an artifact from Live Artifacts', () => {
     expect(lastStreamOpts().disabledConnections).toEqual([GMAIL]);
   });
 
-  it('returns false when no turn starts, so the viewer cancels the repair', async () => {
+  it("refuses a chat in a project the user can't run before leaving the viewer", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openLiveArtifacts(user);
@@ -323,18 +372,48 @@ describe('addressing an artifact from Live Artifacts', () => {
 
     await waitFor(() => expect(spies.repairResults).toEqual([false]));
     expect(spies.streamMessage).not.toHaveBeenCalled();
+    // Still on Live Artifacts, so the viewer can say why; no stale flag left.
+    expect(screen.getByRole('button', { name: 'repair C' })).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-id')).toBeNull();
+    expect(isOptimisticConversation('conv-c')).toBe(false);
   });
 
-  it('bounds the resolver fetch for a chat missing from the recents list', async () => {
-    spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
+  it('refuses a chat deleted since the resolver found it', async () => {
     const user = userEvent.setup();
     render(<App />);
     await openLiveArtifacts(user);
+    spies.fetchSessionResult.mockImplementation(async () => ({ status: 'not_found' }));
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([false]));
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('chat-id')).toBeNull();
+    expect(isOptimisticConversation('conv-a')).toBe(false);
+  });
+
+  it('drops the optimistic flag when the turn fails, so a later visit hydrates', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+    expect(isOptimisticConversation('conv-a')).toBe(true);
+
+    await act(async () => { streams.at(-1).opts.onError('boom'); await Promise.resolve(); });
+    expect(isOptimisticConversation('conv-a')).toBe(false);
+  });
+
+  it("starts a new chat for an unreachable origin without the last chat's composer mutes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openChat(user, 'Beta task');
+    await user.click(screen.getByRole('button', { name: 'mute slack' }));
+
+    await openLiveArtifacts(user);
     await user.click(screen.getByRole('button', { name: 'repair Z' }));
 
-    await waitFor(() => expect(spies.repairResults).toHaveLength(1));
-    expect(spies.fetchSessionResult).toHaveBeenCalledWith('conv-z', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
-    // Unreachable: the repair starts a new chat instead of resuming conv-z.
+    await waitFor(() => expect(spies.streamNewSession).toHaveBeenCalled());
     expect(spies.streamMessage.mock.calls.some(([id]) => id === 'conv-z')).toBe(false);
+    expect(spies.streamNewSession.mock.calls.at(-1).at(-1).disabledConnections).toEqual([]);
   });
 });

@@ -289,12 +289,24 @@ export function ConversationLoading() {
 
 // `/c/:id` loader. Distinguishes the failure modes so the route can react: a
 // 404 drops the dead link Home; a transient failure keeps the URL + retries.
+/**
+ * Fetches a conversation the way the `/c/:id` loader does, for `openConversation`.
+ * The local row-id snapshot is taken before the fetch, so a late page cannot
+ * hide rows that arrived meanwhile.
+ *
+ * @returns {Promise<{status:'ok', task:object, knownIds?:Set} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function loadConversation(id, { timeoutMs } = {}) {
+  const knownIds = knownRowIdsProvider?.(id);
+  const result = await fetchSessionResult(id, { timeoutMs });
+  return result.status === 'ok' ? { ...result, knownIds } : result;
+}
+
 async function conversationLoader({ params }) {
   const id = params.conversationId;
   // Not-yet-persisted conversation (mid-send): render from local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
-  const knownIds = knownRowIdsProvider?.(id);
-  const result = await fetchSessionResult(id);
+  const result = await loadConversation(id);
   // 404 → `redirect('/')`, NOT `replace('/')`. In RR7's data router a loader
   // redirect fires while still committed to the origin — the `/c/:id` entry
   // never commits — so this pushes `[origin, /]`: Back returns to the origin and
@@ -303,7 +315,7 @@ async function conversationLoader({ params }) {
   // a cold deep-link RR already forces the initial redirect to replace.
   if (result.status === 'not_found') return redirect('/');
   if (result.status === 'unavailable') return { unavailable: true, id };
-  return { task: result.task, id, knownIds };
+  return { task: result.task, id, knownIds: result.knownIds };
 }
 
 // Exported for behavior tests; production goes through createCoworkRouter.

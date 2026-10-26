@@ -118,7 +118,9 @@ import {
   markOptimisticConversation,
   clearOptimisticConversation,
   setKnownRowIdsProvider,
+  loadConversation,
 } from './CoworkRouter';
+import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -440,16 +442,6 @@ function describeGoogleDriveReferenceFiles(reference) {
       + 'in the message above, they mean these — read them with files.get(fileId=...):',
     ...lines,
   ].join('\n');
-}
-
-function normalizeComposerDisabledConnections(list) {
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((d) => ({
-      engine: String(d.engine || '').trim(),
-      name: String(d.name || '').trim(),
-    }))
-    .filter((d) => d.engine && d.name);
 }
 
 const ACCENT_VARS = {
@@ -3327,24 +3319,17 @@ function AppCore() {
   };
 
   const handleComposerConnectorMute = useCallback((connector, useInChat) => {
-    const engine = String(connector?.engine || '').trim();
-    const name = String(connector?.name || '').trim();
-    if (!engine || !name) return;
-    const pk = (x) => `${x.engine.toLowerCase()}\t${x.name}`;
-    const ckey = pk({ engine, name });
-    setComposerDisabledConnections((prev) => {
-      const cur = normalizeComposerDisabledConnections(prev);
-      let next;
-      if (useInChat) {
-        next = cur.filter((x) => pk(x) !== ckey);
-      } else {
-        if (cur.some((x) => pk(x) === ckey)) return cur;
-        next = [...cur, { engine, name }];
-      }
-      const sig = (arr) => [...arr.map(pk)].sort().join('|');
-      if (sig(cur) === sig(next)) return cur;
-      return next;
-    });
+    setComposerDisabledConnections((prev) => toggleConnectionMute(prev, connector, useInChat));
+    // The chat the composer belongs to keeps the toggle too, so a send to it
+    // from elsewhere (a queued drain, Live Artifacts) and a later return to
+    // it see the same mutes as the composer, sent or not.
+    const taskId = composerMuteLastTaskIdRef.current;
+    if (!taskId) return;
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== taskId) return t;
+      const next = toggleConnectionMute(t.disabledConnections, connector, useInChat);
+      return next === t.disabledConnections ? t : { ...t, disabledConnections: next };
+    }));
   }, []);
 
   const handleRemoveAttachment = async (id) => {
@@ -3505,7 +3490,7 @@ function AppCore() {
       }, ...prev]);
       setActiveTaskId(taskId);
       setRoute('task');
-      setComposerAttachments([]);
+      if (meta?.attachments == null) setComposerAttachments([]);
       return false;
     }
 
@@ -3522,9 +3507,13 @@ function AppCore() {
     const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
-    const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
+    // A caller that is not the composer (the artifact viewer) passes its own
+    // mutes and attachments and leaves the composer's alone.
+    const disabledForSend = normalizeComposerDisabledConnections(
+      meta?.disabledConnections ?? composerDisabledConnections,
+    );
 
-    const rawComposer = composerAttachments;
+    const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     const taskId = suppliedConversationId
@@ -3539,7 +3528,7 @@ function AppCore() {
       rawComposer,
     );
     const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
-    setComposerAttachments([]);
+    if (meta?.attachments == null) setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -3831,6 +3820,11 @@ function AppCore() {
     const targetProject = projects.find((project) => project.id === targetTask.projectId);
     if (targetProject && !canRunProject(targetProject)) return false;
     const id = targetTask.id;
+    // Composer toggles land on the chat record too (handleComposerConnectorMute),
+    // so the freshest record holds the chat's mutes whether it is on screen or not.
+    const mutesForSend = opts.disabledConnections != null
+      ? opts.disabledConnections
+      : (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -3859,12 +3853,16 @@ function AppCore() {
     // A pending question owns the composer: typed text is the answer, not a
     // new message. Queuing it instead would deadlock — the queue drains on
     // turn completion, and the turn cannot complete until this is answered.
-    const answerOutcome = await resolvePendingAnswer({
-      steps: liveStepsRef.current[id],
-      conversationId: id,
-      text,
-      submit: submitAnswer,
-    });
+    // A prompt that is not the user's reply (a repair from the artifact viewer)
+    // must not become the answer; it queues behind the asking turn below.
+    const answerOutcome = opts.skipPendingAnswer
+      ? { action: 'send' }
+      : await resolvePendingAnswer({
+        steps: liveStepsRef.current[id],
+        conversationId: id,
+        text,
+        submit: submitAnswer,
+      });
     if (answerOutcome.action === 'consumed') {
       // The text became the answer — but `submitAnswer` sends `{text}` only, so
       // no file travelled with it. Clearing the staged attachments here would
@@ -3953,7 +3951,7 @@ function AppCore() {
         id,
         text,
         queuedAttachments ?? composerAttachments,
-        opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+        mutesForSend,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
@@ -3970,9 +3968,7 @@ function AppCore() {
     // never has to lie when another tab opens this conversation.
     markInFlight(id);
 
-    const disabledForSend = normalizeComposerDisabledConnections(
-      opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
-    );
+    const disabledForSend = normalizeComposerDisabledConnections(mutesForSend);
 
     // A drained item's target task may not be the one on screen, so resolve
     // its project independently rather than reusing the current view's
@@ -4257,6 +4253,8 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
+        // Same as onDone: a later visit must hydrate from the server.
+        clearOptimisticConversation(resolvedId);
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
@@ -4329,9 +4327,7 @@ function AppCore() {
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
-      // The viewer stays busy while this runs; a timeout counts as unreachable
-      // and starts a new chat instead.
-      fetchConversation: (id) => fetchSessionResult(id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }),
+      fetchConversation: fetchSessionResult,
     });
     artifactRepairTargetRef.current = target.id ? target : null;
     // Adopt the record now: an origin chat older than the capped recents fetch
@@ -4354,37 +4350,41 @@ function AppCore() {
     // Only resume a chat the repair was actually minted against; anything else
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
-      return handleSendFromHome(prompt, { project, conversationId });
+      // A new chat owes nothing to the composer of the chat that was open last.
+      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
-    // Preflight before touching the chat: returning false makes the viewer
-    // cancel the repair, which beats leaving a handoff queued against a turn
-    // that never starts.
-    if (!(await ensureProviderReady())) return false;
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
-    // Send with the mutes the composer will show for that chat. The mute effect
-    // runs after this send, and it leaves the composer alone when that chat was
-    // the last one open, so its unsent toggles are what the user sees.
-    const disabledConnections = normalizeComposerDisabledConnections(
-      composerMuteLastTaskIdRef.current === target.id
-        ? composerDisabledConnections
-        : targetTask.disabledConnections,
-    );
-    // Hydrate the chat before the optimistic flag stops the `/c/:id` loader
-    // from doing it; otherwise only the new turn shows. Snapshot the row ids
-    // before the fetch, as the loader does.
-    const knownIds = knownIdsOf(target.id);
-    const loaded = await fetchSessionResult(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null);
-    // The `/c/:id` loader must not re-hydrate over the transcript while the
-    // turn is in flight; the flag drops when the turn completes.
+    // Every refusal is settled while the viewer is still open to report it:
+    // switching to the chat first would unmount the viewer and drop its message.
+    // Returning false makes the viewer cancel the repair.
+    const targetProject = projects.find((item) => item.id === targetTask.projectId);
+    if (targetProject && !canRunProject(targetProject)) return false;
+    // The optimistic flag set below keeps the `/c/:id` loader from hydrating
+    // the chat, so load it here, alongside the provider check.
+    const [ready, loaded] = await Promise.all([
+      ensureProviderReady(),
+      loadConversation(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null),
+    ]);
+    if (!ready) return false;
+    // Deleted since the resolver saw it: there is no chat left to resume.
+    if (loaded?.status === 'not_found') return false;
+    // The loader must not re-hydrate over the turn while it runs. The flag drops
+    // when the turn ends, or below when no turn starts.
     markOptimisticConversation(target.id);
     // A failed load still sends: the repair is already bound to this chat.
     if (loaded?.status === 'ok') {
-      openConversation(target.id, { task: loaded.task, id: target.id, knownIds });
+      openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
     }
     selectTask(target.id);
-    // handleSendInTask queues the prompt itself if that chat is already busy;
-    // `false` (no turn started) makes the viewer cancel the repair.
-    return handleSendInTask(prompt, [], { targetTask, disabledConnections });
+    let started = false;
+    try {
+      // Queued when the chat is busy, including a turn waiting on the agent's
+      // question: the repair prompt is not the user's answer to it.
+      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+    } finally {
+      if (!started) clearOptimisticConversation(target.id);
+    }
+    return started;
   };
 
   // Submit a data-vault form. Drives a fresh assistant turn from the

@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 const NEW_CHAT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const ORIGIN_CHAT = '3f6a1c8e-6b1d-4a2f-9a1e-2c7d5b0e4a11';
 const HOST_CHAT = '9c2b7d10-4e5f-4a11-8b22-6d3e1f0a7c55';
-const NOT_STARTED = "The agent couldn't start on this comment. Check that an agent provider is connected, then open the chat to see what happened.";
+const NOT_STARTED = "The agent couldn't start on this comment. Check that an agent provider is connected and that you can run tasks in this project, then try again.";
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -208,7 +208,7 @@ describe('the chat an artifact repair is addressed to', () => {
 
     await waitFor(() => expect(workspaceMock.cancelRepair).toHaveBeenCalledWith('repair-1'));
     // Refusal has several causes (no provider, a project the user can't run,
-    // the text taken as an answer), so the message names none of them.
+    // a chat deleted meanwhile), so the message names none of them.
     await waitFor(() => expect(screen.getByTestId('viewer-error')).toHaveTextContent(NOT_STARTED));
   });
 

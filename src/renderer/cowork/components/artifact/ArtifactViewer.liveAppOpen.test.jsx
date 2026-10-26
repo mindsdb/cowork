@@ -180,7 +180,7 @@ describe("the viewer's preview and open controls on a live app", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId('viewer-error')).toHaveTextContent(
-      "The agent couldn't launch this app. Check that an agent provider is connected, then open the chat to see what happened.",
+      "The agent couldn't launch this app. Check that an agent provider is connected and that you can run tasks in this project, then try again.",
     );
   });
 

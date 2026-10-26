@@ -3132,7 +3132,7 @@ describe('a server-listed run whose messages load after its stream finished', ()
     const stalePage = spies.fetchSessionResult.getMockImplementation();
     spies.fetchSessionResult.mockImplementation((cid) => (cid === 'conv-a' ? held : stalePage(cid)));
     await user.click(await screen.findByText('Alpha task'));
-    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenLastCalledWith('conv-a'));
+    await waitFor(() => expect(spies.fetchSessionResult.mock.lastCall?.[0]).toBe('conv-a'));
 
     await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-scheduled' });
     await emitOn(tail, { type: 'response.output_text.delta', delta: 'The scheduled answer' });

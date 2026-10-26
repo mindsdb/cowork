@@ -69,6 +69,8 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       return {
         ...server, model, usageNotices, messagesStatus, hasMoreMessages, messagesCursor,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
+        // Composer toggles land on the record before any message does.
+        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
       };
     }
     if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
