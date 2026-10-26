@@ -48,7 +48,10 @@ import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
+import {
+  selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids,
+  runsAwaitingTheirStart, runStartProbeOutcome, RUN_START_PROBE_DELAYS_MS,
+} from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
@@ -942,6 +945,9 @@ function AppCore() {
   const [inFlightSet, setInFlightSet] = useState(() => new Set());
   const inFlightSetRef = useRef(inFlightSet);
   useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
+  // Runs this window started with "Run now" that the server hasn't listed yet,
+  // by conversation id, with when each was started (see runsAwaitingTheirStart).
+  const runsAwaitingStartRef = useRef(new Map());
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
@@ -1006,12 +1012,20 @@ function AppCore() {
     // fires (see hasPendingReservationMiss); a release resets the tally to 0.
     setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
 
+    // A run started here that the server hasn't listed yet hasn't finished:
+    // keep it in flight through the grace period, and stop waiting once it's listed.
+    const awaitingStart = runsAwaitingTheirStart(runsAwaitingStartRef.current, ids, Date.now());
+    for (const cid of runsAwaitingStartRef.current.keys()) {
+      if (!awaitingStart.includes(cid)) runsAwaitingStartRef.current.delete(cid);
+    }
+    const inFlightIds = [...ids, ...awaitingStart];
+
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
       // stream just finished from elsewhere — that's the signal to
       // refetch that conversation's messages so the UI catches up.
-      const next = new Set(ids);
-      const finished = finishedCids(prev, ids, activeStreamingTaskIdRef.current);
+      const next = new Set(inFlightIds);
+      const finished = finishedCids(prev, inFlightIds, activeStreamingTaskIdRef.current);
       if (finished.length > 0) {
         // Defer the refetch so we don't synchronously trigger a
         // re-render storm.
@@ -5444,12 +5458,40 @@ function AppCore() {
     // a spurious "got interrupted" prompt before the 5s poll catches up,
     // then navigate straight to the new run so the user sees it stream.
     if (result?.conversation_id) {
-      markInFlight(result.conversation_id);
-      setActiveTaskId(result.conversation_id);
+      const cid = result.conversation_id;
+      runsAwaitingStartRef.current.set(cid, Date.now());
+      markInFlight(cid);
+      setActiveTaskId(cid);
       setRoute('task');
+      attachWhenRunStarts(cid);
     }
     await refreshSchedules();
     refreshData();
+  };
+
+  // The server starts the run only after run-now answers, so the probe the
+  // open makes usually finds nothing to attach to. Ask again while the run is
+  // counted in flight: attach once it runs, if it's on screen, and if it ended
+  // between asks, end its start grace so the poll loads the answer now.
+  const attachWhenRunStarts = async (cid) => {
+    for (const delay of RUN_START_PROBE_DELAYS_MS) {
+      await new Promise((resolve) => { setTimeout(resolve, delay); });
+      if (!inFlightSetRef.current.has(cid)) return;
+      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (outcome === 'ended') {
+        runsAwaitingStartRef.current.delete(cid);
+        refreshInFlightSet();
+        return;
+      }
+      if (outcome === 'running') {
+        // It has started, so a poll that leaves it out from here means it
+        // finished; keeping the grace would hide a short run's answer.
+        runsAwaitingStartRef.current.delete(cid);
+        // Off screen, the poll follows the run from here.
+        if (activeTaskIdRef.current !== cid) return;
+        if (await reconnectInFlight(cid).catch(() => false)) return;
+      }
+    }
   };
 
   const handleSearchSelect = (result) => {

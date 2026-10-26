@@ -161,6 +161,8 @@ import {
   SHORT_REQUEST_TIMEOUT_MS,
   deleteConversationTurn,
   fetchInFlightList,
+  fetchSchedules,
+  runScheduleNow,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -3146,4 +3148,104 @@ describe('a server-listed run whose messages load after its stream finished', ()
     expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
     expect(screen.queryByText(/Running task/)).toBeNull();
   });
+});
+
+/* "Run now" answers with the run's conversation before the server starts the
+   run, so the probe the open makes finds nothing to attach to. The window must
+   keep asking until the run starts, or the answer never shows until the
+   conversation is opened again. */
+describe('"Run now" before the server has started the run', () => {
+  afterEach(() => {
+    fetchSchedules.mockImplementation(async () => []);
+    runScheduleNow.mockImplementation(async () => ({}));
+  });
+
+  /** Opens the Scheduled page and presses Run on its one schedule, whose run is conv-run. */
+  async function runNow(user) {
+    fetchSchedules.mockImplementation(async () => ({
+      schedules: [{
+        id: 'sched-1', title: 'Morning digest', prompt: 'Summarize my inbox',
+        enabled: true, cadence: 'daily', nextRunAt: '2099-01-01T09:00:00Z',
+      }],
+    }));
+    runScheduleNow.mockImplementation(async () => ({ conversation_id: 'conv-run' }));
+    spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-run'
+      ? { status: 'ok', task: { id: 'conv-run', title: 'Morning digest', status: 'idle', projectName: 'general', messages: [] } }
+      : { status: 'unavailable', code: 0 }));
+    render(<App />);
+    await user.click((await screen.findAllByText('Scheduled Tasks'))[0]);
+    await user.click(await screen.findByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
+  }
+
+  it('loads the answer of a run that started and ended between asks', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+
+    // The next ask finds the run already over: no producer, but its buffer.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));
+    spies.fetchSession.mockImplementation(async (cid) => ({
+      messages: cid === 'conv-run' ? [
+        { id: 'u-run', role: 'user', content: 'Summarize my inbox' },
+        { id: 'a-run', role: 'assistant', content: 'Nothing urgent today' },
+      ] : [],
+    }));
+
+    // Well inside the 30-second start grace, which would otherwise hide it.
+    expect(await screen.findByText('Nothing urgent today', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  });
+
+  it('attaches to the run once the server starts it', async () => {
+    const user = userEvent.setup();
+    let started = false;
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: started && cid === 'conv-run' }));
+
+    // The open's own probe comes before the server has started the run.
+    await runNow(user);
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+
+    started = true;
+    const tail = await waitFor(() => {
+      const handle = streams.find((s) => s.kind === 'tail');
+      if (!handle) throw new Error('not attached yet');
+      return handle;
+    }, { timeout: 4000 });
+    await emitOn(tail, { type: 'response.created', conversation_id: 'conv-run', user_message_id: 'u-run' });
+    await emitOn(tail, { type: 'response.output_text.delta', delta: 'Three emails need a reply' });
+    await emitOn(tail, { type: 'response.completed', assistant_message_id: 'a-run' });
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    await act(async () => { tail.opts.onDone(); });
+
+    expect(await screen.findByText('Three emails need a reply')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+
+  it('loads the answer of a short run that started off screen and ended before a poll listed it', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    await openByTitle(user, 'Alpha task');
+
+    // An ask sees the run going while it's off screen, then it ends at once.
+    // The in-flight list never names it.
+    let sawItRun;
+    const sawRunning = new Promise((resolve) => { sawItRun = resolve; });
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => {
+      if (cid !== 'conv-run') return { in_flight: false };
+      sawItRun();
+      return { in_flight: true };
+    });
+    await sawRunning;
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    spies.fetchSession.mockClear();
+
+    // The next five-second poll loads it, well inside the 30-second start grace.
+    await waitFor(
+      () => expect(spies.fetchSession).toHaveBeenCalledWith('conv-run'),
+      { timeout: 7000 },
+    );
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  }, 15000);
 });
