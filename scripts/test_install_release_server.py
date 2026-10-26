@@ -159,6 +159,7 @@ def https_server(authority, body=b"release bytes"):
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(authority["certificate"], authority["key"])
     server.socket = context.wrap_socket(server.socket, server_side=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -554,7 +555,8 @@ class TrustTests(unittest.TestCase):
 
 # GlobalSign Root CA - R3 (pypi.org, files.pythonhosted.org) and ISRG Root X1
 # (raw.githubusercontent.com). A fresh Windows downloads both only on demand.
-PUBLIC_ROOTS_WINDOWS_FETCHES = {"d69b561148f01c77c54578c10926df5b856976ad", "cabd2a79a1076a31f21d253635cb039d4329a5e8"}
+# SHA-256 fingerprints; the workflow removes the same roots by SHA-1 thumbprint.
+PUBLIC_ROOTS_WINDOWS_FETCHES = {"cbb522d7b7f127ad6a0113865bdf1cd4102e7d0759af635a7cf4720dc963c53b", "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6"}
 
 
 @unittest.skipUnless(os.name == "nt" and os.environ.get("COWORK_PUBLIC_ROOTS"), "needs a Windows store without PyPI's and GitHub's roots, and the runtime's roots file")
@@ -566,7 +568,7 @@ class WindowsStoreTests(unittest.TestCase):
         self.bundled = Path(os.environ["COWORK_PUBLIC_ROOTS"])
 
     def test_the_store_lacks_the_roots_windows_fetches_on_demand(self):
-        present = {hashlib.sha1(der).hexdigest() for store in ("ROOT", "CA") for der, encoding, _ in ssl.enum_certificates(store) if encoding == "x509_asn"}
+        present = {hashlib.sha256(der).hexdigest() for store in ("ROOT", "CA") for der, encoding, _ in ssl.enum_certificates(store) if encoding == "x509_asn"}
         self.assertFalse(PUBLIC_ROOTS_WINDOWS_FETCHES & present)
 
     def test_downloads_fail_without_the_bundled_roots(self):
