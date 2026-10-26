@@ -1,6 +1,5 @@
 import { app } from 'electron';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as tls from 'tls';
 import { PYTHON_RANGE } from './uv-paths';
@@ -8,9 +7,11 @@ import { PYTHON_RANGE } from './uv-paths';
 /** Python on Windows trusts only the roots Windows has already downloaded, and
  *  Windows downloads a missing one only when a program verifies through
  *  Windows, so a fresh machine can't verify PyPI. The installer adds these
- *  public roots, bundled with Electron's Node, beside the Windows stores. */
+ *  public roots, bundled with Electron's Node, beside the Windows stores.
+ *  One file per app, rewritten for each install, so installs leave nothing
+ *  behind; server lifecycle changes run one at a time. */
 function publicRootsFile(): string {
-  const file = path.join(os.tmpdir(), `cowork-public-roots-${process.pid}.pem`);
+  const file = path.join(app.getPath('userData'), 'public-roots.pem');
   fs.writeFileSync(file, tls.rootCertificates.join('\n') + '\n', 'utf8');
   return file;
 }
