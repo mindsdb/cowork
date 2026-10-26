@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
+// A web build without the platform UI whose page has no SPA wrapper
+// publish-token tag, which keeps the shared-token choices: no "Only you", and
+// Public says "Anyone with the URL".
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
 import { PublishMenu } from './PublishMenu';
@@ -34,7 +37,7 @@ function shareButton() {
   return within(screen.getByText('Share to the Web').parentElement).getByRole('button', { name: 'Share' });
 }
 
-describe('PublishMenu with the platform UI off', () => {
+describe('PublishMenu with the platform UI off and no publish-token tag', () => {
   it('opens an unpublished artifact with nothing picked and Share disabled', () => {
     const ctrl = makeController();
     render(<PublishMenu controller={ctrl} />);

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+// A web build without the platform UI whose page has no SPA wrapper
+// publish-token tag, which keeps the shared-token choices: no "Only you", and
+// Public says "Anyone with the URL".
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
 import {
@@ -11,7 +14,7 @@ import {
   ACCESS_LABELS,
 } from './AccessChooser';
 
-describe('AccessChooser with the platform UI off', () => {
+describe('AccessChooser with the platform UI off and no publish-token tag', () => {
   it('starts a first share with nothing picked, and refuses it as it is', () => {
     const draft = newAccessDraft();
     expect(draft.mode).toBe('');
