@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { liveAppKey, liveAppLines, liveAppStateLine, liveAppStatesFrom, liveAppViewerNotice } from './liveAppState';
+import {
+  liveAppKey, liveAppLines, liveAppOpenAddress, liveAppStateLine, liveAppStatesFrom, liveAppViewerNotice,
+} from './liveAppState';
 
 const running = {
   projectId: 'p1', slug: 'table-counts', slot: 1, state: 'running',
@@ -181,5 +183,32 @@ describe('liveAppViewerNotice', () => {
   it('has nothing to show before the read answers', () => {
     expect(liveAppViewerNotice({ status: 'loading' })).toBe(null);
     expect(liveAppViewerNotice({ status: 'off' })).toBe(null);
+  });
+});
+
+describe('liveAppOpenAddress', () => {
+  const states = liveAppStatesFrom([running, stopped]);
+  const card = { type: 'fullstack-stateless-app', projectId: 'p1', slug: 'table-counts', publishedUrl: '' };
+
+  it("gives a running live app's own address", () => {
+    expect(liveAppOpenAddress(card, { liveApps: true, states })).toBe('http://app1.view.localhost:8080/');
+  });
+
+  it('gives nothing for a stopped app or one with no launch on record', () => {
+    expect(liveAppOpenAddress({ ...card, slug: 'orders' }, { liveApps: true, states })).toBe('');
+    expect(liveAppOpenAddress({ ...card, slug: 'never-launched' }, { liveApps: true, states })).toBe('');
+  });
+
+  it('gives only an http(s) address', () => {
+    for (const address of ['javascript:alert(1)', 'file:///etc/passwd', 'not a url', '']) {
+      const odd = liveAppStatesFrom([{ ...running, address }]);
+      expect(liveAppOpenAddress(card, { liveApps: true, states: odd })).toBe('');
+    }
+  });
+
+  it('gives nothing with live apps off, to a static page, or to a published app', () => {
+    expect(liveAppOpenAddress(card, { liveApps: false, states })).toBe('');
+    expect(liveAppOpenAddress({ ...card, type: 'html-app' }, { liveApps: true, states })).toBe('');
+    expect(liveAppOpenAddress({ ...card, publishedUrl: 'https://pages.example/a' }, { liveApps: true, states })).toBe('');
   });
 });

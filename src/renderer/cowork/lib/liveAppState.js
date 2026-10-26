@@ -10,7 +10,7 @@
  */
 
 import { isBackendArtifact } from './artifactKinds';
-import { canShareLiveApp, receivedFromLine } from './liveAppSharing';
+import { canShareLiveApp, isLiveAppCard, receivedFromLine } from './liveAppSharing';
 
 /**
  * One app of the caller's, as `GET /live-apps/mine` lists it.
@@ -192,4 +192,20 @@ export function liveAppLines(artifact, { liveApps, states }) {
     state: liveAppStateLine(states.get(liveAppKey(artifact.projectId, artifact.slug))),
     received: receivedFromLine(artifact),
   };
+}
+
+/**
+ * Where an open control outside the viewer opens a live app: the running
+ * app's http(s) address, or '' when there is nothing to open, so the control
+ * hides. The serve route's copy of the page has no backend, so it is never
+ * the fallback. '' too for a card that isn't an unpublished live app
+ * (isLiveAppCard), whose controls keep their own target.
+ *
+ * @param {object} artifact An artifact card.
+ * @param {{ liveApps: boolean, states: Map<string, LiveAppState> }} context
+ */
+export function liveAppOpenAddress(artifact, { liveApps, states }) {
+  if (!isLiveAppCard(artifact, liveApps)) return '';
+  const state = states.get(liveAppKey(artifact.projectId, artifact.slug));
+  return state?.state === 'running' ? httpAddress(state.address) : '';
 }
