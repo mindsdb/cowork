@@ -17,7 +17,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
+  document.head.querySelectorAll('meta[name^="cowork-model-"]').forEach((node) => node.remove());
 });
 
 async function questionBody(conversationId, options) {
@@ -37,7 +37,7 @@ async function questionBody(conversationId, options) {
 it.each([
   ['new', null],
   ['continued', 'conversation-1'],
-])('sends the picked model for a %s conversation, and never an effort', async (_kind, conversationId) => {
+])('sends the picked model for a %s conversation, and no effort the operator offers no one', async (_kind, conversationId) => {
   const body = await questionBody(conversationId, { model: 'opus-5-5', reasoningEffort: 'high' });
   expect(body).toMatchObject({ model: 'opus-5-5', conversation: conversationId });
   expect(body).not.toHaveProperty('reasoning_effort');
@@ -46,4 +46,34 @@ it.each([
 it("sends no model for the operator's own row", async () => {
   const body = await questionBody('conversation-1', { model: MODEL_ROUTER_ID });
   expect(body.model).toBeNull();
+});
+
+function offerEfforts() {
+  const meta = document.createElement('meta');
+  meta.name = 'cowork-model-efforts';
+  meta.content = JSON.stringify({ models: { 'opus-5-5': ['xhigh'], 'gpt-5.6-luna': ['low'] }, operatorDefault: ['low'] });
+  document.head.append(meta);
+}
+
+it.each([
+  ['the picked model', 'opus-5-5', 'xhigh', 'opus-5-5'],
+  ["the operator's own row", MODEL_ROUTER_ID, 'low', null],
+  ['no model', null, 'low', null],
+])('sends an effort the operator lets users pick on %s', async (_kind, model, effort, sent) => {
+  offerEfforts();
+  const body = await questionBody('conversation-1', { model, reasoningEffort: effort });
+  expect(body).toMatchObject({ model: sent, reasoning_effort: effort });
+});
+
+it.each([
+  // max is an effort the route may take on opus-5-5, but not one the operator offers.
+  ['opus-5-5', 'max'],
+  // low is offered on gpt-5.6-luna and with no model, not on opus-5-5.
+  ['opus-5-5', 'low'],
+  [MODEL_ROUTER_ID, 'xhigh'],
+  ['claude-haiku-5-5', 'low'],
+])('sends no effort the operator does not offer on the model it sends: %s at %s', async (model, effort) => {
+  offerEfforts();
+  const body = await questionBody('conversation-1', { model, reasoningEffort: effort });
+  expect(body).not.toHaveProperty('reasoning_effort');
 });
