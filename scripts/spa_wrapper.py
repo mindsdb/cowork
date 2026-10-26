@@ -30,6 +30,11 @@ if _provider_tests not in {"true", "false"}:
 _model_picker = os.environ.get("COWORK_MODEL_PICKER", "off")
 if _model_picker not in {"off", "default", "open"}:
     raise ValueError("COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
+# Whether cowork-server publishes with one shared token (COWORK_PUBLISH_TOKEN, non-blank as
+# cowork.services.publish reads it) instead of the person's own key. The page gets only the yes or
+# no, never the token: the Share box offers "Only you" and says a Public link reaches the internet
+# only when it's no.
+_shared_publish_token = "true" if os.environ.get("COWORK_PUBLISH_TOKEN", "").strip() else "false"
 
 
 # A reasoning effort, such as medium or xhigh: lowercase letters alone.
@@ -100,7 +105,12 @@ if SPA_DIR.exists():
             raise ValueError("The SPA shell needs one <head> and no provider-testing metadata.")
         if "cowork-model-picker" in html or "cowork-model-efforts" in html:
             raise ValueError("The SPA shell needs no model-picker metadata.")
-        metas = [f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">']
+        if "cowork-shared-publish-token" in html:
+            raise ValueError("The SPA shell needs no publish-token metadata.")
+        metas = [
+            f'<meta name="cowork-provider-tests-enabled" content="{_provider_tests}">',
+            f'<meta name="cowork-shared-publish-token" content="{_shared_publish_token}">',
+        ]
         if _model_picker != "off":
             metas.append(f'<meta name="cowork-model-picker" content="{_model_picker}">')
         if _model_efforts is not None:
