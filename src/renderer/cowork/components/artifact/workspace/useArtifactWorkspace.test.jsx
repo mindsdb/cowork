@@ -186,7 +186,26 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(true);
+    expect(result.current.commentsOffReason).toBe('');
     expect(api.enableDraftComments).toHaveBeenCalledWith(artifact);
+  });
+
+  // A server with no draft review answers that comments are off, not a 503.
+  // The owner still edits and previews, and Review says why it is off.
+  it('names a server with draft comments off as the reason, not an error', async () => {
+    platform.isWeb = true;
+    api.enableDraftComments.mockResolvedValue({
+      enabled: false,
+      capabilities: source.capabilities,
+    });
+
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.commentsReady).toBe(false);
+    expect(result.current.commentsOffReason).toBe("Comments aren't available on this server");
+    expect(result.current.error).toBe('');
+    expect(result.current.source).toEqual(source);
   });
 
   it('loads an owner source in parallel with SaaS comments access', async () => {
@@ -297,6 +316,9 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(false);
+    expect(result.current.commentsOffReason).toBe(
+      "Comments aren't available right now. Reopen the artifact to try again.",
+    );
     expect(result.current.error).toBe('');
     expect(result.current.source).toEqual(source);
   });

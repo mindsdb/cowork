@@ -168,7 +168,8 @@ export:
 # Why Edit and Review are unavailable, as each tab's aria-label says it. The
 # workspace hook sets `previewOnly` for a file the viewer only previews, and
 # that reason comes first even on a card too old for the workspace. Without
-# the flag, such a card still asks for a refresh.
+# the flag, such a card still asks for a refresh. When the server turns the
+# owner's draft comments off, Review names that instead of the generic line.
 reasons:
   - name: a preview-only file on a card too old for the workspace
     workspace:
@@ -185,3 +186,8 @@ reasons:
       unsupportedReason: "Preview only: Cowork can't edit this file type."
     edit: "Edit unavailable \u2014 Refresh the artifact to load editing tools"
     review: "Review unavailable \u2014 Refresh the artifact to load review tools"
+  - name: a loaded artifact on a server with draft comments off
+    workspace:
+      commentsOffReason: "Comments aren't available on this server"
+    edit: "Edit unavailable \u2014 This artifact cannot be edited here"
+    review: "Review unavailable \u2014 Comments aren't available on this server"

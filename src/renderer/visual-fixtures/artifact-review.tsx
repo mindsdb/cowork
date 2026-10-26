@@ -61,6 +61,9 @@ const IS_OWNER_UNKNOWN = SEARCH_PARAMS.get('owner') === 'unknown';
 const IS_REVIEWER = SEARCH_PARAMS.get('role') === 'reviewer' || IS_OWNER_UNKNOWN;
 const OWNER_UNKNOWN_CAPABILITIES = IS_OWNER_UNKNOWN ? { ownerUnknown: true } : {};
 const IS_DESKTOP = SEARCH_PARAMS.get('deployment') === 'desktop';
+// The owner's comments-access answer: `?comments=off` is a server with no draft
+// review, `?comments=down` one whose review service answered 503.
+const COMMENTS_ACCESS = SEARCH_PARAMS.get('comments');
 const PROJECT_REF = IS_DESKTOP ? 'local' : '11111111-1111-1111-1111-111111111111';
 const INITIAL_CONTENT = IS_HTML_SLIDES ? HTML_SLIDES : MARKDOWN;
 const ARTIFACT_FILENAME = IS_HTML_SLIDES ? 'artifact-collaboration-slides.html' : 'Q3-launch-readiness.md';
@@ -147,8 +150,14 @@ window.fetch = async (input, init) => {
     });
   }
   if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/comments-access`)) {
+    if (COMMENTS_ACCESS === 'down') {
+      return new Response(JSON.stringify({ detail: 'Could not authorize draft collaboration' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({
-      enabled: true,
+      enabled: COMMENTS_ACCESS !== 'off',
       artifactKey: ARTIFACT_KEY,
       capabilities: {
         role: IS_REVIEWER ? 'reviewer' : 'owner',
