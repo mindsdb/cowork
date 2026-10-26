@@ -889,10 +889,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
               const closeAttachmentMenu = () => setOpenAttachmentMenuId(null);
               const menuItems = [
+                /* Desktop has nowhere to open an upload, so it saves it
+                   (openAuthenticatedResource) and says Download. */
                 rawUrl && {
                   id: 'open',
-                  label: 'Open',
-                  icon: Ico.upload(14),
+                  label: host.isWeb ? 'Open' : 'Download',
+                  icon: host.isWeb ? Ico.upload(14) : Ico.download(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});

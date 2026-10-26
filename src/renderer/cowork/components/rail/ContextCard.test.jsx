@@ -1,7 +1,8 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { render, act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ContextCard } from './ContextCard';
-import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
+import { fetchAuthenticatedResponse, openAuthenticatedResource } from '../../lib/authenticatedResource';
 
 // Regression coverage: disconnecting a Google Drive connection (from
 // Connected Apps and Data, the in-chat "Modify connection" bubble, or the
@@ -35,6 +36,7 @@ vi.mock('../../api', () => apiMock);
 vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchAuthenticatedResponse: vi.fn(),
+  openAuthenticatedResource: vi.fn(async () => true),
 }));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
@@ -758,5 +760,28 @@ describe('ContextCard — a task upload in the file viewer', () => {
     expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(RAW);
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(apiMock.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  /* Desktop has nowhere to open an upload: the OS browser carries no token for
+     the local server. openAuthenticatedResource saves it there instead, so the
+     row's menu says Download. */
+  it.each([
+    ['web', 'Open', true],
+    ['desktop', 'Download', false],
+  ])('on %s, offers the upload from its menu as %s, by its raw URL', async (_name, label, isWeb) => {
+    hostState.isWeb = isWeb;
+    const user = userEvent.setup();
+    apiMock.fetchAttachments.mockResolvedValue({ attachments: [{ id: 'a1', name: 'plan.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }] });
+    apiMock.attachmentRawUrl.mockReturnValue(RAW);
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'billing', path: '/projects/billing' }} conversationId="task-1" />);
+    });
+    const row = (await screen.findByText('plan.xlsx')).closest('[role="button"]');
+    await user.click(within(row).getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByRole('menuitem', { name: label === 'Open' ? 'Download' : 'Open' })).toBeNull();
+    await user.click(await screen.findByRole('menuitem', { name: label }));
+
+    expect(openAuthenticatedResource).toHaveBeenCalledWith(RAW, { filename: 'plan.xlsx' });
   });
 });
