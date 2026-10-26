@@ -158,3 +158,14 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     });
   });
 });
+
+describe('PublishMenu — a first share with the platform UI on', () => {
+  it('starts on Public, described as reaching the internet', () => {
+    render(<PublishMenu controller={makeController()} />);
+    fireEvent.click(screen.getByText('Share'));
+
+    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
+    expect(screen.getByText('Only you')).toBeInTheDocument();
+  });
+});
