@@ -165,10 +165,18 @@ describe('diagnosticsText', () => {
     expect(out).not.toMatch(/sk-proj-1234567890abcdef/);
   });
 
-  it('says the server was unreachable rather than pasting a bare dash', () => {
-    const offline = [['App shell', '1.2.3'], ['UI', '1.2.3 (bundled)'], ['Server', '—'], ['Agent', '—']];
-    const out = diagnosticsText({ rows: offline, requestId: 'r', code: 'anton_error', log: '' });
-    expect(out).toMatch(/server was unreachable/i);
+  it('explains a dashed backend version without claiming the server was down', () => {
+    // One version missing from a /health that answered is the case that must
+    // not read as an outage.
+    const partial = [['App shell', '1.2.3'], ['UI', '1.2.3 (bundled)'], ['Server', '1.0'], ['Agent', '—']];
+    const out = diagnosticsText({ rows: partial, requestId: 'r', code: 'anton_error', log: '' });
+    expect(out).toContain('Note: — means the server did not report that version.');
+    expect(out).not.toMatch(/unreachable/i);
+  });
+
+  it('adds no note when every backend version is known', () => {
+    const known = [['App shell', '1.2.3'], ['UI', '1.2.3 (bundled)'], ['Server', '1.0'], ['Agent', '2.0']];
+    expect(diagnosticsText({ rows: known, requestId: 'r', code: 'anton_error', log: '' })).not.toMatch(/Note:/);
   });
 
   it('caps the log it embeds so a paste cannot run away', () => {

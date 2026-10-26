@@ -52,7 +52,7 @@ describe('CopyDiagnosticsButton', () => {
 
     const text = copyText.mock.calls[0][0];
     expect(text).toContain('Reference: r');
-    expect(text).toMatch(/server was unreachable/i);
+    expect(text).toContain('the server did not report that version');
   });
 
   it('omits the log section in web mode, where the stub answers with none', async () => {

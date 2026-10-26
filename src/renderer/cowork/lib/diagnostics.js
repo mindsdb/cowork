@@ -98,10 +98,10 @@ export function diagnosticsText({ rows, requestId, code, log }) {
   parts.push(`Reference: ${requestId}`);
   // A failure can carry an id and no code; printing "null" helps nobody.
   parts.push(`Error code: ${code || DASH}`);
-  // A dash in either backend row means /health did not answer. Say why, or the
-  // reader is left guessing whether the version is missing or the server is.
-  const backendMissing = (rows || []).some(([k, v]) => (k === 'Server' || k === 'Agent') && v === '—');
-  if (backendMissing) parts.push('Note: the server was unreachable when this was copied.');
+  // A dash comes from an earlier /health snapshot that lacked the version, or
+  // from no snapshot at all, so it says nothing about the server at copy time.
+  const backendMissing = (rows || []).some(([k, v]) => (k === 'Server' || k === 'Agent') && v === DASH);
+  if (backendMissing) parts.push(`Note: ${DASH} means the server did not report that version.`);
   const scrubbed = scrubLog(log).split('\n').slice(-LOG_TAIL_LINES).join('\n');
   if (scrubbed) parts.push('', 'Recent server log:', scrubbed);
   return parts.join('\n');
