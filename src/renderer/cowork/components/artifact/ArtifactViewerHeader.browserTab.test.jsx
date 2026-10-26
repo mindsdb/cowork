@@ -6,7 +6,8 @@
 // assertions that matter are: it shows on Cloud once the artifact is shared,
 // and it does not appear when there is nothing for it to open. Before that,
 // Cloud's only URL is the draft route, which a tab can't load without the
-// bearer.
+// bearer, unless the deployment issues signed draft links and the viewer
+// opens the draft through one (opensDraftLinkInTab).
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';

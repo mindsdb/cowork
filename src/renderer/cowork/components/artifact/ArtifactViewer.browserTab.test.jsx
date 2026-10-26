@@ -387,6 +387,7 @@ describe('open in a browser tab — web / org, signed draft links', () => {
   it('keeps the old route for a backend artifact with an action path', async () => {
     const app = { ...linked, type: 'fullstack-stateless-app' };
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    expect(headerProps.current.actions.opensDraftLinkInTab).toBe(false);
     await headerProps.current.actions.onOpenInBrowserTab();
 
     expect(window.open).not.toHaveBeenCalled();
@@ -397,6 +398,7 @@ describe('open in a browser tab — web / org, signed draft links', () => {
   it('keeps the old route for a card without a full identity', async () => {
     const shortCard = { ...linked, id: 'aaaaaaaa' };
     render(<ArtifactViewer open artifact={shortCard} onClose={vi.fn()} />);
+    expect(headerProps.current.actions.opensDraftLinkInTab).toBe(false);
     await headerProps.current.actions.onOpenInBrowserTab();
 
     expect(window.open).not.toHaveBeenCalled();
@@ -409,6 +411,7 @@ describe('open in a browser tab — web / org, signed draft links', () => {
     publishState.publishedUrl = 'https://artifacts.mindshub.ai/a/launch';
 
     render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    expect(headerProps.current.actions.opensDraftLinkInTab).toBe(false);
     await headerProps.current.actions.onOpenInBrowserTab();
 
     expect(openExternal).toHaveBeenCalledWith('https://artifacts.mindshub.ai/a/launch');

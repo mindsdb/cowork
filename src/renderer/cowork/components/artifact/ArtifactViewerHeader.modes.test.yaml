@@ -31,7 +31,8 @@ modes:
     moreActions: false
     tabRule: true
     # A tab loads a URL without the bearer, which org mode's draft route
-    # refuses, so the arrow shows only for a published artifact's shared page.
+    # refuses, so the arrow shows only for a published artifact's shared page
+    # or for a draft the viewer opens through a signed draft link.
     tabNeedsShare: true
   - name: desktop on macOS
     web: false
