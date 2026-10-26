@@ -3222,4 +3222,30 @@ describe('"Run now" before the server has started the run', () => {
     expect(await screen.findByText('Three emails need a reply')).toBeInTheDocument();
     expect(screen.queryByText(/Running task/)).toBeNull();
   });
+
+  it('loads the answer of a short run that started off screen and ended before a poll listed it', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    await openByTitle(user, 'Alpha task');
+
+    // An ask sees the run going while it's off screen, then it ends at once.
+    // The in-flight list never names it.
+    let sawItRun;
+    const sawRunning = new Promise((resolve) => { sawItRun = resolve; });
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => {
+      if (cid !== 'conv-run') return { in_flight: false };
+      sawItRun();
+      return { in_flight: true };
+    });
+    await sawRunning;
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    spies.fetchSession.mockClear();
+
+    // The next five-second poll loads it, well inside the 30-second start grace.
+    await waitFor(
+      () => expect(spies.fetchSession).toHaveBeenCalledWith('conv-run'),
+      { timeout: 7000 },
+    );
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  }, 15000);
 });

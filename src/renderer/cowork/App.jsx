@@ -5484,6 +5484,9 @@ function AppCore() {
         return;
       }
       if (outcome === 'running') {
+        // It has started, so a poll that leaves it out from here means it
+        // finished; keeping the grace would hide a short run's answer.
+        runsAwaitingStartRef.current.delete(cid);
         // Off screen, the poll follows the run from here.
         if (activeTaskIdRef.current !== cid) return;
         if (await reconnectInFlight(cid).catch(() => false)) return;
