@@ -15,6 +15,11 @@
  * draw 日 differently from a code point no font covers, and a runner without
  * CJK fonts fails there.
  *
+ * A fixture with a laterErrorCode holds the frame's thread while its page
+ * draws, which in the default headless shell holds this page's thread too, so
+ * pdf-draws.spec.ts runs those in full Chromium and this file skips them. Every
+ * other rendered fixture must end with no later error.
+ *
  * The page-cap file then runs three more times, each in a view that would
  * break one cap if the renderer ignored it: a tall, narrow view with more
  * pages in sight than maxPdfCanvasesAlive, a wide view at a high pixel ratio
@@ -214,7 +219,7 @@ async function expectCanvasesWithin(page: Page, fixture: PreviewFixture, touch: 
 }
 
 test.describe('pdf preview', () => {
-  const fixtures = loadFixtures('pdf');
+  const fixtures = loadFixtures('pdf').filter((fixture) => fixture.expect.laterErrorCode === undefined);
   const missingCjk = CJK_FIXTURES.filter((name) => !fixtures.some((fixture) => fixture.name === name));
   if (missingCjk.length > 0) throw new Error(`fixtures/pdf/fixtures.yaml has no fixture named ${missingCjk.join(', ')}`);
 
@@ -238,6 +243,7 @@ test.describe('pdf preview', () => {
           await expect.poll(() => frame.evaluate(regionHasInk, region), { timeout: DRAW_TIMEOUT_MS }).toBe(true);
         }
         expect(await frame.evaluate(readProbe), 'Workers and WebAssembly compiles in the frame').toEqual({ workers: 0, wasm: 0 });
+        expect(await page.evaluate(() => window.coworkPreviewHarness!.laterError()), 'an error after rendered').toBeNull();
       }
       const testUrls = testRequests.map((request) => request.url);
       expect(strayRequests('pdf', fixture, testUrls, harnessOrigin), 'requests of the whole test the harness rules refuse').toEqual([]);

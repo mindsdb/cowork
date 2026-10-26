@@ -19,6 +19,7 @@ import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
+import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -134,20 +135,23 @@ export function buildAccessPayload(draft) {
 // Single source of truth for the access option copy. PublishMenu imports this
 // for its summary card, so the wording can't drift between the picker and the
 // "currently published as" view.
-// With the platform UI off, the build can't tell where its links open. A
-// deployment's own publisher may put a sign-in in front of them, or the build
-// may publish to MindsHub, where they reach the internet. So Public and
-// Password say only what a visitor needs, which holds in both cases.
+// A deployment that publishes with one shared token (`hasSharedPublishToken`)
+// sends links to its own publisher, which may put a sign-in in front of them,
+// so Public and Password say only what a visitor needs. Every other build
+// publishes to MindsHub with the person's own key, where links reach the
+// internet.
+const SHARED_TOKEN_PUBLISH = !PLATFORM_UI && hasSharedPublishToken();
+
 export const ACCESS_LABELS = {
   public: {
     icon: Ico.globe,
     title: 'Public',
-    desc: PLATFORM_UI ? 'Anyone on the internet with the URL' : 'Anyone with the URL',
+    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL' : 'Anyone on the internet with the URL',
   },
   password: {
     icon: Ico.lock,
     title: 'Password protected',
-    desc: PLATFORM_UI ? 'Anyone on the internet with the password' : 'Anyone with the URL and the password',
+    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
   },
   restricted: {
     icon: Ico.people,
@@ -194,14 +198,13 @@ function OptionCard({ value, active, icon, title, desc }) {
 }
 
 // Order runs private → public, so the least exposing choice is the one the
-// eye lands on first. With the platform UI off there is no "Only you": a
+// eye lands on first. A shared-token deployment offers no "Only you": a
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
-// upload with a 400. The flag can't tell that build from one that publishes to
-// MindsHub, so the second loses "Only you" too.
-const DEFAULT_MODES = PLATFORM_UI
-  ? ['ownerOnly', 'restricted', 'password', 'public']
-  : ['restricted', 'password', 'public'];
+// upload with a 400.
+const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
+  ? ['restricted', 'password', 'public']
+  : ['ownerOnly', 'restricted', 'password', 'public'];
 
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
 // defaults to every mode this build offers. `value`/`onChange` are the

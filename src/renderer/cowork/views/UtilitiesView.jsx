@@ -11,17 +11,22 @@ import {
   deleteMemory,
   fetchDatasources,
   fetchMemory,
+  fetchMemoryCapabilities,
   fetchPublishable,
   findMemoryEntry,
   labelCategory,
   publishArtifact,
+  resetMemory,
   saveDatasource,
   saveMemory,
   validateDatasource,
 } from '../api';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_SHORT_NAME } from '../../../shared/product-name';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -117,10 +122,43 @@ function memoryScopeLabel(memory, projects) {
   return `Project · ${projectLabelByName(projects, memory.projectName)}`;
 }
 
+// A deployment's brand names the product on the pages where memory is a
+// person's own, so the copy below reads it instead of saying Cowork.
+const PRODUCT_NAME = productName(STOCK_SHORT_NAME);
+
+/* Why an entry can't be edited. Memory that is the person's own but only
+   deletable is memory their agent saves on its own: the server lets nobody
+   hand-write it there. */
+function memoryReadOnlyCopy(memory) {
+  if (memory.scope === 'Deployment') {
+    return {
+      note: 'Read only. Your operator sets these rules for everyone, and every answer follows them.',
+      editTitle: undefined,
+    };
+  }
+  if (canUseSharedResource(memory, 'canDelete')) {
+    return {
+      note: `Yours alone. ${PRODUCT_NAME} saves this on its own as you work, so it can't be edited. You can delete it.`,
+      editTitle: `${PRODUCT_NAME} saves this memory on its own, so it can't be edited.`,
+    };
+  }
+  return {
+    note: 'Read only. Only the memory author or an organization admin can change it.',
+    editTitle: 'You do not have permission to edit this shared memory.',
+  };
+}
+
+const RESET_CONFIRM_COPY = {
+  title: 'Reset your memory?',
+  message: `This deletes everything ${PRODUCT_NAME} has learned for you: your profile, rules and lessons, in every project of yours. Your next question starts with nothing learned. The deployment's rules stay. This can't be undone.`,
+  confirmLabel: 'Reset my memory',
+};
+
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
+  const deploymentSection = sections.find((s) => s.scope === 'Deployment');
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
   // `selected` holds the sidebar selection; after save `data.sections`
@@ -135,6 +173,20 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
   const [draft, setDraft] = useState({
     path: null, scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
+  const [canReset, setCanReset] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  // The reset is offered only where the server carries it out. A failed check
+  // leaves it hidden: the page itself still works.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMemoryCapabilities()
+      .then((capabilities) => { if (!cancelled) setCanReset(capabilities.canReset); })
+      .catch(() => { if (!cancelled) setCanReset(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // The editor writes the slot the draft was seeded from, which is not
   // necessarily whatever the sidebar has selected by the time Save runs.
@@ -222,11 +274,35 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
     }
   };
 
+  const reset = async () => {
+    setResetting(true);
+    setResetError('');
+    try {
+      await resetMemory();
+      setResetOpen(false);
+      setEditing(null);
+      onSelect(null);
+      setStatus('Your memory is reset. Nothing learned is left.');
+      await refresh({ forceFresh: true });
+    } catch (err) {
+      setResetError(err.message || 'Could not reset your memory.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const displayedCopy = displayed ? memoryReadOnlyCopy(displayed) : null;
+
   return (
     <>
       <CollectionPageHeader
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
+        actions={canReset ? (
+          <Button variant="subtle" onClick={() => { setResetError(''); setResetOpen(true); }}>
+            Reset my memory
+          </Button>
+        ) : null}
       />
       {/* shrink-0: a flex child of the page column — without it the spacer
           collapses when the content below needs the height. */}
@@ -240,6 +316,14 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
             <MemorySectionList
               heading="Global"
               files={globalSection.files || []}
+              selected={selected}
+              onSelect={selectEntry}
+            />
+          )}
+          {deploymentSection && (
+            <MemorySectionList
+              heading="Deployment"
+              files={deploymentSection.files || []}
               selected={selected}
               onSelect={selectEntry}
             />
@@ -291,22 +375,26 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                   <SharedResourceAttribution resource={displayed} className="mt-1" />
                   {!canUseSharedResource(displayed, 'canEdit') && (
                     <div className="mt-1 text-[12px] text-ink-3" role="note">
-                      Read only. Only the memory author or an organization admin can change it.
+                      {displayedCopy.note}
                     </div>
                   )}
                 </div>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canEdit')}
-                  title={!canUseSharedResource(displayed, 'canEdit') ? 'You do not have permission to edit this shared memory.' : undefined}
-                  onClick={() => startEdit(displayed)}
-                >Edit</Button>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canDelete')}
-                  title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
-                  onClick={() => remove(displayed)}
-                >Delete</Button>
+                {displayed.scope !== 'Deployment' && (
+                  <>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canEdit')}
+                      title={!canUseSharedResource(displayed, 'canEdit') ? displayedCopy.editTitle : undefined}
+                      onClick={() => startEdit(displayed)}
+                    >Edit</Button>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canDelete')}
+                      title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
+                      onClick={() => remove(displayed)}
+                    >Delete</Button>
+                  </>
+                )}
               </div>
               <div className={memoryViewerClass}>
                 <MarkdownContent
@@ -324,6 +412,18 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={resetOpen}
+        title={RESET_CONFIRM_COPY.title}
+        message={RESET_CONFIRM_COPY.message}
+        confirmLabel={RESET_CONFIRM_COPY.confirmLabel}
+        destructive
+        busy={resetting}
+        busyLabel="Resetting…"
+        error={resetError}
+        onConfirm={reset}
+        onClose={() => setResetOpen(false)}
+      />
     </>
   );
 }

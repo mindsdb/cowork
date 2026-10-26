@@ -4,6 +4,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 
+// A web build without the platform UI whose page has no SPA wrapper
+// publish-token tag, which keeps the shared-token choices: no "Only you", and
+// Public says "Anyone with the URL".
 vi.mock('../../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../api', () => ({
   revealArtifact: vi.fn(),
@@ -48,7 +51,7 @@ function openShareDialog() {
 describe.each([
   ['grid', 'grid'],
   ['list', 'list'],
-])('%s view Share dialog with the platform UI off', (_name, view) => {
+])('%s view Share dialog with the platform UI off and no publish-token tag', (_name, view) => {
   it('opens with nothing picked and keeps Share disabled', () => {
     localStorage.setItem('anton:artifacts-view', view);
     render(<ArtifactsView artifacts={[unpublished]} />);

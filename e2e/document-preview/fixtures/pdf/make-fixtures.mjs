@@ -196,6 +196,30 @@ function largestPages() {
   ]);
 }
 
+/* How many times each nested form draws the next one. */
+const NESTED_FORM_FAN_OUT = 10;
+
+/* One Letter page that draws the first of `depth` Form XObjects. Each form
+   draws the next one NESTED_FORM_FAN_OUT times, and the last fills
+   NESTED_FORM_FAN_OUT small boxes, so the page holds no cycle for pdf.js to
+   refuse but fills NESTED_FORM_FAN_OUT ** depth boxes. */
+function nestedForms(depth) {
+  const forms = Array.from({ length: depth }, (_, index) => 5 + index);
+  return pdf([
+    CATALOG,
+    ONE_LETTER_PAGE,
+    `<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /XObject << /X ${forms[0]} 0 R >> >> >>`,
+    stream('', '/X Do'),
+    ...forms.map((number, index) => {
+      const next = forms[index + 1];
+      const form = '/Type /XObject /Subtype /Form /BBox [0 0 612 792]';
+      return next === undefined
+        ? stream(form, `0.2 0.3 0.8 rg ${Array.from({ length: NESTED_FORM_FAN_OUT }, (_, box) => `${72 + 2 * box} 72 1 1 re f`).join(' ')}`)
+        : stream(`${form} /Resources << /XObject << /X ${next} 0 R >> >>`, Array(NESTED_FORM_FAN_OUT).fill('q /X Do Q').join('\n'));
+    }),
+  ]);
+}
+
 /* Link annotations whose URI actions aim at Google hosts, loopback by
    address and by name, and a path on the app's own origin, each over a line
    of text 60 points below the last. */
@@ -260,6 +284,8 @@ export function pdfFixtureFiles() {
     ['wrong-page-kid.pdf', threePages([4, 5, 8])],
     /* A PDF header and nothing a reader can parse after it. */
     ['not-a-document.pdf', '%PDF-1.7\nThis file has a PDF header and nothing a PDF reader can parse.\n'],
+    ['nested-forms-7.pdf', nestedForms(7)],
+    ['nested-forms-8.pdf', nestedForms(8)],
   ];
   return texts.map(([file, text]) => ({ file, bytes: new Uint8Array(Buffer.from(text, 'latin1')) }));
 }

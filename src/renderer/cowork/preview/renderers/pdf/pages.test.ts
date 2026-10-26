@@ -60,6 +60,11 @@ describe('pageCanvasSize', () => {
     expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(CANVAS.maxPdfCanvasSide);
     expect(size.width).toBe(1);
   });
+
+  it('reads the side cap from limits.maxPdfCanvasSide', () => {
+    const size = pageCanvasSize({ width: 500, height: 1000 }, 816, 2, { maxPdfCanvasPixels: 16_777_216, maxPdfCanvasSide: 500 });
+    expect(size).toEqual({ width: 250, height: 500, scale: 0.5 });
+  });
 });
 
 describe('PageWindow', () => {
@@ -197,6 +202,22 @@ function squarePageDocument(count: number, side = LARGEST_PAGE, { finish = false
   return { pdf, draws, cancel, cleanup };
 }
 
+/* A beginDraw that keeps the draws it started and hasn't seen end, as the
+   parent's draw watchdog does. */
+function drawWatch() {
+  const open = new Set<number>();
+  let started = 0;
+  const beginDraw = vi.fn(() => {
+    const id = started;
+    started += 1;
+    open.add(id);
+    return () => {
+      open.delete(id);
+    };
+  });
+  return { beginDraw, open };
+}
+
 function canvasesIn(root: HTMLElement): HTMLCanvasElement[] {
   return Array.from(root.querySelectorAll('canvas'));
 }
@@ -239,7 +260,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, draws } = squarePageDocument(40);
-    const pages = new PdfPages(pdf, root, limits);
+    const pages = new PdfPages(pdf, root, limits, drawWatch().beginDraw);
     await pages.layOut(40, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
 
@@ -256,7 +277,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, cancel } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1], true);
@@ -270,7 +291,7 @@ describe('PdfPages', () => {
   it('lays out one placeholder per page, reports each, and stops when the preview stops', async () => {
     const root = document.createElement('div');
     const { pdf } = squarePageDocument(10);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     const controller = new AbortController();
     const progress = vi.fn((done: number) => {
       if (done === 4) controller.abort();
@@ -285,7 +306,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1, 2], true);
@@ -298,13 +319,52 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, cleanup } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1], true);
     view.show([1], false);
     await settleDraws();
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it('runs every draw under the draw watchdog and ends it when the draw is cancelled or the preview closes', async () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    const { pdf } = squarePageDocument(3);
+    const watch = drawWatch();
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), watch.beginDraw);
+    await pages.layOut(3, new AbortController().signal, () => undefined);
+    const view = ViewStandIn.current!;
+    view.show([1, 2], true);
+    expect(watch.beginDraw).toHaveBeenCalledTimes(2);
+    view.show([1], false);
+    await settleDraws();
+    expect(watch.open.size).toBe(1);
+    pages.close();
+    await settleDraws();
+    expect(watch.open.size).toBe(0);
+  });
+
+  it('ends the draw watchdog when a draw finishes, and keeps it running while a draw never ends', async () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    const finished = squarePageDocument(1, 612, { finish: true });
+    const finishedWatch = drawWatch();
+    const finishedPages = new PdfPages(finished.pdf, root, previewLimits({ touch: false }), finishedWatch.beginDraw);
+    await finishedPages.layOut(1, new AbortController().signal, () => undefined);
+    ViewStandIn.current!.show([1], true);
+    await settleDraws();
+    expect(finishedWatch.beginDraw).toHaveBeenCalledOnce();
+    expect(finishedWatch.open.size).toBe(0);
+
+    const stuck = squarePageDocument(1, 612);
+    const stuckWatch = drawWatch();
+    const stuckPages = new PdfPages(stuck.pdf, root, previewLimits({ touch: false }), stuckWatch.beginDraw);
+    await stuckPages.layOut(1, new AbortController().signal, () => undefined);
+    ViewStandIn.current!.show([1], true);
+    await settleDraws();
+    expect(stuckWatch.open.size).toBe(1);
   });
 
   describe('after the column resizes or the pixel ratio changes', () => {
@@ -316,7 +376,7 @@ describe('PdfPages', () => {
       const root = document.createElement('div');
       document.body.append(root);
       const { pdf, draws, cancel, cleanup } = squarePageDocument(count, PAGE_SIDE, { finish });
-      const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+      const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
       await pages.layOut(count, new AbortController().signal, () => undefined);
       showPagesAt(root, cssWidth);
       ViewStandIn.current!.show(Array.from({ length: count }, (_, index) => index + 1), true);

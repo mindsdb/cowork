@@ -119,6 +119,23 @@ describe('ContextCard — memory', () => {
 
     expect(apiMock.fetchMemory).toHaveBeenCalledTimes(1);
   });
+
+  it('lists learned memory and leaves the deployment\'s rules to the Memories page', async () => {
+    apiMock.fetchMemory.mockResolvedValue({
+      sections: [
+        { scope: 'Global', files: [{ path: 'Global:global:lessons', scope: 'Global', category: 'lessons', content: 'Ships on Fridays.' }] },
+        { scope: 'Deployment', files: [{ path: 'Deployment:global:rules', scope: 'Deployment', category: 'rules', content: 'List package names only.' }] },
+      ],
+    });
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general' }} conversationId={null} />);
+    });
+
+    expect(await screen.findByText('Global memory')).toBeInTheDocument();
+    expect(screen.queryByText('Deployment')).toBeNull();
+    expect(screen.queryByText('Rules')).toBeNull();
+  });
 });
 
 describe('ContextCard — shared resource permissions', () => {

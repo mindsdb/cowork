@@ -12,10 +12,11 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+from urllib.request import HTTPSHandler, build_opener, install_opener, urlopen
 import zipfile
 
 
@@ -38,6 +39,21 @@ class Release:
 class InstallState:
     # Unknown prior state is unsafe to restart until the tool directory is read.
     changed: bool = True
+
+
+def trust_bundled_roots(ca_file: Path) -> None:
+    """Verify every download against the platform's roots plus a PEM bundle.
+
+    Python on Windows sees only the roots Windows has already downloaded, and
+    Windows downloads a missing one only when a program verifies through
+    Windows. OpenSSL never does, so a fresh machine cannot verify PyPI. The
+    app passes the public roots its runtime bundles to close that gap.
+    """
+    context = ssl.create_default_context()
+    # Not create_default_context(cafile=...): that skips the platform's
+    # stores, which hold the roots an organization installs.
+    context.load_verify_locations(cafile=ca_file)
+    install_opener(build_opener(HTTPSHandler(context=context)))
 
 
 def download(url: str) -> bytes:
@@ -406,11 +422,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uv", default="uv")
     parser.add_argument("--venv-python", type=Path)
+    parser.add_argument("--ca-file", type=Path, help="PEM roots to trust beside the platform's")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
     state = InstallState()
     try:
+        if args.ca_file:
+            trust_bundled_roots(args.ca_file)
         install(args.uv, arguments, args.venv_python, state)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         print(f"Locked server install failed: {exc}", file=sys.stderr)

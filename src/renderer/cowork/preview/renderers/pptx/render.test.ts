@@ -217,6 +217,7 @@ async function startRender(source: Source, options: RunOptions = {}): Promise<Ru
         return zip.zip;
       }),
     requestAsset: async () => null,
+    beginDraw: () => () => undefined,
   };
   return { root, opened, progress, rendered: renderer.render(bytes, ctx) };
 }

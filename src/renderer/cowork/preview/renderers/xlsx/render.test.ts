@@ -148,6 +148,7 @@ function context(limits: Partial<PreviewLimits> = {}, signal = new AbortControll
     progress: vi.fn(),
     openZip: vi.fn(),
     requestAsset: vi.fn(),
+    beginDraw: vi.fn(() => () => undefined),
   };
 }
 
@@ -590,6 +591,14 @@ describe('xlsx renderer', () => {
     expect(cellTexts(ctx)).toEqual([['a'.repeat(253), '7']]);
   });
 
+  it('reads the number format cap from ctx.limits.maxNumberFormatLength', async () => {
+    const ctx = context({ maxNumberFormatLength: 10 });
+    const atCap = `"${'a'.repeat(8)}"`;
+    const pastCap = `"${'b'.repeat(9)}"`;
+    await renderer.render(await workbook({ name: 'Long', rows: [[{ number: 7, format: atCap }, { number: 7, format: pastCap }]] }), ctx);
+    expect(cellTexts(ctx)).toEqual([['a'.repeat(8), '7']]);
+  });
+
   /* The exported report fixture runs whole only in the browser spec. */
   it('shows the exported report\'s formats, shared strings and shared formulas\' cached results', async () => {
     const ctx = context({ maxSheetRows: 3, maxSheetColumns: 14 });
@@ -606,6 +615,12 @@ describe('xlsx renderer', () => {
     const ctx = context();
     await renderer.render(await workbook({ name: 'Long', rows: [['x'.repeat(1_000), 'y'.repeat(1_500)]] }), ctx);
     expect(cellTexts(ctx)).toEqual([['x'.repeat(1_000), `${'y'.repeat(1_000)}\u2026`]]);
+  });
+
+  it('reads the cell text cap from ctx.limits.maxSheetCellCharacters', async () => {
+    const ctx = context({ maxSheetCellCharacters: 5 });
+    await renderer.render(await workbook({ name: 'Short', rows: [['x'.repeat(5), 'y'.repeat(6)]] }), ctx);
+    expect(cellTexts(ctx)).toEqual([['x'.repeat(5), `${'y'.repeat(5)}\u2026`]]);
   });
 
   /* happy-dom lays nothing out, so each cell gets the widths a browser would
@@ -651,6 +666,15 @@ describe('xlsx renderer', () => {
     const parsed = vi.mocked(read).mock.calls.flatMap(([, options]) => options?.sheets as number[]);
     expect(parsed).toEqual(Array.from({ length: 256 }, (_, i) => i));
     expect(vi.mocked(read)).toHaveBeenCalledTimes(8);
+  });
+
+  it('reads the sheet cap from ctx.limits.maxSheets', async () => {
+    const ctx = context({ maxSheets: 2 });
+    const names = ['S1', 'S2', 'S3'];
+    const summary = await renderer.render(await workbook(...names.map((name) => ({ name, rows: [[name]] }))), ctx);
+
+    expect(summary).toEqual<RenderSummary>({ type: 'xlsx', units: 2, truncated: true });
+    expect(tabs(ctx).map((tab) => tab.textContent)).toEqual(['S1', 'S2']);
   });
 
   /* SheetJS parses a part once for each sheet that reads it, and compares part

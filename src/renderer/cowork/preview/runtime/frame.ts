@@ -106,6 +106,18 @@ async function renderDocument(session: FrameSession, previewType: DocumentPrevie
     lastProgressAt = now;
     post({ token, type: 'progress', done, total });
   };
+  let nextDrawId = 0;
+  const beginDraw = () => {
+    const id = nextDrawId;
+    nextDrawId += 1;
+    post({ token, type: 'draw', id, state: 'start' });
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      post({ token, type: 'draw', id, state: 'end' });
+    };
+  };
   try {
     if (previewType !== renderer.type) {
       throw previewError('internal', `This frame renders ${renderer.type}, not ${previewType}.`);
@@ -129,6 +141,7 @@ async function renderDocument(session: FrameSession, previewType: DocumentPrevie
       progress,
       openZip,
       requestAsset: session.requestAsset,
+      beginDraw,
     };
     const summary = readRenderSummary(await renderer.render(bytes, context));
     if (!summary || summary.type !== renderer.type) {

@@ -64,17 +64,17 @@ describe('previewError', () => {
     expect(error).toMatchObject({ code: 'too-large', limit: 'maxDocxNodes', cause });
     expect(previewError('parse-failed', 'bad', { cause })).not.toHaveProperty('limit');
   });
+
+  it('keeps the cause it is given', () => {
+    const cause = new Error('the library threw');
+    expect(previewError('parse-failed', 'This file is not a readable PDF.', { cause }).cause).toBe(cause);
+  });
 });
 
 describe('isPreviewFailureLimit', () => {
   it('accepts each limit whose breach ends a preview, and nothing else', () => {
     for (const limit of Object.keys(PREVIEW_FAILURE_LIMITS)) expect(isPreviewFailureLimit(limit)).toBe(true);
     for (const value of ['maxSheets', 'toString', '', undefined, 1]) expect(isPreviewFailureLimit(value)).toBe(false);
-  });
-
-  it('keeps the cause it is given', () => {
-    const cause = new Error('the library threw');
-    expect(previewError('parse-failed', 'This file is not a readable PDF.', { cause }).cause).toBe(cause);
   });
 });
 

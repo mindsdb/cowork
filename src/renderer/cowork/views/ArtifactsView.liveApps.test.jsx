@@ -36,7 +36,8 @@ vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: toastA
 vi.mock('../components/artifact', () => ({ ArtifactViewer: () => null }));
 
 import ArtifactsView from './ArtifactsView';
-import { duplicateLiveApp, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from '../api';
+import { artifactServeUrl, duplicateLiveApp, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from '../api';
+import { host } from '../../platform/host';
 import { liveAppStatesFrom } from '../lib/liveAppState';
 import { setLiveApps } from '../../lib/liveApps';
 
@@ -200,6 +201,67 @@ describe.each(['grid', 'list'])('%s view', (view) => {
         expect(screen.queryByText('Launch')).toBeNull();
         fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
       }
+    });
+  });
+
+  /*
+   * The ↗ beside a live app opens the app where it runs. The serve route's
+   * copy of its page has no backend, so nothing opens that.
+   */
+  describe("a live app's ↗", () => {
+    const SERVE = 'https://cowork.example/api/v1/artifacts/serve/proj/table-counts/static/index.html';
+    const openButton = () => screen.queryByRole('button', { name: 'Open' });
+    beforeEach(() => artifactServeUrl.mockReturnValue(SERVE));
+    afterEach(() => artifactServeUrl.mockReturnValue(''));
+
+    describe('with live apps on', () => {
+      beforeEach(() => setLiveApps(true));
+
+      it("opens a running app's own address", async () => {
+        fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([
+          { projectId: 'p1', slug: 'table-counts', state: 'running', address: 'http://app1.view.localhost:8080/' },
+        ]));
+        render(<ArtifactsView artifacts={[app]} />);
+        await screen.findByText('Live at app1.view.localhost:8080');
+        fireEvent.click(openButton());
+
+        await waitFor(() => expect(host.openExternal).toHaveBeenCalledTimes(1));
+        expect(host.openExternal).toHaveBeenCalledWith('http://app1.view.localhost:8080/');
+      });
+
+      it('shows no ↗ on a stopped app', async () => {
+        fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([
+          { projectId: 'p1', slug: 'table-counts', state: 'stopped', address: 'http://app1.view.localhost:8080/', stopReasonText: 'no requests for 2 h' },
+        ]));
+        render(<ArtifactsView artifacts={[app]} />);
+        await screen.findByText(/^Stopped/);
+        expect(openButton()).toBeNull();
+      });
+
+      it('shows no ↗ on an app with no launch on record', async () => {
+        fetchMyLiveApps.mockResolvedValue(new Map());
+        render(<ArtifactsView artifacts={[app]} />);
+        await waitFor(() => expect(fetchMyLiveApps).toHaveBeenCalled());
+        expect(openButton()).toBeNull();
+      });
+
+      it("opens a static page's serve URL, as before", async () => {
+        render(<ArtifactsView artifacts={[page]} />);
+        fireEvent.click(openButton());
+        await waitFor(() => expect(host.openExternal).toHaveBeenCalledWith(SERVE));
+      });
+
+      it("opens a published live app's shared page, as before", async () => {
+        render(<ArtifactsView artifacts={[{ ...app, publishedUrl: 'https://pages.example/a', accessMode: 'public' }]} />);
+        fireEvent.click(openButton());
+        await waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('https://pages.example/a'));
+      });
+    });
+
+    it("opens a full-stack app's serve URL with live apps off, as before", async () => {
+      render(<ArtifactsView artifacts={[app]} />);
+      fireEvent.click(openButton());
+      await waitFor(() => expect(host.openExternal).toHaveBeenCalledWith(SERVE));
     });
   });
 });

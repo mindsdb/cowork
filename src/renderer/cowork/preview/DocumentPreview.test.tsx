@@ -375,6 +375,32 @@ describe('a failed preview', () => {
     expect(props.openInDefaultApp).not.toHaveBeenCalled();
   });
 
+  /* The frame's draw watchdog reports timeout after rendered, naming
+     progressTimeoutMs, when a page draw never ends. */
+  it('replaces a rendered preview with the timeout note when the frame times out later, and downloads on web', async () => {
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: false }));
+    expect(screen.getByTitle('Preview of report.xlsx')).toBeInTheDocument();
+    act(() => frame.onError({ code: 'timeout', limit: 'progressTimeoutMs' }));
+    expect(screen.getByRole('status')).toHaveTextContent(PREVIEW_LIMIT_REASONS.progressTimeoutMs);
+    expect(screen.queryByTitle('Preview of report.xlsx')).toBeNull();
+    await waitFor(() => expect(props.download).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+  });
+
+  it('on desktop replaces a rendered preview with the timeout note and Open when the frame times out later', async () => {
+    platform.isWeb = false;
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: false }));
+    act(() => frame.onError({ code: 'timeout', limit: 'progressTimeoutMs' }));
+    expect(screen.getByRole('status')).toHaveTextContent(`${PREVIEW_FAILED_NOTE}${PREVIEW_LIMIT_REASONS.progressTimeoutMs}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+    expect(props.download).not.toHaveBeenCalled();
+  });
+
   it('shows the failure note, not a blank viewer, when the preview crashes', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     frameStub.crash = true;

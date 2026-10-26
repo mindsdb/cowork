@@ -11,9 +11,9 @@ export interface PreviewDevice {
  * limits.json, the one place each cap's value is written. `limits` holds every
  * cap on a device without touch, and `touchLimits` the caps a touch device
  * lowers. Documentation that publishes the caps reads this file at the
- * release it describes, so a cap changes here and nowhere else. The types make tsc fail when the file lacks a cap or holds a
- * value that isn't a number; limits.test.ts fails on a name PreviewLimits
- * doesn't have.
+ * release it describes, so a cap changes here and nowhere else. The types
+ * make tsc fail when the file lacks a cap or holds a value that isn't a
+ * number; limits.test.ts fails on a name PreviewLimits doesn't have.
  */
 export interface PreviewLimitsFile {
   limits: PreviewLimits;
@@ -47,10 +47,10 @@ export const PREVIEW_LIMIT_NAMES: Readonly<Record<keyof PreviewLimits, true>> = 
   progressTimeoutMs: true,
 });
 
-/* The caps the parent enforces: the streamed byte cap and the two watchdogs.
-   They are the same on every device, so the parent reads them without a
-   device. The constant is frozen, so no importer can change a cap for the
-   others. */
+/* The caps the parent enforces: the streamed byte cap and the two watchdogs,
+   whose progressTimeoutMs also times the frame's draws. They are the same on
+   every device, so the parent reads them without a device. The constant is
+   frozen, so no importer can change a cap for the others. */
 export type PreviewParentLimits = Pick<PreviewLimits, 'maxBytes' | 'readyTimeoutMs' | 'progressTimeoutMs'>;
 
 export const PREVIEW_PARENT_LIMITS: Readonly<PreviewParentLimits> = Object.freeze({

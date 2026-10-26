@@ -359,9 +359,9 @@ function inputPieces(data: Uint8Array<ArrayBuffer>): ReadableStream<BufferSource
 /*
  * Inflates one entry's data and returns how many bytes came out. It rejects
  * with zip-limit, naming `over.limit` and carrying `over.message`, once the
- * count passes `cap`, without inflating the rest. It rejects with parse-failed when the deflate
- * stream is cut short, which is how a stream that runs past the entry's
- * stated compressed size shows.
+ * count passes `cap`, without inflating the rest. It rejects with
+ * parse-failed when the deflate stream is cut short, which is how a stream
+ * that runs past the entry's stated compressed size shows.
  */
 async function inflatedSize({ record, data }: CheckedEntry, cap: number, over: InflateLimit, signal: AbortSignal): Promise<number> {
   if (record.method === STORED) {

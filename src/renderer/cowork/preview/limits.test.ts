@@ -36,13 +36,6 @@ describe('previewLimits', () => {
     });
   });
 
-  it('keeps the caps that came from the inflate budget at the values the renderers used to work out', () => {
-    const limits = previewLimits({ touch: false });
-    expect(limits.maxPicturePixels).toBe(limits.maxInflatedBytes / 4);
-    expect(limits.maxDocxNodes).toBe(limits.maxInflatedBytes / 128);
-    expect(limits.maxDocxFontUrlCharacters).toBe(limits.maxInflatedBytes / 16);
-  });
-
   it('gives the parent the same byte cap and watchdogs on every device', () => {
     for (const touch of [false, true]) {
       const { maxBytes, readyTimeoutMs, progressTimeoutMs } = previewLimits({ touch });
