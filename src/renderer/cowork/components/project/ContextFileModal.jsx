@@ -51,7 +51,7 @@ import { downloadFilename } from '../../lib/browserDownload';
 import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
 import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { DOWNLOAD_FAILED_NOTE, DocumentPreview } from '../../preview/DocumentPreview';
+import { DOWNLOAD_FAILED_NOTE, DocumentPreview, PREVIEW_FAILED_DOWNLOADED_NOTE } from '../../preview/DocumentPreview';
 import { documentPreviewType } from '../../preview/kinds';
 
 /* Where the file's bytes are read from: an attachment's raw URL, else the
@@ -70,13 +70,19 @@ function joinAbs(root, rel) {
   return `${r}/${p}`;
 }
 
-// Hand the file to the OS: prefer the raw URL (attachments + anything
-// that passed one) via the OS shell; fall back to opening the local
-// project file in the default app.
-function openInDefaultApp({ projectPath, filePath, rawUrl }) {
+/* Whether the file saves rather than opens: always on web, and on desktop
+   for an attachment. An attachment has no local path, and the OS browser
+   that Open would hand its raw URL to carries no server token, so it gets a
+   401. The renderer's own fetch carries the token on desktop too. */
+function savesFile({ projectName, filePath, rawUrl }) {
+  return host.isWeb || (!!rawUrl && !(projectName && filePath));
+}
+
+// Open the local project file in its default app. An attachment never
+// comes here: it saves instead (savesFile).
+function openInDefaultApp({ projectPath, filePath }) {
   const abs = joinAbs(projectPath, filePath);
-  if (rawUrl) host.openExternal(rawUrl);
-  else if (abs) host.openPath(abs);
+  if (abs) host.openPath(abs);
 }
 
 
@@ -87,53 +93,63 @@ const INLINE_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 // The HTML preview renders in an iframe, not the text view, so it reads more.
 const HTML_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
 
-/* The file at `url` as text, or null when it is too large to show inline or
-   is not UTF-8 text. A Content-Length past the cap refuses the file before
-   its body downloads; without one, the size is checked once it has. */
+/* Why a file shows in the binary panel rather than as text: it is past the
+   inline cap, or its bytes are not UTF-8 text. */
+const TOO_LARGE = 'too-large';
+const NOT_TEXT = 'not-text';
+
+/** @typedef {{ text: string } | { refused: typeof TOO_LARGE | typeof NOT_TEXT }} InlineTextRead */
+
+/* The file at `url` as `{ text }`, or `{ refused }` with TOO_LARGE or
+   NOT_TEXT. A Content-Length past the cap refuses the file before its body
+   downloads; without one, the size is checked once it has.
+   @returns {Promise<InlineTextRead>} */
 async function readInlineText(url, maxBytes = INLINE_TEXT_MAX_BYTES) {
   const response = await fetchAuthenticatedResponse(url);
   if (Number(response.headers.get('Content-Length')) > maxBytes) {
     response.body?.cancel().catch(() => {});
-    return null;
+    return { refused: TOO_LARGE };
   }
   const blob = await response.blob();
-  if (blob.size > maxBytes) return null;
+  if (blob.size > maxBytes) return { refused: TOO_LARGE };
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer()) };
   } catch {
-    return null;
+    return { refused: NOT_TEXT };
   }
 }
 
-/* Whether FileAccessButton has anything to offer: Download on web, Reveal
-   or Open on desktop. */
+/* Whether FileAccessButton has anything to offer: Download where the file
+   saves (savesFile), Reveal or Open on desktop. */
 function hasFileAccess({ projectName, filePath, rawUrl, showOpenAction }) {
   const hasProjectFile = !!(projectName && filePath);
-  return host.isWeb ? hasProjectFile || !!rawUrl : hasProjectFile || showOpenAction;
+  return savesFile({ projectName, filePath, rawUrl })
+    ? hasProjectFile || !!rawUrl
+    : hasProjectFile || showOpenAction;
 }
 
 // Header chip that handles "reveal in Finder" / "open in default app"
-// on desktop and falls back to a download link on the web. Used by
+// on desktop and falls back to a download link where the file saves:
+// on the web, and for an attachment on desktop (savesFile). Used by
 // both the HTML and binary branches — they live in the modal header
 // so the user always has an escape hatch regardless of what's
 // rendered inline.
 function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpenAction = true }) {
-  const isWeb = !!host.isWeb;
   const abs = joinAbs(projectPath, filePath);
   const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
   // Attachments have a `rawUrl` but no project filePath — Reveal-in-
   // Finder has nothing to point at (the file isn't on a local project
-  // path), so it's hidden and Open prefers the raw URL via host.
+  // path), so an attachment saves through its raw URL instead.
   const hasProjectFile = !!(projectName && filePath);
 
-  if (isWeb) {
-    const webUrl = dlUrl || rawUrl;
-    if (!webUrl) return null;
+  if (savesFile({ projectName, filePath, rawUrl })) {
+    const saveUrl = dlUrl || rawUrl;
+    if (!saveUrl) return null;
     return (
       <button
         type="button"
         onClick={() => {
-          downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
+          downloadAuthenticatedResource(saveUrl, downloadFilename(filePath)).catch(() => {});
         }}
         className="no-underline cursor-pointer bg-transparent border border-solid border-line text-ink-2 py-[6px] px-3 rounded-[6px] font-[family-name:var(--font-body)] text-sm font-medium inline-flex items-center gap-[6px]"
       >{Ico.downloadCloud ? Ico.downloadCloud(14) : '↓'} Download</button>
@@ -152,7 +168,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
       {showOpenAction && (
         <Tooltip content="Open in default app">
           <Button
-            onClick={() => openInDefaultApp({ projectPath, filePath, rawUrl })}
+            onClick={() => openInDefaultApp({ projectPath, filePath })}
           >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
         </Tooltip>
       )}
@@ -168,9 +184,12 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
 //
 // `downloadOnOpen` (web, a file this viewer has no preview for) saves the
 // file once when the panel mounts, as a click on an artifact with no preview
-// does, and says it downloaded only after the download succeeded. Any later
-// download is the user's click on Download.
-function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction, downloadOnOpen = false }) {
+// does, and says `downloadedNote` only after the download succeeded. Any
+// later download is the user's click on Download.
+function BinaryFilePanel({
+  fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction,
+  downloadOnOpen = false, downloadedNote = NO_PREVIEW_DOWNLOADED_NOTE,
+}) {
   const offersActions = hasFileAccess({ projectName, filePath, rawUrl, showOpenAction });
   const [downloaded, setDownloaded] = useState(null);
   const started = useRef(false);
@@ -188,7 +207,7 @@ function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath,
   );
   if (downloadOnOpen) {
     if (downloaded === null) message = 'Downloading…';
-    else message = downloaded ? NO_PREVIEW_DOWNLOADED_NOTE : DOWNLOAD_FAILED_NOTE;
+    else message = downloaded ? downloadedNote : DOWNLOAD_FAILED_NOTE;
   }
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
@@ -220,9 +239,9 @@ export default function ContextFileModal({
                    //   the web.
   filePath,        // project-relative path (instructions: ANTON_PROJECT_INSTRUCTIONS_PATH)
   rawUrl,          // optional absolute URL for inline media (images) and the
-                   //   binary-mode "Open" action. Lets attachments — which
-                   //   have no project file path — render images inline and
-                   //   open in the OS shell without project-file IO.
+                   //   Download action. Lets attachments — which have no
+                   //   project file path — render images inline and save
+                   //   without project-file IO, on desktop too (savesFile).
   isAntonMd,       // optional override; otherwise derived from filePath
   /* False drops the desktop "Open" action, which hands the file to the OS
      default app (host.openPath): for a path the agent named, not the user. */
@@ -284,9 +303,10 @@ export default function ContextFileModal({
   const [binaryDetail, setBinaryDetail] = useState('');
   // The file the binary panel shows because this viewer has no preview for
   // it, not because its image or HTML failed to load; on web the panel
-  // downloads it. Held as that file's URL, so a render that still carries
-  // the previous file's state never downloads the next one.
-  const [noPreviewUrl, setNoPreviewUrl] = useState('');
+  // downloads it. `{ url, refused }`: held with that file's URL, so a render
+  // that still carries the previous file's state never downloads the next
+  // one, and with why it shows no text (TOO_LARGE or NOT_TEXT).
+  const [noPreview, setNoPreview] = useState(null);
   const textareaRef = useRef(null);
   /*
     The load effect must not re-fire when a capability changes. Reading the
@@ -338,10 +358,12 @@ export default function ContextFileModal({
     An .xlsx, .docx, .pptx or .pdf previews read-only in the document frame,
     as an agent-made file does, when the build has its renderer
     (documentPreviewType) and this shell may mount that frame
-    (host.supportsDocumentPreview). A preview that fails on desktop offers
-    Open, so a viewer without the open action keeps the panel there.
+    (host.supportsDocumentPreview). A preview that fails offers Download
+    where the file saves and Open elsewhere, so on desktop a viewer without
+    the open action keeps the panel for a project file.
   */
-  const documentType = bytesUrl && host.supportsDocumentPreview && (host.isWeb || showOpenAction)
+  const fileSaves = savesFile({ projectName, filePath, rawUrl });
+  const documentType = bytesUrl && host.supportsDocumentPreview && (fileSaves || showOpenAction)
     ? documentPreviewType({ path: filePath })
     : null;
   /* What a read that finds no file says: an attachment is read by its raw
@@ -360,7 +382,7 @@ export default function ContextFileModal({
       // Reopened on the same file, the first render still holds this
       // file's state; the panel it mounts must not download before the
       // read below decides again.
-      setNoPreviewUrl('');
+      setNoPreview(null);
       return;
     }
     let cancelled = false;
@@ -375,12 +397,13 @@ export default function ContextFileModal({
     setPreviewUrl('');
     setPreviewHtml('');
     setBinaryDetail('');
-    setNoPreviewUrl('');
+    setNoPreview(null);
     setMode('text');
-    /* The binary panel for a file this viewer has no preview for. */
-    const showNoPreview = () => {
+    /* The binary panel for a file this viewer has no preview for, because
+       it is TOO_LARGE or NOT_TEXT. */
+    const showNoPreview = (refused) => {
       setMode('binary');
-      setNoPreviewUrl(fileUrl({ projectName, filePath, rawUrl }));
+      setNoPreview({ url: fileUrl({ projectName, filePath, rawUrl }), refused });
     };
 
     // Image branch (before the project-IO guard): render inline as an
@@ -427,20 +450,20 @@ export default function ContextFileModal({
     }
 
     // No project file IO is possible (e.g. an attachment: `rawUrl` set,
-    // no projectName). A non-image attachment can still be opened in the
-    // OS shell via the binary panel's Open action, so land in 'binary'
-    // mode rather than a stuck empty 'text' view.
+    // no projectName). A non-image attachment can still be saved via the
+    // binary panel's Download action, so land in 'binary' mode rather than
+    // a stuck empty 'text' view.
     if (!genericMode && (!filePath || !projectName)) {
       if (rawUrl && showRawText) {
         setLoading(true);
         readInlineText(rawUrl)
-          .then((text) => {
+          .then((read) => {
             if (cancelled) return;
-            if (text == null) {
-              showNoPreview();
+            if (read.refused) {
+              showNoPreview(read.refused);
             } else {
-              setContent(text);
-              setDraft(text);
+              setContent(read.text);
+              setDraft(read.text);
             }
           })
           .catch((e) => {
@@ -451,7 +474,7 @@ export default function ContextFileModal({
         return () => { cancelled = true; };
       }
       if (rawUrl) {
-        showNoPreview();
+        showNoPreview(NOT_TEXT);
         setLoading(false);
       }
       return () => { cancelled = true; };
@@ -468,14 +491,14 @@ export default function ContextFileModal({
       if (host.isWeb) {
         const reading = new AbortController();
         readInlineText(projectFileDownloadUrl(projectName, filePath), HTML_PREVIEW_MAX_BYTES)
-          .then(async (text) => {
+          .then(async (read) => {
             if (cancelled) return;
-            if (text == null) {
-              showNoPreview();
+            if (read.refused) {
+              showNoPreview(read.refused);
               return;
             }
             const html = await inlineHtmlAssets(
-              text,
+              read.text,
               filePath,
               (path) => fetchAuthenticatedResponse(projectFileDownloadUrl(projectName, path)),
               { baseUrl: projectFileDownloadUrl(projectName, filePath), signal: reading.signal },
@@ -541,7 +564,8 @@ export default function ContextFileModal({
         // "Reveal in Finder / Download" affordance instead of the
         // raw error.
         if (!genericMode && /HTTP 413|HTTP 415|too large|not valid UTF-8/i.test(msg)) {
-          showNoPreview();
+          // The server checks the size first, so a 413 may hold any bytes.
+          showNoPreview(/HTTP 413|too large/i.test(msg) ? TOO_LARGE : NOT_TEXT);
           setBinaryDetail(msg);
         } else if (!genericMode && e?.status === 404) {
           setLoadError(missing);
@@ -739,8 +763,9 @@ export default function ContextFileModal({
                 source={{ url: bytesUrl, previewType: documentType, filename: headerTitle || 'file' }}
                 fetchFile={(url, signal) => fetchAuthenticatedResponse(url, { signal })}
                 download={() => downloadAuthenticatedResource(bytesUrl, downloadFilename(filePath))}
-                openInDefaultApp={() => openInDefaultApp({ projectPath, filePath, rawUrl })}
+                openInDefaultApp={() => openInDefaultApp({ projectPath, filePath })}
                 onLoadError={(e) => setLoadError(e?.status === 404 ? missing : (e?.message || 'Could not read file'))}
+                fileAction={fileSaves ? 'download' : 'open'}
               />
             </div>
           )}
@@ -756,7 +781,10 @@ export default function ContextFileModal({
               filePath={filePath}
               rawUrl={rawUrl}
               showOpenAction={showOpenAction}
-              downloadOnOpen={host.isWeb && !!bytesUrl && noPreviewUrl === bytesUrl}
+              downloadOnOpen={host.isWeb && !!bytesUrl && noPreview?.url === bytesUrl}
+              /* Past the inline cap, a file the viewer would show as text
+                 still has a preview; it was too large to show here. */
+              downloadedNote={noPreview?.refused === TOO_LARGE ? PREVIEW_FAILED_DOWNLOADED_NOTE : NO_PREVIEW_DOWNLOADED_NOTE}
             />
           )}
           {!loading && !loadError && mode === 'text' && (editing ? (

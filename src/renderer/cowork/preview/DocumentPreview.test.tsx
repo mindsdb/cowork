@@ -207,6 +207,17 @@ describe('a truncated render', () => {
     expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
   });
 
+  it('says Download has the full sheet on desktop for a file that downloads there, and downloads from the bar', async () => {
+    platform.isWeb = false;
+    const { props } = mount({ fileAction: 'download' });
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
+    expect(screen.getByRole('note')).toHaveTextContent(truncationLine('xlsx', true));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(props.download).toHaveBeenCalledTimes(1);
+    expect(props.openInDefaultApp).not.toHaveBeenCalled();
+  });
+
   async function truncatedOnWeb(download: DocumentPreviewProps['download']) {
     const view = mount({ download });
     const frame = await mountedFrame();
@@ -311,6 +322,20 @@ describe('a failed preview', () => {
     expect(screen.getByRole('status')).toHaveTextContent(`${PREVIEW_FAILED_NOTE}${PREVIEW_FAILURE_REASONS.unsupported}`);
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+  });
+
+  /* A desktop download can ask where to save, so a failed preview never
+     opens that dialog on its own. */
+  it('on desktop, for a file that downloads there, offers Download and downloads only on a click', async () => {
+    platform.isWeb = false;
+    const { props } = await failWith('unsupported', { fileAction: 'download' });
+    expect(props.download).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByText(PREVIEW_FAILED_NOTE)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(props.download).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+    expect(props.openInDefaultApp).not.toHaveBeenCalled();
   });
 
   it('shows the failure note, not a blank viewer, when the preview crashes', async () => {

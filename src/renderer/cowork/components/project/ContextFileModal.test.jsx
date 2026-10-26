@@ -438,14 +438,19 @@ describe('ContextFileModal showing an attached file as text', () => {
     expect(readProjectFile).not.toHaveBeenCalled();
   });
 
-  it('shows bytes that are not UTF-8 text in the binary panel, which promises no actions it lacks', async () => {
+  /* On desktop an attachment saves through the page's own fetch: the OS
+     browser that Open would hand its raw URL to carries no server token. */
+  it('shows bytes that are not UTF-8 text in the binary panel, with the Download it promises and no Open', async () => {
     mocks.fetchAuthenticatedResponse.mockResolvedValueOnce(
       fileResponse(new Blob([new Uint8Array([0x25, 0x50, 0xff, 0xfe])], { type: 'application/pdf' })),
     );
     await renderAttachment({ title: 'rates.pdf', filePath: 'rates.pdf' });
     expect(document.querySelector('pre')).toBeNull();
     expect(document.body.textContent).toContain("can't be displayed inline");
-    expect(document.body.textContent).not.toContain('actions below');
+    expect(document.body.textContent).toContain('actions below');
+    const labels = buttonLabels();
+    expect(labels.some((label) => label.endsWith('Download'))).toBe(true);
+    expect(labels.some((label) => /Open$/.test(label))).toBe(false);
   });
 
   it('refuses a file whose Content-Length is past the inline cap without reading its body', async () => {

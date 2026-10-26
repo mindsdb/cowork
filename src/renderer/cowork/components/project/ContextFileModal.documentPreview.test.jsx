@@ -3,7 +3,7 @@
    that type, and a file with no preview downloads with the artifact pages'
    note on web. The viewer, DocumentPreview and its frame are the real ones;
    the network, the shell and the renderer registry are not. */
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { documentPreviewData } from '../../../../../tests/helpers/documentPreviewData';
@@ -53,10 +53,11 @@ vi.mock('../../preview/generated/registry', () => ({
 
 import { readProjectFile, writeProjectFile } from '../../api';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { DOWNLOAD_FAILED_NOTE } from '../../preview/DocumentPreview';
+import { DOWNLOAD_FAILED_NOTE, PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_FAILURE_REASONS } from '../../preview/DocumentPreview';
 import ContextFileModal from './ContextFileModal';
 
 const data = documentPreviewData();
+const MIB = 1024 * 1024;
 const RAW = (name) => `http://localhost/api/v1/attachments/acme/task-1/${name}/raw`;
 const PROJECT = (path) => `http://localhost/api/v1/projects/acme/files-raw/${path}`;
 
@@ -81,6 +82,13 @@ const previewFrames = () => [...document.querySelectorAll(`iframe[name="${PREVIE
 const buttons = () => [...document.querySelectorAll('button')].map((button) => button.textContent.trim());
 /* Bytes TextDecoder refuses, as a .zip's are. */
 const binaryResponse = () => new Response(new Uint8Array([0x50, 0x4b, 0xff, 0xfe]));
+/* A body past the preview's 32 MiB cap, served a MiB at a time. */
+const oversizedResponse = () => new Response(new ReadableStream({
+  pull(controller) { controller.enqueue(new Uint8Array(MIB)); },
+}, { highWaterMark: 0 }));
+const clickButton = (container, label) => fireEvent.click(
+  within(container).getAllByRole('button').find((button) => button.textContent.trim().endsWith(label)),
+);
 
 function renderViewer(props) {
   return render(<ContextFileModal open onClose={vi.fn()} {...props} />);
@@ -213,6 +221,40 @@ describe('on web, a file with no preview', () => {
   });
 });
 
+/* A .csv past the 2 MiB inline cap is a type the viewer shows as text when it
+   is smaller, so the note says the preview failed, not that the type has
+   none. The server checks the size first, so a 413 may hold any bytes, and
+   the file still downloads. */
+describe('on web, a file too large to show as text', () => {
+  it('downloads an upload past the cap once, with the preview\'s note', async () => {
+    network.fetchAuthenticatedResponse.mockImplementation(async () => new Response('a'.repeat(3 * MIB)));
+    renderViewer(SURFACES[0].props('stock.csv'));
+    expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(network.downloadAuthenticatedResource).toHaveBeenCalledTimes(1);
+    expect(network.downloadAuthenticatedResource).toHaveBeenCalledWith(RAW('stock.csv'), 'stock.csv');
+  });
+
+  it('downloads an upload whose Content-Length is past the cap without reading its body', async () => {
+    let pulled = false;
+    const body = new ReadableStream({ pull() { pulled = true; } }, { highWaterMark: 0 });
+    network.fetchAuthenticatedResponse.mockImplementation(async () => new Response(body, { headers: { 'Content-Length': String(3 * MIB) } }));
+    renderViewer(SURFACES[0].props('stock.csv'));
+    expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+    expect(network.downloadAuthenticatedResource).toHaveBeenCalledTimes(1);
+    expect(pulled).toBe(false);
+  });
+
+  it('downloads a project file the server refuses as too large, with the preview\'s note', async () => {
+    vi.mocked(readProjectFile).mockRejectedValue(new Error('HTTP 413 File too large to read inline'));
+    renderViewer(SURFACES[1].props('stock.csv'));
+    expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(network.downloadAuthenticatedResource).toHaveBeenCalledTimes(1);
+    expect(network.downloadAuthenticatedResource).toHaveBeenCalledWith(PROJECT('inputs/stock.csv'), 'stock.csv');
+  });
+});
+
 describe('an uploaded text file', () => {
   it('shows as text, with no Edit, no download and no preview', async () => {
     const text = 'sku,qty\nmug,250\n';
@@ -238,20 +280,61 @@ describe('on desktop', () => {
     expect(buttons().some((label) => label.endsWith('Open'))).toBe(true);
   });
 
-  it('leaves a file with no preview in the panel, with Open, and downloads nothing', async () => {
-    network.fetchAuthenticatedResponse.mockImplementation(async () => binaryResponse());
-    renderViewer(SURFACES[0].props('bundle.zip'));
+  it('leaves a project file with no preview in the panel, with Reveal and Open, and downloads nothing', async () => {
+    vi.mocked(readProjectFile).mockRejectedValue(new Error('HTTP 415 not valid UTF-8'));
+    renderViewer(SURFACES[1].props('bundle.zip'));
     expect(await screen.findByText(/can't be displayed inline/)).toBeInTheDocument();
+    expect(buttons().some((label) => label.endsWith('Reveal'))).toBe(true);
     expect(buttons().some((label) => label.endsWith('Open'))).toBe(true);
     expect(network.downloadAuthenticatedResource).not.toHaveBeenCalled();
   });
 
-  /* A failed preview offers Open, which hands the file to the OS default
-     app; a viewer without the open action (a figure's source) keeps the
-     panel instead. */
-  it('keeps the panel for a viewer without the open action', async () => {
-    network.fetchAuthenticatedResponse.mockImplementation(async () => binaryResponse());
-    renderViewer({ ...SURFACES[0].props('plan.xlsx'), showOpenAction: false });
+  /* An upload has no local file to open, and the OS browser that Open would
+     hand its raw URL to carries no server token, so it gets a 401. It saves
+     through the page's own fetch instead, on a click. */
+  describe('an upload, which has no local file to open', () => {
+    it('previews an .xlsx with Download beside it, not Open', async () => {
+      renderViewer(SURFACES[0].props('plan.xlsx'));
+      await waitFor(() => expect(previewFrames()).toHaveLength(1));
+      expect(buttons().some((label) => label.endsWith('Download'))).toBe(true);
+      expect(buttons().some((label) => label.endsWith('Open'))).toBe(false);
+    });
+
+    it('leaves a file with no preview in the panel, with Download, and downloads only on a click', async () => {
+      network.fetchAuthenticatedResponse.mockImplementation(async () => binaryResponse());
+      renderViewer(SURFACES[0].props('bundle.zip'));
+      const panel = (await screen.findByText(/can't be displayed inline/)).closest('div.flex-1');
+      expect(buttons().some((label) => label.endsWith('Open'))).toBe(false);
+      expect(network.downloadAuthenticatedResource).not.toHaveBeenCalled();
+      clickButton(panel, 'Download');
+      expect(network.downloadAuthenticatedResource).toHaveBeenCalledWith(RAW('bundle.zip'), 'bundle.zip');
+      expect(platform.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('offers Download, not Open, when the preview fails, and downloads only on a click', async () => {
+      network.fetchAuthenticatedResponse.mockImplementation(async () => oversizedResponse());
+      renderViewer(SURFACES[0].props('plan.xlsx'));
+      const note = (await screen.findByText(PREVIEW_FAILURE_REASONS['too-large'])).closest('.document-preview-note');
+      expect(within(note).queryByRole('button', { name: 'Open' })).toBeNull();
+      expect(network.downloadAuthenticatedResource).not.toHaveBeenCalled();
+      await act(async () => { clickButton(note, 'Download'); });
+      expect(network.downloadAuthenticatedResource).toHaveBeenCalledWith(RAW('plan.xlsx'), 'plan.xlsx');
+      expect(within(note).getByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+      expect(platform.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('previews in a viewer without the open action, since a failed preview there downloads', async () => {
+      renderViewer({ ...SURFACES[0].props('plan.xlsx'), showOpenAction: false });
+      await waitFor(() => expect(previewFrames()).toHaveLength(1));
+    });
+  });
+
+  /* A project file's failed preview offers Open, which hands the file to the
+     OS default app; a viewer without the open action (a figure's source)
+     keeps the panel instead. */
+  it('keeps the panel for a project file in a viewer without the open action', async () => {
+    vi.mocked(readProjectFile).mockRejectedValue(new Error('HTTP 415 not valid UTF-8'));
+    renderViewer({ ...SURFACES[1].props('plan.xlsx'), showOpenAction: false });
     expect(await screen.findByText(/can't be displayed inline/)).toBeInTheDocument();
     expect(previewFrames()).toHaveLength(0);
   });

@@ -953,8 +953,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                     // Open the shared ContextFileModal — same UX as a
                     // project file. The modal shows images, text, Office
                     // files and PDFs inline, and downloads anything else on
-                    // web or gives it an "Open" (OS shell via rawUrl)
-                    // escape hatch on desktop.
+                    // web or gives it a Download escape hatch on desktop.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -1068,8 +1067,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           does no project-file IO: images render inline from `rawUrl`,
           .xlsx/.docx/.pptx/.pdf open in the document preview, UTF-8 text
           under the inline cap shows as text, and anything else lands in
-          'binary' mode, which downloads it on web and offers an Open
-          action that uses `rawUrl` via the OS shell on desktop.
+          'binary' mode, which downloads it on web and offers Download on
+          desktop: the OS browser an Open would hand `rawUrl` to carries
+          no server token.
           `filePath` is the name only (for the extension checks + header
           title), NOT a real project path, so there is nothing for Edit to
           save to. `remover` reuses the same attachment delete the row's
