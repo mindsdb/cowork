@@ -86,7 +86,76 @@ it('keeps a failed update actionable inside the modal', async () => {
     />,
   );
   await user.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Runtime is still active');
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('Runtime is still active');
+  // The form scrolls inside the modal; the error must sit outside that region
+  // so it is in view without scrolling.
+  expect(alert.closest('.code-controls-grid')).toBeNull();
+  expect(screen.getByRole('combobox', { name: 'Task model' })).toHaveTextContent('Claude Fable 5');
+});
+
+
+const gptAndKimi = {
+  models: [{ id: 'gpt', name: 'GPT 5.6 Sol' }, { id: 'kimi-k3', name: 'Kimi K3' }],
+  modelMeta: {
+    modelProviders: { gpt: 'openai', 'kimi-k3': 'moonshot' },
+    modelEfforts: { gpt: { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' } },
+  },
+};
+
+
+it('sends no effort when switching to a model that advertises no levels', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'gpt', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('combobox', { name: 'Task model' }));
+  await user.click(screen.getByRole('option', { name: /Kimi K3/ }));
+  expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ model: 'kimi-k3', reasoning_effort: null })));
+});
+
+
+it('sends no effort for a no-levels task that still stores one from an earlier model', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'kimi-k3', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'kimi-k3', reasoning_effort: null, web_search: true,
+  })));
 });
 
 
