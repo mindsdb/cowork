@@ -14,6 +14,7 @@ import {
   draftPreviewErrorMessage,
   parseCsv,
   DRAFT_FRAGMENT_GUARD_SCRIPT,
+  limitArtifactFrames, ARTIFACT_FRAME_POLICY
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -513,5 +514,27 @@ describe('CSV_PREVIEW_ROW_LIMIT', () => {
     expect(CSV_PREVIEW_ROW_LIMIT).toBe(100);
     expect(parseCsv(`id\n${'1\n'.repeat(500)}`, CSV_PREVIEW_ROW_LIMIT))
       .toHaveLength(CSV_PREVIEW_ROW_LIMIT + 1);
+  });
+});
+
+describe('limitArtifactFrames', () => {
+  const policy = (html) => new DOMParser().parseFromString(html, 'text/html')
+    .querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');
+
+  it('frames only what the shell allowed before live apps, in the head and on one line', () => {
+    const html = limitArtifactFrames('<!doctype html><html><head><title>x</title></head><body><script>a()</script></body></html>');
+    expect(policy(html)).toBe(ARTIFACT_FRAME_POLICY);
+    expect(ARTIFACT_FRAME_POLICY).not.toMatch(/view\.localhost/);
+    expect(html.split('\n')).toHaveLength(1);
+    expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.indexOf('<title>'));
+  });
+
+  it('heads a document that has no head of its own', () => {
+    expect(policy(limitArtifactFrames('<p>no head</p>'))).toBe(ARTIFACT_FRAME_POLICY);
+  });
+
+  it('passes an empty document through', () => {
+    expect(limitArtifactFrames('')).toBe('');
+    expect(limitArtifactFrames(undefined)).toBeUndefined();
   });
 });

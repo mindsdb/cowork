@@ -127,14 +127,96 @@ describe('ContextFileModal file actions on desktop', () => {
 });
 
 describe('ContextFileModal previewing a project HTML file', () => {
-  it.each(['report.html', 'report.htm'])('loads %s in the iframe from the mount url', async (filePath) => {
-    const url = `http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/${filePath}`;
-    mountProjectFilePreview.mockResolvedValueOnce({ url });
+  const renderHtml = async (filePath) => {
     await act(async () => {
       root.render(<ContextFileModal open projectName="acme" filePath={filePath} onClose={() => {}} />);
     });
-    expect(mountProjectFilePreview).toHaveBeenLastCalledWith('acme', filePath);
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(url);
+    return document.querySelector('iframe');
+  };
+
+  /* An iframe `src` can't carry the Bearer token, so on web the markup is read
+     with it and handed over as `srcdoc`. */
+  it('reads the file with auth on web, inlines its stylesheet and renders it as srcdoc', async () => {
+    const html = '<html><head><link rel="stylesheet" href="style.css"></head><body>report</body></html>';
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: async () => new Blob([html]),
+    });
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: async () => new Blob(['p { color: green }']),
+    });
+    vi.mocked(mountProjectFilePreview).mockClear();
+
+    const iframe = await renderHtml('reports/report.html');
+
+    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/report.html');
+    expect(mocks.fetchAuthenticatedResponse).toHaveBeenCalledWith('/api/v1/projects/acme/files-raw/reports/style.css');
+    expect(mountProjectFilePreview).not.toHaveBeenCalled();
+    expect(iframe?.getAttribute('srcdoc')).toContain('<style>p { color: green }</style>');
+    expect(iframe?.hasAttribute('src')).toBe(false);
+  });
+
+  it('previews an HTML file past the 2 MB text cap on web', async () => {
+    const html = `<html><body>${'x'.repeat(3 * 1024 * 1024)}</body></html>`;
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Length': String(html.length) }),
+      blob: async () => new Blob([html]),
+    });
+
+    const iframe = await renderHtml('dashboard.html');
+
+    expect(iframe?.getAttribute('srcdoc')?.length).toBeGreaterThan(3 * 1024 * 1024);
+  });
+
+  /* Anything left un-inlined must resolve against the file's folder on the API,
+     not the app's own origin, and a `#` link must scroll rather than navigate. */
+  it('bases the srcdoc on the file folder and guards fragment links on web', async () => {
+    const html = '<html><head></head><body><a href="#q3">Q3</a></body></html>';
+    mocks.fetchAuthenticatedResponse.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: async () => new Blob([html]),
+    });
+    const relative = mocks.projectFileDownloadUrl.getMockImplementation();
+    mocks.projectFileDownloadUrl.mockImplementation((project, path) => `https://cowork.test${relative(project, path)}`);
+    try {
+      const srcdoc = (await renderHtml('reports/q3.html'))?.getAttribute('srcdoc') || '';
+
+      expect(srcdoc).toContain('<base href="https://cowork.test/api/v1/projects/acme/files-raw/reports/">');
+      expect(srcdoc).toContain("addEventListener('click'");
+    } finally {
+      mocks.projectFileDownloadUrl.mockImplementation(relative);
+    }
+  });
+
+  it('says a missing file is no longer in the project on web', async () => {
+    mocks.fetchAuthenticatedResponse.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 404 }));
+
+    expect(await renderHtml('report.html')).toBeNull();
+    expect(document.body.textContent).toContain('report.html is no longer in this project.');
+  });
+
+  describe('on desktop', () => {
+    beforeEach(() => { mocks.host.isWeb = false; });
+    afterEach(() => { mocks.host.isWeb = true; });
+
+    it.each(['report.html', 'report.htm'])('loads %s in the iframe from the mount url', async (filePath) => {
+      const url = `http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/${filePath}`;
+      mountProjectFilePreview.mockResolvedValueOnce({ url });
+      await act(async () => {
+        root.render(<ContextFileModal open projectName="acme" filePath={filePath} onClose={() => {}} />);
+      });
+      expect(mountProjectFilePreview).toHaveBeenLastCalledWith('acme', filePath);
+      expect(document.querySelector('iframe')?.getAttribute('src')).toBe(url);
+    });
   });
 });
 
@@ -268,9 +350,11 @@ describe('ContextFileModal reopened after an edit was left open', () => {
     await show({ open: false, filePath: 'notes.md' });
   };
 
+  /* On web a file with no text is one this viewer has no preview for, so it
+     downloads with the note. */
   it.each([
     ['fails', Object.assign(new Error('Internal error'), { status: 500 }), 'Internal error'],
-    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), "can't be displayed inline"],
+    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), 'No preview for this file type; downloaded instead.'],
   ])('offers no Save on a file the read %s, and never writes it', async (_label, failure, shown) => {
     await editThenClose();
     vi.mocked(readProjectFile).mockRejectedValueOnce(failure);
@@ -354,14 +438,19 @@ describe('ContextFileModal showing an attached file as text', () => {
     expect(readProjectFile).not.toHaveBeenCalled();
   });
 
-  it('shows bytes that are not UTF-8 text in the binary panel, which promises no actions it lacks', async () => {
+  /* On desktop an attachment saves through the page's own fetch: the OS
+     browser that Open would hand its raw URL to carries no server token. */
+  it('shows bytes that are not UTF-8 text in the binary panel, with the Download it promises and no Open', async () => {
     mocks.fetchAuthenticatedResponse.mockResolvedValueOnce(
       fileResponse(new Blob([new Uint8Array([0x25, 0x50, 0xff, 0xfe])], { type: 'application/pdf' })),
     );
     await renderAttachment({ title: 'rates.pdf', filePath: 'rates.pdf' });
     expect(document.querySelector('pre')).toBeNull();
     expect(document.body.textContent).toContain("can't be displayed inline");
-    expect(document.body.textContent).not.toContain('actions below');
+    expect(document.body.textContent).toContain('actions below');
+    const labels = buttonLabels();
+    expect(labels.some((label) => label.endsWith('Download'))).toBe(true);
+    expect(labels.some((label) => /Open$/.test(label))).toBe(false);
   });
 
   it('refuses a file whose Content-Length is past the inline cap without reading its body', async () => {

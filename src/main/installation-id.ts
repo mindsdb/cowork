@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Stable, anonymous per-device identifier for the Cowork desktop app.
 //
 // ENG-440: MindsHub API keys are minted per device (`hub:anton:<id>`) so
@@ -64,7 +65,7 @@ export function getInstallationId(): string {
     // best-effort persistence; keep the id stable for at least this process.
     // Warn so the orphaned-key-per-launch degradation is diagnosable in the
     // field instead of silent.
-    console.warn('[installation-id] could not persist device id to %s', idPath, err);
+    diagnostic("main.installation-id", "WARNING", "installation_id_could_not_persist_device_id_to_s", '[installation-id] could not persist device id to %s', idPath, err);
   }
   _cached = id;
   return _cached;

@@ -1,0 +1,193 @@
+# What the viewer header offers for each file in each deployment mode, read by
+# ArtifactViewerHeader.modes.test.jsx. The test renders the header once per
+# mode and file, then checks every control against the values below.
+
+# The ⋯ menu, on every mode that has one, for an owner. Download, Open in OS
+# and Open folder left it when they became visible header controls. Open in
+# browser and Open shared link left it because the browser-tab arrow opens the
+# same URL.
+moreActionsMenu: [Reload preview, Delete]
+
+modes:
+  - name: local web
+    web: true
+    org: false
+    mac: false
+    serveUrl: true
+    localFiles: false
+    # A visible Download button, and no Open.
+    download: header
+    moreActions: true
+    # Web offers a browser tab only for a file a tab shows.
+    tabRule: true
+  - name: org web
+    web: true
+    org: true
+    mac: false
+    # Org mode serves no artifact content, so cards carry only a draft URL.
+    serveUrl: false
+    localFiles: false
+    download: header
+    moreActions: false
+    tabRule: true
+    # A tab loads a URL without the bearer, which org mode's draft route
+    # refuses, so the arrow shows only for a published artifact's shared page.
+    tabNeedsShare: true
+  - name: desktop on macOS
+    web: false
+    org: false
+    mac: true
+    serveUrl: true
+    localFiles: true
+    # A visible Open button, with Download in its menu.
+    download: open-menu
+    revealLabel: Show in Finder
+    moreActions: true
+    tabRule: false
+  - name: desktop on Windows or Linux
+    web: false
+    org: false
+    mac: false
+    serveUrl: true
+    localFiles: true
+    download: open-menu
+    revealLabel: Show in folder
+    moreActions: true
+    tabRule: false
+  - name: desktop on a remote server
+    web: false
+    org: false
+    mac: true
+    serveUrl: true
+    # The file sits on the server's disk, so there is no folder to show.
+    localFiles: false
+    download: open-menu
+    revealLabel: null
+    moreActions: true
+    tabRule: false
+
+files:
+  - path: model.xlsx
+    showsInTab: false
+  - path: brief.docx
+    showsInTab: false
+  - path: deck.pptx
+    showsInTab: false
+  - path: report.pdf
+    showsInTab: true
+  - path: page.html
+    showsInTab: true
+  - path: notes.md
+    showsInTab: true
+  - path: readme.txt
+    showsInTab: true
+  # The viewer previews a CSV, but a tab saves it.
+  - path: table.csv
+    showsInTab: false
+  - path: chart.png
+    showsInTab: true
+  - path: bundle.zip
+    showsInTab: false
+  # A full-stack app's primary file is its static shell, so it offers no
+  # Download anywhere.
+  - path: storefront/static/index.html
+    type: fullstack-stateless-app
+    showsInTab: true
+    downloadable: false
+  # A card with neither a serve nor a draft URL has no file to save, and no
+  # URL for a browser tab.
+  - path: pending.md
+    hasUrls: false
+    showsInTab: true
+    downloadable: false
+
+# Which formats Export lists. `workspace` and `artifact` are the capabilities
+# of the workspace answer and of the card; null means not loaded yet. `shows`
+# is the menu, in order, and an empty list means no Export button at all.
+export:
+  - name: an older server, which sends no list
+    mode: local web
+    workspace: { role: owner, canEdit: true }
+    artifact: {}
+    shows: []
+  - name: an org reviewer
+    mode: org web
+    authorship: { role: reviewer }
+    workspace: { role: reviewer, canEdit: false, exportFormats: [] }
+    artifact: { role: reviewer, exportFormats: [] }
+    shows: []
+    # A reviewer still gets the visible Download.
+    download: true
+  - name: an ownerless artifact in an org
+    mode: org web
+    authorship: { role: reviewer, ownerUnknown: true }
+    workspace: { role: reviewer, canEdit: false, exportFormats: [] }
+    artifact: { role: reviewer, exportFormats: [] }
+    shows: []
+    download: true
+  - name: the owner of a Markdown file in an org
+    mode: org web
+    workspace: { role: owner, canEdit: true, exportFormats: [html, docx] }
+    artifact: { role: owner, exportFormats: [html, docx] }
+    shows: [HTML, Word]
+  - name: the owner of an HTML file on desktop
+    mode: desktop on macOS
+    workspace: { role: owner, canEdit: true, exportFormats: [docx] }
+    artifact: {}
+    shows: [Word]
+  - name: the owner of a Markdown file where the server has a PDF engine
+    mode: local web
+    workspace: { role: owner, canEdit: true, exportFormats: [html, docx, pdf] }
+    artifact: {}
+    shows: [HTML, Word, PDF]
+  - name: the card's list while the workspace loads
+    mode: local web
+    workspace: null
+    artifact: { exportFormats: [html, docx] }
+    shows: [HTML, Word]
+  - name: the workspace's empty list over the card's
+    mode: local web
+    workspace: { role: owner, canEdit: false, exportFormats: [] }
+    artifact: { exportFormats: [html, docx] }
+    shows: []
+  - name: a format this build has no label for
+    mode: local web
+    workspace: { role: owner, canEdit: true, exportFormats: [docx, epub] }
+    artifact: {}
+    shows: [Word]
+  # The route is addressed by the card's draft URL. The serve URL still gives
+  # a Download.
+  - name: a card without a draft URL
+    mode: local web
+    hasDraftUrl: false
+    workspace: { role: owner, canEdit: true, exportFormats: [docx] }
+    artifact: { exportFormats: [docx] }
+    shows: []
+    download: true
+
+# Why Edit and Review are unavailable, as each tab's aria-label says it. The
+# workspace hook sets `previewOnly` for a file the viewer only previews, and
+# that reason comes first even on a card too old for the workspace. Without
+# the flag, such a card still asks for a refresh. When the owner's comments
+# service is down, Review says so instead of the generic line.
+reasons:
+  - name: a preview-only file on a card too old for the workspace
+    workspace:
+      supported: false
+      status: unsupported
+      previewOnly: true
+      unsupportedReason: "Preview only: Cowork can't edit this file type."
+    edit: "Edit unavailable \u2014 Preview only: Cowork can't edit this file type."
+    review: "Review unavailable \u2014 Preview only: Cowork can't edit this file type."
+  - name: the same card without the preview-only flag
+    workspace:
+      supported: false
+      status: unsupported
+      unsupportedReason: "Preview only: Cowork can't edit this file type."
+    edit: "Edit unavailable \u2014 Refresh the artifact to load editing tools"
+    review: "Review unavailable \u2014 Refresh the artifact to load review tools"
+  - name: a loaded artifact whose comments service is down
+    workspace:
+      commentsOffReason: "Comments aren't available right now. Reopen the artifact to try again."
+    edit: "Edit unavailable \u2014 This artifact cannot be edited here"
+    review: "Review unavailable \u2014 Comments aren't available right now. Reopen the artifact to try again."
