@@ -11,7 +11,7 @@ import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
 import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
-import { appEnvironment as isolatedEnvironment, assertTrimmed, installedExecutable, removalScript, rootsToRemove, ON_DEMAND_ROOTS, ROOT_STORES } from './windows-setup-contract.mjs';
+import { appEnvironment as isolatedEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
 
 const execute = promisify(execFile);
 const channel = process.env.WINDOWS_SETUP_CHANNEL;
@@ -62,6 +62,20 @@ function powershell(script, { env = process.env, ...options } = {}) {
 
 // Where Windows reads whether it may download a missing root: the policy, then the machine setting.
 const ROOT_AUTO_UPDATE = { policy: 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates\\AuthRoot', setting: 'HKLM:\\SOFTWARE\\Microsoft\\SystemCertificates\\AuthRoot' };
+
+// Backs up each certificate to its store's folder before removing it. One already gone is skipped:
+// removing a certificate from AuthRoot also removes it from the Root view.
+const REMOVE_ROOTS = `
+foreach ($entry in ($env:COWORK_ROOTS_TO_REMOVE | ConvertFrom-Json)) {
+  $path = "Cert:\\LocalMachine\\$($entry.store)\\$($entry.thumbprint)"
+  if (-not (Test-Path -LiteralPath $path)) { continue }
+  $cert = Get-Item -LiteralPath $path
+  $folder = Join-Path $env:COWORK_ROOT_BACKUP $entry.store
+  New-Item -ItemType Directory -Force -Path $folder | Out-Null
+  [IO.File]::WriteAllBytes((Join-Path $folder "$($entry.thumbprint).cer"), $cert.RawData)
+  Remove-Item -LiteralPath $path
+  "LocalMachine\\$($entry.store) $($entry.thumbprint) $($cert.Subject)"
+}`;
 
 /** The certificates in each store this smoke reads, and whether Windows may download missing roots. */
 async function rootStores(name) {
@@ -150,16 +164,19 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
 
   result.failingStep = 'Trim root store';
   // Last, so no earlier step that verifies through Windows (the signature check) downloads a root back.
-  const planned = rootsToRemove((await rootStores('roots-before-trim.json')).entries);
-  if (planned.length) await powershell(removalScript(planned));
+  const before = await rootStores('roots-before-trim.json');
+  writeFileSync(join(process.env.RUNNER_TEMP, ROOT_AUTO_UPDATE_BACKUP), JSON.stringify(before.rootAutoUpdateOff));
+  trimmed = true;
+  const removed = (await powershell(REMOVE_ROOTS, { env: {
+    ...process.env, COWORK_ROOT_BACKUP: join(process.env.RUNNER_TEMP, ROOT_BACKUP),
+    COWORK_ROOTS_TO_REMOVE: JSON.stringify(removalPlan(rootsToRemove(before.entries))),
+  } })).split(/\r?\n/).filter(Boolean);
+  save('roots-removed.txt', `${removed.join('\n')}\n`);
+  console.log(`Removed ${removed.length} roots:\n${removed.join('\n')}`);
   // A fresh Windows downloads a missing root when a program verifies through Windows, as
   // setup's uv installer does; the image turns that off, which would fail Install uv instead.
   await powershell(Object.values(ROOT_AUTO_UPDATE).map((key) => `Remove-ItemProperty -LiteralPath '${key}' -Name DisableRootAutoUpdate -ErrorAction SilentlyContinue`).join('\n'));
-  const removed = planned.map((entry) => `${entry.store} ${entry.thumbprint} ${entry.subject}`);
-  save('roots-removed.txt', `${removed.join('\n')}\n`);
-  console.log(`Removed ${removed.length} roots:\n${removed.join('\n')}`);
   assertTrimmed(await rootStores('roots-trimmed.json'));
-  trimmed = true;
 
   result.failingStep = 'Launch and isolate app';
   profile = await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-profile-'));

@@ -98,6 +98,27 @@ jobs:
           WINDOWS_SETUP_SNAPSHOT_URL: ${{ inputs.snapshot-url }}
           WINDOWS_SETUP_SNAPSHOT_SHA256: ${{ inputs.snapshot-sha256 }}
         run: npm run test:windows-setup
+      # The runner reports the job's end over Windows TLS, so it needs the roots the
+      # smoke removed back before the job ends, or it stalls until GitHub cancels it.
+      - name: Restore the runner's root store
+        if: always()
+        shell: pwsh
+        run: |
+          $backup = Join-Path $env:RUNNER_TEMP 'cowork-removed-roots'
+          if (Test-Path -LiteralPath $backup) {
+            $certificates = @(Get-ChildItem -LiteralPath $backup -Recurse -Filter *.cer)
+            foreach ($certificate in $certificates) {
+              certutil -f -addstore $certificate.Directory.Name $certificate.FullName | Out-Null
+              if ($LASTEXITCODE) { throw "certutil could not restore $($certificate.FullName)" }
+            }
+            "Restored $($certificates.Count) roots"
+          }
+          $saved = Join-Path $env:RUNNER_TEMP 'cowork-root-auto-update.json'
+          if (Test-Path -LiteralPath $saved) {
+            $off = Get-Content -Raw -LiteralPath $saved | ConvertFrom-Json
+            if ($off.policy) { Set-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\SystemCertificates\AuthRoot' -Name DisableRootAutoUpdate -Value $off.policy -Type DWord }
+            if ($off.setting) { Set-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\SystemCertificates\AuthRoot' -Name DisableRootAutoUpdate -Value $off.setting -Type DWord }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

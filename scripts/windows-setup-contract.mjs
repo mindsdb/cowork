@@ -2,17 +2,24 @@ import { win32 } from 'node:path';
 
 // Windows ships part of its root list and downloads the rest the first time a
 // program verifies a chain through Windows, into LocalMachine\AuthRoot. The hosted
-// runner image instead imports the whole list into LocalMachine\Root and turns
-// those downloads off. Python's own TLS never asks Windows to download a root, so
-// a runner that still holds these would pass an installer a fresh machine fails.
+// runner image instead holds over 500 roots and turns those downloads off. Python's
+// own TLS never asks Windows to download a root, so a runner that still holds these
+// would pass an installer a fresh machine fails.
 export const ON_DEMAND_ROOTS = Object.freeze({
   D69B561148F01C77C54578C10926DF5B856976AD: 'GlobalSign Root CA - R3', // pypi.org, files.pythonhosted.org
   CABD2A79A1076A31F21D253635CB039D4329A5E8: 'ISRG Root X1', // raw.githubusercontent.com, GitHub release assets
 });
 
-// CurrentUser\Root is the merged view Python reads; it is checked, never edited,
-// because deleting from it opens a confirmation dialog no CI run can answer.
+// The LocalMachine\Root view includes AuthRoot, and CurrentUser\Root is the merged
+// view Python reads. CurrentUser\Root is checked, never edited, because deleting
+// from it opens a confirmation dialog no CI run can answer.
 export const ROOT_STORES = Object.freeze(['LocalMachine\\AuthRoot', 'LocalMachine\\Root', 'CurrentUser\\Root']);
+
+// The runner reports the job's end over Windows TLS, so a workflow step restores
+// these from RUNNER_TEMP before the job ends: the removed certificates, one folder
+// per store, and the root-download settings the trim cleared.
+export const ROOT_BACKUP = 'cowork-removed-roots';
+export const ROOT_AUTO_UPDATE_BACKUP = 'cowork-root-auto-update.json';
 
 /** @typedef {{store: string, thumbprint: string, subject: string}} StoreEntry */
 
@@ -25,14 +32,19 @@ export function rootsToRemove(entries) {
   return entries.filter((entry) => entry.store === 'LocalMachine\\AuthRoot' || (entry.store === 'LocalMachine\\Root' && named(entry)));
 }
 
-/** PowerShell that deletes exactly the planned certificates; anything else is refused. */
-export function removalScript(entries) {
-  return entries.map(({ store, thumbprint }) => {
+/**
+ * The removal input for the harness's fixed PowerShell: exactly the planned
+ * certificates, AuthRoot first, since removing one there also removes it from the
+ * Root view. Anything else is refused.
+ */
+export function removalPlan(entries) {
+  const plan = entries.map(({ store, thumbprint }) => {
     if (!['LocalMachine\\AuthRoot', 'LocalMachine\\Root'].includes(store) || !/^[0-9A-F]{40}$/.test(thumbprint)) {
       throw new Error(`Refusing to remove ${store} ${thumbprint}.`);
     }
-    return `Remove-Item -LiteralPath 'Cert:\\${store}\\${thumbprint}'`;
-  }).join('\n');
+    return { store: store.slice('LocalMachine\\'.length), thumbprint };
+  });
+  return [...plan.filter((entry) => entry.store === 'AuthRoot'), ...plan.filter((entry) => entry.store === 'Root')];
 }
 
 /** The trimmed runner must trust, and download, what a fresh install does before setup starts. */

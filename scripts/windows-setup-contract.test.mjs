@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { packageIdentity, validateManifest } from './macos-setup-contract.mjs';
-import { appEnvironment, assertTrimmed, installedExecutable, removalScript, rootsToRemove } from './windows-setup-contract.mjs';
+import { appEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
 
 const R3 = 'D69B561148F01C77C54578C10926DF5B856976AD';
 const X1 = 'CABD2A79A1076A31F21D253635CB039D4329A5E8';
@@ -22,15 +22,23 @@ test('the trim removes every downloaded root and the named roots the image insta
   assert.deepEqual(rootsToRemove([entry('LocalMachine\\Root', X1.toLowerCase())]).length, 1);
 });
 
-test('the removal script names exactly the planned certificates and refuses anything else', () => {
-  assert.equal(
-    removalScript([entry('LocalMachine\\AuthRoot', OTHER), entry('LocalMachine\\Root', R3)]),
-    `Remove-Item -LiteralPath 'Cert:\\LocalMachine\\AuthRoot\\${OTHER}'\nRemove-Item -LiteralPath 'Cert:\\LocalMachine\\Root\\${R3}'`,
+test('the removal plan names exactly the planned certificates, AuthRoot first, and refuses anything else', () => {
+  assert.deepEqual(
+    removalPlan([entry('LocalMachine\\Root', R3), entry('LocalMachine\\AuthRoot', OTHER), entry('LocalMachine\\AuthRoot', R3)]),
+    [{ store: 'AuthRoot', thumbprint: OTHER }, { store: 'AuthRoot', thumbprint: R3 }, { store: 'Root', thumbprint: R3 }],
   );
-  // CurrentUser\Root deletes open a confirmation dialog; a quote would escape the literal path.
-  assert.throws(() => removalScript([entry('CurrentUser\\Root', R3)]), /Refusing/);
-  assert.throws(() => removalScript([entry('LocalMachine\\Root', `${R3.slice(0, 39)}'`)]), /Refusing/);
-  assert.throws(() => removalScript([entry('LocalMachine\\My', R3)]), /Refusing/);
+  // CurrentUser\Root deletes open a confirmation dialog; a quote would escape a path.
+  assert.throws(() => removalPlan([entry('CurrentUser\\Root', R3)]), /Refusing/);
+  assert.throws(() => removalPlan([entry('LocalMachine\\Root', `${R3.slice(0, 39)}'`)]), /Refusing/);
+  assert.throws(() => removalPlan([entry('LocalMachine\\My', R3)]), /Refusing/);
+});
+
+test('the workflow restores the runner\'s roots and settings from where the harness backs them up, even after a failure', () => {
+  const workflow = readFileSync(resolve('.github/workflows/windows-setup-smoke.yml'), 'utf8');
+  const restore = workflow.slice(workflow.indexOf('- name: Restore the runner\'s root store'));
+  assert.match(restore, /^- name: Restore the runner's root store\n\s+if: always\(\)/);
+  assert.ok(restore.includes(ROOT_BACKUP) && restore.includes(ROOT_AUTO_UPDATE_BACKUP));
+  assert.ok(workflow.indexOf('Restore the runner\'s root store') > workflow.indexOf('npm run test:windows-setup'));
 });
 
 test('a trim that left a downloaded root, a named root visible to Python, or root downloads off fails before setup', () => {
