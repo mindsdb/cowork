@@ -77,7 +77,7 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
        rendered preview offers no download. */
     if (pdf.numPages === 0) throw previewError('parse-failed', 'This PDF has no pages.');
     const units = Math.min(pdf.numPages, ctx.limits.maxPdfPages);
-    pages = new PdfPages(pdf, ctx.root, ctx.limits);
+    pages = new PdfPages(pdf, ctx.root, ctx.limits, ctx.beginDraw);
     await pages.layOut(units, ctx.signal, (done, total) => ctx.progress(done, total));
     return { type: 'pdf', units, truncated: pdf.numPages > ctx.limits.maxPdfPages };
   } catch (error) {

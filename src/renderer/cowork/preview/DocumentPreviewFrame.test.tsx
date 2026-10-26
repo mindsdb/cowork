@@ -6,7 +6,7 @@ import { documentPreviewData } from '../../../../tests/helpers/documentPreviewDa
 import { scriptSha256 } from '../../../../scripts/preview-bundles.mjs';
 import { PREVIEW_FRAME_NAME } from '../../../shared/document-preview';
 import type { PreviewAssetProvider, RenderSummary } from './contract';
-import { DocumentPreviewFrame, type DocumentPreviewFrameProps } from './DocumentPreviewFrame';
+import { DocumentPreviewFrame, MAX_OPEN_DRAWS, type DocumentPreviewFrameProps } from './DocumentPreviewFrame';
 import { previewFramePolicy } from './frameDocument';
 import { PREVIEW_PARENT_LIMITS } from './limits';
 import type { LoadedPreviewBundle } from './runtime/bundle';
@@ -209,6 +209,102 @@ describe('the watchdogs', () => {
     expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
     expect(frames(container)).toHaveLength(0);
     expect(srcdoc.startsWith(`<meta http-equiv="Content-Security-Policy" content="${previewFramePolicy(HASH)}">`)).toBe(true);
+  });
+});
+
+describe('the draw watchdog', () => {
+  const { progressTimeoutMs } = PREVIEW_PARENT_LIMITS;
+
+  /* Mounts a frame, hands it its port, and returns a function that posts a
+     message from the frame and lets the parent read it. */
+  function mountedFrame() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const view = mount();
+    const [iframe] = frames(view.container);
+    const { port } = handshake(iframe);
+    const token = tokenOf(iframe);
+    const send = async (message: Record<string, unknown>) => {
+      port.postMessage({ token, ...message });
+      await act(() => new Promise((resolve) => { setImmediate(resolve); }));
+      await act(() => new Promise((resolve) => { setImmediate(resolve); }));
+    };
+    const wait = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    return { ...view, send, wait };
+  }
+
+  it(`keeps timing a draw after rendered, and removes the frame with timeout when it hasn't ended within ${progressTimeoutMs} ms`, async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onRendered).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('times a draw that starts before rendered across the rendered message', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs / 2);
+    await send({ type: 'rendered', summary: SUMMARY });
+    wait(progressTimeoutMs / 2);
+    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('times each draw on its own, so draws that keep ending never time out the frame', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    for (let id = 0; id < 10; id += 1) {
+      await send({ type: 'draw', id, state: 'start' });
+      await send({ type: 'draw', id: id + 100, state: 'start' });
+      wait(progressTimeoutMs / 2);
+      await send({ type: 'draw', id, state: 'end' });
+      await send({ type: 'draw', id: id + 100, state: 'end' });
+    }
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    expect(frames(container)).toHaveLength(1);
+
+    await send({ type: 'draw', id: 10, state: 'start' });
+    await send({ type: 'draw', id: 11, state: 'start' });
+    await send({ type: 'draw', id: 10, state: 'end' });
+    wait(progressTimeoutMs);
+    expect(props.onError).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+  });
+
+  it('stops watching draws once the frame reported an error', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'draw', id: 0, state: 'start' });
+    await send({ type: 'error', code: 'parse-failed' });
+    await send({ type: 'draw', id: 1, state: 'start' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith('parse-failed', undefined);
+    expect(frames(container)).toHaveLength(1);
+  });
+
+  it(`removes a frame with internal when it reports more than ${MAX_OPEN_DRAWS} open draws`, async () => {
+    const { container, props, send } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    for (let id = 0; id < MAX_OPEN_DRAWS; id += 1) await send({ type: 'draw', id, state: 'start' });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    expect(props.onError).not.toHaveBeenCalled();
+    await send({ type: 'draw', id: MAX_OPEN_DRAWS, state: 'start' });
+    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('stops every draw timer when the frame unmounts', async () => {
+    const { props, send, wait, unmount } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    unmount();
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
   });
 });
 

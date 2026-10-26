@@ -48,7 +48,15 @@ function fixtureBytes(name: string): ArrayBuffer {
 function context(limits: PreviewLimits = previewLimits({ touch: false }), signal = new AbortController().signal): RendererContext {
   const root = document.createElement('div');
   document.body.append(root);
-  return { root, limits, signal, progress: vi.fn(), openZip: vi.fn(), requestAsset: vi.fn(async () => null) };
+  return {
+    root,
+    limits,
+    signal,
+    progress: vi.fn(),
+    openZip: vi.fn(),
+    requestAsset: vi.fn(async () => null),
+    beginDraw: vi.fn(() => () => undefined),
+  };
 }
 
 function pageSlots(root: HTMLElement): HTMLElement[] {

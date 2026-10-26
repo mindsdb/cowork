@@ -44,6 +44,7 @@ describe('message readers drop a wrong or missing token', () => {
     ['progress', readFrameToParent, { type: 'progress', done: 1, total: 2 }],
     ['rendered', readFrameToParent, { type: 'rendered', summary }],
     ['asset request', readFrameToParent, { type: 'asset-request', requestId: 1, name: 'a' }],
+    ['draw', readFrameToParent, { type: 'draw', id: 3, state: 'start' }],
     ['error', readFrameToParent, { type: 'error', code: 'parse-failed' }],
   ];
 
@@ -78,6 +79,20 @@ describe('message shapes', () => {
   /* too-large and timeout belong to the parent, so the frame never sends them. */
   it.each(['too-large', 'timeout'])('drops a frame error with the parent-owned code %s', (code) => {
     expect(readFrameToParent({ token: TOKEN, type: 'error', code }, TOKEN)).toBeNull();
+  });
+
+  it('drops a draw whose id is not a whole count or whose state is neither start nor end', () => {
+    for (const draw of [
+      { id: -1, state: 'start' },
+      { id: 1.5, state: 'end' },
+      { id: '1', state: 'start' },
+      { id: 1, state: 'done' },
+      { id: 1 },
+    ]) {
+      expect(readFrameToParent({ token: TOKEN, type: 'draw', ...draw }, TOKEN)).toBeNull();
+    }
+    expect(readFrameToParent({ token: TOKEN, type: 'draw', id: 0, state: 'end', extra: 1 }, TOKEN))
+      .toEqual({ token: TOKEN, type: 'draw', id: 0, state: 'end' });
   });
 
   it('drops a document whose bytes are not an ArrayBuffer', () => {

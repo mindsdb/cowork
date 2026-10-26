@@ -285,6 +285,38 @@ describe('asset requests', () => {
   });
 });
 
+describe('draws', () => {
+  it('reports each draw to the parent once as it starts and once as it ends, after rendered too', async () => {
+    const token = newPreviewToken();
+    const { win } = frameWindow(token);
+    let context: RendererContext | null = null;
+    startPreviewFrame(renderer(async (_bytes, ctx) => {
+      context = ctx;
+      ctx.beginDraw()();
+      return SUMMARY;
+    }), win);
+    const session = sendPort(win, token);
+    sendDocument(session, token, new ArrayBuffer(1));
+
+    expect(await session.next()).toEqual({ token, type: 'draw', id: 0, state: 'start' });
+    expect(await session.next()).toEqual({ token, type: 'draw', id: 0, state: 'end' });
+    expect(await session.next()).toMatchObject({ type: 'rendered' });
+
+    const endFirst = context!.beginDraw();
+    const endSecond = context!.beginDraw();
+    endSecond();
+    endFirst();
+    endFirst();
+    await flush();
+    expect(session.received).toEqual([
+      { token, type: 'draw', id: 1, state: 'start' },
+      { token, type: 'draw', id: 2, state: 'start' },
+      { token, type: 'draw', id: 2, state: 'end' },
+      { token, type: 'draw', id: 1, state: 'end' },
+    ]);
+  });
+});
+
 describe('link guard', () => {
   function frameWithLinks(markup: string) {
     const token = newPreviewToken();

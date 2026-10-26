@@ -27,14 +27,16 @@ export interface PreviewLimits {
      truncated: true.
    - pdf: the pages laid out, min(numPages, maxPdfPages). Pages draw as they
      scroll into view, with at most maxPdfCanvasesAlive canvases alive, so
-     units never counts pages drawn.
+     units never counts pages drawn. Each page draw runs under the parent's
+     draw watchdog (RendererContext.beginDraw).
    - docx: always 1, the one rendered document. */
 export interface RenderSummary { type: DocumentPreviewType; units: number; truncated: boolean }
 
 /* Who raises each code:
    - too-large: the parent, when the streamed fetch passes maxBytes.
    - timeout: the parent, when the frame misses readyTimeoutMs or
-     progressTimeoutMs.
+     progressTimeoutMs, or when a draw the frame reported hasn't ended within
+     progressTimeoutMs, before or after rendered.
    - zip-limit: the runtime's archive guard, past maxInflatedBytes,
      maxZipEntryInflatedBytes or maxZipEntries.
    - parse-failed: a renderer, for a file it can't read. The runtime's
@@ -65,6 +67,12 @@ export interface RendererContext {
   progress(done: number, total: number | null): void;
   openZip(bytes: ArrayBuffer): Promise<GuardedZip>;
   requestAsset(name: string): Promise<Uint8Array | null>;
+  /* Starts the parent's watchdog on one draw the renderer runs on its own,
+     such as a PDF page that scrolls into view, before or after render()
+     resolves. A draw that hasn't ended within progressTimeoutMs removes the
+     frame with timeout. The renderer calls the returned function once the
+     draw finished, was cancelled or failed; later calls do nothing. */
+  beginDraw(): () => void;
 }
 
 /* Before render(), the runtime runs its archive guard on every file that
@@ -107,4 +115,5 @@ export type FrameToParent =
   | { token: string; type: 'progress'; done: number; total: number | null }
   | { token: string; type: 'rendered'; summary: RenderSummary }
   | { token: string; type: 'asset-request'; requestId: number; name: string }
+  | { token: string; type: 'draw'; id: number; state: 'start' | 'end' }
   | { token: string; type: 'error'; code: PreviewErrorCode; detail?: string };

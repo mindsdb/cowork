@@ -14,14 +14,18 @@
  * equals it. When it sets `minUnits`, its spec asserts that summary.units is at
  * least that. RenderSummary in contract.ts says what `units` counts for each
  * type. When it sets `paintedRegion`, its spec asserts that the region holds
- * pixels other than the page background on that page's canvas.
+ * pixels other than the page background on that page's canvas. When it sets
+ * `laterErrorCode`, the preview first ends as `outcome`, and the parent then
+ * removes the frame with that code, as its draw watchdog does for a page draw
+ * that never ends.
  *
  * openPreview leaves the preview frame mounted until the next openPreview or
  * the end of the test, except that a `timeout` unmounts it the way the parent's
- * watchdog does. Specs reach the frame only through previewFrame, and read its
- * URL with frame.evaluate(() => location.href), never frame.url() or
- * frame.name(). Full Chromium (headed, debug, or channel 'chromium') runs the
- * sandboxed frame in its own process, where Playwright reports both as empty.
+ * watchdog does, and so does a fixture's `laterErrorCode`. Specs reach the
+ * frame only through previewFrame, and read its URL with
+ * frame.evaluate(() => location.href), never frame.url() or frame.name().
+ * Full Chromium (headed, debug, or channel 'chromium') runs the sandboxed
+ * frame in its own process, where Playwright reports both as empty.
  * Checks that PreviewRun doesn't carry, such as counting canvases, reading
  * pixels and canvas sizes, finding a nested iframe, or searching attributes and
  * styles across the whole DOM, are spec code over that frame. The data they
@@ -62,6 +66,7 @@ import type {
   RenderSummary,
 } from '../../src/renderer/cowork/preview/contract';
 import { isPreviewErrorCode, PREVIEW_ERROR_CODES } from '../../src/renderer/cowork/preview/errors';
+import { PREVIEW_PARENT_LIMITS } from '../../src/renderer/cowork/preview/limits';
 import { PREVIEW_FRAME_NAME } from '../../src/shared/document-preview';
 
 export type PreviewFixtureSet = DocumentPreviewType | 'navigation';
@@ -73,6 +78,7 @@ export interface CanvasRegion { page: number; left: number; top: number; width: 
 export interface FixtureExpectation {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; units?: number; minUnits?: number;
   truncated?: boolean; textIncludes?: string[]; textExcludes?: string[]; paintedRegion?: CanvasRegion;
+  laterErrorCode?: PreviewErrorCode;
 }
 export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'hostile'; expect: FixtureExpectation }
 /* What openPreview saw for one fixture. It loads the fixture into the preview
@@ -86,19 +92,26 @@ export interface PreviewFixture { name: string; file: string; kind: 'clean' | 'h
    which end with none, so it never reports empty text and about:srcdoc for a
    frame it couldn't reach. Specs do no clicking of their own. `requests` holds
    the absolute URL of every request the page or any frame made from the moment
-   openPreview started, the fixture fetch included. */
+   openPreview started, the fixture fetch included. For a fixture with a
+   `laterErrorCode`, it waits up to LATER_ERROR_WAIT_MS for the parent's later
+   error instead, reads no text and clicks nothing, since the frame's draw
+   holds the frame's thread, and sets `laterErrorCode` to the code it got. */
 export interface PreviewRun {
   outcome: 'rendered' | 'error'; errorCode?: PreviewErrorCode; summary?: RenderSummary;
-  text: string; requests: string[]; frameUrlAfterClicks: string;
+  text: string; requests: string[]; frameUrlAfterClicks: string; laterErrorCode?: PreviewErrorCode;
 }
 
 /* What the harness page's open(set, file) resolves with. main.tsx sets
-   window.coworkPreviewHarness. */
+   window.coworkPreviewHarness. laterError() is the error the frame of the
+   last open() reported after its outcome, or null. */
 export type HarnessOutcome = Pick<PreviewRun, 'outcome' | 'errorCode' | 'summary'>;
 
 declare global {
   interface Window {
-    coworkPreviewHarness?: { open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcome> };
+    coworkPreviewHarness?: {
+      open(set: PreviewFixtureSet, file: string): Promise<HarnessOutcome>;
+      laterError(): PreviewErrorCode | null;
+    };
   }
 }
 
@@ -107,12 +120,15 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const FIXTURE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FIXTURE_KEYS = new Set(['name', 'file', 'kind', 'expect']);
 const EXPECTATION_KEYS = new Set([
-  'outcome', 'errorCode', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion',
+  'outcome', 'errorCode', 'units', 'minUnits', 'truncated', 'textIncludes', 'textExcludes', 'paintedRegion', 'laterErrorCode',
 ]);
 const REGION_KEYS = new Set(['page', 'left', 'top', 'width', 'height']);
 /* How long a click gets to start a navigation or a request before the frame's
    URL is read. */
 const CLICK_SETTLE_MS = 500;
+/* How long after its outcome a fixture with a laterErrorCode gets to end in
+   it: the parent's draw watchdog, plus time for the frame's draw to start. */
+export const LATER_ERROR_WAIT_MS = PREVIEW_PARENT_LIMITS.progressTimeoutMs + 5_000;
 /* The outcomes that end with no preview frame mounted: the parent refuses a
    too-large file before it mounts one, and its watchdog unmounts the frame on
    a timeout. */
@@ -150,7 +166,7 @@ function readRegion(value: unknown, where: string): CanvasRegion {
 function readExpectation(value: unknown, where: string): FixtureExpectation {
   if (!isRecord(value)) throw new Error(`${where}: expect must be a mapping`);
   checkKeys(value, EXPECTATION_KEYS, where);
-  const { outcome, errorCode, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion } = value;
+  const { outcome, errorCode, units, minUnits, truncated, textIncludes, textExcludes, paintedRegion, laterErrorCode } = value;
   if (outcome !== 'rendered' && outcome !== 'error') throw new Error(`${where}: outcome must be rendered or error`);
   if (errorCode !== undefined && !isPreviewErrorCode(errorCode)) {
     throw new Error(`${where}: errorCode must be one of ${Object.keys(PREVIEW_ERROR_CODES).join(', ')}`);
@@ -160,6 +176,10 @@ function readExpectation(value: unknown, where: string): FixtureExpectation {
   if (truncated !== undefined && typeof truncated !== 'boolean') throw new Error(`${where}: truncated must be true or false`);
   if (textIncludes !== undefined && !isStringList(textIncludes)) throw new Error(`${where}: textIncludes must be a list of text`);
   if (textExcludes !== undefined && !isStringList(textExcludes)) throw new Error(`${where}: textExcludes must be a list of text`);
+  if (laterErrorCode !== undefined && !isPreviewErrorCode(laterErrorCode)) {
+    throw new Error(`${where}: laterErrorCode must be one of ${Object.keys(PREVIEW_ERROR_CODES).join(', ')}`);
+  }
+  if (laterErrorCode !== undefined && outcome !== 'rendered') throw new Error(`${where}: laterErrorCode needs outcome rendered`);
   return {
     outcome,
     ...(errorCode === undefined ? {} : { errorCode }),
@@ -169,6 +189,7 @@ function readExpectation(value: unknown, where: string): FixtureExpectation {
     ...(textIncludes === undefined ? {} : { textIncludes }),
     ...(textExcludes === undefined ? {} : { textExcludes }),
     ...(paintedRegion === undefined ? {} : { paintedRegion: readRegion(paintedRegion, where) }),
+    ...(laterErrorCode === undefined ? {} : { laterErrorCode }),
   };
 }
 
@@ -259,6 +280,15 @@ export async function openPreview(page: Page, set: PreviewFixtureSet, fixture: P
       /* A frame the watchdog removed never left about:srcdoc unless a
          navigation was seen. */
       return { ...outcome, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc' };
+    }
+    if (fixture.expect.laterErrorCode !== undefined && outcome.outcome === 'rendered') {
+      await page.waitForFunction(() => window.coworkPreviewHarness!.laterError() !== null, undefined, { timeout: LATER_ERROR_WAIT_MS });
+      const laterErrorCode = (await page.evaluate(() => window.coworkPreviewHarness!.laterError()))!;
+      const mounted = await page.locator(`iframe[name="${PREVIEW_FRAME_NAME}"]`).count();
+      if (mounted !== 0) throw new Error(`The preview ended in ${laterErrorCode} after rendered, but its frame is still mounted.`);
+      return {
+        ...outcome, laterErrorCode, text: '', requests: [...requests], frameUrlAfterClicks: navigations[0] ?? 'about:srcdoc',
+      };
     }
     /* A frame that navigated before it reported, on both mounts, ends
        removed with internal. The throw then names that outcome and the
