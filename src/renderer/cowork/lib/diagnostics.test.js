@@ -95,11 +95,19 @@ describe('scrubLog', () => {
       .toBe('{"headers": "{\\"Authorization\\": \\"Basic [redacted]\\"}"}');
   });
 
-  it('keeps any scheme word and redacts the credential after it', () => {
+  it('keeps a known scheme word and redacts everything after it', () => {
     expect(scrubLog('Authorization: ApiKey hunter2secret')).toBe('Authorization: ApiKey [redacted]');
-    expect(scrubLog('{"Authorization": "SSWS hunter2secret"}')).toBe('{"Authorization": "SSWS [redacted]"}');
-    // A token is not a scheme, even with words after it.
-    expect(scrubLog('Authorization: sk_live_abc123 trailing')).toBe('Authorization: [redacted] trailing');
+    expect(scrubLog('{"Authorization": "SSWS hunter2secret", "Accept": "*/*"}'))
+      .toBe('{"Authorization": "SSWS [redacted]", "Accept": "*/*"}');
+    expect(scrubLog('Authorization: Digest username="bob", response="6629fae4"'))
+      .toBe('Authorization: Digest [redacted]');
+  });
+
+  it('redacts the whole value when its first word is not a known scheme', () => {
+    expect(scrubLog('Authorization: sk_live_abc123 trailing')).toBe('Authorization: [redacted]');
+    // A letters-only token followed by text must not pass for a scheme.
+    expect(scrubLog('Authorization: abcdefghijklmnop more words')).toBe('Authorization: [redacted]');
+    expect(scrubLog('Authorization:\nnext line stays')).toBe('Authorization:\nnext line stays');
   });
 
   it('reads a quoted Authorization value through an escaped quote', () => {

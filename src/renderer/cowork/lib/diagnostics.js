@@ -26,6 +26,12 @@ const SECRET_NAME =
   '(?:api|secret|private|signing|encryption|access|auth)[_-]?key'
   + '|secret|password|passwd|pwd|token|credential|cookie|session|signature';
 
+// Authorization schemes in common use, kept so a redacted header still says
+// which kind of credential it carried.
+const AUTH_SCHEME =
+  'bearer|basic|digest|token|negotiate|ntlm|apikey|api-key|key|ssws|dpop|gnap|hoba|mutual|vapid'
+  + '|aws4-hmac-sha256|scram-sha-1|scram-sha-256';
+
 const SECRET_PATTERNS = [
   // DSN credentials: scheme://user:secret@host — keep user and host. The
   // username is optional because `redis://:pass@host` is the normal form.
@@ -35,12 +41,15 @@ const SECRET_PATTERNS = [
   // which reads as handled and is worse than leaving the line alone.
   // The name and value may be quoted, as a JSON or Python dict of headers prints
   // them, or quoted with backslashes, as JSON stored inside a JSON string is.
-  // A letters-only first word followed by a space is the scheme; a token never is.
-  // A quoted value ends only at its own opening quote; an unquoted one at a space.
-  [/\b(authorization\\?["']?[^\S\n]*[=:][^\S\n]*)(\\?["'])(?:([A-Za-z]+)[^\S\n]+)?(?:(?!\2)(?:[^\s"'\\]|\\.))+/gi,
-    (_m, head, quote, scheme) => `${head}${quote}${scheme ? `${scheme} ` : ''}${REDACTED}`],
-  [/\b(authorization\\?["']?[^\S\n]*[=:][^\S\n]*)(?!\\?["'])(?:([A-Za-z]+)[^\S\n]+)?(?:[^\s"'\\]|\\.)+/gi,
-    (_m, head, scheme) => `${head}${scheme ? `${scheme} ` : ''}${REDACTED}`],
+  // Only a known scheme word is kept. Everything after it is redacted, to the
+  // value's own closing quote or, unquoted, to the end of the line, so a
+  // credential with spaces (Digest) or an unknown scheme never shows.
+  [new RegExp(
+    `\\b(authorization\\\\?["']?[^\\S\n]*[=:][^\\S\n]*)(\\\\?["'])(?:(${AUTH_SCHEME})[^\\S\n]+)?(?:(?!\\2)(?:[^\n\\\\]|\\\\.))+`,
+    'gi'), (_m, head, quote, scheme) => `${head}${quote}${scheme ? `${scheme} ` : ''}${REDACTED}`],
+  [new RegExp(
+    `\\b(authorization\\\\?["']?[^\\S\n]*[=:][^\\S\n]*)(?!\\\\?["'])(?:(${AUTH_SCHEME})[^\\S\n]+)?[^\\s][^\n]*`,
+    'gi'), (_m, head, scheme) => `${head}${scheme ? `${scheme} ` : ''}${REDACTED}`],
   // Bearer tokens anywhere else.
   [/\b(bearer[^\S\n]+)[\w.\-~+/]{8,}={0,2}/gi, `$1${REDACTED}`],
   // Provider key shapes that are recognisable on their own.
