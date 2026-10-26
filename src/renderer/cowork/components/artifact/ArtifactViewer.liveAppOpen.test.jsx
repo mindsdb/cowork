@@ -92,6 +92,7 @@ vi.mock('./ArtifactViewerBody', () => ({
   ArtifactViewerBody: ({ preview }) => (
     <div>
       <div data-testid="body">{preview.liveApp ? preview.liveApp.notice?.text ?? 'loading' : 'preview'}</div>
+      <div data-testid="viewer-error">{preview.error}</div>
       {preview.liveApp?.notice?.canLaunch && preview.liveApp.onLaunch && (
         <button type="button" onClick={preview.liveApp.onLaunch}>launch</button>
       )}
@@ -166,6 +167,21 @@ describe("the viewer's preview and open controls on a live app", () => {
       artifact: app, prompt: 'Launch the live app `server-time-a440c451`.', conversationId: null,
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps the viewer open with a cause-neutral message when no turn starts', async () => {
+    setLiveApps(true);
+    api.fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([{ ...launch, state: 'stopped', stoppedAt: '', stopReasonText: '' }]));
+    const onClose = vi.fn();
+    render(<ArtifactViewer open artifact={app} onClose={onClose} onAddressWithAgent={vi.fn(async () => false)} />);
+    await act(async () => {});
+
+    await act(async () => { fireEvent.click(screen.getByText('launch')); });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('viewer-error')).toHaveTextContent(
+      "The agent couldn't launch this app. Check that an agent provider is connected, then open the chat to see what happened.",
+    );
   });
 
   it('offers no Launch while the app runs, or with no agent to ask', async () => {

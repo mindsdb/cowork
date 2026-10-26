@@ -425,7 +425,9 @@ export function ArtifactViewer({
         }
         if (started === false) {
           await workspace.cancelRepair(requested.repair.id);
-          setErr('Connect an agent provider, then try addressing this comment again.');
+          // `false` has several causes (no provider, a project this user can't
+          // run, the text taken as the answer to an open question), so name none.
+          setErr("The agent couldn't start on this comment. Check that an agent provider is connected, then open the chat to see what happened.");
         }
       }
     } catch (requestError) {
@@ -811,7 +813,7 @@ export function ArtifactViewer({
   const onLaunchLiveApp = async () => {
     try {
       const started = await onAddressWithAgent({ artifact, prompt: launchLiveAppPrompt(artifact), conversationId });
-      if (started === false) setErr('Connect an agent provider, then try launching this app again.');
+      if (started === false) setErr("The agent couldn't launch this app. Check that an agent provider is connected, then open the chat to see what happened.");
       else onClose?.();
     } catch (e) {
       setErr(e?.message || 'Could not ask the agent to launch this app');

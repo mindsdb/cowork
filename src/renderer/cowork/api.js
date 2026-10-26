@@ -383,12 +383,15 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
   // the replay at the api boundary so the rest of the app sees a
   // consistent message shape regardless of whether the data came from
   // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
       .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
-    : [];
+    : undefined;
 
   return {
     id: conv.id,
@@ -626,12 +629,16 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
  * treated as an empty conversation on a 404 (the one benign case); any other
  * items failure is 'unavailable' so a real transcript is never silently blanked.
  *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
-export async function fetchSessionResult(id) {
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`),
-    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;

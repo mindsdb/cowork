@@ -4329,7 +4329,9 @@ function AppCore() {
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
-      fetchConversation: fetchSessionResult,
+      // The viewer stays busy while this runs; a timeout counts as unreachable
+      // and starts a new chat instead.
+      fetchConversation: (id) => fetchSessionResult(id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }),
     });
     artifactRepairTargetRef.current = target.id ? target : null;
     // Adopt the record now: an origin chat older than the capped recents fetch
@@ -4359,13 +4361,30 @@ function AppCore() {
     // that never starts.
     if (!(await ensureProviderReady())) return false;
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
-    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
-    // while the turn is in flight; the flag drops when the turn completes.
+    // Send with the mutes the composer will show for that chat. The mute effect
+    // runs after this send, and it leaves the composer alone when that chat was
+    // the last one open, so its unsent toggles are what the user sees.
+    const disabledConnections = normalizeComposerDisabledConnections(
+      composerMuteLastTaskIdRef.current === target.id
+        ? composerDisabledConnections
+        : targetTask.disabledConnections,
+    );
+    // Hydrate the chat before the optimistic flag stops the `/c/:id` loader
+    // from doing it; otherwise only the new turn shows. Snapshot the row ids
+    // before the fetch, as the loader does.
+    const knownIds = knownIdsOf(target.id);
+    const loaded = await fetchSessionResult(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null);
+    // The `/c/:id` loader must not re-hydrate over the transcript while the
+    // turn is in flight; the flag drops when the turn completes.
     markOptimisticConversation(target.id);
+    // A failed load still sends: the repair is already bound to this chat.
+    if (loaded?.status === 'ok') {
+      openConversation(target.id, { task: loaded.task, id: target.id, knownIds });
+    }
     selectTask(target.id);
-    // handleSendInTask queues the prompt itself if that chat is already busy.
-    await handleSendInTask(prompt, [], { targetTask });
-    return true;
+    // handleSendInTask queues the prompt itself if that chat is already busy;
+    // `false` (no turn started) makes the viewer cancel the repair.
+    return handleSendInTask(prompt, [], { targetTask, disabledConnections });
   };
 
   // Submit a data-vault form. Drives a fresh assistant turn from the

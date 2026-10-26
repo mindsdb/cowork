@@ -1342,6 +1342,41 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
     expect(res.status).toBe('ok');
     expect(res.task.messages).toEqual([]);
   });
+
+  it('leaves disabledConnections undefined when the server sends none', async () => {
+    // The server does not store a chat's mutes; an empty list here would
+    // overwrite the ones the chat's last send recorded locally.
+    stub({ body: meta }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toBeUndefined();
+  });
+
+  it('normalizes disabled_connections when the server sends them', async () => {
+    stub({ body: { ...meta, disabled_connections: [{ engine: ' gmail ', name: 'mail ' }, { engine: 1 }] } }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toEqual([{ engine: 'gmail', name: 'mail' }]);
+  });
+
+  it('reads a timed-out request as unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      })));
+      const { fetchSessionResult } = await import('./api');
+      const resultPromise = fetchSessionResult('c1', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+      expect(await resultPromise).toEqual({ status: 'unavailable', code: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ENG-1919: Stop must never silently report success when the cancel request
