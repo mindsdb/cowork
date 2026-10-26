@@ -148,6 +148,19 @@ jobs:
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
     secrets: inherit
 
+  windows-setup:
+    needs: upload-windows
+    if: ${{ inputs.build_kind == 'stable' || inputs.build_kind == 'prod' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-setup-smoke.yml
+    with:
+      channels: ${{ inputs.build_kind }}
+      expected-url: ${{ needs.upload-windows.outputs.download_url }}
+      expected-version: ${{ inputs.app_version }}
+    secrets: inherit
+
   build-linux-amd64:
     if: inputs.linux_amd64
     uses: ./.github/workflows/build-linux-deb.yml
