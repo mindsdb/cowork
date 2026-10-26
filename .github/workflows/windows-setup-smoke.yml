@@ -43,6 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: 26c52ffe33637dafd8346b734a804ef8fe6587be
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -80,8 +81,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          # Schedules run main's copy; a Stable installer comes from staging, so test it with staging's harness.
-          ref: ${{ github.event_name == 'schedule' && matrix.channel == 'stable' && 'staging' || '' }}
+          ref: 26c52ffe33637dafd8346b734a804ef8fe6587be
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -138,6 +138,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: 26c52ffe33637dafd8346b734a804ef8fe6587be
       - uses: actions/setup-node@v4
         with:
           node-version: 22

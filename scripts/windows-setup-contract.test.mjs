@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { assertSetupPassed, packageIdentity, validateManifest } from './macos-setup-contract.mjs';
 import { appEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
@@ -137,6 +138,7 @@ function setupObserver(invoke, isMainFrame = true) {
   runInNewContext(readFileSync(new URL('./windows-setup-observer.cjs', import.meta.url), 'utf8'), {
     process: { isMainFrame },
     require: (name) => {
+      if (name === 'node:crypto') return { randomUUID };
       assert.equal(name, 'electron');
       return { ipcRenderer, contextBridge: { exposeInMainWorld: (name, value) => {
         assert.equal(name, '__setupSmoke');
@@ -154,6 +156,7 @@ test('the observer routes onboarding to setup without starting or replacing inst
     return args[0] === 'install:start' ? true : { configured: false };
   });
   assert.equal(snapshot().startCalls, 0);
+  assert.notEqual(snapshot().documentId, setupObserver(async () => true).snapshot().documentId);
   assert.equal(calls.length, 0);
   assert.equal((await ipcRenderer.invoke('settings:check-configured')).configured, true);
   assert.equal(calls.length, 0);

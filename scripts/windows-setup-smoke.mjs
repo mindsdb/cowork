@@ -230,17 +230,19 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   result.failingStep = 'Setup';
   const observerPath = join(profile, 'setup-observer.cjs');
   await copyFile(fileURLToPath(new URL('./windows-setup-observer.cjs', import.meta.url)), observerPath);
-  const windowHandle = await app.browserWindow(page);
-  await windowHandle.evaluate((window, filePath) => window.webContents.session.registerPreloadScript({ type: 'frame', filePath }), observerPath);
+  const windowHandle = await bounded(app.browserWindow(page), 10_000, 'App window lookup timed out.');
+  await bounded(windowHandle.evaluate((window, filePath) => window.webContents.session.registerPreloadScript({ type: 'frame', filePath }), observerPath), 10_000, 'Observer registration timed out.');
   // The observer is attached before boot chooses setup; SetupScreen alone starts it.
-  await page.evaluate(() => localStorage.setItem('anton.termsConsent', 'true'));
+  await bounded(page.evaluate(() => localStorage.setItem('anton.termsConsent', 'true')), 10_000, 'App stopped answering before setup started.');
   await page.reload({ timeout: 30_000 });
+  const documentId = await bounded(page.evaluate(() => window.__setupSmoke?.snapshot().documentId), 10_000, 'Observer startup timed out.');
+  if (!documentId) throw new Error('Setup observer did not load.');
   await page.getByText('LOADING WORLD', { exact: true }).waitFor({ timeout: 30_000 });
   const deadline = Date.now() + 15 * 60_000;
   while (true) {
     if (page.isClosed()) throw new Error('App window closed during setup.');
     const current = await bounded(page.evaluate(() => window.__setupSmoke?.snapshot()), 10_000, 'App stopped answering during setup.');
-    if (!current) throw new Error('App reloaded during setup.');
+    if (!current || current.documentId !== documentId) throw new Error('App reloaded during setup.');
     Object.assign(setup, current);
     save('setup.log', setup.log);
     save('steps.json', setup.steps);

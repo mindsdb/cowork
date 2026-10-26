@@ -2,7 +2,8 @@
 // the bundled setup screen mounts; never start installation from this observer.
 if (process.isMainFrame) {
   const { contextBridge, ipcRenderer } = require('electron');
-  const state = { steps: [], done: false, error: '', cancelled: false, returned: null, log: '', startCalls: 0 };
+  const documentId = require('node:crypto').randomUUID();
+  const state = { documentId, steps: [], done: false, error: '', cancelled: false, returned: null, log: '', startCalls: 0 };
   ipcRenderer.on('install:log', (_event, line) => { state.log += line; });
   ipcRenderer.on('install:progress', (_event, steps) => { state.steps = steps; });
   ipcRenderer.on('install:done', () => { state.done = true; });
