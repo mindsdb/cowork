@@ -100,7 +100,9 @@ export function ArtifactViewerHeader({
       ? 'Refresh the artifact to load review tools'
       : workspaceLoading
         ? 'Loading review tools…'
-        : workspace.unsupportedReason || 'Review is not available for this artifact';
+        : workspace.commentsOffReason
+          || workspace.unsupportedReason
+          || 'Review is not available for this artifact';
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
