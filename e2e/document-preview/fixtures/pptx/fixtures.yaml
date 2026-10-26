@@ -81,6 +81,19 @@
     textIncludes: [Preview may differ from PowerPoint, Slide 1, Slide 300]
     textExcludes: [Slide 301]
 
+# Each slide reads 5,016 elements, so the element cap runs out on slide 20,
+# which the preview draws up to the cap. Its section's aria-label reads
+# "Slide 20", so textExcludes names the first slide it never starts.
+- name: a deck whose shared layout passes the element cap
+  file: past-element-cap.pptx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 20
+    truncated: true
+    textIncludes: [Preview may differ from PowerPoint, Slide 1, Slide 19]
+    textExcludes: [Slide 21, Slide 100]
+
 - name: a presentation part cut off mid-element
   file: corrupt.pptx
   kind: clean

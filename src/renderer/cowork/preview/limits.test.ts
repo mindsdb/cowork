@@ -15,6 +15,7 @@ describe('previewLimits', () => {
       maxPdfCanvasPixels: 16_777_216,
       maxPdfCanvasesAlive: 6,
       maxSlides: 300,
+      maxSlideElements: 100_000,
       readyTimeoutMs: 10_000,
       progressTimeoutMs: 20_000,
     });

@@ -14,6 +14,7 @@
  * never read. A picture fill on a background or a shape follows the same
  * rules, and shows mid-gray where a picture would show a placeholder.
  */
+import { walk, type ElementBudget } from './budget';
 import { cssColor, type ColorScheme } from './color';
 import { imageSize, imageType, type ImageSize } from './image';
 import { firstPartOfKind, relationshipPart, type PartReader, type Relationships, documentRoot } from './package';
@@ -41,6 +42,9 @@ export interface DeckContext {
   defaultTextStyle: Element | null;
   /* The most pixels one picture's header may declare. */
   maxImagePixels: number;
+  /* How many more elements the slides' shape trees, tables and text may
+     read, from ctx.limits.maxSlideElements. */
+  budget: ElementBudget;
   images: Map<string, Promise<ShownImage | null>>;
   themes: Map<string, Promise<Theme>>;
   placeholders: Map<string, PlaceholderIndex>;
@@ -258,7 +262,7 @@ function backgroundFill(layers: SlideLayers): Fill | null {
 }
 
 function drawTree(tree: Element | null, ctx: DrawContext, transform: Transform): void {
-  for (const node of Array.from(tree?.children ?? [])) drawNode(node, ctx, transform);
+  for (const node of walk(ctx.deck.budget, tree)) drawNode(node, ctx, transform);
 }
 
 function drawNode(node: Element, ctx: DrawContext, transform: Transform): void {
@@ -604,6 +608,7 @@ function drawShape(sp: Element, ctx: DrawContext, transform: Transform): void {
         styleColor: styleRefColor(sp, 'fontRef', ctx.layers.scheme),
         cqw: (emu) => cqw(emu, ctx),
         fontScale: fontScale ? fontScale / 100_000 : 1,
+        budget: ctx.deck.budget,
       }),
     );
   }
@@ -753,7 +758,10 @@ function drawTable(tbl: Element, box: Box, xfrm: Element | null, ctx: DrawContex
 
   const table = doc.createElement('table');
   table.className = 'pptx-table';
-  const widths = children(child(tbl, 'tblGrid'), 'gridCol').map((col) => Math.max(0, intAttr(col, 'w') ?? 0));
+  const { budget } = ctx.deck;
+  const widths = Array.from(walk(budget, child(tbl, 'tblGrid')))
+    .filter((col) => col.localName === 'gridCol')
+    .map((col) => Math.max(0, intAttr(col, 'w') ?? 0));
   const total = widths.reduce((sum, width) => sum + width, 0);
   if (total > 0) {
     const colgroup = doc.createElement('colgroup');
@@ -765,22 +773,24 @@ function drawTable(tbl: Element, box: Box, xfrm: Element | null, ctx: DrawContex
     table.append(colgroup);
   }
 
-  const rows = children(tbl, 'tr');
   const body = doc.createElement('tbody');
   const textStyles = [child(child(ctx.layers.master?.root, 'txStyles'), 'otherStyle'), ctx.deck.defaultTextStyle].filter(
     (value): value is Element => value !== null,
   );
-  for (const tr of rows) {
+  for (const tr of walk(budget, tbl)) {
+    if (tr.localName !== 'tr') continue;
     const row = doc.createElement('tr');
     const height = intAttr(tr, 'h');
     if (height) row.style.height = `${cqw(height, ctx).toFixed(3)}cqw`;
-    for (const tc of children(tr, 'tc')) {
-      if (boolAttr(tc, 'hMerge') || boolAttr(tc, 'vMerge')) continue;
+    for (const tc of walk(budget, tr)) {
+      if (tc.localName !== 'tc' || boolAttr(tc, 'hMerge') || boolAttr(tc, 'vMerge')) continue;
       const cell = doc.createElement('td');
       const span = intAttr(tc, 'gridSpan');
       if (span && span > 1) cell.colSpan = Math.min(span, Math.max(1, widths.length));
+      /* A row span stops at the table's last row; the table's child count
+         bounds that without walking its rows a second time. */
       const rowSpan = intAttr(tc, 'rowSpan');
-      if (rowSpan && rowSpan > 1) cell.rowSpan = Math.min(rowSpan, rows.length);
+      if (rowSpan && rowSpan > 1) cell.rowSpan = Math.min(rowSpan, tbl.childElementCount);
       const fill = readFill(child(tc, 'tcPr'), ctx.layers.scheme);
       if (fill?.kind === 'color') cell.style.backgroundColor = fill.css;
       cell.append(
@@ -793,6 +803,7 @@ function drawTable(tbl: Element, box: Box, xfrm: Element | null, ctx: DrawContex
           styleColor: null,
           cqw: (emu) => cqw(emu, ctx),
           fontScale: 1,
+          budget,
         }),
       );
       row.append(cell);
