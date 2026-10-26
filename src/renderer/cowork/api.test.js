@@ -1362,13 +1362,7 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
   it('reads a timed-out request as unavailable', async () => {
     vi.useFakeTimers();
     try {
-      vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
-        options?.signal?.addEventListener('abort', () => {
-          const err = new Error('aborted');
-          err.name = 'AbortError';
-          reject(err);
-        });
-      })));
+      vi.stubGlobal('fetch', _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, {}));
       const { fetchSessionResult } = await import('./api');
       const resultPromise = fetchSessionResult('c1', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
       await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);

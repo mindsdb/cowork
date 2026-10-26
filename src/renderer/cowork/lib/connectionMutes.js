@@ -11,6 +11,11 @@ export function normalizeComposerDisabledConnections(list) {
     .filter((d) => d.engine && d.name);
 }
 
+/** Identity of a connection in a mute list; the engine is case-insensitive. */
+export function connectionMuteKey(engine, name) {
+  return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
+}
+
 /**
  * Applies one composer mute toggle to a mute list. Returns `list` itself when
  * nothing changes, so a state setter can skip the re-render.
@@ -19,12 +24,11 @@ export function toggleConnectionMute(list, connector, useInChat) {
   const engine = String(connector?.engine || '').trim();
   const name = String(connector?.name || '').trim();
   if (!engine || !name) return list;
-  const pk = (x) => `${x.engine.toLowerCase()}\t${x.name}`;
-  const ckey = pk({ engine, name });
+  const key = connectionMuteKey(engine, name);
   const cur = normalizeComposerDisabledConnections(list);
-  const next = useInChat
-    ? cur.filter((x) => pk(x) !== ckey)
-    : (cur.some((x) => pk(x) === ckey) ? cur : [...cur, { engine, name }]);
-  const sig = (arr) => [...arr.map(pk)].sort().join('|');
-  return sig(cur) === sig(next) && Array.isArray(list) ? list : next;
+  const muted = cur.some((x) => connectionMuteKey(x.engine, x.name) === key);
+  if (muted !== useInChat) return Array.isArray(list) ? list : cur;
+  return useInChat
+    ? cur.filter((x) => connectionMuteKey(x.engine, x.name) !== key)
+    : [...cur, { engine, name }];
 }

@@ -29,7 +29,9 @@ import { EmptyState, Button, Spinner } from './components/ui';
 
 // Ids that aren't yet loadable via the API (a new-chat send + the canonical id
 // the server later mints). The loader renders these from local state instead of
-// fetching (which would 404 and bounce home). Marked on adopt, cleared on turn
+// fetching (which would 404 and bounce home). A repair resumed from Live
+// Artifacts also marks an existing chat it hydrated itself, so the loader does
+// not merge a page over the turn it just started. Marked on adopt, cleared on turn
 // completion so a later revisit hydrates fresh. Module-level so the loader
 // (outside the tree) can read it; it also empties on a full reload, when a
 // `/c/:id` refresh SHOULD hit the server.
@@ -287,8 +289,6 @@ export function ConversationLoading() {
   );
 }
 
-// `/c/:id` loader. Distinguishes the failure modes so the route can react: a
-// 404 drops the dead link Home; a transient failure keeps the URL + retries.
 /**
  * Fetches a conversation the way the `/c/:id` loader does, for `openConversation`.
  * The local row-id snapshot is taken before the fetch, so a late page cannot
@@ -302,6 +302,8 @@ export async function loadConversation(id, { timeoutMs } = {}) {
   return result.status === 'ok' ? { ...result, knownIds } : result;
 }
 
+// `/c/:id` loader. Distinguishes the failure modes so the route can react: a
+// 404 drops the dead link Home; a transient failure keeps the URL + retries.
 async function conversationLoader({ params }) {
   const id = params.conversationId;
   // Not-yet-persisted conversation (mid-send): render from local state.

@@ -3325,11 +3325,15 @@ function AppCore() {
     // it see the same mutes as the composer, sent or not.
     const taskId = composerMuteLastTaskIdRef.current;
     if (!taskId) return;
-    setTasks((prev) => prev.map((t) => {
-      if (t.id !== taskId) return t;
-      const next = toggleConnectionMute(t.disabledConnections, connector, useInChat);
-      return next === t.disabledConnections ? t : { ...t, disabledConnections: next };
-    }));
+    setTasks((prev) => {
+      const i = prev.findIndex((t) => t.id === taskId);
+      if (i === -1) return prev;
+      const next = toggleConnectionMute(prev[i].disabledConnections, connector, useInChat);
+      if (next === prev[i].disabledConnections) return prev;
+      const copy = prev.slice();
+      copy[i] = { ...prev[i], disabledConnections: next };
+      return copy;
+    });
   }, []);
 
   const handleRemoveAttachment = async (id) => {
@@ -3454,6 +3458,9 @@ function AppCore() {
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
     }
+    // A caller that is not the composer (the artifact viewer) passes its own
+    // mutes and attachments and leaves the composer's alone.
+    const usesComposer = meta?.attachments == null;
     // Every new conversation starts here, so in the operator picker's default
     // mode the next one starts on the operator's model again. This send still
     // reads the pick it rendered with.
@@ -3490,7 +3497,7 @@ function AppCore() {
       }, ...prev]);
       setActiveTaskId(taskId);
       setRoute('task');
-      if (meta?.attachments == null) setComposerAttachments([]);
+      if (usesComposer) setComposerAttachments([]);
       return false;
     }
 
@@ -3507,13 +3514,11 @@ function AppCore() {
     const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
-    // A caller that is not the composer (the artifact viewer) passes its own
-    // mutes and attachments and leaves the composer's alone.
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
 
-    const rawComposer = meta?.attachments ?? composerAttachments;
+    const rawComposer = usesComposer ? composerAttachments : meta.attachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     const taskId = suppliedConversationId
@@ -3528,7 +3533,7 @@ function AppCore() {
       rawComposer,
     );
     const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
-    if (meta?.attachments == null) setComposerAttachments([]);
+    if (usesComposer) setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -3822,9 +3827,8 @@ function AppCore() {
     const id = targetTask.id;
     // Composer toggles land on the chat record too (handleComposerConnectorMute),
     // so the freshest record holds the chat's mutes whether it is on screen or not.
-    const mutesForSend = opts.disabledConnections != null
-      ? opts.disabledConnections
-      : (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
+    const mutesForSend = opts.disabledConnections
+      ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -4324,12 +4328,17 @@ function AppCore() {
   const artifactRepairTargetRef = useRef(null);
 
   const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    let fetched = null;
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
-      fetchConversation: fetchSessionResult,
+      // Kept so the send hydrates the chat from this fetch instead of repeating it.
+      fetchConversation: async (id) => {
+        fetched = await loadConversation(id);
+        return fetched;
+      },
     });
-    artifactRepairTargetRef.current = target.id ? target : null;
+    artifactRepairTargetRef.current = target.id ? { ...target, loaded: fetched } : null;
     // Adopt the record now: an origin chat older than the capped recents fetch
     // is unknown to `tasks`, and the send below appends the turn through it.
     if (target.id) {
@@ -4360,10 +4369,11 @@ function AppCore() {
     const targetProject = projects.find((item) => item.id === targetTask.projectId);
     if (targetProject && !canRunProject(targetProject)) return false;
     // The optimistic flag set below keeps the `/c/:id` loader from hydrating
-    // the chat, so load it here, alongside the provider check.
+    // the chat, so load it here, alongside the provider check, unless the
+    // resolver just fetched it (an origin chat missing from recents).
     const [ready, loaded] = await Promise.all([
       ensureProviderReady(),
-      loadConversation(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null),
+      target.loaded || loadConversation(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null),
     ]);
     if (!ready) return false;
     // Deleted since the resolver saw it: there is no chat left to resume.

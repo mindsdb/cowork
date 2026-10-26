@@ -6,16 +6,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const spies = vi.hoisted(() => ({
-  sessions: [],
-  fetchSessionResult: vi.fn(),
-  streamMessage: vi.fn(),
-  streamNewSession: vi.fn(),
-  submitAnswer: vi.fn(async () => ({ status: 'accepted' })),
-  repairResults: [],
-}));
-
-const streams = [];
+const { spies, streams, streamStub } = vi.hoisted(() => {
+  const streams = [];
+  return {
+    spies: {
+      sessions: [],
+      fetchSessionResult: vi.fn(),
+      streamMessage: vi.fn(),
+      streamNewSession: vi.fn(),
+      submitAnswer: vi.fn(async () => ({ status: 'accepted' })),
+      repairResults: [],
+    },
+    streams,
+    // Records each stream's handle so a test can finish or fail it.
+    streamStub: (spy) => (...args) => {
+      spy(...args);
+      const handle = { opts: args.at(-1), abort: vi.fn() };
+      streams.push(handle);
+      return handle;
+    },
+  };
+});
 
 const GMAIL = { engine: 'gmail', name: 'gmail' };
 const SLACK = { engine: 'slack', name: 'slack' };
@@ -46,18 +57,8 @@ vi.mock('./api', async (importOriginal) => ({
   recordTaskVisit: vi.fn(async () => ({})),
   allocateConversationId: vi.fn(() => 'conv-new'),
   submitAnswer: (...args) => spies.submitAnswer(...args),
-  streamMessage: (...args) => {
-    spies.streamMessage(...args);
-    const handle = { opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
-  streamNewSession: (...args) => {
-    spies.streamNewSession(...args);
-    const handle = { opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
+  streamMessage: streamStub(spies.streamMessage),
+  streamNewSession: streamStub(spies.streamNewSession),
   tailInFlight: (...args) => ({ opts: args[args.length - 1], abort: vi.fn() }),
 }));
 
@@ -90,6 +91,7 @@ vi.mock('./views/ArtifactsView', () => {
   const targets = {
     'repair A': artifact('conv-a'),
     'repair C': artifact('conv-c', 'proj-shared'),
+    'repair Y': artifact('conv-y'),
     'repair Z': artifact('conv-z'),
   };
   return {
@@ -345,6 +347,22 @@ describe('addressing an artifact from Live Artifacts', () => {
     expect(spies.fetchSessionResult).toHaveBeenCalledWith('conv-a', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
     expect(spies.fetchSessionResult.mock.invocationCallOrder[0])
       .toBeLessThan(spies.streamMessage.mock.invocationCallOrder[0]);
+  });
+
+  it('hydrates a chat missing from recents from the resolver fetch, without fetching it again', async () => {
+    spies.fetchSessionResult.mockImplementation(async (id) => (id === 'conv-y'
+      ? loadedTask(id, 'Older task', [{ id: 'u1', role: 'user', content: 'old question' }])
+      : { status: 'not_found' }));
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair Y' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+    expect(spies.streamMessage.mock.calls.at(-1)[0]).toBe('conv-y');
+    const list = await screen.findByTestId('chat-messages');
+    await waitFor(() => expect(list).toHaveTextContent('user:old question'));
+    expect(spies.fetchSessionResult.mock.calls.filter(([id]) => id === 'conv-y')).toHaveLength(1);
   });
 
   it.each([

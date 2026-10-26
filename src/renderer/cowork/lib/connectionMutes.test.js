@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeComposerDisabledConnections, toggleConnectionMute } from './connectionMutes';
+import { connectionMuteKey, normalizeComposerDisabledConnections, toggleConnectionMute } from './connectionMutes';
 
 const GMAIL = { engine: 'gmail', name: 'mail' };
 const SLACK = { engine: 'slack', name: 'team' };
@@ -14,6 +14,13 @@ describe('normalizeComposerDisabledConnections', () => {
       { engine: ' gmail ', name: 'mail ' },
       { engine: 'slack' },
     ])).toEqual([GMAIL]);
+  });
+});
+
+describe('connectionMuteKey', () => {
+  it('matches a connection whatever the engine case and surrounding spaces', () => {
+    expect(connectionMuteKey(' GMail ', 'mail ')).toBe(connectionMuteKey('gmail', 'mail'));
+    expect(connectionMuteKey('gmail', 'Mail')).not.toBe(connectionMuteKey('gmail', 'mail'));
   });
 });
 
