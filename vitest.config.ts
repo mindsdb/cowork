@@ -137,6 +137,9 @@ export default defineConfig({
             // App/Settings regressions import these compiled consumers too. Run
             // their dedicated cases so coverage includes both execution forms.
             'src/renderer/cowork/hooks/useLogout.test.js',
+            // The production build compiles the pane: its memoized handlers read state during render.
+            'src/renderer/cowork/components/artifact/LiveAppPreview.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
             'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',

@@ -133,9 +133,14 @@ export function LiveAppPreview({ origin, launchId, reloadKey, onOpen }) {
     };
   }, [lease, origin, launchId, reloadKey]);
 
+  // Optional chaining, not a guard alone: the compiled build memoizes this
+  // handler on connection?.nonce and reads it during render, before any
+  // connection exists.
+  const nonce = connection?.nonce;
   const signIn = () => {
+    if (!nonce) return;
     popup.current?.close();
-    popup.current = window.open(`${origin}/_live_app/preview/authorize#${connection.nonce}/${launchId}/${encodeURIComponent(window.location.origin)}`,
+    popup.current = window.open(`${origin}/_live_app/preview/authorize#${nonce}/${launchId}/${encodeURIComponent(window.location.origin)}`,
       '_blank', 'popup,width=600,height=720');
     if (!popup.current) {
       cancel.current?.();
