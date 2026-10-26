@@ -58,6 +58,7 @@ import {
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
   injectDraftBaseHref,
+  limitArtifactFrames,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -628,7 +629,7 @@ export function ArtifactViewer({
         .then((doc) => {
           if (cancelled) return;
           if (doc.isHtml) {
-            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+            setPreviewDoc(limitArtifactFrames(injectDraftBaseHref(doc.content, fetchUrl)));
           } else {
             // Non-HTML draft content type: org mode's draft preview only ever
             // offers .html here (md/txt/csv already took the isText branch
