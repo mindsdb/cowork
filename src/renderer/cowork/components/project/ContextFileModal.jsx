@@ -50,6 +50,15 @@ import {
 import { downloadFilename } from '../../lib/browserDownload';
 import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
 import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
+import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
+import { DOWNLOAD_FAILED_NOTE, DocumentPreview } from '../../preview/DocumentPreview';
+import { documentPreviewType } from '../../preview/kinds';
+
+/* Where the file's bytes are read from: an attachment's raw URL, else the
+   project file's download URL. */
+function fileUrl({ projectName, filePath, rawUrl }) {
+  return rawUrl || (projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '');
+}
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -59,6 +68,15 @@ function joinAbs(root, rel) {
   const r = String(root).replace(/\/+$/, '');
   const p = String(rel).replace(/^\/+/, '');
   return `${r}/${p}`;
+}
+
+// Hand the file to the OS: prefer the raw URL (attachments + anything
+// that passed one) via the OS shell; fall back to opening the local
+// project file in the default app.
+function openInDefaultApp({ projectPath, filePath, rawUrl }) {
+  const abs = joinAbs(projectPath, filePath);
+  if (rawUrl) host.openExternal(rawUrl);
+  else if (abs) host.openPath(abs);
 }
 
 
@@ -134,13 +152,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
       {showOpenAction && (
         <Tooltip content="Open in default app">
           <Button
-            onClick={() => {
-              // Prefer the raw URL (attachments + anything that passed one)
-              // via the OS shell; fall back to opening the local project
-              // file in the default app.
-              if (rawUrl) host.openExternal(rawUrl);
-              else if (abs) host.openPath(abs);
-            }}
+            onClick={() => openInDefaultApp({ projectPath, filePath, rawUrl })}
           >{Ico.externalLink ? Ico.externalLink(14) : '↗'} Open</Button>
         </Tooltip>
       )}
@@ -153,16 +165,38 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
 // Renders a centered icon + the filename + one-line explanation
 // + the same reveal/download affordances as the header chip, so the
 // modal stays useful even when nothing can be displayed inline.
-function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction }) {
+//
+// `downloadOnOpen` (web, a file this viewer has no preview for) saves the
+// file once when the panel mounts, as a click on an artifact with no preview
+// does, and says it downloaded only after the download succeeded. Any later
+// download is the user's click on Download.
+function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl, showOpenAction, downloadOnOpen = false }) {
   const offersActions = hasFileAccess({ projectName, filePath, rawUrl, showOpenAction });
+  const [downloaded, setDownloaded] = useState(null);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!downloadOnOpen || started.current) return;
+    started.current = true;
+    downloadAuthenticatedResource(fileUrl({ projectName, filePath, rawUrl }), downloadFilename(filePath))
+      .then(setDownloaded, () => setDownloaded(false));
+  }, [downloadOnOpen, projectName, filePath, rawUrl]);
+  let message = (
+    <>
+      This file can't be displayed inline (binary, too large, or not text).
+      {offersActions && ' Use the actions below to view it.'}
+    </>
+  );
+  if (downloadOnOpen) {
+    if (downloaded === null) message = 'Downloading…';
+    else message = downloaded ? NO_PREVIEW_DOWNLOADED_NOTE : DOWNLOAD_FAILED_NOTE;
+  }
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
       <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(32) : '📄'}</div>
       <div className="flex flex-col gap-1">
         <span className="font-[family-name:var(--font-display)] text-[14.5px] font-semibold text-ink">{fileName}</span>
-        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 max-w-[380px] leading-[1.5]">
-          This file can't be displayed inline (binary, too large, or not text).
-          {offersActions && ' Use the actions below to view it.'}
+        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 max-w-[380px] leading-[1.5]" role="status">
+          {message}
         </span>
       </div>
       <FileAccessButton
@@ -239,6 +273,8 @@ export default function ContextFileModal({
   //              with how artifacts surface HTML dashboards).
   //   'image'  — render the file inline as an <img> from its raw URL
   //              (project download URL or an attachment's raw URL).
+  //   'document' — an .xlsx, .docx, .pptx or .pdf in the read-only
+  //              document preview, the frame agent-made files use.
   //   'binary' — can't render inline (too large, not UTF-8, image,
   //              archive…). Show "Open in Finder" / "Download"
   //              affordances instead of dumping bytes into the modal.
@@ -246,6 +282,11 @@ export default function ContextFileModal({
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewHtml, setPreviewHtml] = useState('');
   const [binaryDetail, setBinaryDetail] = useState('');
+  // The file the binary panel shows because this viewer has no preview for
+  // it, not because its image or HTML failed to load; on web the panel
+  // downloads it. Held as that file's URL, so a render that still carries
+  // the previous file's state never downloads the next one.
+  const [noPreviewUrl, setNoPreviewUrl] = useState('');
   const textareaRef = useRef(null);
   /*
     The load effect must not re-fire when a capability changes. Reading the
@@ -292,6 +333,22 @@ export default function ContextFileModal({
   const isMarkdown = /\.md$/i.test(referencePath) || referencePath === ''
     || isAnton
     || genericMode;
+  const bytesUrl = genericMode ? '' : fileUrl({ projectName, filePath, rawUrl });
+  /*
+    An .xlsx, .docx, .pptx or .pdf previews read-only in the document frame,
+    as an agent-made file does, when the build has its renderer
+    (documentPreviewType) and this shell may mount that frame
+    (host.supportsDocumentPreview). A preview that fails on desktop offers
+    Open, so a viewer without the open action keeps the panel there.
+  */
+  const documentType = bytesUrl && host.supportsDocumentPreview && (host.isWeb || showOpenAction)
+    ? documentPreviewType({ path: filePath })
+    : null;
+  /* What a read that finds no file says: an attachment is read by its raw
+     URL, a project file by its path. */
+  const missing = rawUrl
+    ? `${headerTitle || 'This file'} is no longer attached to this chat.`
+    : `${filePath} is no longer in this project.`;
 
   // Load on open. Anton.md is special-cased server-side: the read
   // endpoint returns an empty body when the file doesn't exist yet,
@@ -299,7 +356,13 @@ export default function ContextFileModal({
   // separate path (preview-mount → iframe); binary or oversized
   // files fall through to a "Reveal / Download" affordance.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Reopened on the same file, the first render still holds this
+      // file's state; the panel it mounts must not download before the
+      // read below decides again.
+      setNoPreviewUrl('');
+      return;
+    }
     let cancelled = false;
     setError('');
     setLoadError('');
@@ -312,19 +375,20 @@ export default function ContextFileModal({
     setPreviewUrl('');
     setPreviewHtml('');
     setBinaryDetail('');
+    setNoPreviewUrl('');
     setMode('text');
-    /* What a read that finds no file says: an attachment is read by its raw
-       URL, a project file by its path. */
-    const missing = rawUrl
-      ? `${headerTitle || 'This file'} is no longer attached to this chat.`
-      : `${filePath} is no longer in this project.`;
+    /* The binary panel for a file this viewer has no preview for. */
+    const showNoPreview = () => {
+      setMode('binary');
+      setNoPreviewUrl(fileUrl({ projectName, filePath, rawUrl }));
+    };
 
     // Image branch (before the project-IO guard): render inline as an
     // <img>. Works for project files (download URL from name+path) and
     // attachments (a `rawUrl` with no projectName). Runs first so an
     // attachment image never falls into the guard below.
     if (isImage) {
-      const url = rawUrl || (projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '');
+      const url = fileUrl({ projectName, filePath, rawUrl });
       if (url) {
         setMode('image');
         setLoading(true);
@@ -353,6 +417,15 @@ export default function ContextFileModal({
       }
     }
 
+    // Document branch (before the project-IO guard, like the image
+    // branch): DocumentPreview reads the bytes itself, so nothing loads
+    // here, and a read it can't make comes back through onLoadError.
+    if (documentType) {
+      setMode('document');
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
     // No project file IO is possible (e.g. an attachment: `rawUrl` set,
     // no projectName). A non-image attachment can still be opened in the
     // OS shell via the binary panel's Open action, so land in 'binary'
@@ -364,7 +437,7 @@ export default function ContextFileModal({
           .then((text) => {
             if (cancelled) return;
             if (text == null) {
-              setMode('binary');
+              showNoPreview();
             } else {
               setContent(text);
               setDraft(text);
@@ -378,7 +451,7 @@ export default function ContextFileModal({
         return () => { cancelled = true; };
       }
       if (rawUrl) {
-        setMode('binary');
+        showNoPreview();
         setLoading(false);
       }
       return () => { cancelled = true; };
@@ -398,7 +471,7 @@ export default function ContextFileModal({
           .then(async (text) => {
             if (cancelled) return;
             if (text == null) {
-              setMode('binary');
+              showNoPreview();
               return;
             }
             const html = await inlineHtmlAssets(
@@ -468,7 +541,7 @@ export default function ContextFileModal({
         // "Reveal in Finder / Download" affordance instead of the
         // raw error.
         if (!genericMode && /HTTP 413|HTTP 415|too large|not valid UTF-8/i.test(msg)) {
-          setMode('binary');
+          showNoPreview();
           setBinaryDetail(msg);
         } else if (!genericMode && e?.status === 404) {
           setLoadError(missing);
@@ -478,7 +551,7 @@ export default function ContextFileModal({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl, showRawText, headerTitle]);
+  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, documentType, rawUrl, showRawText, missing]);
 
   // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
@@ -549,15 +622,19 @@ export default function ContextFileModal({
     }
   };
 
+  // A document preview gets the artifact viewer's room: a sheet, page or
+  // slide needs it more than a text file does.
+  const documentMode = mode === 'document';
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      size="md"
-      width="min(720px, 92vw)"
+      size={documentMode ? 'lg' : 'md'}
+      width={documentMode ? 'min(1080px, 94vw)' : 'min(720px, 92vw)'}
       // FIXED height — toggling view↔edit must feel like the same modal
       // (textarea + preview both flex:1 to fill it, no jump-on-cancel).
-      height="min(720px, 88vh)"
+      height={documentMode ? 'min(820px, 88vh)' : 'min(720px, 88vh)'}
       ariaLabel={headerTitle}
       closeOnBackdrop={!busy}
       closeOnEsc={!busy}
@@ -577,11 +654,11 @@ export default function ContextFileModal({
                 onClick={() => setEditing(true)}
               >Edit</Button>
             )}
-            {/* HTML / image / binary modes all expose a "Reveal" /
-                "Open" / "Download" affordance in the header so the user
-                can always get at the file even when the modal renders
-                something else inline. */}
-            {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && !loadError && (
+            {/* HTML / image / document / binary modes all expose a
+                "Reveal" / "Open" / "Download" affordance in the header so
+                the user can always get at the file even when the modal
+                renders something else inline. */}
+            {(mode === 'html' || mode === 'image' || documentMode || mode === 'binary') && !loading && !loadError && (
               <FileAccessButton
                 projectPath={projectPath}
                 projectName={projectName}
@@ -654,9 +731,24 @@ export default function ContextFileModal({
               />
             </div>
           )}
-          {/* Binary / oversized branch — graceful escape hatch. */}
+          {/* Document branch — the same read-only preview, frame and
+              failure notes as an agent-made file of this type. */}
+          {!loading && !loadError && documentMode && documentType && (
+            <div className="relative flex-1 min-h-0 rounded-card-row overflow-hidden border border-solid border-line">
+              <DocumentPreview
+                source={{ url: bytesUrl, previewType: documentType, filename: headerTitle || 'file' }}
+                fetchFile={(url, signal) => fetchAuthenticatedResponse(url, { signal })}
+                download={() => downloadAuthenticatedResource(bytesUrl, downloadFilename(filePath))}
+                openInDefaultApp={() => openInDefaultApp({ projectPath, filePath, rawUrl })}
+                onLoadError={(e) => setLoadError(e?.status === 404 ? missing : (e?.message || 'Could not read file'))}
+              />
+            </div>
+          )}
+          {/* Binary / oversized branch — graceful escape hatch. Keyed by
+              the file so the next one gets its own download on open. */}
           {!loading && mode === 'binary' && (
             <BinaryFilePanel
+              key={bytesUrl || filePath}
               fileName={filePath || title || 'file'}
               detail={binaryDetail}
               projectPath={projectPath}
@@ -664,6 +756,7 @@ export default function ContextFileModal({
               filePath={filePath}
               rawUrl={rawUrl}
               showOpenAction={showOpenAction}
+              downloadOnOpen={host.isWeb && !!bytesUrl && noPreviewUrl === bytesUrl}
             />
           )}
           {!loading && !loadError && mode === 'text' && (editing ? (

@@ -350,9 +350,11 @@ describe('ContextFileModal reopened after an edit was left open', () => {
     await show({ open: false, filePath: 'notes.md' });
   };
 
+  /* On web a file with no text is one this viewer has no preview for, so it
+     downloads with the note. */
   it.each([
     ['fails', Object.assign(new Error('Internal error'), { status: 500 }), 'Internal error'],
-    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), "can't be displayed inline"],
+    ['finds no text in', new Error('HTTP 415 not valid UTF-8'), 'No preview for this file type; downloaded instead.'],
   ])('offers no Save on a file the read %s, and never writes it', async (_label, failure, shown) => {
     await editThenClose();
     vi.mocked(readProjectFile).mockRejectedValueOnce(failure);

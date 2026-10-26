@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { ContextCard } from './ContextCard';
+import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 
 // Regression coverage: disconnecting a Google Drive connection (from
 // Connected Apps and Data, the in-chat "Modify connection" bubble, or the
@@ -31,6 +32,10 @@ const apiMock = vi.hoisted(() => ({
 }));
 const hostState = vi.hoisted(() => ({ isWeb: true }));
 vi.mock('../../api', () => apiMock);
+vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchAuthenticatedResponse: vi.fn(),
+}));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -725,5 +730,33 @@ describe('ContextCard — truncated project file listings', () => {
 
     // The listing that reported truncation is gone; nothing describes one now.
     expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+});
+
+/* A task upload opens in the shared file viewer by its raw URL. It shows as
+   text when it is text, and offers no Edit: an upload has no project path to
+   save to. */
+describe('ContextCard — a task upload in the file viewer', () => {
+  const RAW = '/api/v1/attachments/billing/task-1/a1/raw';
+
+  afterEach(() => {
+    apiMock.fetchAttachments.mockReset();
+    apiMock.attachmentRawUrl.mockReset();
+  });
+
+  it('shows an uploaded CSV as text, read from its raw URL, with no Edit', async () => {
+    apiMock.fetchAttachments.mockResolvedValue({ attachments: [{ id: 'a1', name: 'stock.csv', mime: 'text/csv' }] });
+    apiMock.attachmentRawUrl.mockReturnValue(RAW);
+    vi.mocked(fetchAuthenticatedResponse).mockResolvedValue(new Response('sku,qty\nmug,250\n'));
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'billing', path: '/projects/billing' }} conversationId="task-1" />);
+    });
+    fireEvent.click(await screen.findByText('stock.csv'));
+
+    expect(await screen.findByText(/mug,250/)).toBeInTheDocument();
+    expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(RAW);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(apiMock.writeProjectFile).not.toHaveBeenCalled();
   });
 });

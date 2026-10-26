@@ -951,9 +951,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
                   onOpen={() => {
                     // Open the shared ContextFileModal — same UX as a
-                    // project file. The modal renders images inline and
-                    // gives non-images an "Open" (OS shell via rawUrl)
-                    // escape hatch.
+                    // project file. The modal shows images, text, Office
+                    // files and PDFs inline, and downloads anything else on
+                    // web or gives it an "Open" (OS shell via rawUrl)
+                    // escape hatch on desktop.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -1065,11 +1066,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
           does no project-file IO: images render inline from `rawUrl`,
-          non-images land in 'binary' mode with an Open action that uses
-          `rawUrl` via the OS shell. `filePath` is the name only (for the
-          image-extension sniff + header title), NOT a real project path.
-          `remover` reuses the same attachment delete the row's menu and
-          ConfirmModal use, then closes the modal. */}
+          .xlsx/.docx/.pptx/.pdf open in the document preview, UTF-8 text
+          under the inline cap shows as text, and anything else lands in
+          'binary' mode, which downloads it on web and offers an Open
+          action that uses `rawUrl` via the OS shell on desktop.
+          `filePath` is the name only (for the extension checks + header
+          title), NOT a real project path, so there is nothing for Edit to
+          save to. `remover` reuses the same attachment delete the row's
+          menu and ConfirmModal use, then closes the modal. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1077,6 +1081,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         rawUrl={openAttachment
           ? attachmentRawUrl(project?.name, conversationId, openAttachment.id)
           : ''}
+        showRawText
+        showEditAction={false}
         remover={async () => {
           const target = openAttachment;
           if (!target?.id) return;
