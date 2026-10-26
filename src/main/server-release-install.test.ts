@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as tls from 'tls';
 
-vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => process.cwd() } }));
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-user-data-'));
+afterAll(() => fs.rmSync(userData, { recursive: true, force: true }));
+vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => process.cwd(), getPath: () => userData } }));
 vi.mock('./uv-paths', () => ({ PYTHON_RANGE: '>=3.12,<3.14' }));
 import { app } from 'electron';
 import { lockedServerInstallArgs } from './server-release-install';
@@ -34,7 +37,11 @@ describe('release contract command', () => {
     const flag = args.indexOf('--ca-file');
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(args.indexOf('--'));
-    expect(fs.readFileSync(args[flag + 1], 'utf8')).toBe(tls.rootCertificates.join('\n') + '\n');
+    const file = args[flag + 1];
+    expect(fs.readFileSync(file, 'utf8')).toBe(tls.rootCertificates.join('\n') + '\n');
+    // One file in the app's own folder, reused by every install, never one per run in the temp folder.
+    expect(file).toBe(path.join(userData, 'public-roots.pem'));
+    expect(lockedServerInstallArgs('uv', install)[flag + 1]).toBe(file);
     for (const other of ['darwin', 'linux']) {
       Object.defineProperty(process, 'platform', { value: other, configurable: true });
       expect(lockedServerInstallArgs('uv', install)).not.toContain('--ca-file');
