@@ -153,20 +153,3 @@ jobs:
           SETUP_PLATFORM: windows
         run: node scripts/macos-setup-summary.mjs
 
-  notify:
-    needs: [select, install, summarize]
-    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || needs.summarize.outputs.failed == 'true') }}
-    permissions:
-      contents: read
-      actions: read
-    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
-    with:
-      env-name: ${{ needs.summarize.outputs.label || 'Windows setup (runner or evidence collection failure; logs in run artifacts)' }}
-      status: failed
-      # Post every setup failure, including outside the freeze window. The prior-run
-      # lookup reads the calling pipeline's history, so force-post keeps an earlier red
-      # run from collapsing this step-specific alert.
-      freeze-scoped: false
-      force-post: true
-      runs-on: ubuntu-latest
-    secrets: inherit

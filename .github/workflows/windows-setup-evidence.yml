@@ -1,0 +1,18 @@
+name: Windows setup screen evidence (temporary)
+
+# Only this evidence branch: the new smoke is not registered on the default branch.
+on:
+  push:
+    branches: [test/eng-3749-setup-screen-evidence]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-setup-smoke.yml
+    with:
+      channels: prod,stable
