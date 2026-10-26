@@ -380,7 +380,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
         {attachments?.map((a) => {
           // Image attachments preview inline as a thumbnail (fetched as a
           // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image via the OS/browser. We can only build the
+          // opens the full image in a browser tab on web and saves it on
+          // desktop (openAuthenticatedResource). We can only build the
           // raw URL when the conversation is project-scoped; without it,
           // fall back to the icon+name chip.
           const isImage = a.mime && String(a.mime).startsWith('image/');

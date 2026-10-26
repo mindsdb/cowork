@@ -11,9 +11,10 @@
  * removes the frame; the next file mounts a new frame with a new token.
  *
  * When the preview fails, web downloads the file through `download` and says
- * so only after that download succeeded; desktop offers `openInDefaultApp`.
- * Every note renders inside this component, and a crash in it shows the same
- * note instead of a blank viewer.
+ * so only after that download succeeded; desktop offers `openInDefaultApp`,
+ * or Download when the caller's `fileAction` says the file downloads there
+ * too. Every note renders inside this component, and a crash in it shows the
+ * same note instead of a blank viewer.
  */
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 
@@ -39,12 +40,21 @@ export interface DocumentPreviewProps {
   source: DocumentPreviewSource;
   /* The caller's credentialed GET of source.url. It resolves only for a 2xx. */
   fetchFile(url: string, signal: AbortSignal): Promise<Response>;
-  /* Web: saves the file. Resolves true only when the download succeeded. */
+  /* Saves the file. Resolves true only when the download succeeded. */
   download(): Promise<boolean>;
-  /* Desktop: opens the file in its default app. */
+  /* Opens the file in its default app. */
   openInDefaultApp(): void;
   /* The file itself couldn't be fetched, so there is nothing to preview. */
   onLoadError(error: unknown): void;
+  /* What the preview offers for the whole file: 'download' calls `download`,
+     'open' calls `openInDefaultApp`. Left out, web downloads and desktop
+     opens. */
+  fileAction?: 'download' | 'open';
+}
+
+/* Whether the preview offers the whole file as a download rather than Open. */
+function downloadsFile(fileAction: DocumentPreviewProps['fileAction']): boolean {
+  return (fileAction ?? (host.isWeb ? 'download' : 'open')) === 'download';
 }
 
 export const PREVIEW_FAILED_NOTE = "Couldn't preview this file";
@@ -82,40 +92,44 @@ const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown(units: number
   docx: { shown: () => 'Showing part of this document.', whole: 'file' },
 };
 
-export function truncationLine(type: DocumentPreviewType, units: number, isWeb: boolean): string {
+export function truncationLine(type: DocumentPreviewType, units: number, downloads: boolean): string {
   const { shown, whole } = TRUNCATED_PART[type];
-  return `${shown(units)} ${isWeb ? 'Download' : 'Open'} has the full ${whole}.`;
+  return `${shown(units)} ${downloads ? 'Download' : 'Open'} has the full ${whole}.`;
 }
 
 interface FailureProps {
   code: PreviewErrorCode;
+  downloads: boolean;
   download(): Promise<boolean>;
   openInDefaultApp(): void;
 }
 
 /* On web it downloads the file once, and claims the download only after it
-   succeeded. On desktop it offers Open. */
-function PreviewFailure({ code, download, openInDefaultApp }: FailureProps) {
+   succeeded. On desktop it offers Open, or Download for a file that
+   downloads there, which waits for a click: a desktop download can ask where
+   to save, so a failed preview never opens that dialog on its own. */
+function PreviewFailure({ code, downloads, download, openInDefaultApp }: FailureProps) {
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
   const started = useRef(false);
+  const downloadsOnFailure = downloads && host.isWeb;
   const save = () => {
     setDownloaded(null);
     download().then(setDownloaded, () => setDownloaded(false));
   };
   /* Downloads once per failure; any later download is the user's click. */
   useEffect(() => {
-    if (!host.isWeb || started.current) return;
+    if (!downloadsOnFailure || started.current) return;
     started.current = true;
     save();
   }, []);
   return (
     <div className="document-preview-note" role="status">
       <p className="document-preview-note-title">
-        {host.isWeb && downloaded ? PREVIEW_FAILED_DOWNLOADED_NOTE : PREVIEW_FAILED_NOTE}
+        {downloads && downloaded ? PREVIEW_FAILED_DOWNLOADED_NOTE : PREVIEW_FAILED_NOTE}
       </p>
       <p className="document-preview-note-reason">{PREVIEW_FAILURE_REASONS[code]}</p>
-      {host.isWeb
-        ? downloaded === false && <Button onClick={save}>Download</Button>
+      {downloads
+        ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>Download</Button>
         : <Button onClick={openInDefaultApp}>Open</Button>}
     </div>
   );
@@ -125,14 +139,15 @@ interface TruncationBarProps {
   previewType: DocumentPreviewType;
   /* The summary's units. */
   units: number;
+  downloads: boolean;
   download(): Promise<boolean>;
   openInDefaultApp(): void;
 }
 
-/* Says what the preview left out and offers the whole file. On web a failed
+/* Says what the preview left out and offers the whole file. A failed
    download says so beside the button, which stays for a retry; the viewer's
    own error would replace the frame, so the bar keeps the message itself. */
-function TruncationBar({ previewType, units, download, openInDefaultApp }: TruncationBarProps) {
+function TruncationBar({ previewType, units, downloads, download, openInDefaultApp }: TruncationBarProps) {
   const [saveFailed, setSaveFailed] = useState(false);
   const save = () => {
     setSaveFailed(false);
@@ -140,12 +155,12 @@ function TruncationBar({ previewType, units, download, openInDefaultApp }: Trunc
   };
   return (
     <div className="document-preview-truncated" role="note">
-      <span>{truncationLine(previewType, units, host.isWeb)}</span>
-      {host.isWeb && saveFailed && (
+      <span>{truncationLine(previewType, units, downloads)}</span>
+      {downloads && saveFailed && (
         <span className="document-preview-truncated-error" role="alert">{DOWNLOAD_FAILED_NOTE}</span>
       )}
-      <Button onClick={host.isWeb ? save : openInDefaultApp}>
-        {host.isWeb ? 'Download' : 'Open'}
+      <Button onClick={downloads ? save : openInDefaultApp}>
+        {downloads ? 'Download' : 'Open'}
       </Button>
     </div>
   );
@@ -156,7 +171,8 @@ interface LoadedFile {
   bundle: LoadedPreviewBundle;
 }
 
-function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, onLoadError }: DocumentPreviewProps) {
+function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, onLoadError, fileAction }: DocumentPreviewProps) {
+  const downloads = downloadsFile(fileAction);
   const [loaded, setLoaded] = useState<LoadedFile | null>(null);
   const [summary, setSummary] = useState<RenderSummary | null>(null);
   const [failure, setFailure] = useState<PreviewErrorCode | null>(null);
@@ -197,7 +213,7 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
   }, []);
 
   if (failure) {
-    return <PreviewFailure code={failure} download={download} openInDefaultApp={openInDefaultApp} />;
+    return <PreviewFailure code={failure} downloads={downloads} download={download} openInDefaultApp={openInDefaultApp} />;
   }
   return (
     <>
@@ -220,6 +236,7 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
         <TruncationBar
           previewType={source.previewType}
           units={summary.units}
+          downloads={downloads}
           download={download}
           openInDefaultApp={openInDefaultApp}
         />
@@ -252,7 +269,14 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     <div className="document-preview">
       <PreviewErrorBoundary
         key={`${source.previewType} ${source.url}`}
-        fallback={<PreviewFailure code="internal" download={props.download} openInDefaultApp={props.openInDefaultApp} />}
+        fallback={(
+          <PreviewFailure
+            code="internal"
+            downloads={downloadsFile(props.fileAction)}
+            download={props.download}
+            openInDefaultApp={props.openInDefaultApp}
+          />
+        )}
       >
         <DocumentPreviewBody {...props} />
       </PreviewErrorBoundary>

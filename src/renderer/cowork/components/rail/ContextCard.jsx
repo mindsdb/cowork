@@ -889,10 +889,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
               const closeAttachmentMenu = () => setOpenAttachmentMenuId(null);
               const menuItems = [
+                /* Desktop has nowhere to open an upload, so it saves it
+                   (openAuthenticatedResource) and says Download. */
                 rawUrl && {
                   id: 'open',
-                  label: 'Open',
-                  icon: Ico.upload(14),
+                  label: host.isWeb ? 'Open' : 'Download',
+                  icon: host.isWeb ? Ico.upload(14) : Ico.download(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});
@@ -951,9 +953,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
                   onOpen={() => {
                     // Open the shared ContextFileModal — same UX as a
-                    // project file. The modal renders images inline and
-                    // gives non-images an "Open" (OS shell via rawUrl)
-                    // escape hatch.
+                    // project file. The modal shows images, text, Office
+                    // files and PDFs inline, and downloads anything else on
+                    // web or gives it a Download escape hatch on desktop.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -1065,11 +1067,15 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
           does no project-file IO: images render inline from `rawUrl`,
-          non-images land in 'binary' mode with an Open action that uses
-          `rawUrl` via the OS shell. `filePath` is the name only (for the
-          image-extension sniff + header title), NOT a real project path.
-          `remover` reuses the same attachment delete the row's menu and
-          ConfirmModal use, then closes the modal. */}
+          .xlsx/.docx/.pptx/.pdf open in the document preview, UTF-8 text
+          under the inline cap shows as text, and anything else lands in
+          'binary' mode, which downloads it on web and offers Download on
+          desktop: the OS browser an Open would hand `rawUrl` to carries
+          no server token.
+          `filePath` is the name only (for the extension checks + header
+          title), NOT a real project path, so there is nothing for Edit to
+          save to. `remover` reuses the same attachment delete the row's
+          menu and ConfirmModal use, then closes the modal. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1077,6 +1083,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         rawUrl={openAttachment
           ? attachmentRawUrl(project?.name, conversationId, openAttachment.id)
           : ''}
+        showRawText
+        showEditAction={false}
         remover={async () => {
           const target = openAttachment;
           if (!target?.id) return;

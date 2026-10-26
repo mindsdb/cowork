@@ -7,7 +7,9 @@
  *   - /fixtures/<set>/<file>, each fixture file's bytes as they are, with no
  *     HTML transform;
  *   - virtual:navigation-preview-bundle, the frame runtime built with the
- *     test-only navigation renderer through the generator's own checks.
+ *     test-only navigation renderer through the generator's own checks;
+ *   - /upload.html, the file viewer page, where stubs/ stand in for the
+ *     app's API, its authenticated fetch and its Markdown renderer.
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -61,11 +63,30 @@ function navigationBundle(): Plugin {
   };
 }
 
+/* Resolves each app module the file viewer page can't run here to its stub:
+   the harness has no API server, no sign-in and no chat renderer. */
+function fileViewerStubs(): Plugin {
+  const renderer = path.join(REPO_ROOT, 'src/renderer/cowork');
+  const stubs = new Map([
+    [path.join(renderer, 'api.js'), path.join(__dirname, 'stubs/api.ts')],
+    [path.join(renderer, 'lib/authenticatedResource.js'), path.join(__dirname, 'stubs/authenticatedResource.ts')],
+    [path.join(renderer, 'components/markdown/MarkdownContent.jsx'), path.join(__dirname, 'stubs/MarkdownContent.ts')],
+  ]);
+  return {
+    name: 'document-preview-file-viewer-stubs',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      return (resolved && stubs.get(resolved.id)) ?? null;
+    },
+  };
+}
+
 export default defineConfig(async () => {
   await generatePreviewBundles();
   return {
     root: __dirname,
-    plugins: [react(), fixtureFiles(), navigationBundle()],
+    plugins: [react(), fixtureFiles(), navigationBundle(), fileViewerStubs()],
     optimizeDeps: { include: ['react', 'react-dom/client'] },
     server: { host: '127.0.0.1', port: 5210, strictPort: true, fs: { allow: [REPO_ROOT] } },
   };
