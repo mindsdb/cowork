@@ -7,12 +7,13 @@
  *
  * With no ready within readyTimeoutMs, or no message from the frame for
  * progressTimeoutMs, it removes the frame and reports timeout; the policy
- * never changes. Each draw the frame reports gets its own progressTimeoutMs,
- * before or after rendered, and one that hasn't ended by then removes the
- * frame with timeout too. A frame that loads a second time was navigated or
- * reloaded, so it is rebuilt with a new token, at most once per mount; a
- * third load removes it and reports internal. An error the frame reports
- * leaves the frame in place, so the caller decides what replaces it.
+ * never changes. The draws the frame reports are timed too, before or after
+ * rendered: a draw open for progressTimeoutMs of the page being visible,
+ * with no draw ending in that time, removes the frame with timeout. A frame
+ * that loads a second time was navigated or reloaded, so it is rebuilt with a
+ * new token, at most once per mount; a third load removes it and reports
+ * internal. An error the frame reports leaves the frame in place, so the
+ * caller decides what replaces it.
  */
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -82,7 +83,8 @@ export function DocumentPreviewFrame({
     let ended = false;
     let loads = 0;
     let progressTimer: number | undefined;
-    const drawTimers = new Map<number, number>();
+    /* One timer per open draw, or none while the page is hidden. */
+    const drawTimers = new Map<number, number | undefined>();
     const readyTimer = window.setTimeout(() => remove('timeout'), limits.readyTimeoutMs);
     const stopTimers = () => {
       window.clearTimeout(readyTimer);
@@ -112,17 +114,34 @@ export function DocumentPreviewFrame({
       setRemoved(true);
       handlers.current.onError(code, detail);
     }
+    /* pdf.js steps a draw on requestAnimationFrame, which stops while the
+       page is hidden, so a draw's clock runs only while the page is visible. */
+    const armDraw = (id: number) => {
+      window.clearTimeout(drawTimers.get(id));
+      const timer = document.hidden ? undefined : window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs);
+      drawTimers.set(id, timer);
+    };
+    const armDraws = () => {
+      for (const id of drawTimers.keys()) armDraw(id);
+    };
     const startDraw = (id: number) => {
       if (drawTimers.has(id)) return;
       if (drawTimers.size >= MAX_OPEN_DRAWS) {
         remove('internal', 'The preview frame reported more open draws than a renderer runs.');
         return;
       }
-      drawTimers.set(id, window.setTimeout(() => remove('timeout'), limits.progressTimeoutMs));
+      armDraw(id);
     };
+    /* Open draws share the frame's thread, so a draw that ends restarts the
+       others' clocks: a draw waiting behind slow pages isn't stuck. */
     const endDraw = (id: number) => {
+      if (!drawTimers.has(id)) return;
       window.clearTimeout(drawTimers.get(id));
       drawTimers.delete(id);
+      armDraws();
+    };
+    const onVisibilityChange = () => {
+      if (!ended) armDraws();
     };
     const answerAsset = async (port: MessagePort, requestId: number, name: string) => {
       const { assets } = bundle;
@@ -191,9 +210,11 @@ export function DocumentPreviewFrame({
     };
     window.addEventListener('message', onWindowMessage);
     iframe.addEventListener('load', onLoad);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       end();
       window.removeEventListener('message', onWindowMessage);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       iframe.removeEventListener('load', onLoad);
       channel?.port1.close();
     };

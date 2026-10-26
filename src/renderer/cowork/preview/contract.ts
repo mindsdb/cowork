@@ -35,8 +35,9 @@ export interface RenderSummary { type: DocumentPreviewType; units: number; trunc
 /* Who raises each code:
    - too-large: the parent, when the streamed fetch passes maxBytes.
    - timeout: the parent, when the frame misses readyTimeoutMs or
-     progressTimeoutMs, or when a draw the frame reported hasn't ended within
-     progressTimeoutMs, before or after rendered.
+     progressTimeoutMs, or when a draw the frame reported stays open for
+     progressTimeoutMs of the page being visible with no draw ending in that
+     time, before or after rendered.
    - zip-limit: the runtime's archive guard, past maxInflatedBytes,
      maxZipEntryInflatedBytes or maxZipEntries.
    - parse-failed: a renderer, for a file it can't read. The runtime's
@@ -69,9 +70,10 @@ export interface RendererContext {
   requestAsset(name: string): Promise<Uint8Array | null>;
   /* Starts the parent's watchdog on one draw the renderer runs on its own,
      such as a PDF page that scrolls into view, before or after render()
-     resolves. A draw that hasn't ended within progressTimeoutMs removes the
-     frame with timeout. The renderer calls the returned function once the
-     draw finished, was cancelled or failed; later calls do nothing. */
+     resolves. A draw open for progressTimeoutMs of the page being visible,
+     with no draw ending in that time, removes the frame with timeout. The
+     renderer calls the returned function once the draw finished, was
+     cancelled or failed; later calls do nothing. */
   beginDraw(): () => void;
 }
 
