@@ -88,6 +88,24 @@ describe('scrubLog', () => {
     expect(scrubLog("{'password': 'it\\'s hidden'}")).toBe("{'password': '[redacted]'}");
   });
 
+  it('redacts secrets in JSON that is itself stored as a JSON string', () => {
+    expect(scrubLog('{"body": "{\\"password\\": \\"hunter2\\"}"}'))
+      .toBe('{"body": "{\\"password\\": \\"[redacted]\\"}"}');
+    expect(scrubLog('{"headers": "{\\"Authorization\\": \\"Basic dXNlcjpodW50ZXIy\\"}"}'))
+      .toBe('{"headers": "{\\"Authorization\\": \\"Basic [redacted]\\"}"}');
+  });
+
+  it('keeps any scheme word and redacts the credential after it', () => {
+    expect(scrubLog('Authorization: ApiKey hunter2secret')).toBe('Authorization: ApiKey [redacted]');
+    expect(scrubLog('{"Authorization": "SSWS hunter2secret"}')).toBe('{"Authorization": "SSWS [redacted]"}');
+    // A token is not a scheme, even with words after it.
+    expect(scrubLog('Authorization: sk_live_abc123 trailing')).toBe('Authorization: [redacted] trailing');
+  });
+
+  it('reads a quoted Authorization value through an escaped quote', () => {
+    expect(scrubLog("'authorization': 'Bearer abc\\'def123456'")).toBe("'authorization': 'Bearer [redacted]'");
+  });
+
   it('redacts a quoted value whose closing quote never arrives, to the end of its line only', () => {
     expect(scrubLog('password="abc def ghi\nnext line')).toBe('password="[redacted]\nnext line');
     expect(scrubLog("{'password': 'cut off mid val")).toBe("{'password': '[redacted]");
@@ -100,6 +118,7 @@ describe('scrubLog', () => {
     expect(scrubLog(`ValueError: invalid key ${key} rejected`)).toBe(
       'ValueError: invalid key [redacted] rejected',
     );
+    expect(scrubLog(`x_${key}`)).toBe('x_[redacted]');
   });
 
   it('leaves the identifiers a diagnostics log exists to carry', () => {
