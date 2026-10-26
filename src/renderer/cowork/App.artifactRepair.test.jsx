@@ -261,6 +261,26 @@ describe('addressing an artifact from Live Artifacts', () => {
     expect(lastStreamOpts().disabledConnections).not.toContainEqual(SLACK);
   });
 
+  it('keeps a toggle made after a message was queued once that message drains', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openChat(user, 'Alpha task');
+    await user.click(screen.getByRole('button', { name: 'send' }));
+    await waitFor(() => expect(streams).toHaveLength(1));
+    await user.click(screen.getByRole('button', { name: 'send' }));
+    await user.click(screen.getByRole('button', { name: 'mute gmail' }));
+
+    await act(async () => { streams[0].opts.onDone(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    // The queued message carries the mutes it was sent with...
+    expect(lastStreamOpts().disabledConnections).toEqual([]);
+    // ...and does not undo the later toggle on the chat.
+    expect(screen.getByTestId('chat-mutes')).toHaveTextContent('["gmail"]');
+    await act(async () => { streams[1].opts.onDone(); await Promise.resolve(); });
+    await sendAndFinish(user);
+    expect(lastStreamOpts().disabledConnections).toEqual([GMAIL]);
+  });
+
   it("keeps the last open chat's unsent mute changes, as the composer shows them", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -407,6 +427,20 @@ describe('addressing an artifact from Live Artifacts', () => {
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.queryByTestId('chat-id')).toBeNull();
     expect(isOptimisticConversation('conv-a')).toBe(false);
+  });
+
+  it('forgets a deleted chat, so the next repair of its artifact starts a new chat', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    spies.fetchSessionResult.mockImplementation(async () => ({ status: 'not_found' }));
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+    await waitFor(() => expect(spies.repairResults).toEqual([false]));
+    await waitFor(() => expect(screen.queryByText('Alpha task')).toBeNull());
+
+    await user.click(screen.getByRole('button', { name: 'repair A' }));
+    await waitFor(() => expect(spies.streamNewSession).toHaveBeenCalled());
+    expect(spies.streamMessage).not.toHaveBeenCalled();
   });
 
   it('drops the optimistic flag when the turn fails, so a later visit hydrates', async () => {

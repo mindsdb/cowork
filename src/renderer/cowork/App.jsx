@@ -869,7 +869,6 @@ function AppCore() {
     liveStreamsRef.current.has(cid) || stoppingRef.current.has(cid) || deletingRef.current.has(cid)
       || recoveringRef.current.has(cid)
   ), []);
-  const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
   // Per-task queue of user messages waiting for the current turn to
@@ -2286,20 +2285,9 @@ function AppCore() {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
     if (prev === 'task' && (route === 'home' || route === 'projects')) {
-      composerMuteLastTaskIdRef.current = null;
       setComposerDisabledConnections([]);
     }
   }, [route]);
-
-  useEffect(() => {
-    if (route !== 'task' || !currentTask?.id) return;
-    const tid = currentTask.id;
-    if (composerMuteLastTaskIdRef.current === tid) return;
-    composerMuteLastTaskIdRef.current = tid;
-    setComposerDisabledConnections(
-      normalizeComposerDisabledConnections(currentTask.disabledConnections),
-    );
-  }, [route, currentTask?.id]);
 
   // Phase 2 reconnect — when the user opens a conversation whose
   // turn is still running server-side (closed-tab-and-came-back, or
@@ -3318,13 +3306,14 @@ function AppCore() {
     setComposerAttachments((prev) => [...prev, ...list]);
   };
 
+  // Mutes for a chat that does not exist yet (Home, Projects).
   const handleComposerConnectorMute = useCallback((connector, useInChat) => {
     setComposerDisabledConnections((prev) => toggleConnectionMute(prev, connector, useInChat));
-    // The chat the composer belongs to keeps the toggle too, so a send to it
-    // from elsewhere (a queued drain, Live Artifacts) and a later return to
-    // it see the same mutes as the composer, sent or not.
-    const taskId = composerMuteLastTaskIdRef.current;
-    if (!taskId) return;
+  }, []);
+
+  // A chat's mutes live only on its record: its composer shows them, and every
+  // send to it (typed, queued, from Live Artifacts) reads them from there.
+  const handleTaskConnectorMute = useCallback((taskId, connector, useInChat) => {
     setTasks((prev) => {
       const i = prev.findIndex((t) => t.id === taskId);
       if (i === -1) return prev;
@@ -3458,9 +3447,6 @@ function AppCore() {
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
     }
-    // A caller that is not the composer (the artifact viewer) passes its own
-    // mutes and attachments and leaves the composer's alone.
-    const usesComposer = meta?.attachments == null;
     // Every new conversation starts here, so in the operator picker's default
     // mode the next one starts on the operator's model again. This send still
     // reads the pick it rendered with.
@@ -3497,7 +3483,7 @@ function AppCore() {
       }, ...prev]);
       setActiveTaskId(taskId);
       setRoute('task');
-      if (usesComposer) setComposerAttachments([]);
+      setComposerAttachments([]);
       return false;
     }
 
@@ -3514,11 +3500,13 @@ function AppCore() {
     const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
+    // A caller that is not the composer (the artifact viewer) passes its own
+    // mutes and attachments; the composer is still cleared, as the new chat opens.
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
 
-    const rawComposer = usesComposer ? composerAttachments : meta.attachments;
+    const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     const taskId = suppliedConversationId
@@ -3533,7 +3521,7 @@ function AppCore() {
       rawComposer,
     );
     const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
-    if (usesComposer) setComposerAttachments([]);
+    setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -3825,8 +3813,8 @@ function AppCore() {
     const targetProject = projects.find((project) => project.id === targetTask.projectId);
     if (targetProject && !canRunProject(targetProject)) return false;
     const id = targetTask.id;
-    // Composer toggles land on the chat record too (handleComposerConnectorMute),
-    // so the freshest record holds the chat's mutes whether it is on screen or not.
+    // The freshest record holds the chat's mutes (handleTaskConnectorMute),
+    // whether the chat is on screen or not.
     const mutesForSend = opts.disabledConnections
       ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
 
@@ -4063,7 +4051,6 @@ function AppCore() {
       t.id === id
         ? {
             ...t,
-            disabledConnections: disabledForSend,
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
@@ -4376,8 +4363,14 @@ function AppCore() {
       target.loaded || loadConversation(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null),
     ]);
     if (!ready) return false;
-    // Deleted since the resolver saw it: there is no chat left to resume.
-    if (loaded?.status === 'not_found') return false;
+    // Deleted since the resolver saw it: there is no chat left to resume. Drop
+    // the local record (list refreshes keep local-only rows), so the next try
+    // resolves to a new chat.
+    if (loaded?.status === 'not_found') {
+      deletedTaskIdsRef.current.add(target.id);
+      setTasks((prev) => prev.filter((t) => String(t.id || '') !== target.id));
+      return false;
+    }
     // The loader must not re-hydrate over the turn while it runs. The flag drops
     // when the turn ends, or below when no turn starts.
     markOptimisticConversation(target.id);
@@ -5893,9 +5886,9 @@ function AppCore() {
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
-            disabledConnections={composerDisabledConnections}
+            disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
-            onUpdateConnectorMute={handleComposerConnectorMute}
+            onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
