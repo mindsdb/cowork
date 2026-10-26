@@ -64,9 +64,8 @@ function markAutoOpened(repairId) {
 
 const NO_WORKSPACE = 'This artifact was created before editing was available';
 const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
-// Why the owner's comments are off. Two facts, two sentences: a server with no
-// draft review says so for good, while a 503 is a service that may come back.
-const COMMENTS_OFF_HERE = "Comments aren't available on this server";
+// Why the owner's comments are off: comments-access answered 503, and the
+// review service may come back.
 const COMMENTS_DOWN = "Comments aren't available right now. Reopen the artifact to try again.";
 export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
 
@@ -189,7 +188,6 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
           if (!isCurrent()) return;
           nextCapabilities = access?.capabilities || nextCapabilities;
           setCommentsReady(!!access?.enabled);
-          if (!access?.enabled) setCommentsOffReason(COMMENTS_OFF_HERE);
           if (access?.currentRevision) setReviewRevision(access.currentRevision);
         } catch (accessError) {
           if (!isCurrent()) return;
