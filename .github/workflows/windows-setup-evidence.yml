@@ -1,0 +1,17 @@
+name: Windows setup evidence
+
+on:
+  push:
+    branches: [test/eng-3749-trim-check-evidence]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-setup-smoke.yml
+    with:
+      channels: prod,stable
