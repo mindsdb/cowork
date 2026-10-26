@@ -103,7 +103,10 @@ export function RuntimeControlsModal({
   const apply = async () => {
     setSubmitError('');
     try {
-      await onApply(draft);
+      // A model with no levels rejects any effort, including one the task
+      // still stores from an earlier model. The draft keeps it so switching
+      // back restores it; only the update drops it.
+      await onApply(effortLevels ? draft : { ...draft, reasoning_effort: null });
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
     }
@@ -235,9 +238,11 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
         </div>
       </ModalBody>
+      {/* Outside the scrolling body: the form overflows the modal, and an error
+          at the end of it lands below the fold. */}
+      {submitError && <div className="code-controls-error"><Alert variant="danger">{submitError}</Alert></div>}
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
