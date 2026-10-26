@@ -1,10 +1,10 @@
 import { win32 } from 'node:path';
 
 // Windows ships part of its root list and downloads the rest the first time a
-// program verifies a chain through Windows, into LocalMachine\AuthRoot. A hosted
-// runner has already downloaded many of them, and its image adds some to
-// LocalMachine\Root. Python's own TLS never asks Windows to download one, so a
-// runner that still holds these would pass an installer a fresh machine fails.
+// program verifies a chain through Windows, into LocalMachine\AuthRoot. The hosted
+// runner image instead imports the whole list into LocalMachine\Root and turns
+// those downloads off. Python's own TLS never asks Windows to download a root, so
+// a runner that still holds these would pass an installer a fresh machine fails.
 export const ON_DEMAND_ROOTS = Object.freeze({
   D69B561148F01C77C54578C10926DF5B856976AD: 'GlobalSign Root CA - R3', // pypi.org, files.pythonhosted.org
   CABD2A79A1076A31F21D253635CB039D4329A5E8: 'ISRG Root X1', // raw.githubusercontent.com, GitHub release assets
@@ -35,8 +35,9 @@ export function removalScript(entries) {
   }).join('\n');
 }
 
-/** The trimmed runner must trust what a fresh install trusts before setup starts. */
-export function assertTrimmed(entries) {
+/** The trimmed runner must trust, and download, what a fresh install does before setup starts. */
+export function assertTrimmed({ entries, rootAutoUpdateOff }) {
+  if (rootAutoUpdateOff.policy || rootAutoUpdateOff.setting) throw new Error('Windows root downloads are still turned off.');
   const downloaded = entries.filter((entry) => entry.store === 'LocalMachine\\AuthRoot');
   if (downloaded.length) throw new Error(`${downloaded.length} downloaded roots remain in LocalMachine\\AuthRoot.`);
   const visible = entries.filter(named);
@@ -68,16 +69,21 @@ export function appEnvironment(profile, port, system) {
   };
 }
 
-/** The per-user NSIS install's executable, from its uninstall registration. */
-export function installedExecutable(registrations, productName) {
+/**
+ * The per-user NSIS install's executable, from its uninstall registration. The
+ * registration carries no InstallLocation, and the folder is named after the
+ * package rather than the product, so the icon path is what names the executable.
+ */
+export function installedExecutable(registrations, productName, programs) {
   const escaped = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const matches = registrations.filter((entry) => new RegExp(`^${escaped}(?: [0-9].*)?$`).test(entry.displayName ?? ''));
   if (matches.length !== 1) throw new Error(`Expected one ${productName} installation, found ${matches.length}.`);
-  const [{ installLocation, displayIcon }] = matches;
+  const [{ displayIcon }] = matches;
   const executable = (displayIcon ?? '').replace(/^"|"?(?:,\s*-?\d+)?$/g, '');
-  const relative = installLocation ? win32.relative(installLocation, executable) : '';
-  if (!relative || relative.startsWith('..') || win32.isAbsolute(relative) || !/\.exe$/i.test(executable)) {
-    throw new Error(`Installed executable is not inside its install location: ${displayIcon}`);
+  const installLocation = win32.dirname(executable);
+  const folder = win32.relative(programs, installLocation);
+  if (win32.basename(executable).toLowerCase() !== `${productName}.exe`.toLowerCase() || !folder || folder.startsWith('..') || win32.isAbsolute(folder) || folder.includes('\\')) {
+    throw new Error(`Installed executable is not this product in the per-user Programs folder: ${displayIcon}`);
   }
   return { installLocation, executable };
 }

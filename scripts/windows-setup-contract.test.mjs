@@ -33,11 +33,16 @@ test('the removal script names exactly the planned certificates and refuses anyt
   assert.throws(() => removalScript([entry('LocalMachine\\My', R3)]), /Refusing/);
 });
 
-test('a trim that left a downloaded root or a named root visible to Python fails before setup', () => {
-  assert.doesNotThrow(() => assertTrimmed([entry('LocalMachine\\Root', 'B'.repeat(40)), entry('CurrentUser\\Root', 'B'.repeat(40))]));
-  assert.throws(() => assertTrimmed([entry('LocalMachine\\AuthRoot', OTHER)]), /remain in LocalMachine\\AuthRoot/);
-  assert.throws(() => assertTrimmed([entry('CurrentUser\\Root', R3)]), /GlobalSign Root CA - R3 in CurrentUser\\Root/);
-  assert.throws(() => assertTrimmed([entry('LocalMachine\\Root', X1)]), /ISRG Root X1 in LocalMachine\\Root/);
+test('a trim that left a downloaded root, a named root visible to Python, or root downloads off fails before setup', () => {
+  const on = { policy: null, setting: null };
+  const trimmed = (entries, rootAutoUpdateOff = on) => assertTrimmed({ entries, rootAutoUpdateOff });
+  assert.doesNotThrow(() => trimmed([entry('LocalMachine\\Root', 'B'.repeat(40)), entry('CurrentUser\\Root', 'B'.repeat(40))]));
+  assert.throws(() => trimmed([entry('LocalMachine\\AuthRoot', OTHER)]), /remain in LocalMachine\\AuthRoot/);
+  assert.throws(() => trimmed([entry('CurrentUser\\Root', R3)]), /GlobalSign Root CA - R3 in CurrentUser\\Root/);
+  assert.throws(() => trimmed([entry('LocalMachine\\Root', X1)]), /ISRG Root X1 in LocalMachine\\Root/);
+  // The hosted image sets the policy; left on, Install uv fails where a fresh machine downloads ISRG Root X1.
+  assert.throws(() => trimmed([], { policy: 1, setting: null }), /still turned off/);
+  assert.throws(() => trimmed([], { policy: null, setting: 1 }), /still turned off/);
 });
 
 test('the app gets a fresh profile and system folders only, never CI tokens or runner tools', () => {
@@ -57,19 +62,21 @@ test('the app gets a fresh profile and system folders only, never CI tokens or r
   assert.equal(environment.COWORK_SERVER_PORT, '41234');
 });
 
-const registration = (displayName, installLocation, displayIcon) => ({ displayName, installLocation, displayIcon });
+// Shapes recorded from the hosted runner: no InstallLocation, and Stable's folder is the package name.
+const registration = (displayName, displayIcon) => ({ displayName, installLocation: null, displayIcon });
 const programs = 'C:\\Users\\runneradmin\\AppData\\Local\\Programs';
 
 test('the installed executable comes from the channel\'s own uninstall registration', () => {
-  const staging = registration('MindsHub Cowork (Staging) 2.26.10.23.1', `${programs}\\MindsHub Cowork (Staging)`, `"${programs}\\MindsHub Cowork (Staging)\\MindsHub Cowork (Staging).exe",0`);
-  const prod = registration('MindsHub Cowork 2.26.10.23.1', `${programs}\\MindsHub Cowork`, `${programs}\\MindsHub Cowork\\MindsHub Cowork.exe,0`);
-  assert.equal(installedExecutable([staging, prod], 'MindsHub Cowork (Staging)').executable, `${programs}\\MindsHub Cowork (Staging)\\MindsHub Cowork (Staging).exe`);
+  const staging = registration('MindsHub Cowork (Staging) 2.261023.1-722.ge5d59fbb', `${programs}\\anton\\MindsHub Cowork (Staging).exe,0`);
+  const prod = registration('MindsHub Cowork 2.261023.1', `"${programs}\\MindsHub Cowork\\MindsHub Cowork.exe",0`);
+  assert.deepEqual(installedExecutable([staging, prod], 'MindsHub Cowork (Staging)', programs), { installLocation: `${programs}\\anton`, executable: `${programs}\\anton\\MindsHub Cowork (Staging).exe` });
   // Prod's name is a prefix of Staging's; a startsWith match would see two installations.
-  assert.equal(installedExecutable([staging, prod], 'MindsHub Cowork').executable, `${programs}\\MindsHub Cowork\\MindsHub Cowork.exe`);
-  assert.throws(() => installedExecutable([staging], 'MindsHub Cowork'), /found 0/);
-  assert.throws(() => installedExecutable([prod, { ...prod }], 'MindsHub Cowork'), /found 2/);
-  assert.throws(() => installedExecutable([{ ...prod, displayIcon: 'C:\\Windows\\System32\\cmd.exe,0' }], 'MindsHub Cowork'), /not inside/);
-  assert.throws(() => installedExecutable([{ ...prod, displayIcon: `${programs}\\MindsHub Cowork\\icon.ico` }], 'MindsHub Cowork'), /not inside/);
+  assert.equal(installedExecutable([staging, prod], 'MindsHub Cowork', programs).executable, `${programs}\\MindsHub Cowork\\MindsHub Cowork.exe`);
+  assert.throws(() => installedExecutable([staging], 'MindsHub Cowork', programs), /found 0/);
+  assert.throws(() => installedExecutable([prod, { ...prod }], 'MindsHub Cowork', programs), /found 2/);
+  for (const displayIcon of ['C:\\Windows\\System32\\cmd.exe,0', `${programs}\\MindsHub Cowork\\icon.ico`, `${programs}\\MindsHub Cowork.exe`, `${programs}\\a\\b\\MindsHub Cowork.exe`, 'C:\\Users\\other\\MindsHub Cowork\\MindsHub Cowork.exe']) {
+    assert.throws(() => installedExecutable([{ ...prod, displayIcon }], 'MindsHub Cowork', programs), /per-user Programs folder/, displayIcon);
+  }
 });
 
 test('Windows installer URLs and manifests are checked like the macOS package', () => {

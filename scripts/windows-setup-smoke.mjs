@@ -60,19 +60,23 @@ function powershell(script, { env = process.env, ...options } = {}) {
   return command('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `$ErrorActionPreference = 'Stop'\nImport-Module Microsoft.PowerShell.Security\n${script}`], { ...options, env: inherited });
 }
 
-/** The certificates in each store this smoke reads, and whether policy blocks root downloads. */
+// Where Windows reads whether it may download a missing root: the policy, then the machine setting.
+const ROOT_AUTO_UPDATE = { policy: 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates\\AuthRoot', setting: 'HKLM:\\SOFTWARE\\Microsoft\\SystemCertificates\\AuthRoot' };
+
+/** The certificates in each store this smoke reads, and whether Windows may download missing roots. */
 async function rootStores(name) {
   const listing = JSON.parse(await powershell(`
 $entries = foreach ($store in ${ROOT_STORES.map((store) => `'${store}'`).join(', ')}) {
   Get-ChildItem -LiteralPath "Cert:\\$store" | ForEach-Object { [pscustomobject]@{ store = $store; thumbprint = $_.Thumbprint; subject = $_.Subject } }
 }
-$policy = Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates\\AuthRoot' -ErrorAction SilentlyContinue
-ConvertTo-Json -Compress -Depth 3 -InputObject @{ entries = @($entries); disableRootAutoUpdate = $policy.DisableRootAutoUpdate }`));
+$policy = Get-ItemProperty -LiteralPath '${ROOT_AUTO_UPDATE.policy}' -ErrorAction SilentlyContinue
+$setting = Get-ItemProperty -LiteralPath '${ROOT_AUTO_UPDATE.setting}' -ErrorAction SilentlyContinue
+ConvertTo-Json -Compress -Depth 3 -InputObject @{ entries = @($entries); rootAutoUpdateOff = @{ policy = $policy.DisableRootAutoUpdate; setting = $setting.DisableRootAutoUpdate } }`));
   const counts = Object.fromEntries(ROOT_STORES.map((store) => [store, listing.entries.filter((entry) => entry.store === store).length]));
   const onDemand = listing.entries.filter((entry) => Object.hasOwn(ON_DEMAND_ROOTS, entry.thumbprint.toUpperCase()))
     .map((entry) => `${ON_DEMAND_ROOTS[entry.thumbprint.toUpperCase()]} in ${entry.store}`);
-  save(name, { counts, onDemand, disableRootAutoUpdate: listing.disableRootAutoUpdate ?? null, entries: listing.entries });
-  console.log(`${name}: ${JSON.stringify(counts)}; named roots: ${onDemand.join(', ') || 'none'}`);
+  save(name, { counts, onDemand, rootAutoUpdateOff: listing.rootAutoUpdateOff, entries: listing.entries });
+  console.log(`${name}: ${JSON.stringify(counts)}; named roots: ${onDemand.join(', ') || 'none'}; root downloads off: ${JSON.stringify(listing.rootAutoUpdateOff)}`);
   return listing;
 }
 
@@ -137,7 +141,7 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   if (signature.status !== 'Valid') throw new Error(`Installer signature is ${signature.status}.`);
   // The assisted NSIS installer installs for the current user, without a prompt, under /S.
   await command(installer, ['/S'], { timeout: 5 * 60_000 });
-  const { installLocation, executable: executablePath } = installedExecutable(await registrations(), productName);
+  const { installLocation, executable: executablePath } = installedExecutable(await registrations(), productName, join(process.env.LOCALAPPDATA, 'Programs'));
   save('install.json', { installLocation, executablePath, signer: signature.signer });
   // A launch by the installer would set up the runner's real profile, not the fresh one.
   const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
@@ -148,10 +152,13 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   // Last, so no earlier step that verifies through Windows (the signature check) downloads a root back.
   const planned = rootsToRemove((await rootStores('roots-before-trim.json')).entries);
   if (planned.length) await powershell(removalScript(planned));
+  // A fresh Windows downloads a missing root when a program verifies through Windows, as
+  // setup's uv installer does; the image turns that off, which would fail Install uv instead.
+  await powershell(Object.values(ROOT_AUTO_UPDATE).map((key) => `Remove-ItemProperty -LiteralPath '${key}' -Name DisableRootAutoUpdate -ErrorAction SilentlyContinue`).join('\n'));
   const removed = planned.map((entry) => `${entry.store} ${entry.thumbprint} ${entry.subject}`);
   save('roots-removed.txt', `${removed.join('\n')}\n`);
   console.log(`Removed ${removed.length} roots:\n${removed.join('\n')}`);
-  assertTrimmed((await rootStores('roots-trimmed.json')).entries);
+  assertTrimmed(await rootStores('roots-trimmed.json'));
   trimmed = true;
 
   result.failingStep = 'Launch and isolate app';
