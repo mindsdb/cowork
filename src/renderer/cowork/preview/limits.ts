@@ -8,10 +8,10 @@ export interface PreviewDevice {
   touch: boolean;
 }
 
-/* The caps the parent enforces: the streamed byte cap and the two watchdogs.
-   They are the same on every device, so the parent reads them without a
-   device. The constant is frozen, so no importer can change a cap for the
-   others. */
+/* The caps the parent enforces: the streamed byte cap and the two watchdogs,
+   whose progressTimeoutMs also times the frame's draws. They are the same on
+   every device, so the parent reads them without a device. The constant is
+   frozen, so no importer can change a cap for the others. */
 export type PreviewParentLimits = Pick<PreviewLimits, 'maxBytes' | 'readyTimeoutMs' | 'progressTimeoutMs'>;
 
 export const PREVIEW_PARENT_LIMITS: Readonly<PreviewParentLimits> = Object.freeze({

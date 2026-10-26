@@ -232,6 +232,17 @@ describe('the draw watchdog', () => {
     return { ...view, send, wait };
   }
 
+  /* Sets document.hidden, as a hidden tab or a minimized desktop window
+     does, and fires visibilitychange. */
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'hidden');
+  });
+
   it(`keeps timing a draw after rendered, and removes the frame with timeout when it hasn't ended within ${progressTimeoutMs} ms`, async () => {
     const { container, props, send, wait } = mountedFrame();
     await send({ type: 'rendered', summary: SUMMARY });
@@ -254,7 +265,7 @@ describe('the draw watchdog', () => {
     expect(frames(container)).toHaveLength(0);
   });
 
-  it('times each draw on its own, so draws that keep ending never time out the frame', async () => {
+  it('never times out the frame while draws keep ending, and times out an open draw once none has ended', async () => {
     const { container, props, send, wait } = mountedFrame();
     await send({ type: 'rendered', summary: SUMMARY });
     for (let id = 0; id < 10; id += 1) {
@@ -274,6 +285,48 @@ describe('the draw watchdog', () => {
     wait(progressTimeoutMs);
     expect(props.onError).toHaveBeenCalledOnce();
     expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+  });
+
+  it('restarts the clock of every open draw when a draw ends, since draws share the frame\'s thread', async () => {
+    const { props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    await send({ type: 'draw', id: 1, state: 'start' });
+    wait(progressTimeoutMs - 1_000);
+    await send({ type: 'draw', id: 0, state: 'end' });
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+  });
+
+  it('stops a draw\'s clock while the page is hidden, and gives it a fresh progressTimeoutMs once it shows', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs - 1);
+    setHidden(true);
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    setHidden(false);
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('starts no clock for a draw that starts while the page is hidden until it shows', async () => {
+    const { props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    setHidden(true);
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    setHidden(false);
+    await send({ type: 'draw', id: 0, state: 'end' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
   });
 
   it('stops watching draws once the frame reported an error', async () => {
