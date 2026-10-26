@@ -603,9 +603,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => { cancelled = true; };
   }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
 
-  // Order: Project section first, Global second.
+  // Order: Project section first, Global second. The deployment's rules are
+  // nothing learned, so they stay on the Memories page.
   const ordered = useMemo(() => {
-    const sorted = [...sections].sort((a, b) => {
+    const sorted = sections.filter((s) => s.scope !== 'Deployment').sort((a, b) => {
       if (a.scope === 'Project' && b.scope !== 'Project') return -1;
       if (b.scope === 'Project' && a.scope !== 'Project') return 1;
       return 0;

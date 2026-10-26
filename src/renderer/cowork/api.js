@@ -1905,6 +1905,25 @@ export async function deleteMemory(payload) {
   return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
+/* Whether the server removes the caller's whole memory in one step. A server
+   without the route answers 404 or 405, which means it offers no reset; any
+   other failure is the caller's to report. */
+export async function fetchMemoryCapabilities() {
+  try {
+    const capabilities = await req('/memory/capabilities');
+    return { canReset: capabilities?.canReset === true };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return { canReset: false };
+    throw err;
+  }
+}
+
+/* Removes all of the caller's learned memory: their profile, rules and
+   lessons, in every project of theirs. */
+export async function resetMemory() {
+  return req('/memory/all', { method: 'DELETE' });
+}
+
 export async function fetchSkills() {
   return req('/skills/');
 }
