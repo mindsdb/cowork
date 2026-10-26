@@ -57,7 +57,9 @@ async function command(file, args, options = {}) {
 function powershell(script, { env = process.env, ...options } = {}) {
   // The runner's PSModulePath names PowerShell 7's modules, which hides the Cert: drive from Windows PowerShell.
   const inherited = Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH'));
-  return command('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `$ErrorActionPreference = 'Stop'\nImport-Module Microsoft.PowerShell.Security\n${script}`], { ...options, env: inherited });
+  // Every error stops the script, so reaching the end is success; without the explicit exit,
+  // -Command reports a deliberately silenced miss (a value that isn't set) as a failure.
+  return command('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `$ErrorActionPreference = 'Stop'\nImport-Module Microsoft.PowerShell.Security\n${script}\nexit 0`], { ...options, env: inherited });
 }
 
 // Where Windows reads whether it may download a missing root: the policy, then the machine setting.
