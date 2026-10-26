@@ -52,6 +52,11 @@ const SECRET_PATTERNS = [
   [new RegExp(
     `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)'(?:[^'\\\\\n]|\\\\.)*'`,
     'gim'), `$1$2'${REDACTED}'`],
+  // A quoted value with no closing quote on its line (cut off, or split across
+  // lines) is redacted to the end of the line; ones the rules above closed are skipped.
+  [new RegExp(
+    `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)(["'])(?!\\[redacted\\]\\3)[^\n]*`,
+    'gim'), `$1$2$3${REDACTED}`],
   // Bare values. A name preceded by `/` is skipped: `/api/v1/secret: 200` is a
   // request path and a status code, not a key and a secret.
   // The name is matched with its prefix, not on a word boundary:

@@ -88,6 +88,13 @@ describe('scrubLog', () => {
     expect(scrubLog("{'password': 'it\\'s hidden'}")).toBe("{'password': '[redacted]'}");
   });
 
+  it('redacts a quoted value whose closing quote never arrives, to the end of its line only', () => {
+    expect(scrubLog('password="abc def ghi\nnext line')).toBe('password="[redacted]\nnext line');
+    expect(scrubLog("{'password': 'cut off mid val")).toBe("{'password': '[redacted]");
+    expect(scrubLog('token="ends in backslash\\')).toBe('token="[redacted]');
+    expect(scrubLog('password="a" token="b" x=1')).toBe('password="[redacted]" token="[redacted]" x=1');
+  });
+
   it('redacts a Google API key that appears on its own', () => {
     const key = 'AIzaSyA1234567890abcdefghijklmnopqrstuv';
     expect(scrubLog(`ValueError: invalid key ${key} rejected`)).toBe(
