@@ -58,6 +58,7 @@ import {
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
   injectDraftBaseHref,
+  limitArtifactFrames,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -156,13 +157,9 @@ export function ArtifactViewer({
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
-  // With live apps on, a full-stack app runs only at its own address, so the
-  // viewer names that address instead of mounting a preview, and its open
-  // controls go there (`liveAppViewerNotice`). Reload reads the state again.
   const liveAppView = liveApps && isBackendArtifact;
-  const liveAppNotice = liveAppViewerNotice(
-    useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce }),
-  );
+  const liveAppRead = useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce });
+  const liveAppNotice = liveAppViewerNotice(liveAppRead);
   const liveAppAddress = liveAppNotice?.address || '';
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
@@ -331,7 +328,9 @@ export function ArtifactViewer({
     // Only accept mutation intents from the artifact frame while the user has
     // explicitly opened review controls. Agent-produced scripts otherwise get
     // no ambient path to act through the owner's comment session.
-    enabled: open && commentsEnabled && commentsOpen,
+    // A live app's pane holds the app's own code and no comment layer, so no
+    // frame there may drive comments.
+    enabled: open && commentsEnabled && commentsOpen && !liveAppView,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: comments.reply,
@@ -559,7 +558,8 @@ export function ArtifactViewer({
       return () => { cancelled = true; };
     }
     if (liveAppView) {
-      // Nothing to mount: the deployment refuses a live app's in-Cowork preview.
+      // Nothing to mount here: LiveAppPanel shows a running app from its own
+      // address, or the notice, never the serve route's backend-less copy.
       setLoading(false);
       return () => { cancelled = true; };
     }
@@ -629,7 +629,7 @@ export function ArtifactViewer({
         .then((doc) => {
           if (cancelled) return;
           if (doc.isHtml) {
-            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+            setPreviewDoc(limitArtifactFrames(injectDraftBaseHref(doc.content, fetchUrl)));
           } else {
             // Non-HTML draft content type: org mode's draft preview only ever
             // offers .html here (md/txt/csv already took the isText branch
@@ -991,7 +991,7 @@ export function ArtifactViewer({
     onDownload,
     onOpenOS,
     liveApp: liveAppView
-      ? { notice: liveAppNotice, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
+      ? { notice: liveAppNotice, state: liveAppRead.state, reloadKey: reloadNonce, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
       : null,
     url: previewUrl,
     doc: previewDoc,

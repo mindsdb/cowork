@@ -196,6 +196,23 @@ export function injectDraftBaseHref(html, fetchUrl) {
     : `${markup}${html}`;
 }
 
+// The shell's frame sources before live apps. The shell also lists the
+// live-app origins so Cowork can frame a running app, and a srcdoc document
+// inherits that; this tag takes them back out, so an artifact page frames only
+// what it could before, whatever a browser makes of its opaque origin.
+const ARTIFACT_FRAME_SOURCES = "'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com";
+export const ARTIFACT_FRAME_POLICY = `frame-src ${ARTIFACT_FRAME_SOURCES}; child-src ${ARTIFACT_FRAME_SOURCES}`;
+
+// One line, like the base tag above: it adds no newline before inline scripts.
+// Only for a document shown, never one an editor saves back.
+export function limitArtifactFrames(html) {
+  if (typeof html !== 'string' || !html) return html;
+  const markup = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_FRAME_POLICY}">`;
+  return HEAD_OPEN_RE.test(html)
+    ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
+    : `${markup}${html}`;
+}
+
 export function artifactExtension(p) {
   if (!p || typeof p !== 'string') return '';
   const m = p.toLowerCase().match(/\.[a-z0-9]+$/);
