@@ -26,6 +26,7 @@ import {
   buildAccessPayload,
   isAccessDraftValid,
   isOwnerOnlySelection,
+  newAccessDraft,
   parseEmailList,
 } from './AccessChooser';
 
@@ -225,7 +226,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
   // Editable access draft for the publish + change-access flows.
-  const [draft, setDraft] = useState(() => draftFromController(pub));
+  const [draft, setDraft] = useState(() => (isPublished ? draftFromController(pub) : newAccessDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
   const [draftDirty, setDraftDirty] = useState(false);
@@ -245,7 +246,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
-      setDraft({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
+      setDraft(newAccessDraft());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isPublished]);

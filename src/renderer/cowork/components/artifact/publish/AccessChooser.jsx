@@ -18,6 +18,7 @@ import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
+import { PLATFORM_UI } from '../../../../lib/deployment';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -28,6 +29,14 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
+// The draft a first share starts from. With the platform UI on it starts on
+// Public, as it always has. With it off nothing is picked, so the person
+// chooses who can open the link first: `isAccessDraftValid` refuses a draft
+// with no mode, which keeps Share disabled until then.
+export function newAccessDraft() {
+  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false };
+}
+
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
 // `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
@@ -36,6 +45,9 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // "Only you" and "Specific people" as two visibly different choices instead of
 // one option whose meaning depends on whether a textarea happens to be empty.
 export function accessDraftFromArtifact(artifact) {
+  // Nothing is live on an unpublished artifact, so with the platform UI off it
+  // starts from a new draft, whatever access an earlier publish left on it.
+  if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
   const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
     ? 'ownerOnly'
@@ -122,9 +134,22 @@ export function buildAccessPayload(draft) {
 // Single source of truth for the access option copy. PublishMenu imports this
 // for its summary card, so the wording can't drift between the picker and the
 // "currently published as" view.
+// With the platform UI off, this is a deployment's own web build. Its links
+// open for whoever can reach that deployment, behind any sign-in it puts in
+// front of them, so Public and Password say that instead of "internet".
 export const ACCESS_LABELS = {
-  public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
-  password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
+  public: {
+    icon: Ico.globe,
+    title: 'Public',
+    desc: PLATFORM_UI ? 'Anyone on the internet with the URL' : 'Anyone who can reach this deployment, with the URL',
+  },
+  password: {
+    icon: Ico.lock,
+    title: 'Password protected',
+    desc: PLATFORM_UI
+      ? 'Anyone on the internet with the password'
+      : 'Anyone who can reach this deployment, with the password',
+  },
   restricted: {
     icon: Ico.people,
     title: 'Specific people',
@@ -169,14 +194,21 @@ function OptionCard({ value, active, icon, title, desc }) {
   );
 }
 
+// Order runs private → public, so the least exposing choice is the one the
+// eye lands on first. With the platform UI off there is no "Only you": a
+// deployment's own publisher holds one shared publish token and no owner to
+// let in, so it answers an owner-only upload with a 400.
+const DEFAULT_MODES = PLATFORM_UI
+  ? ['ownerOnly', 'restricted', 'password', 'public']
+  : ['restricted', 'password', 'public'];
+
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
-// defaults to all three. `value`/`onChange` are the controlled draft.
+// defaults to every mode this build offers. `value`/`onChange` are the
+// controlled draft.
 export function AccessChooser({
   value,
   onChange,
-  // Order runs private → public, so the least exposing choice is the one the
-  // eye lands on first.
-  modes = ['ownerOnly', 'restricted', 'password', 'public'],
+  modes = DEFAULT_MODES,
   onSubmit,
 }) {
   const draft = value;
@@ -256,7 +288,7 @@ export function AccessChooser({
               : (parsedEmails.length === 0 && !draft.orgAllowed
                 // Not "only you will have access": that is now a choice of its
                 // own, so arriving here means the selection is simply unfinished.
-                ? 'Add someone, or choose “Only you”'
+                ? (modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone')
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>

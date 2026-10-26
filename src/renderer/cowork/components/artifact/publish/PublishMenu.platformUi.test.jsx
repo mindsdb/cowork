@@ -1,0 +1,73 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+
+vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
+
+import { PublishMenu } from './PublishMenu';
+
+function makeController(overrides = {}) {
+  return {
+    publishedUrl: '',
+    phase: 'idle',
+    busy: false,
+    error: '',
+    accessMode: 'public',
+    accessPassword: '',
+    accessEmails: [],
+    orgAllowed: false,
+    ownerOnly: false,
+    accessLoaded: true,
+    versions: [],
+    modified: false,
+    setError: vi.fn(),
+    loadVersions: vi.fn(),
+    publish: vi.fn(),
+    unpublish: vi.fn(),
+    activate: vi.fn(),
+    update: vi.fn(),
+    ...overrides,
+  };
+}
+
+function shareButton() {
+  // The trigger and the footer both read "Share"; the footer's is the one in the panel.
+  return within(screen.getByText('Share to the Web').parentElement).getByRole('button', { name: 'Share' });
+}
+
+describe('PublishMenu with the platform UI off', () => {
+  it('opens an unpublished artifact with nothing picked and Share disabled', () => {
+    const ctrl = makeController();
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Share'));
+
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText('Only you')).toBeNull();
+    expect(shareButton()).toBeDisabled();
+
+    fireEvent.click(shareButton());
+    expect(ctrl.publish).not.toHaveBeenCalled();
+  });
+
+  it('enables Share once a choice is picked', () => {
+    const ctrl = makeController();
+    render(<PublishMenu controller={ctrl} />);
+    fireEvent.click(screen.getByText('Share'));
+
+    fireEvent.click(screen.getByRole('radio', { name: /Public/ }));
+    expect(shareButton()).toBeEnabled();
+    fireEvent.click(shareButton());
+    expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' });
+  });
+
+  it('opens an artifact already shared as Public on Public, in this deployment\'s words', () => {
+    render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a' })} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Public')).toBeInTheDocument();
+    expect(screen.getByText('Anyone who can reach this deployment, with the URL')).toBeInTheDocument();
+    expect(screen.queryByText(/internet/)).toBeNull();
+
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+  });
+});
