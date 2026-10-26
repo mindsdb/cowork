@@ -930,11 +930,13 @@ export function ArtifactViewer({
     }
   };
 
-  // Every unpublished draft the server can address opens by link, except a
-  // live app, which opens where it runs, and a backend artifact with an action
-  // path, which previews through its own runtime; a card without a full
-  // identity cannot ask for a link. These keep the old route.
-  const draftLinkRef = !isPublished && !liveAppView && draftLinkEnabled && !(isBackendArtifact && hasActionPath)
+  // An unpublished draft the preview opens by link opens by link in a tab
+  // too. A live app opens where it runs, a backend artifact with an action
+  // path previews through its own runtime, and a card without a full identity
+  // cannot ask for a link: these keep the old route. So do text, images and
+  // Office and PDF files, whose own previews set their tab rules.
+  const draftLinkRef = !isPublished && !liveAppView && draftLinkEnabled
+    && !isText && !isImage && !documentType && !(isBackendArtifact && hasActionPath)
     ? artifactWorkspaceRef(artifact)
     : null;
 
@@ -1040,6 +1042,7 @@ export function ArtifactViewer({
     canOpenLocalFile,
     isBackendArtifact,
     isLiveApp: liveAppView,
+    opensDraftLinkInTab: !!draftLinkRef,
     backendPort,
     artifact,
     deleteBusy,

@@ -80,6 +80,8 @@ vi.mock('../../../platform/host', () => ({
   host: {
     get isElectron() { return shell.electron; },
     get isWeb() { return !shell.electron; },
+    // As the real host: web always mounts the document preview.
+    get supportsDocumentPreview() { return !shell.electron; },
     isMac: () => false,
     // Desktop always addresses loopback; the web shell never does.
     isLocalApiOrigin: () => shell.electron,
@@ -345,6 +347,41 @@ describe('open in a browser tab — web / org, signed draft links', () => {
 
     expect(tab.location.replace).toHaveBeenCalledWith(OPEN_LINK);
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('tells the header an unpublished HTML draft opens by link', async () => {
+    createDraftLink.mockResolvedValue({ url: FRAME_LINK, expiresAt: 1 });
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+
+    expect(headerProps.current.actions.opensDraftLinkInTab).toBe(true);
+  });
+
+  /*
+   * Text, images and Office and PDF files have their own previews, which set
+   * their own tab rules (org mode offers no tab until the file is shared), so
+   * none of them opens by link.
+   */
+  it.each([
+    ['a Markdown', '.md'],
+    ['an image', '.png'],
+    ['a PDF', '.pdf'],
+  ])('keeps the old route for %s draft', async (_kind, ext) => {
+    const swap = (value) => value.replace(/\.html$/, ext);
+    const file = {
+      ...linked,
+      ext,
+      path: swap(LOCAL_PATH),
+      canonicalPath: swap(LOCAL_PATH),
+      draftUrl: swap(DRAFT_PATH),
+    };
+    render(<ArtifactViewer open artifact={file} onClose={vi.fn()} />);
+    expect(headerProps.current.actions.opensDraftLinkInTab).toBe(false);
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(window.open).not.toHaveBeenCalled();
+    expect(createDraftLink).not.toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith(`${WEB_ORIGIN}${swap(DRAFT_PATH)}`);
   });
 
   it('keeps the old route for a backend artifact with an action path', async () => {

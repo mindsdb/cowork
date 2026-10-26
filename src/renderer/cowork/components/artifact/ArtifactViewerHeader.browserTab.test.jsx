@@ -83,6 +83,13 @@ const liveApp = {
   actions: { ...props.actions, isBackendArtifact: true, isLiveApp: true },
 };
 
+// An unshared draft the preview opens by a signed link: the arrow opens a new
+// link, which needs no bearer.
+const draftByLink = {
+  ...props,
+  actions: { ...props.actions, opensDraftLinkInTab: true },
+};
+
 afterEach(() => {
   setOrgMode(false);
   onOpenInBrowserTab.mockClear();
@@ -107,6 +114,13 @@ describe('open in a browser tab', () => {
   it('is offered on Cloud for a live app nobody shared as a page, since it opens where the app runs', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...liveApp} />);
+
+    expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
+  });
+
+  it('is offered on Cloud for an unshared draft that opens by a signed link', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...draftByLink} />);
 
     expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
   });
