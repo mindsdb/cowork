@@ -126,3 +126,9 @@ export function validateAndSaveConnector(
   connectorId: string,
   payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
 ): Promise<SavedConnectorResult>;
+
+export interface LiveAppPreviewLease { id: string; intent: string }
+export function createLiveAppPreview(launchId: string): Promise<LiveAppPreviewLease>;
+export function keepLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreviews(): Promise<void>;

@@ -78,7 +78,11 @@ export function artifactStatusHint(artifact, publishable = true) {
 // member" / "Unknown owner" tag right after the primary badge (ENG-2979).
 // Pass null, not an element that renders nothing, when there is none: without
 // it the DOM is exactly what it was.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null }) {
+//
+// `pageBadge` — false drops the idle "Not shared" / "Draft" badge of an
+// unpublished artifact that can't become a page (a live app shares through
+// "Share with…" instead). Phases and the authorship tag still show.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true }) {
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -112,6 +116,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
+    if (!pageBadge) return tag;
     return withExtra(
       <Tooltip content={artifactStatusHint(artifact, publishable)}>
         <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>

@@ -15,6 +15,10 @@ The frontend and backend are developed and released independently. At runtime, t
 
 ---
 
+## Shared projects
+
+On deployments with selective project sharing, a recipient sees shared projects in Projects with a read-only file view. Files are addressed by project UUID, so an owned project with the same name stays separate. Received projects show the last eight characters of that UUID on their cards and file views, with the full project ID in a tooltip, to distinguish equal names without revealing owner identities. Shared projects are excluded from task, schedule and move pickers, and send handlers reject them. HTML is shown as text; downloads use authenticated requests. The view rechecks access on focus and every 15 seconds, clearing its contents if access is revoked or a recheck gets no answer within 10 seconds. The server enforces these restrictions and must support `/shared-projects/{id}/files`; older deployments keep their existing project behavior.
+
 ## Environments
 
 MindsHub Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.
@@ -76,7 +80,7 @@ A channel's state is not all under one folder. It spreads across several locatio
 | Location (non-prod / prod) | What lives there | How it's isolated |
 |----------------------------|------------------|-------------------|
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
-| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv) | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
+| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv). Beside the `tools/` folder, never inside it: `.cowork-release-contracts/`, the release installer's rollback snapshots ([`install_release_server.py`](scripts/install_release_server.py)). uv reads every folder in `tools/` as a tool, and `uv tool list` fails on one it can't name | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
 | **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); on **Windows/Linux** the encrypted MindsHub refresh token (`mindshub-refresh.bin`, safe-storage) | `app.setName` per kind |
 | **MindsHub refresh token** — **macOS:** `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat`; **Windows/Linux:** userData `mindshub-refresh.bin` | The Keycloak refresh token | `COWORK_HOME` (macOS) / userData (Win/Linux) — see [`token-store.ts`](src/main/token-store.ts) |
@@ -579,7 +583,10 @@ off it.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
-sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+sidecar's own token, so the Keycloak JWT cannot arrive under that name. The
+exceptions are requests from the document preview frame, from frames inside
+it, and requests with no frame: the main process adds no token to those
+(`src/main/document-preview-guard.ts`).
 
 ### The MindsHub workspace selector
 
@@ -963,6 +970,12 @@ To see those cards, open `/billing-stop-fixture.html` under the same dev server.
 Settings > Agent tests configured providers by default on desktop and web, independently of `VITE_PLATFORM_UI`. For the Python-served Docker app, set `COWORK_PROVIDER_TESTS_ENABLED=false` in the container environment to skip provider tests on open, save and retry. Recreate the container and reload the page after changing it; the same image supports either value. The setting accepts `true` or `false` and defaults to `true`. The SPA wrapper supplies the value before the renderer starts. Static hosting and desktop retain enabled defaults.
 
 With the platform UI off, provider and model controls are hidden, but that does not disable background provider testing. Configure the runtime flag separately when the operator manages providers outside Cowork. Memory and Advanced Settings remain visible, and model or provider error cards direct users to the operator.
+
+An operator can show the composer's model picker in that build at run time. For the Python-served Docker app, set `COWORK_MODEL_PICKER` in the container environment to `default` or `open`; it defaults to `off`, which writes nothing into the page. The picker's first row, "Operator default", sends no model, so the question runs on the operator's role models. The other rows are the models the server lists for the planning provider, less any it lists with `enabled: false`. With none left, the composer shows no picker. In `default` mode each new conversation starts on "Operator default"; in `open` mode it starts on the user's last pick until the page reloads. A conversation saved on a model the picker no longer lists sends no model. Settings' model rows stay hidden in every mode. Recreate the container and reload the page after changing it.
+
+With the picker on, the operator can also let users pick a reasoning effort. Set `COWORK_MODEL_EFFORTS` to a JSON object of each model's efforts users may pick, such as `{"opus-5-5": ["xhigh"]}`. The composer then shows an effort control on a model the object lists, with "Default" first, which sends no effort, then those efforts. With "Operator default", it offers the efforts both `PLANNING_MODEL` and `CODING_MODEL` list there, since the question runs on both. A model the object doesn't list shows no effort control. The server applies the effort to the question's planning and coding calls, not to its router call. The app refuses to start when `COWORK_MODEL_EFFORTS` is set with the picker `off`, or holds anything but lists of lowercase efforts. Without it, the effort control stays hidden.
+
+The Share box in that build follows where cowork-server publishes. When `COWORK_PUBLISH_TOKEN` is set in the container environment, the server publishes with that one shared token, so Share offers no "Only you" (a shared token has no owner to let in) and Public says "Anyone with the URL". Without it, the server publishes to MindsHub with the person's own key, so Share offers "Only you" and Public says "Anyone on the internet with the URL". The SPA wrapper tells the page only whether the token is set, never its value. It reads only the container environment: cowork-server also takes the token from its `.env` files, so a token kept only there still publishes with the shared token while Share offers "Only you", which the publisher refuses. A page served without the wrapper keeps the shared-token choices. Share starts with nothing picked in either case. The wrapper doesn't read `ANTON_PUBLISH_URL` or a saved publish URL, so a deployment that points either at a publisher other than MindsHub, without a shared token, still sees the MindsHub choices.
 
 With testing disabled, Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. This controls browser requests, not API authorization. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
@@ -1362,7 +1375,38 @@ CloudFront behavior:
 
 > **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
 
-Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+The upload, download, and setup checks watch different parts of this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+
+[`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) installs the published macOS `.pkg` and runs its own setup through Start server. It runs after each successful Stable or prod macOS upload, independently of the other platforms, and nightly at 07:30 UTC on both channels. The nightly Stable run checks out `staging`, so its harness matches the Stable package. Post-publish runs require the manifest to name that upload's URL; prod also requires the tagged release version. This detects a broken published installer but does not prevent someone downloading it before the check finishes.
+
+Stable and prod pipelines finish their running release before starting a newer one, so a new push cannot cancel a published package's setup check. A setup failure fails `build-installers`; prod's dependent OTA UI publish and download smoke wait on that result and will skip on failure.
+
+The check verifies the package checksum, signature, and notarization assessment, then installs it on a disposable GitHub-hosted macOS runner. Playwright opens the installed executable with a fresh home and browser profile. The app must report that all its data paths stay in that profile and that it cannot find an existing `uv`, including in system package-manager directories. A runner that already has `uv` fails preparation; the check does not remove shared tools or silently skip bootstrap.
+
+The harness invokes the app's existing setup IPC without signing in or providing model credentials. It captures the real progress events and requires Install uv, Install cowork-server, Verify installation, and Start server to finish `done`, followed by a healthy server. A startup `warning`, error, cancellation, missing step, app exit, or 15-minute setup timeout fails. The installed renderer must remain bundled. Stable's filename version includes the channel and commit; the app's display version uses `git describe`, so the check correlates those forms instead of comparing them literally.
+
+Every run retains named setup logs, step statuses, package identity, diagnostics, screenshots, and a trace in `macos-setup-<channel>` artifacts for 14 days. It does not upload the profile or credential files. A separate job sends failures to the engineering channel with the failing step and a run link, including outside a release freeze. The installed app receives no CI tokens. The notification reuses existing organization secrets; callers grant `actions: read` for the existing notifier.
+
+Run the workflow from Actions, or after it reaches the default branch:
+
+```bash
+gh workflow run macos-setup-smoke.yml --ref staging -f channels=stable
+gh workflow run macos-setup-smoke.yml --ref main -f channels=prod
+```
+
+For a historical check, select `stable` and provide `snapshot-url` plus its independently recorded `snapshot-sha256`. The URL must name a public macOS Stable snapshot. A failure keeps the failing setup step and sends the same notification. `uv-tool-list.log` also records the resolver's underlying error when an older app's Verify message omits it; `uv-version.log` records the installed uv version. Pinning the app does not pin the uv bootstrap or server packages it downloads today, so an old app may no longer reproduce an older failure. A dependency replay must be recorded separately from the ordinary user path.
+
+This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
+
+[`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) does the same for the published Windows `.exe`. It runs after each successful Stable or prod Windows upload and nightly at 07:45 UTC on both channels, with the same manifest pinning, nightly `staging` checkout, setup verdict, artifacts (`windows-setup-<channel>`) and failure notice. It requires a valid Authenticode signature, installs the installer silently (`/S`) for the runner's user, finds the executable from its uninstall registration, and opens it with a fresh profile and an allowlisted environment: the home, app-data and temp variables point into the profile, and `PATH` holds only Windows' own folders, so the runner's uv, Python and git stay invisible. Electron's `home` path follows Windows' known folder and stays the runner's; every other path the app reports must be inside the profile.
+
+The Windows harness attaches an observer before entering the bundled setup screen, which starts installation exactly once. It supplies the renderer's onboarding consent and configured signal without saving credentials; the real installation checks, installer call and return value stay unchanged. Screenshots and traces show the actual setup UI, and `after.png` captures its success or failure before the screen advances.
+
+Before it opens the app, the check trims the runner's root store to what a fresh Windows trusts. Windows ships part of its root list and downloads the rest the first time a program verifies a chain through Windows, but Python's own TLS never asks it to. The hosted image instead holds over 500 roots, including GlobalSign Root CA - R3 (pypi.org) and ISRG Root X1 (raw.githubusercontent.com) among the 14 in `LocalMachine\AuthRoot`, and turns those downloads off with the `DisableRootAutoUpdate` policy. So the check empties `LocalMachine\AuthRoot`, removes both named roots wherever they remain, and confirms `LocalMachine\AuthRoot` is empty while the downloads are still off. It then turns the downloads back on, lists each root it removed, and fails at "Trim root store" if Python's view still holds either. From then on, any program on the runner can download the roots it needs, as on a fresh machine, setup's own Windows downloads such as the uv installer included; `roots-trimmed.json` and `roots-after-setup.json` record which. The other preinstalled roots stay, so a new dependency on one of them would still pass here.
+
+The harness backs up each removed root to `RUNNER_TEMP`, and an `if: always()` step restores the roots and the policy before the job ends. The runner reports the job's end over Windows TLS, so without that step the job stalls until GitHub cancels it.
+
+Hosted runners run Windows Server, not Windows 11, and x64 only; a person's check on Windows 11 stays in the release checklist. Run it the same way as the macOS check (`gh workflow run windows-setup-smoke.yml --ref staging -f channels=stable`); a historical check takes a public Windows Stable snapshot URL and its SHA-256. Its contract tests run on PRs with `npm run test:windows-setup-contract`; `npm run test:windows-setup` refuses local execution because it installs an app and edits the machine's root stores.
 
 ### Workflow files
 
@@ -1378,6 +1422,8 @@ Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upl
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
+| [`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) | After Stable/prod macOS upload / nightly / manual | Install the published `.pkg` on a fresh profile and require every setup step through Start server to succeed |
+| [`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) | After Stable/prod Windows upload / nightly / manual | Install the published `.exe` on a fresh profile and a fresh machine's root store, and require every setup step through Start server to succeed |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets
@@ -1423,6 +1469,8 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 ## Server release dependencies
 
 Fresh installs, updates, repairs and rollback use `scripts/install_release_server.py`. It reads the exact dependency contract embedded in the selected server wheel, or from the same resolved Git commit. It verifies the server wheel against PyPI's SHA-256, checks that the complete dependency set resolves without additions, then verifies the installed versions and source identity. An unavailable pin or missing contract fails the operation.
+
+On Windows the app also hands the consumer the public root certificates bundled with Electron's Node (`tls.rootCertificates`), and the consumer trusts them beside the Windows certificate stores. Python on Windows sees only the roots Windows has already downloaded, and Windows downloads a missing root only when a program verifies through Windows, so a fresh machine couldn't verify PyPI or GitHub. Certificate checks stay on, and roots an organization installs in the Windows store keep working. macOS and Linux keep their platform roots alone. The `release-server-install` Windows jobs remove PyPI's and GitHub's roots from the runner and make real downloads with and without the bundle.
 
 Anton and registry dependencies move through a reviewed server release. A standalone Anton PyPI upload no longer changes an installed server. Normal application updates still select the build's stable or prerelease stream; selecting a release also selects its reviewed dependency set.
 
