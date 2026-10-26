@@ -3754,7 +3754,9 @@ function AppCore() {
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
-        setActiveTaskId(finalId);
+        // Follow the rename only if this conversation is still on screen; the
+        // person may have moved to another one while the answer ran.
+        setActiveTaskId((curr) => (curr === resolvedId || curr === taskId ? finalId : curr));
         // Persist all step data (scratchpad cells, artifacts, timing)
         // so reopening the conversation restores the Thinking block,
         // inline artifact cards, and scratchpad tabs. Anton's own
