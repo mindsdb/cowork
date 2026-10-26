@@ -2258,7 +2258,9 @@ export function streamDataVaultSubmission({
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
     } catch (err) {
       // Our own idle abort surfaces as an AbortError too, so check it first.
       if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
@@ -2542,20 +2544,40 @@ export async function deleteChannelBinding(bindingId) {
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
-export async function uploadAttachments(files, { projectName, sessionId } = {}) {
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
   if (!projectName || !sessionId) {
     throw new Error('Open a saved task before attaching files (project and conversation id are required).');
   }
   const enc = encodeURIComponent;
   const form = new FormData();
-  Array.from(files).forEach((file) => form.append('files', file));
-  const res = await authFetch(
-    `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
 }
 
 /** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
