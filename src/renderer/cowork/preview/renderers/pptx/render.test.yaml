@@ -9,6 +9,7 @@
 #   units          summary.units, and the number of slides drawn
 #   truncated      summary.truncated
 #   text           text the preview holds anywhere
+#   textExcludes   text the preview holds nowhere
 #   slides         text each drawn slide holds, from the first slide on
 #   lastSlide      text the last drawn slide holds
 #   placeholders   the placeholder kinds drawn, in drawing order
@@ -229,6 +230,84 @@ cases:
       units: 2
       truncated: true
       slides: ['First slide: a quarterly review', 'Second slide: a picture and a table']
+
+  # A numbered slide reads 16 elements: the master's tree (its group
+  # properties and three shapes, 5), the layout's (4), and the slide's (3),
+  # its text body (3) and its paragraph's run (1). The master's and the
+  # layout's placeholders are read but not drawn.
+  - name: a deck that reads exactly the element cap
+    deck: { numberedSlides: 2 }
+    limits: { maxSlideElements: 32 }
+    expect:
+      units: 2
+      truncated: false
+      slides: [Slide 1, Slide 2]
+
+  # The run is the last element the second slide reads, so the slide is drawn
+  # without its text.
+  - name: a deck one element past the element cap
+    deck: { numberedSlides: 2 }
+    limits: { maxSlideElements: 31 }
+    expect:
+      units: 2
+      truncated: true
+      slides: [Slide 1]
+      textExcludes: [Slide 2]
+
+  # The cap runs out exactly at the end of slide 2, so slide 3 would draw no
+  # shape and the deck ends before it.
+  - name: a deck whose element cap runs out between two slides
+    deck: { numberedSlides: 3 }
+    limits: { maxSlideElements: 32 }
+    expect:
+      units: 2
+      truncated: true
+      slides: [Slide 1, Slide 2]
+
+  # 50 layout boxes, 5 elements each, on every slide: 266 a slide, so a cap of
+  # 1,000 ends on the fourth slide, inside its layout.
+  - name: a shared layout the element cap stops partway through the deck
+    deck:
+      numberedSlides: 20
+      layoutShapes:
+        - { kind: text, box: [0, 0, 1219200, 685800], repeat: 50, paragraphs: [{ text: Layout box }] }
+    limits: { maxSlideElements: 1000 }
+    expect:
+      units: 4
+      truncated: true
+      slides: [Slide 1, Slide 2, Slide 3]
+      textExcludes: [Slide 4]
+
+  # Hidden shapes are never drawn, but each one costs the budget its read, so
+  # 100 of them on every slide's layout still end the deck at the cap.
+  - name: a layout of hidden shapes the element cap stops
+    deck:
+      numberedSlides: 10
+      layoutShapes:
+        - { kind: text, hidden: true, box: [0, 0, 1219200, 685800], repeat: 100, paragraphs: [{ text: Hidden layout box }] }
+    limits: { maxSlideElements: 300 }
+    expect:
+      units: 3
+      truncated: true
+      slides: [Slide 1, Slide 2]
+      textExcludes: [Slide 3]
+      markupExcludes: [Hidden layout box]
+
+  # The table reads 60 elements with the trees around it. A cap of 54 leaves
+  # out the last row's second cell and its first cell's text.
+  - name: a table the element cap stops partway through
+    deck:
+      slides:
+        - shapes:
+            - kind: table
+              box: [838200, 1825625, 5257800, 1371600]
+              rows: [[A1, B1], [A2, B2], [A3, B3], [A4, B4]]
+    limits: { maxSlideElements: 54 }
+    expect:
+      units: 1
+      truncated: true
+      text: [A1, B1, A3, B3]
+      textExcludes: [A4, B4]
 
   - name: a deck with no slides
     deck: { slides: [] }

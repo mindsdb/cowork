@@ -112,6 +112,16 @@
   deck:
     numberedSlides: 301
 
+# A layout of 1,000 text boxes that every one of 100 slides draws again
+# behind its own "Slide <n>": 501,600 elements read across the deck, five
+# times the element cap, in a 99 KB file. The slide cap never stops it; the
+# element cap does, on slide 20.
+- file: past-element-cap.pptx
+  deck:
+    numberedSlides: 100
+    layoutShapes:
+      - { kind: text, box: [0, 0, 1219200, 685800], repeat: 1000, paragraphs: [{ text: Layout box }] }
+
 # A presentation part cut off mid-element, so it isn't well-formed XML.
 - file: corrupt.pptx
   deck:

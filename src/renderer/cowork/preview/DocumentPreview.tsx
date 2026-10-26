@@ -65,19 +65,26 @@ export const PREVIEW_FAILURE_REASONS: Readonly<Record<PreviewErrorCode, string>>
 /* The caps that decide truncation are the same on every device. */
 const CAPS = previewLimits({ touch: false });
 
-const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown: string; whole: string }>> = {
+/* What a truncated preview of each type shows, from the summary's units. A
+   deck counts the slides it drew, since either the slide cap or the element
+   cap can end it. */
+const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown(units: number): string; whole: string }>> = {
   xlsx: {
-    shown: `Showing up to ${CAPS.maxSheetRows.toLocaleString('en-US')} rows and ${CAPS.maxSheetColumns.toLocaleString('en-US')} columns of each sheet.`,
+    shown: () =>
+      `Showing up to ${CAPS.maxSheetRows.toLocaleString('en-US')} rows and ${CAPS.maxSheetColumns.toLocaleString('en-US')} columns of each sheet.`,
     whole: 'sheet',
   },
-  pptx: { shown: `Showing the first ${CAPS.maxSlides.toLocaleString('en-US')} slides.`, whole: 'deck' },
-  pdf: { shown: `Showing the first ${CAPS.maxPdfPages.toLocaleString('en-US')} pages.`, whole: 'file' },
-  docx: { shown: 'Showing part of this document.', whole: 'file' },
+  pptx: {
+    shown: (units) => (units === 1 ? 'Showing the first slide.' : `Showing the first ${units.toLocaleString('en-US')} slides.`),
+    whole: 'deck',
+  },
+  pdf: { shown: () => `Showing the first ${CAPS.maxPdfPages.toLocaleString('en-US')} pages.`, whole: 'file' },
+  docx: { shown: () => 'Showing part of this document.', whole: 'file' },
 };
 
-export function truncationLine(type: DocumentPreviewType, isWeb: boolean): string {
+export function truncationLine(type: DocumentPreviewType, units: number, isWeb: boolean): string {
   const { shown, whole } = TRUNCATED_PART[type];
-  return `${shown} ${isWeb ? 'Download' : 'Open'} has the full ${whole}.`;
+  return `${shown(units)} ${isWeb ? 'Download' : 'Open'} has the full ${whole}.`;
 }
 
 interface FailureProps {
@@ -116,6 +123,8 @@ function PreviewFailure({ code, download, openInDefaultApp }: FailureProps) {
 
 interface TruncationBarProps {
   previewType: DocumentPreviewType;
+  /* The summary's units. */
+  units: number;
   download(): Promise<boolean>;
   openInDefaultApp(): void;
 }
@@ -123,7 +132,7 @@ interface TruncationBarProps {
 /* Says what the preview left out and offers the whole file. On web a failed
    download says so beside the button, which stays for a retry; the viewer's
    own error would replace the frame, so the bar keeps the message itself. */
-function TruncationBar({ previewType, download, openInDefaultApp }: TruncationBarProps) {
+function TruncationBar({ previewType, units, download, openInDefaultApp }: TruncationBarProps) {
   const [saveFailed, setSaveFailed] = useState(false);
   const save = () => {
     setSaveFailed(false);
@@ -131,7 +140,7 @@ function TruncationBar({ previewType, download, openInDefaultApp }: TruncationBa
   };
   return (
     <div className="document-preview-truncated" role="note">
-      <span>{truncationLine(previewType, host.isWeb)}</span>
+      <span>{truncationLine(previewType, units, host.isWeb)}</span>
       {host.isWeb && saveFailed && (
         <span className="document-preview-truncated-error" role="alert">{DOWNLOAD_FAILED_NOTE}</span>
       )}
@@ -208,7 +217,12 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
         </div>
       )}
       {summary?.truncated && (
-        <TruncationBar previewType={source.previewType} download={download} openInDefaultApp={openInDefaultApp} />
+        <TruncationBar
+          previewType={source.previewType}
+          units={summary.units}
+          download={download}
+          openInDefaultApp={openInDefaultApp}
+        />
       )}
     </>
   );
