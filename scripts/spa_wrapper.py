@@ -30,10 +30,11 @@ if _provider_tests not in {"true", "false"}:
 _model_picker = os.environ.get("COWORK_MODEL_PICKER", "off")
 if _model_picker not in {"off", "default", "open"}:
     raise ValueError("COWORK_MODEL_PICKER must be 'off', 'default' or 'open'.")
-# Whether cowork-server publishes with one shared token (COWORK_PUBLISH_TOKEN, non-blank as
-# cowork.services.publish reads it) instead of the person's own key. The page gets only the yes or
-# no, never the token: the Share box offers "Only you" and says a Public link reaches the internet
-# only when it's no.
+# Whether cowork-server publishes with one shared token (COWORK_PUBLISH_TOKEN) instead of the
+# person's own key. Only the container environment counts: cowork-server also reads the token from
+# its .env files (cowork.common.settings.app_settings), which this wrapper doesn't. The page gets
+# only the yes or no, never the token: the Share box offers "Only you" and says a Public link
+# reaches the internet only when it's no.
 _shared_publish_token = "true" if os.environ.get("COWORK_PUBLISH_TOKEN", "").strip() else "false"
 
 
