@@ -2,6 +2,7 @@ import { _electron } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
@@ -17,7 +18,7 @@ const execute = promisify(execFile);
 const channel = process.env.WINDOWS_SETUP_CHANNEL;
 const output = resolve('test-results', `windows-setup-${channel}`);
 const result = { channel, passed: false, failingStep: 'Preparation', error: '', elapsedSeconds: 0 };
-const setup = { steps: [], done: false, error: '', cancelled: false, returned: null, log: '' };
+const setup = { steps: [], done: false, error: '', cancelled: false, returned: null, log: '', startCalls: 0 };
 let app;
 let page;
 let profile;
@@ -25,6 +26,7 @@ let appEnvironment;
 let serverLog;
 let toolDir;
 let trimmed = false;
+let terminalScreenshot = false;
 const started = Date.now();
 
 function save(name, value) {
@@ -226,33 +228,36 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   await page.screenshot({ path: join(output, 'before.png'), timeout: 10_000 });
 
   result.failingStep = 'Setup';
-  await bounded(page.evaluate(() => {
-    const state = window.__setupSmoke = { steps: [], done: false, error: '', cancelled: false, returned: null, log: '' };
-    const bridge = window.antontron;
-    bridge.onInstallLog((line) => { state.log += line; });
-    bridge.onInstallProgress((steps) => { state.steps = steps; });
-    bridge.onInstallDone(() => { state.done = true; });
-    bridge.onInstallError((error) => { state.error = error; });
-    bridge.onInstallCancelled(() => { state.cancelled = true; });
-    // Store the promise in the page and observe both outcomes; Node polls the state until it settles.
-    window.__setupSmokeRun = bridge.startInstall().then(
-      (value) => { state.returned = value; },
-      (error) => { state.error = String(error); state.returned = false; },
-    );
-  }), 10_000, 'App stopped answering before setup started.');
+  const observerPath = join(profile, 'setup-observer.cjs');
+  await copyFile(fileURLToPath(new URL('./windows-setup-observer.cjs', import.meta.url)), observerPath);
+  const windowHandle = await bounded(app.browserWindow(page), 10_000, 'App window lookup timed out.');
+  await bounded(windowHandle.evaluate((window, filePath) => window.webContents.session.registerPreloadScript({ type: 'frame', filePath }), observerPath), 10_000, 'Observer registration timed out.');
+  // The observer is attached before boot chooses setup; SetupScreen alone starts it.
+  await bounded(page.evaluate(() => localStorage.setItem('anton.termsConsent', 'true')), 10_000, 'App stopped answering before setup started.');
+  await page.reload({ timeout: 30_000 });
+  const documentId = await bounded(page.evaluate(() => window.__setupSmoke?.snapshot().documentId), 10_000, 'Observer startup timed out.');
+  if (!documentId) throw new Error('Setup observer did not load.');
+  await page.getByText('LOADING WORLD', { exact: true }).waitFor({ timeout: 30_000 });
   const deadline = Date.now() + 15 * 60_000;
   while (true) {
     if (page.isClosed()) throw new Error('App window closed during setup.');
-    const current = await bounded(page.evaluate(() => window.__setupSmoke), 10_000, 'App stopped answering during setup.');
-    if (!current) throw new Error('App reloaded during setup.');
+    const current = await bounded(page.evaluate(() => window.__setupSmoke?.snapshot()), 10_000, 'App stopped answering during setup.');
+    if (!current || current.documentId !== documentId) throw new Error('App reloaded during setup.');
     Object.assign(setup, current);
     save('setup.log', setup.log);
     save('steps.json', setup.steps);
     result.failingStep = failureStep(setup);
+    if (setup.startCalls > 1) throw new Error('Setup screen started installation more than once.');
     if (setup.returned !== null || setup.error || setup.cancelled) break;
     if (Date.now() > deadline) throw new Error(`${failureStep(setup)}: setup timed out after 15 minutes.`);
     await delay(500);
   }
+  // Capture the terminal screen before its automatic transition to the workspace.
+  if (setup.error || setup.cancelled) await page.getByRole('alert').waitFor({ timeout: 10_000 });
+  else if (setup.done) await page.getByText('SETUP COMPLETE!', { exact: true }).waitFor({ timeout: 2_000 });
+  await page.screenshot({ path: join(output, 'after.png'), timeout: 10_000 });
+  terminalScreenshot = true;
+  if (setup.startCalls !== 1) throw new Error('Expected the setup screen to start installation exactly once.');
   assertSetupPassed(setup);
   result.failingStep = 'Start server';
   const server = await bounded(page.evaluate(() => window.antontron.serverInfo()), 10_000, 'Server state timed out.');
@@ -275,7 +280,9 @@ try {
 } finally {
   // Collect named diagnostics only. Never archive the profile, credential files, or installed environment.
   if (page && !page.isClosed()) {
-    try { await page.screenshot({ path: join(output, 'after.png'), timeout: 10_000 }); } catch (error) { save('screenshot-error.txt', error.message); }
+    if (!terminalScreenshot) {
+      try { await page.screenshot({ path: join(output, 'after.png'), timeout: 10_000 }); } catch (error) { save('screenshot-error.txt', error.message); }
+    }
     try { save('server-diagnostics.json', await bounded(page.evaluate(() => window.antontron.serverDiagnostics()), 10_000, 'Diagnostics timed out.')); } catch (error) { save('diagnostics-error.txt', error.message); }
   }
   if (serverLog && existsSync(serverLog)) {
@@ -306,6 +313,7 @@ try {
   }
   result.elapsedSeconds = Math.round((Date.now() - started) / 1000);
   result.steps = setup.steps;
+  result.startCalls = setup.startCalls;
   save('result.json', result);
   const summary = [`### Windows setup: ${channel}`, `Version: ${result.version ?? 'unresolved'}`, ...setup.steps.map((step) => `- ${STEP_NAMES[step.id] ?? step.id}: ${step.status}`), result.passed ? 'Result: passed' : `Result: failed at ${result.failingStep}: ${result.error}`, `Elapsed: ${result.elapsedSeconds}s`].join('\n');
   console.log(summary);

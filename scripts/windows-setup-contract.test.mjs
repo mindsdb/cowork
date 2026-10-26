@@ -4,7 +4,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { packageIdentity, validateManifest } from './macos-setup-contract.mjs';
+import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
+import { assertSetupPassed, packageIdentity, validateManifest } from './macos-setup-contract.mjs';
 import { appEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
 
 const R3 = 'D69B561148F01C77C54578C10926DF5B856976AD';
@@ -126,4 +129,78 @@ test('the real smoke command refuses a local machine and still writes failure ev
   assert.equal(result.passed, false);
   assert.equal(result.failingStep, 'Preparation');
   assert.match(result.error, /GitHub-hosted Windows runner/);
+});
+
+function setupObserver(invoke, isMainFrame = true) {
+  const ipcRenderer = new EventEmitter();
+  ipcRenderer.invoke = invoke;
+  let bridge;
+  runInNewContext(readFileSync(new URL('./windows-setup-observer.cjs', import.meta.url), 'utf8'), {
+    process: { isMainFrame },
+    require: (name) => {
+      if (name === 'node:crypto') return { randomUUID };
+      assert.equal(name, 'electron');
+      return { ipcRenderer, contextBridge: { exposeInMainWorld: (name, value) => {
+        assert.equal(name, '__setupSmoke');
+        bridge = value;
+      } } };
+    },
+  });
+  return { ipcRenderer, snapshot: () => JSON.parse(JSON.stringify(bridge.snapshot())), bridge };
+}
+
+test('the observer routes onboarding to setup without starting or replacing installation', async () => {
+  const calls = [];
+  const { ipcRenderer, snapshot } = setupObserver(async (...args) => {
+    calls.push(args);
+    return args[0] === 'install:start' ? true : { configured: false };
+  });
+  assert.equal(snapshot().startCalls, 0);
+  assert.notEqual(snapshot().documentId, setupObserver(async () => true).snapshot().documentId);
+  assert.equal(calls.length, 0);
+  assert.equal((await ipcRenderer.invoke('settings:check-configured')).configured, true);
+  assert.equal(calls.length, 0);
+  await ipcRenderer.invoke('install:check', 'unchanged argument');
+  assert.deepEqual(calls, [['install:check', 'unchanged argument']]);
+  assert.equal(await ipcRenderer.invoke('install:start'), true);
+  assert.equal(snapshot().returned, true);
+  assert.equal(snapshot().startCalls, 1);
+  assert.equal(calls.filter(([channel]) => channel === 'install:start').length, 1);
+  assert.equal((await ipcRenderer.invoke('settings:check-configured')).configured, false);
+  await ipcRenderer.invoke('install:start');
+  assert.equal(snapshot().startCalls, 2);
+});
+
+test('completion events cannot turn a false return or warning into a passing setup', async () => {
+  for (const returned of [false, true]) {
+    const { ipcRenderer, snapshot } = setupObserver(async () => returned);
+    const steps = ['uv', 'cowork-server', 'verify', 'server'].map((id) => ({ id, status: 'done' }));
+    ipcRenderer.emit('install:progress', {}, steps);
+    ipcRenderer.emit('install:log', {}, 'uv not found. Installing...\n');
+    ipcRenderer.emit('install:log', {}, 'uv installed at fixture\n');
+    ipcRenderer.emit('install:done', {});
+    assert.equal(snapshot().returned, null);
+    assert.equal(await ipcRenderer.invoke('install:start'), returned);
+    assert.equal(snapshot().returned, returned);
+    if (returned) assert.doesNotThrow(() => assertSetupPassed(snapshot()));
+    else assert.throws(() => assertSetupPassed(snapshot()), /did not finish successfully/);
+    steps[3].status = 'warning';
+    ipcRenderer.emit('install:progress', {}, steps);
+    assert.throws(() => assertSetupPassed(snapshot()));
+  }
+});
+
+test('the observer preserves installer rejection, error and cancellation without installing in subframes', async () => {
+  const error = new Error('installer failed');
+  const { ipcRenderer, snapshot } = setupObserver(async () => { throw error; });
+  await assert.rejects(ipcRenderer.invoke('install:start'), (actual) => actual === error);
+  assert.equal(snapshot().returned, false);
+  assert.match(snapshot().error, /installer failed/);
+  ipcRenderer.emit('install:error', {}, 'certificate failure');
+  assert.equal(snapshot().error, 'certificate failure');
+  ipcRenderer.emit('install:cancelled', {});
+  assert.equal(snapshot().cancelled, true);
+  const child = setupObserver(() => assert.fail('subframe invoked IPC'), false);
+  assert.equal(child.bridge, undefined);
+  assert.equal(child.ipcRenderer.eventNames().length, 0);
 });
