@@ -35,8 +35,8 @@ describe('AccessChooser with the platform UI off', () => {
   });
 
   it('says who Public and Password reach without claiming the internet', () => {
-    expect(ACCESS_LABELS.public.desc).toBe('Anyone who can reach this deployment, with the URL');
-    expect(ACCESS_LABELS.password.desc).toBe('Anyone who can reach this deployment, with the password');
+    expect(ACCESS_LABELS.public.desc).toBe('Anyone with the URL');
+    expect(ACCESS_LABELS.password.desc).toBe('Anyone with the URL and the password');
   });
 
   it('renders no choice selected and offers no "Only you"', () => {
@@ -45,7 +45,7 @@ describe('AccessChooser with the platform UI off', () => {
     expect(radios).toHaveLength(3);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-checked', 'false');
     expect(screen.queryByText('Only you')).toBeNull();
-    expect(screen.getByText('Anyone who can reach this deployment, with the URL')).toBeInTheDocument();
+    expect(screen.getByText('Anyone with the URL')).toBeInTheDocument();
   });
 
   it('asks for someone without pointing to "Only you" when Specific people is empty', () => {

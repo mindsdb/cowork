@@ -23,6 +23,7 @@ import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
   ACCESS_LABELS,
+  accessDraftFromArtifact,
   buildAccessPayload,
   isAccessDraftValid,
   isOwnerOnlySelection,
@@ -32,18 +33,6 @@ import {
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-
-function draftFromController(pub) {
-  // Same derivation as accessDraftFromArtifact: the controller carries the
-  // server's three modes, and the picker offers "Only you" as its own.
-  const serverMode = pub.accessMode || 'public';
-  return {
-    mode: serverMode === 'restricted' && isOwnerOnlySelection(pub) ? 'ownerOnly' : serverMode,
-    password: pub.accessPassword || '',
-    emailsText: (pub.accessEmails || []).join(', '),
-    orgAllowed: !!pub.orgAllowed,
-  };
-}
 
 // Has the editable draft diverged from what's currently live? Decides whether
 // the change-access view shows the "Update" button (changes to publish) or the
@@ -226,7 +215,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
   // Editable access draft for the publish + change-access flows.
-  const [draft, setDraft] = useState(() => (isPublished ? draftFromController(pub) : newAccessDraft()));
+  const [draft, setDraft] = useState(() => (isPublished ? accessDraftFromArtifact(pub) : newAccessDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
   const [draftDirty, setDraftDirty] = useState(false);
@@ -242,7 +231,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     setDraftDirty(false);
     if (isPublished) {
       setView('summary');
-      setDraft(draftFromController(pub));
+      setDraft(accessDraftFromArtifact(pub));
       pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
@@ -258,11 +247,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   // loaded access changes — but never over edits the user already started.
   useEffect(() => {
     if (!open || view !== 'access' || draftDirty) return;
-    setDraft(draftFromController(pub));
+    setDraft(accessDraftFromArtifact(pub));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(',')]);
 
-  const current = draftFromController(pub);
+  const current = accessDraftFromArtifact(pub);
 
   const doPublish = async () => {
     if (!isAccessDraftValid(draft)) return;
@@ -372,7 +361,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <div className="py-3 px-4">
                     {view === 'summary' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(accessDraftFromArtifact(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
                         <AccessSummaryCard mode={pub.accessMode} ownerOnly={pub.ownerOnly} />
@@ -391,7 +380,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'access' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(accessDraftFromArtifact(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
                         <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} />

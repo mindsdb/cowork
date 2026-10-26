@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
@@ -59,15 +59,37 @@ describe('PublishMenu with the platform UI off', () => {
     expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' });
   });
 
-  it('opens an artifact already shared as Public on Public, in this deployment\'s words', () => {
+  it('opens an artifact already shared as Public on Public, without claiming the internet', () => {
     render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a' })} />);
     fireEvent.click(screen.getByText('Shared'));
 
     expect(screen.getByText('Public')).toBeInTheDocument();
-    expect(screen.getByText('Anyone who can reach this deployment, with the URL')).toBeInTheDocument();
+    expect(screen.getByText('Anyone with the URL')).toBeInTheDocument();
     expect(screen.queryByText(/internet/)).toBeNull();
 
     fireEvent.click(screen.getByText('Change'));
     expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('starts a reshare with nothing picked after Stop sharing from Change', async () => {
+    const published = makeController({
+      publishedUrl: 'https://view.example/r/a',
+      unpublish: vi.fn().mockResolvedValue(true),
+    });
+    const { rerender } = render(<PublishMenu controller={published} />);
+    fireEvent.click(screen.getByText('Shared'));
+    fireEvent.click(screen.getByText('Change'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
+    });
+    expect(published.unpublish).toHaveBeenCalled();
+
+    // usePublish clears only the URL when it unpublishes, so the controller
+    // still carries the access the artifact had.
+    rerender(<PublishMenu controller={makeController()} />);
+    fireEvent.click(screen.getByText('Share'));
+
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
+    expect(shareButton()).toBeDisabled();
   });
 });

@@ -134,21 +134,20 @@ export function buildAccessPayload(draft) {
 // Single source of truth for the access option copy. PublishMenu imports this
 // for its summary card, so the wording can't drift between the picker and the
 // "currently published as" view.
-// With the platform UI off, this is a deployment's own web build. Its links
-// open for whoever can reach that deployment, behind any sign-in it puts in
-// front of them, so Public and Password say that instead of "internet".
+// With the platform UI off, the build can't tell where its links open. A
+// deployment's own publisher may put a sign-in in front of them, or the build
+// may publish to MindsHub, where they reach the internet. So Public and
+// Password say only what a visitor needs, which holds in both cases.
 export const ACCESS_LABELS = {
   public: {
     icon: Ico.globe,
     title: 'Public',
-    desc: PLATFORM_UI ? 'Anyone on the internet with the URL' : 'Anyone who can reach this deployment, with the URL',
+    desc: PLATFORM_UI ? 'Anyone on the internet with the URL' : 'Anyone with the URL',
   },
   password: {
     icon: Ico.lock,
     title: 'Password protected',
-    desc: PLATFORM_UI
-      ? 'Anyone on the internet with the password'
-      : 'Anyone who can reach this deployment, with the password',
+    desc: PLATFORM_UI ? 'Anyone on the internet with the password' : 'Anyone with the URL and the password',
   },
   restricted: {
     icon: Ico.people,
@@ -196,8 +195,10 @@ function OptionCard({ value, active, icon, title, desc }) {
 
 // Order runs private → public, so the least exposing choice is the one the
 // eye lands on first. With the platform UI off there is no "Only you": a
-// deployment's own publisher holds one shared publish token and no owner to
-// let in, so it answers an owner-only upload with a 400.
+// publisher reached with one shared publish token (cowork-server's
+// COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
+// upload with a 400. The flag can't tell that build from one that publishes to
+// MindsHub, so the second loses "Only you" too.
 const DEFAULT_MODES = PLATFORM_UI
   ? ['ownerOnly', 'restricted', 'password', 'public']
   : ['restricted', 'password', 'public'];
