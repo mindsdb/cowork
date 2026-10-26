@@ -12,7 +12,7 @@ import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
 import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
-import { appEnvironment as isolatedEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
+import { appEnvironment as isolatedEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
 
 const execute = promisify(execFile);
 const channel = process.env.WINDOWS_SETUP_CHANNEL;
@@ -177,6 +177,7 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   } })).split(/\r?\n/).filter(Boolean);
   save('roots-removed.txt', `${removed.join('\n')}\n`);
   console.log(`Removed ${removed.length} roots:\n${removed.join('\n')}`);
+  assertRemoved(await rootStores('roots-after-removal.json'));
   // A fresh Windows downloads a missing root when a program verifies through Windows, as
   // setup's uv installer does; the image turns that off, which would fail Install uv instead.
   await powershell(Object.values(ROOT_AUTO_UPDATE).map((key) => `Remove-ItemProperty -LiteralPath '${key}' -Name DisableRootAutoUpdate -ErrorAction SilentlyContinue`).join('\n'));

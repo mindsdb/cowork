@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { assertSetupPassed, packageIdentity, validateManifest } from './macos-setup-contract.mjs';
-import { appEnvironment, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
+import { appEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
 
 const R3 = 'D69B561148F01C77C54578C10926DF5B856976AD';
 const X1 = 'CABD2A79A1076A31F21D253635CB039D4329A5E8';
@@ -47,13 +47,24 @@ test('the workflow restores the runner\'s roots and settings from where the harn
 test('a trim that left a downloaded root, a named root visible to Python, or root downloads off fails before setup', () => {
   const on = { policy: null, setting: null };
   const trimmed = (entries, rootAutoUpdateOff = on) => assertTrimmed({ entries, rootAutoUpdateOff });
+  assert.doesNotThrow(() => assertRemoved({ entries: [entry('LocalMachine\\Root', 'B'.repeat(40)), entry('CurrentUser\\Root', 'B'.repeat(40))] }));
+  assert.throws(() => assertRemoved({ entries: [entry('LocalMachine\\AuthRoot', OTHER)] }), /remain in LocalMachine\\AuthRoot/);
   assert.doesNotThrow(() => trimmed([entry('LocalMachine\\Root', 'B'.repeat(40)), entry('CurrentUser\\Root', 'B'.repeat(40))]));
-  assert.throws(() => trimmed([entry('LocalMachine\\AuthRoot', OTHER)]), /remain in LocalMachine\\AuthRoot/);
+  // Once downloads are back on, another program on the runner may download an unrelated root, as on a fresh machine.
+  assert.doesNotThrow(() => trimmed([entry('LocalMachine\\AuthRoot', OTHER)]));
+  assert.throws(() => trimmed([entry('LocalMachine\\AuthRoot', R3)]), /GlobalSign Root CA - R3 in LocalMachine\\AuthRoot/);
   assert.throws(() => trimmed([entry('CurrentUser\\Root', R3)]), /GlobalSign Root CA - R3 in CurrentUser\\Root/);
   assert.throws(() => trimmed([entry('LocalMachine\\Root', X1)]), /ISRG Root X1 in LocalMachine\\Root/);
   // The hosted image sets the policy; left on, Install uv fails where a fresh machine downloads ISRG Root X1.
   assert.throws(() => trimmed([], { policy: 1, setting: null }), /still turned off/);
   assert.throws(() => trimmed([], { policy: null, setting: 1 }), /still turned off/);
+});
+
+test('the harness checks the emptied AuthRoot before it turns root downloads back on', () => {
+  const smoke = readFileSync(resolve('scripts/windows-setup-smoke.mjs'), 'utf8');
+  const removed = smoke.indexOf('assertRemoved(await rootStores(');
+  const downloadsOn = smoke.indexOf('Remove-ItemProperty');
+  assert.ok(removed > 0 && removed < downloadsOn && downloadsOn < smoke.indexOf('assertTrimmed(await rootStores('));
 });
 
 test('the app gets a fresh profile and system folders only, never CI tokens or runner tools', () => {
