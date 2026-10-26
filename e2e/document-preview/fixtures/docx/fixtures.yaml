@@ -1,0 +1,305 @@
+# Word fixtures for the document preview harness (e2e/document-preview/harness.ts).
+# Each entry names a .docx file in this folder. make-fixtures.mjs writes every
+# one of them but python-docx-report.docx, which make-python-docx-fixture.py
+# writes.
+
+# A heading in the Title style and one paragraph.
+- name: title and paragraph
+  file: title-and-paragraph.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Quarterly summary
+      - Revenue grew in every region this quarter.
+
+# Korean and Chinese runs that name East Asian fonts (Malgun Gothic, SimSun)
+# the file doesn't embed.
+- name: korean and chinese without embedded fonts
+  file: korean-and-chinese.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - 안녕하세요
+      - 你好世界
+
+# Pictures whose image relationships are External: a Google host, loopback by
+# address and by name, and a path on the app's own origin. Three use r:embed
+# and one r:link.
+- name: external images
+  file: external-image.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - External images
+
+# Hyperlinks to javascript:, to a Google host, to loopback by address and by
+# name, and to a path on the app's own origin, plus one link to a bookmark in
+# the document.
+- name: script and outside links
+  file: script-link.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Script link
+      - Jump to the later section
+      - Later section
+
+# An altChunk whose HTML holds a meta refresh to a Google host and a loopback
+# image.
+- name: altchunk with a meta refresh
+  file: altchunk-refresh.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Before the chunk
+      - After the chunk
+    textExcludes:
+      - Imported chunk text
+
+# styles.xml font and color values that end their CSS declaration or rule and
+# add a background url() aimed at a Google image host.
+- name: styles.xml url()
+  file: styles-url.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Styled with hostile values
+
+# A VML rectangle whose style carries a background url() aimed at a Google host
+# and a cursor url() aimed at loopback, and whose fill is a url() aimed at
+# localhost. A second rectangle's fill color and stroke color spell the url
+# name escaped (u\72l), aimed at localhost and loopback.
+- name: VML style url()
+  file: vml-url.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - A VML shape
+
+# CSS shorthands that hold a var() next to a url() aimed at a Google host, as
+# written and with the url name escaped (u\72l). Two VML rectangle styles and
+# two styles.xml values (a font in the document defaults and a color in a
+# paragraph style) carry them. A browser keeps such a shorthand's text as
+# written and reports each of its longhands as empty.
+- name: var() shorthands hiding a url()
+  file: css-shorthand-var.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Shorthands that hold a var()
+
+# Longhands whose url() appears only once the browser substitutes them, with
+# the url name escaped (\75rl), aimed at loopback by address and by name. A
+# browser keeps a value that holds env(), var() or if() as written, escapes
+# included, until it substitutes it in the frame. Three VML rectangle styles
+# carry an env() fallback, a var() fallback and an if() whose comments hide a
+# quote around the escape, and a styles.xml color value carries an env()
+# fallback.
+- name: env() and var() longhands hiding a url()
+  file: css-substitution-url.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - Longhands that hold env() or var()
+
+# 2.5 KB: a default header of 1,000 paragraphs and 4,000 page breaks.
+# docx-preview renders the header again on every page, so the preview would
+# build about 12 million nodes.
+- name: a header on 4,000 pages
+  file: header-per-page.docx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# 2.3 KB: one footnote of 1,000 paragraphs referenced 4,000 times.
+# docx-preview renders the footnote again for every reference, so the preview
+# would build about 12 million nodes.
+- name: a footnote for 4,000 references
+  file: footnote-per-reference.docx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# 2.4 KB: 4,000 page breaks and a default header holding a table whose grid
+# has 2,000 columns. docx-preview draws a <col> for each column, and the
+# header again on every page, so the preview would build about 8 million
+# nodes.
+- name: a 2,000-column table header on 4,000 pages
+  file: grid-columns-per-page.docx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# 2.6 KB: a footnote that refers to an endnote of 1,000 paragraphs,
+# referenced 4,000 times. docx-preview lists the endnote again each time the
+# footnote renders, so the preview would build about 12 million nodes.
+- name: an endnote listed by 4,000 footnote references
+  file: endnote-in-footnote.docx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# 1.9 KB: 22 superscript runs, each holding a VML text box that holds the
+# next, around one reference to a footnote of 1,000 paragraphs. docx-preview
+# renders a superscript run's children twice, so the reference and its
+# footnote would render 2^22 times.
+- name: superscript runs nested 22 deep
+  file: nested-superscript.docx
+  kind: hostile
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A top-level VML shape whose v:imagedata names a PNG the file holds, as Word
+# writes a picture watermark or a legacy picture.
+- name: VML picture
+  file: vml-picture.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - A VML picture
+
+# A picture watermark as Word writes one: a VML shape in the default header,
+# placed absolutely with a large negative z-index, whose v:imagedata names a
+# PNG the file holds.
+- name: picture watermark in the header
+  file: vml-watermark.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - A picture watermark
+      - A header over a watermark
+
+# A DrawingML picture stored in the file in the body, and another in the
+# default header, each an r:embed of a PNG under word/media/, as Word writes a
+# pasted picture.
+- name: pictures stored in the body and header
+  file: embedded-pictures.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Pictures stored in the file
+      - A header with a picture
+
+# A document shaped the way Word saves one, with styles, a theme, numbering
+# and a default header each in its own part: a heading, a decimal list whose
+# numbers end in Word's default tab, a run colored by the theme's accent1
+# alone, and a two-column table.
+- name: numbered list, theme color, table and header
+  file: list-theme-table-header.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Project status
+      - Collect the figures
+      - accent color
+      - North
+      - Weekly status report
+
+# 27 KB: 2,000 drawings that name one 400 by 400 BMP of 480 KB, through two
+# relationship ids with the same target. docx-preview loads a picture again
+# for every drawing that shows it, so without one load per part the preview
+# would inflate 960 MB, past the 256 MiB archive cap. With the picture's
+# 640 KB data: URL as each drawing's source, the frame's process passed 3 GB
+# in Chromium and 4 GB in Firefox.
+- name: one picture shown by 2,000 drawings
+  file: picture-per-reference.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - One picture shown 2,000 times
+
+# 7 KB: 1,000 paragraphs of one bulleted list whose picture bullet is an 800
+# by 800 BMP of 1.9 MB. docx-preview writes the bullet's URL into style text
+# as a custom property that every paragraph of the list reads, and in Firefox
+# each of those paragraphs adds to the frame's memory. With the picture's
+# 2.5 MB data: URL there, Firefox's frame process took 630 MB, and 1.9 GB with
+# 5,000 paragraphs. With one blob: URL it took 290 MB.
+- name: one picture bullet shown by 1,000 list paragraphs
+  file: picture-bullet-per-paragraph.docx
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    textIncludes:
+      - One picture bullet shown 1,000 times
+
+# A heading, a paragraph, a table and an inline picture, written by python-docx
+# on its default template, as the agent writes a Word file. Written by
+# make-python-docx-fixture.py.
+- name: python-docx heading, table and picture
+  file: python-docx-report.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Regional sales
+      - Totals for each region this quarter.
+      - East
+      - '140'
+
+# The 8-byte OLE compound file signature and a zeroed header sector. Word
+# saves a password-protected document, and the old .doc format, as a compound
+# file.
+- name: password-protected or old .doc
+  file: compound-file.docx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: unsupported
+
+# A valid zip archive that holds no Word document.
+- name: not a Word document
+  file: not-a-document.docx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed
+
+# A package whose relationships name word/document.xml as its document, which
+# the zip doesn't hold.
+- name: document part missing from the package
+  file: missing-document-part.docx
+  kind: clean
+  expect:
+    outcome: error
+    errorCode: parse-failed

@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../components/ui/Toast';
-import { useLiveAppAvailability } from './useLiveAppAvailability';
+import { LiveAppAvailabilityWatcher, useLiveAppAvailability } from './useLiveAppAvailability';
 import { acknowledgeLiveAppAvailability, fetchLiveAppAvailability } from '../api';
 import { setLiveApps } from '../../lib/liveApps';
 
@@ -296,5 +296,21 @@ describe('live-app availability notices', () => {
     await tick(60_000);
     expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
     expect(fetchLiveAppAvailability).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('LiveAppAvailabilityWatcher', () => {
+  it('shows a notice without re-rendering the component that mounts it', async () => {
+    fetchLiveAppAvailability.mockResolvedValue(available);
+    let renders = 0;
+    function Root() {
+      renders += 1;
+      return <LiveAppAvailabilityWatcher accountScope="proxy-session" />;
+    }
+    render(<ToastProvider><Root /></ToastProvider>);
+    await settle();
+
+    expect(screen.getByText(MESSAGE)).toBeTruthy();
+    expect(renders).toBe(1);
   });
 });

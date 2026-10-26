@@ -19,7 +19,9 @@ import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOption
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import Select from './ui/Select.jsx';
-import { effortLevelsFor, effortOptions, resolveEffort } from '../code/reasoning';
+import {
+  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions, resolveEffort,
+} from '../code/reasoning';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -28,7 +30,7 @@ import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
-import { modelPickerMode } from '../../lib/modelPicker';
+import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
@@ -412,13 +414,25 @@ export default function Composer({
     ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
     : '';
 
+  // With platform UI off, the operator's picker (lib/modelPicker) also sets
+  // which efforts users may pick: on the picked model, or with "Operator
+  // default" on both role models. The pill leads with "Default", which
+  // sends no effort, so it never names a level the question won't run at.
+  const operatorPicker = modelPickerMode() !== 'off';
+  const operatorLevels = useMemo(
+    () => (operatorPicker ? operatorEffortLevels(model?.id && model.id !== MODEL_ROUTER_ID ? model.id : null) : []),
+    [operatorPicker, model?.id],
+  );
+
   // Drop a pick the current model does not offer, so the pill never names a
   // level the request will not send (Code mode does the same in
   // useNewTaskDraft). Only a known entry can veto a pick: a model missing
   // from the map may mean the catalog has not loaded, or that the MindsHub
   // bucket failed and the server sent only the direct-provider entries, and
-  // neither is a reason to throw away a saved choice.
-  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
+  // neither is a reason to throw away a saved choice. The operator's list
+  // is in the page from the start, so there a model missing from it offers
+  // no level.
+  const knownLevels = operatorPicker ? operatorLevels : modelMeta?.modelEfforts?.[model?.id]?.efforts;
   useEffect(() => {
     if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
   }, [effort, knownLevels, onEffortChange]);
@@ -432,7 +446,6 @@ export default function Composer({
   // With platform UI off, the operator's picker (lib/modelPicker) shows only
   // the models the operator offers. With none offered it shows nothing at
   // all, never the Settings shortcut, which that build hides.
-  const operatorPicker = modelPickerMode() !== 'off';
   const operatorModels = useMemo(
     () => (operatorPicker ? offeredModels(models, modelMeta?.modelEnabled) : []),
     [operatorPicker, models, modelMeta?.modelEnabled],
@@ -1477,6 +1490,17 @@ export default function Composer({
                 value={resolvedEffort}
                 onValueChange={onEffortChange}
                 options={effortOptions(effortLevels)}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Reasoning effort"
+                menuLabel="Reasoning effort"
+              />
+            )}
+            {operatorPicker && !modelReadOnly && operatorLevels.length > 0 && (
+              <Select
+                value={operatorLevels.includes(effort) ? effort : MODEL_DEFAULT_VALUE}
+                onValueChange={(value) => onEffortChange?.(value === MODEL_DEFAULT_VALUE ? '' : value)}
+                options={operatorEffortOptions(operatorLevels)}
                 variant="unstyled"
                 className="meta-pill"
                 ariaLabel="Reasoning effort"

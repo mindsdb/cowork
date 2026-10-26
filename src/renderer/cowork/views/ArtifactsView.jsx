@@ -22,7 +22,9 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
-import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
+import {
+  NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete,
+} from '../lib/artifactActions';
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { useLiveApps } from '../../lib/liveApps';
@@ -33,9 +35,10 @@ import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
 import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
-  canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact,
-  isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
+  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
+import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -215,42 +218,24 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
  * expired bearer, a file deleted server-side, or a network drop resolves it
  * false — and a discarded promise leaves the click doing nothing at all
  * (review pass 2 on #764). Every download this page offers routes through
- * here so the failure reaches a toast.
+ * here so the failure reaches a toast. `note`, when given, is a neutral toast
+ * shown only once the download succeeded.
  */
-async function downloadWithFeedback(artifact, toastManager) {
+async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (!(await downloadArtifactFile(artifact))) {
     toastManager.add({ title: 'Could not download this artifact.', type: 'danger' });
+    return;
   }
+  if (note) toastManager.add({ title: note });
 }
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false }) {
-  const orgMode = useOrgMode();
-  const toastManager = useToastManager();
-  /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
-  const published = !!artifact.publishedUrl;
-  // In the browser the artifact's address is its HTTP serve URL, not a local
-  // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+  /* Same open rules as the list row: the body opens the best destination, and
+     ↗ opens the artifact outside the app. */
+  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
-
-  // No raw window.open fallback: host.openExternal is what restricts the
-  // agent-writable URL to http(s)/mailto.
-  const onOpenPublished = async () => {
-    if (!published) return;
-    try { await host.openExternal(artifact.publishedUrl); } catch {}
-  };
-  const onOpenPrivate = async () => {
-    if (!privateUrl) return;
-    try { await host.openExternal(privateUrl); } catch {}
-  };
 
   // Not `projectLabel`: that name belongs to the imported
   // `projectLabel(project)` function the tooltip below calls, and shadowing it
@@ -286,23 +271,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const { base, secondary } = splitArtifactName(artifact);
   // A duplicated live app says whose it was, in the line a web app leaves empty.
   const received = liveLines?.received ?? null;
-  // Open the live thing: published URL, else served URL, else local file. In org
-  // mode the last fallback is skipped — there is no local file the user can reach,
-  // and `privateUrl` is empty there by construction.
-  const openBest = () => {
-    if (canPreview) onOpenViewer?.(artifact);
-    else if (published) onOpenPublished();
-    else if (privateUrl) onOpenPrivate();
-    // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
-    // save them rather than do nothing (ENG-2044). Same rule as
-    // artifactOpenTarget's 'download'.
-    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
-  };
   // ↗
   const onOpenExternal = (e) => {
     e.stopPropagation();
-    openBest();
+    openOutside();
   };
 
   return (
@@ -312,7 +284,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       padding="none"
       className="railed cw-artifact-card flex flex-col"
       {...hoverProps}
-      onActivate={() => (canPreview ? onOpenViewer(artifact) : openBest())}
+      onActivate={openBest}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div className="flex flex-col gap-3 py-[14px] px-4 flex-1">
@@ -346,9 +318,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div className="flex items-center gap-0.5 shrink-0">
-            <Tooltip content="Open">
-              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
-            </Tooltip>
+            {canOpenOutside && (
+              <Tooltip content="Open">
+                <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
+              </Tooltip>
+            )}
             <Tooltip content="More actions">
               <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
                 onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
@@ -414,45 +388,61 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
-// How a row opens.
+// How a row or a grid card opens.
 function useArtifactOpen(artifact, onOpenViewer) {
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
-  /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+  /*
+   * A click means "show me this artifact" in both deployments: Desktop renders
+   * the local bytes, org mode renders the authenticated draft. What org mode
+   * cannot render (a fullstack app, an image) falls through to the shared
+   * page, then to a download. Desktop hands an image to the default app; with
+   * no shell to hand it to, the viewer shows it, as the chat card does. The
+   * document types join both previews wherever the shared document gate
+   * allows them.
+   */
+  const hasBridge = host.isElectron;
+  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const target = artifactOpenTarget({
+    orgMode,
+    published,
+    canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
+    canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+    hasBridge,
+    hasDraft: canDownloadOrgDraft(artifact),
+    canDownload: canDownloadArtifact(artifact),
+  });
 
-  // Open the live thing: viewer, else published URL, else served URL, else
-  // local file. In org mode the last fallback is skipped — there is no local
-  // file the user can reach, and `privateUrl` is empty there by construction.
+  /*
+   * Open the live thing: the viewer, else a download that says why, else the
+   * shared page. Desktop tries the shared page before it hands the file to the
+   * default app.
+   */
   const openBest = () => {
-    if (canPreview) onOpenViewer?.(artifact);
+    if (target === 'preview') onOpenViewer?.(artifact);
+    else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: NO_PREVIEW_DOWNLOADED_NOTE });
     else if (published) openUrl(artifact.publishedUrl);
-    else if (privateUrl) openUrl(privateUrl);
-    // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
-    // save them rather than do nothing (ENG-2044). Same rule as
-    // artifactOpenTarget's 'download'.
-    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (target === 'os') openArtifactFile(artifact);
   };
-  // The row's ↗ skips the viewer: published URL, else served URL, else file.
+  /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
+     Org mode has no serve URL and no local file, so there ↗ opens only the
+     shared page. */
   const openOutside = async () => {
     const url = published ? artifact.publishedUrl : privateUrl;
-    // Org mode has no local file or serve URL to fall back to — but the
-    // authenticated draft URL still delivers the bytes as a download.
     if (url) await openUrl(url);
-    else if (orgMode && canDownloadOrgDraft(artifact)) await downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
-  return { orgMode, toastManager, published, openBest, openOutside };
+  /* Org mode offers ↗ only once a shared link exists, the same rule as its
+     "Open shared link" menu item; an unshared file saves from the menu's
+     Download. On web a tab shows only what canShowInBrowserTab allows and
+     saves anything else without a word, so ↗ is offered for those alone. */
+  const canOpenOutside = isArtifactActionAvailable('open', { orgMode, published })
+    && (!host.isWeb || canShowInBrowserTab(artifact));
+  return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 
 // Name: title primary, filename secondary (ENG-1123 Bug 1). Web apps have no
@@ -526,21 +516,23 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
   );
 }
 
-function ArtifactActions({ onOpen, menuItems }) {
+function ArtifactActions({ onOpen, showOpen, menuItems }) {
   return (
     <>
-      <Tooltip content="Open">
-        {/* Same ghost icon Button as the menu trigger beside it. */}
-        <Button
-          icon
-          size="sm"
-          variant="subtle"
-          aria-label="Open"
-          onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        >
-          {Ico.externalLink(14)}
-        </Button>
-      </Tooltip>
+      {showOpen && (
+        <Tooltip content="Open">
+          {/* Same ghost icon Button as the menu trigger beside it. */}
+          <Button
+            icon
+            size="sm"
+            variant="subtle"
+            aria-label="Open"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          >
+            {Ico.externalLink(14)}
+          </Button>
+        </Tooltip>
+      )}
       <OverflowMenu
         items={menuItems}
         label="Artifact menu"
@@ -559,19 +551,21 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   return [
-    {
+    (orgMode || onOpen) && {
       id: 'open',
       /*
        * "Open viewer" would be a lie in org mode: the row itself previews the
        * authenticated draft there, and this item is the page a collaborator
-       * opens. The filter below drops it when nothing is shared yet.
+       * opens. The filter below drops it when nothing is shared yet. Outside
+       * org mode the row leaves out onOpen when its click downloads, since the
+       * Download item below already does that.
        */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
       icon: Ico.externalLink(14),
       onClick: orgMode ? onOpenShared : onOpen,
     },
     // Org only: on Desktop the item above already opens the viewer.
-    orgMode && canPreviewOrgDraft(artifact) && {
+    orgMode && (canPreviewOrgDraft(artifact) || canPreviewDocument(artifact, host)) && {
       id: 'preview',
       label: 'Preview',
       icon: (Ico.eye?.(13) || Ico.sparkle(14)),
@@ -583,9 +577,9 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
       icon: Ico.folder(14),
       onClick: onReveal,
     },
-    // Presence of EITHER url, checked without building it: the org draft URL
-    // is what makes a non-HTML artifact downloadable on web (ENG-2044).
-    onDownload && (artifact?.serveUrl || canDownloadOrgDraft(artifact)) && {
+    /* Presence of EITHER url, checked without building it; a fullstack app's
+       primary is only its shell, so it gets none. */
+    onDownload && canDownloadArtifact(artifact) && {
       id: 'download',
       label: 'Download',
       icon: Ico.download(14),
@@ -643,18 +637,22 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     .filter(Boolean)
     // Mode gate on top of each item's own condition — see lib/artifactActions.
     .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
-      orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(artifact),
+      orgMode,
+      hasBridge: host.isElectron,
+      published,
+      hasDraft: canDownloadOrgDraft(artifact),
+      canDownload: canDownloadArtifact(artifact),
     }));
 }
 
 function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false }) {
-  const { orgMode, toastManager, published, openBest, openOutside } = useArtifactOpen(artifact, onOpenViewer);
+  const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
     artifact,
     orgMode,
     liveApps,
-    onOpen: openBest,
+    onOpen: target === 'download' ? undefined : openBest,
     onOpenShared: () => openUrl(artifact.publishedUrl),
     onPreview: () => onOpenViewer?.(artifact),
     onReveal: host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } },
@@ -679,7 +677,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
       title={<ArtifactTitle artifact={artifact} />}
       description={<ArtifactFileName artifact={artifact} liveLines={liveLines} />}
       onActivate={openBest}
-      actions={<ArtifactActions onOpen={openOutside} menuItems={menuItems} />}
+      actions={<ArtifactActions onOpen={openOutside} showOpen={canOpenOutside} menuItems={menuItems} />}
       meta={(
         <>
           <ArtifactStatusSlot
@@ -1167,7 +1165,7 @@ export default function ArtifactsView({
           // Desktop keeps images here — the viewer renders them, and this menu
           // used to be the only way in (a click on an image card hands the file
           // to the OS instead, which is what it did before this branch too).
-          if (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a)) {
+          if (canPreviewDocument(a, host) || (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a))) {
             items.push({
               id: 'preview',
               label: 'Preview',
@@ -1219,12 +1217,11 @@ export default function ArtifactsView({
             });
           }
           /*
-           * Org mode only: the draft URL is the one route to a non-HTML file's
-           * bytes there (ENG-2044). Desktop's grid keeps its existing menu —
-           * the list view already offers Download from `serveUrl`, and this
-           * fix leaves desktop behaviour untouched.
+           * Org mode and web: the draft or serve URL is the one route to a
+           * file's bytes there. Desktop's grid keeps its existing menu, since the
+           * list view already offers Download from `serveUrl`.
            */
-          if (orgMode && canDownloadOrgDraft(a)) {
+          if ((orgMode || host.isWeb) && canDownloadArtifact(a)) {
             items.push({
               id: 'download',
               label: 'Download',
@@ -1268,7 +1265,11 @@ export default function ArtifactsView({
           // Note this menu marks its rule with `separator`, not `divider` like
           // rowMenuItems, so the pass-through key differs.
           return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
-            orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(a),
+            orgMode,
+            hasBridge: host.isElectron,
+            published,
+            hasDraft: canDownloadOrgDraft(a),
+            canDownload: canDownloadArtifact(a),
           }));
         })()}
       />

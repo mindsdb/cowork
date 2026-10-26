@@ -21,6 +21,7 @@ const modelMeta = {
 
 function renderComposer(props = {}) {
   const onModelChange = vi.fn();
+  const onEffortChange = vi.fn();
   render(<Composer
     onSend={vi.fn()}
     projects={[]}
@@ -29,11 +30,11 @@ function renderComposer(props = {}) {
     modelMeta={modelMeta}
     effort="high"
     onModelChange={onModelChange}
-    onEffortChange={vi.fn()}
+    onEffortChange={onEffortChange}
     onOpenSettings={vi.fn()}
     {...props}
   />);
-  return { onModelChange };
+  return { onModelChange, onEffortChange };
 }
 
 beforeEach(() => {
@@ -44,7 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
+  document.head.querySelectorAll('meta[name^="cowork-model-"]').forEach((node) => node.remove());
 });
 
 describe("the operator's model picker with platform UI off", () => {
@@ -97,5 +98,55 @@ describe("the operator's model picker with platform UI off", () => {
   it('keeps the picker value for the operator row', () => {
     renderComposer({ model: { id: MODEL_ROUTER_ID, name: 'Model Router' } });
     expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Operator default');
+  });
+});
+
+describe("the operator's effort control with platform UI off", () => {
+  beforeEach(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'cowork-model-efforts';
+    // The catalog's efforts for opus-5-5 are high and xhigh; the operator lets users pick xhigh alone.
+    meta.content = JSON.stringify({ models: { [opus.id]: ['xhigh'] }, operatorDefault: ['low', 'medium'] });
+    document.head.append(meta);
+  });
+
+  it("offers Default, then only the operator's efforts on the picked model", async () => {
+    const user = userEvent.setup();
+    const { onEffortChange } = renderComposer({ model: opus, effort: '' });
+    const pill = screen.getByRole('combobox', { name: 'Reasoning effort' });
+    expect(pill).toHaveTextContent('Default effort');
+    await user.click(pill);
+    expect(screen.getAllByRole('option').map((row) => row.textContent)).toEqual(['Default', 'Xhigh']);
+    await user.click(screen.getByRole('option', { name: 'Xhigh' }));
+    expect(onEffortChange).toHaveBeenCalledWith('xhigh');
+  });
+
+  it('shows a pick the operator allows, and Default sends no effort', async () => {
+    const user = userEvent.setup();
+    const { onEffortChange } = renderComposer({ model: opus, effort: 'xhigh' });
+    const pill = screen.getByRole('combobox', { name: 'Reasoning effort' });
+    expect(pill).toHaveTextContent('Xhigh effort');
+    await user.click(pill);
+    await user.click(screen.getByRole('option', { name: 'Default' }));
+    expect(onEffortChange).toHaveBeenCalledWith('');
+  });
+
+  it("offers Operator default the efforts both role models allow", async () => {
+    const user = userEvent.setup();
+    renderComposer({ effort: '' });
+    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
+    expect(screen.getAllByRole('option').map((row) => row.textContent)).toEqual(['Default', 'Low', 'Medium']);
+  });
+
+  it('shows no effort control on a model the operator allows no effort on, and drops the pick', () => {
+    const { onEffortChange } = renderComposer({ model: luna, effort: 'xhigh' });
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).not.toBeInTheDocument();
+    expect(onEffortChange).toHaveBeenCalledWith('');
+  });
+
+  it("drops a pick the picked model doesn't allow, such as the catalog's high", () => {
+    const { onEffortChange } = renderComposer({ model: opus, effort: 'high' });
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Default effort');
+    expect(onEffortChange).toHaveBeenCalledWith('');
   });
 });

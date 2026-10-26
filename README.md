@@ -80,7 +80,7 @@ A channel's state is not all under one folder. It spreads across several locatio
 | Location (non-prod / prod) | What lives there | How it's isolated |
 |----------------------------|------------------|-------------------|
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
-| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv) | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
+| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv). Beside the `tools/` folder, never inside it: `.cowork-release-contracts/`, the release installer's rollback snapshots ([`install_release_server.py`](scripts/install_release_server.py)). uv reads every folder in `tools/` as a tool, and `uv tool list` fails on one it can't name | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
 | **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); on **Windows/Linux** the encrypted MindsHub refresh token (`mindshub-refresh.bin`, safe-storage) | `app.setName` per kind |
 | **MindsHub refresh token** — **macOS:** `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat`; **Windows/Linux:** userData `mindshub-refresh.bin` | The Keycloak refresh token | `COWORK_HOME` (macOS) / userData (Win/Linux) — see [`token-store.ts`](src/main/token-store.ts) |
@@ -583,7 +583,10 @@ off it.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
-sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+sidecar's own token, so the Keycloak JWT cannot arrive under that name. The
+exceptions are requests from the document preview frame, from frames inside
+it, and requests with no frame: the main process adds no token to those
+(`src/main/document-preview-guard.ts`).
 
 ### The MindsHub workspace selector
 
@@ -968,7 +971,9 @@ Settings > Agent tests configured providers by default on desktop and web, indep
 
 With the platform UI off, provider and model controls are hidden, but that does not disable background provider testing. Configure the runtime flag separately when the operator manages providers outside Cowork. Memory and Advanced Settings remain visible, and model or provider error cards direct users to the operator.
 
-An operator can show the composer's model picker in that build at run time. For the Python-served Docker app, set `COWORK_MODEL_PICKER` in the container environment to `default` or `open`; it defaults to `off`, which writes nothing into the page. The picker's first row, "Operator default", sends no model, so the question runs on the operator's role models. The other rows are the models the server lists for the planning provider, less any it lists with `enabled: false`. With none left, the composer shows no picker. In `default` mode each new conversation starts on "Operator default"; in `open` mode it starts on the user's last pick until the page reloads. A conversation saved on a model the picker no longer lists sends no model. The effort control and Settings' model rows stay hidden in every mode. Recreate the container and reload the page after changing it.
+An operator can show the composer's model picker in that build at run time. For the Python-served Docker app, set `COWORK_MODEL_PICKER` in the container environment to `default` or `open`; it defaults to `off`, which writes nothing into the page. The picker's first row, "Operator default", sends no model, so the question runs on the operator's role models. The other rows are the models the server lists for the planning provider, less any it lists with `enabled: false`. With none left, the composer shows no picker. In `default` mode each new conversation starts on "Operator default"; in `open` mode it starts on the user's last pick until the page reloads. A conversation saved on a model the picker no longer lists sends no model. Settings' model rows stay hidden in every mode. Recreate the container and reload the page after changing it.
+
+With the picker on, the operator can also let users pick a reasoning effort. Set `COWORK_MODEL_EFFORTS` to a JSON object of each model's efforts users may pick, such as `{"opus-5-5": ["xhigh"]}`. The composer then shows an effort control on a model the object lists, with "Default" first, which sends no effort, then those efforts. With "Operator default", it offers the efforts both `PLANNING_MODEL` and `CODING_MODEL` list there, since the question runs on both. A model the object doesn't list shows no effort control. The server applies the effort to the question's planning and coding calls, not to its router call. The app refuses to start when `COWORK_MODEL_EFFORTS` is set with the picker `off`, or holds anything but lists of lowercase efforts. Without it, the effort control stays hidden.
 
 With testing disabled, Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. This controls browser requests, not API authorization. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
@@ -1387,7 +1392,28 @@ CloudFront behavior:
 
 > **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
 
-Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+The upload, download, and setup checks watch different parts of this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+
+[`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) installs the published macOS `.pkg` and runs its own setup through Start server. It runs after each successful Stable or prod macOS upload, independently of the other platforms, and nightly at 07:30 UTC on both channels. The nightly Stable run checks out `staging`, so its harness matches the Stable package. Post-publish runs require the manifest to name that upload's URL; prod also requires the tagged release version. This detects a broken published installer but does not prevent someone downloading it before the check finishes.
+
+Stable and prod pipelines finish their running release before starting a newer one, so a new push cannot cancel a published package's setup check. A setup failure fails `build-installers`; prod's dependent OTA UI publish and download smoke wait on that result and will skip on failure.
+
+The check verifies the package checksum, signature, and notarization assessment, then installs it on a disposable GitHub-hosted macOS runner. Playwright opens the installed executable with a fresh home and browser profile. The app must report that all its data paths stay in that profile and that it cannot find an existing `uv`, including in system package-manager directories. A runner that already has `uv` fails preparation; the check does not remove shared tools or silently skip bootstrap.
+
+The harness invokes the app's existing setup IPC without signing in or providing model credentials. It captures the real progress events and requires Install uv, Install cowork-server, Verify installation, and Start server to finish `done`, followed by a healthy server. A startup `warning`, error, cancellation, missing step, app exit, or 15-minute setup timeout fails. The installed renderer must remain bundled. Stable's filename version includes the channel and commit; the app's display version uses `git describe`, so the check correlates those forms instead of comparing them literally.
+
+Every run retains named setup logs, step statuses, package identity, diagnostics, screenshots, and a trace in `macos-setup-<channel>` artifacts for 14 days. It does not upload the profile or credential files. A separate job sends failures to the engineering channel with the failing step and a run link, including outside a release freeze. The installed app receives no CI tokens. The notification reuses existing organization secrets; callers grant `actions: read` for the existing notifier.
+
+Run the workflow from Actions, or after it reaches the default branch:
+
+```bash
+gh workflow run macos-setup-smoke.yml --ref staging -f channels=stable
+gh workflow run macos-setup-smoke.yml --ref main -f channels=prod
+```
+
+For a historical check, select `stable` and provide `snapshot-url` plus its independently recorded `snapshot-sha256`. The URL must name a public macOS Stable snapshot. A failure keeps the failing setup step and sends the same notification. `uv-tool-list.log` also records the resolver's underlying error when an older app's Verify message omits it; `uv-version.log` records the installed uv version. Pinning the app does not pin the uv bootstrap or server packages it downloads today, so an old app may no longer reproduce an older failure. A dependency replay must be recorded separately from the ordinary user path.
+
+This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
 
 ### Workflow files
 
@@ -1403,6 +1429,7 @@ Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upl
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
+| [`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) | After Stable/prod macOS upload / nightly / manual | Install the published `.pkg` on a fresh profile and require every setup step through Start server to succeed |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets

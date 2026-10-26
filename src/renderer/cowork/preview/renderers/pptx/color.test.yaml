@@ -1,0 +1,59 @@
+# What color.test.ts checks. Every color element sits in an a:solidFill with
+# the DrawingML namespace, and resolves against the scheme below.
+
+scheme:
+  theme: { dk1: '000000', lt1: FFFFFF, accent1: 4472C4 }
+  map: { tx1: dk1, bg1: lt1 }
+
+# [the color element inside a:solidFill, the CSS color it draws, or null]
+colors:
+  - ['<a:srgbClr val="4472C4"/>', '#4472c4']
+  - ['<a:srgbClr val="4472c4"/>', '#4472c4']
+  - ['<a:schemeClr val="accent1"/>', '#4472c4']
+  - ['<a:schemeClr val="tx1"/>', '#000000']
+  - ['<a:schemeClr val="bg1"/>', '#ffffff']
+  - ['<a:sysClr val="windowText" lastClr="000000"/>', '#000000']
+  - ['<a:prstClr val="red"/>', '#ff0000']
+  - ['<a:scrgbClr r="100000" g="0" b="0"/>', '#ff0000']
+  - ['<a:hslClr hue="0" sat="100000" lum="50000"/>', '#ff0000']
+  - ['<a:srgbClr val="FFFFFF"><a:lumMod val="50000"/></a:srgbClr>', '#808080']
+  - ['<a:srgbClr val="000000"><a:lumOff val="50000"/></a:srgbClr>', '#808080']
+  - ['<a:srgbClr val="FFFFFF"><a:shade val="50000"/></a:srgbClr>', '#808080']
+  - ['<a:srgbClr val="000000"><a:tint val="50000"/></a:srgbClr>', '#808080']
+  - ['<a:srgbClr val="4472C4"><a:alpha val="50000"/></a:srgbClr>', 'rgba(68, 114, 196, 0.5)']
+  - ['<a:srgbClr val="FF0000"><a:lumMod val="999999999"/></a:srgbClr>', '#ffffff']
+  - ['<a:scrgbClr r="-500000" g="900000000" b="0"/>', '#00ff00']
+  - ['<a:schemeClr val="accent6"/>', null]
+  - ['<a:prstClr val="url(https://example.com/x)"/>', null]
+  - ['<a:srgbClr val="#4472C4"/>', null]
+  - ['<a:srgbClr val="4472C"/>', null]
+  - ['<a:srgbClr val="4472C4FF"/>', null]
+  - ['<a:srgbClr val="red"/>', null]
+  - ['<a:srgbClr val=" 4472C4"/>', null]
+  - ['<a:srgbClr val="4472C4&#10;"/>', null]
+  - ['<a:srgbClr val="FF0000;background:url(https://example.com/x)"/>', null]
+  - ['<a:srgbClr val="4472C4&quot;/&gt;&lt;img src=x onerror=alert(1)&gt;"/>', null]
+  - ['<a:scrgbClr r="1e5" g="0" b="0"/>', null]
+  - ['<a:srgbClr/>', null]
+  - ['<a:blipFill/>', null]
+
+# Font names the preview may pass to CSS, and ones it must drop.
+typefaces:
+  safe: [Calibri, Calibri Light, Segoe UI, Noto Sans CJK_JP 2.0, 游ゴシック, Times-Roman]
+  unsafe:
+    - 'Calibri", sans-serif'
+    - "Calibri'; background: url(https://example.com/font)"
+    - 'Calibri; color: red'
+    - 'url(https://example.com/font.woff)'
+    - 'a\b'
+    - 'Calibri/*'
+    - ''
+    - AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+# [a run's typeface, the font it draws with] with the theme fonts below.
+themeFonts: { major: Calibri Light, minor: Calibri }
+runTypefaces:
+  - [+mj-lt, Calibri Light]
+  - [+mn-ea, Calibri]
+  - [Arial, Arial]
+  - ['Arial", serif', null]

@@ -83,6 +83,7 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { ARTIFACT_FRAME_POLICY } from './artifactPreviewUtils';
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -126,6 +127,17 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('srcdoc')).toContain(
       '<base href="https://cowork.example/api/v1/artifacts/drafts/proj-1/'
       + 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/">',
+    );
+  });
+
+  it('keeps the frame sources an artifact page had before live apps', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame.getAttribute('srcdoc')).toContain(
+      `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_FRAME_POLICY}">`,
     );
   });
 

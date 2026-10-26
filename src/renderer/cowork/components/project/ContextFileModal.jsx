@@ -49,6 +49,7 @@ import {
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
 import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
+import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
 
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
@@ -634,7 +635,7 @@ export default function ContextFileModal({
               <iframe
                 title={headerTitle || 'Preview'}
                 src={previewHtml ? undefined : previewUrl}
-                srcDoc={previewHtml || undefined}
+                srcDoc={limitArtifactFrames(previewHtml) || undefined}
                 sandbox="allow-scripts allow-popups allow-forms allow-modals"
                 className="w-full h-full border-0 bg-white"
               />

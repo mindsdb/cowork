@@ -24,6 +24,9 @@ WORKDIR /build
 # Lockfile-only install first, so the dependency layer is cached when only
 # source changes.
 COPY package.json package-lock.json ./
+# vendor/ holds the tarballs package.json installs from file: paths, so npm ci
+# needs it before the full source copy.
+COPY vendor/ ./vendor/
 # --ignore-scripts skips native postinstall hooks; the web SPA has none.
 RUN npm ci --ignore-scripts
 

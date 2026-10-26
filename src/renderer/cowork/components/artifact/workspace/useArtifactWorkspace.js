@@ -64,8 +64,17 @@ function markAutoOpened(repairId) {
 
 const NO_WORKSPACE = 'This artifact was created before editing was available';
 const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
+export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
 
-export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
+/*
+ * `previewOnly` marks a file the viewer shows read-only, such as an .xlsx,
+ * .docx, .pptx or .pdf file in the document preview. The hook then loads no
+ * editable source, whatever the server would send for it, and names
+ * PREVIEW_ONLY as the reason Edit and Review are unavailable. It returns
+ * `previewOnly` too: an older card with a short id is also not `supported`,
+ * and the header needs the flag to name PREVIEW_ONLY instead of a refresh.
+ */
+export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = false } = {}) {
   const supported = canUseArtifactWorkspace(artifact);
   const workspaceGeneration = useRef(0);
   const [mode, setMode] = useState('preview');
@@ -115,7 +124,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }, [artifact, source?.path, supported]);
 
   const load = useCallback(async () => {
-    if (!supported) return;
+    if (!supported || previewOnly) return;
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
     const isCurrent = () => workspaceGeneration.current === generation;
@@ -267,7 +276,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
         setStatus('error');
       }
     }
-  }, [artifact, refreshHistory, supported]);
+  }, [artifact, previewOnly, refreshHistory, supported]);
 
   useEffect(() => {
     // Invalidate every in-flight request from the workspace being replaced or
@@ -286,7 +295,10 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     setConflict(null);
     setComparison(null);
     setRepair(null);
-    if (open && supported) {
+    if (open && previewOnly) {
+      setUnsupportedReason(PREVIEW_ONLY);
+      setStatus('unsupported');
+    } else if (open && supported) {
       load();
     } else if (open) {
       // A legacy/incomplete artifact record has no full identity, so there
@@ -301,7 +313,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     return () => { workspaceGeneration.current += 1; };
   // The artifact identity, not a mutable object reference, names this workspace.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.id, artifact?.projectId]);
+  }, [open, artifact?.id, artifact?.projectId, previewOnly]);
 
   const save = useCallback(async (summary = 'Edited artifact', contentOverride = null) => {
     const content = contentOverride ?? draft;
@@ -526,6 +538,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   return useMemo(() => ({
     supported,
+    previewOnly,
     mode,
     setMode: changeMode,
     source,
@@ -559,7 +572,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }), [
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, revisions, save, source, status,
     supported, unsupportedReason,
   ]);

@@ -144,3 +144,10 @@ export function useLiveAppAvailability(accountScope) {
     };
   }, [enabled, accountScope, add, close]);
 }
+
+// Its own component, because the toast manager re-renders whatever reads it on
+// every toast: mounted in the app's root, that would re-render the whole app.
+export function LiveAppAvailabilityWatcher({ accountScope }) {
+  useLiveAppAvailability(accountScope);
+  return null;
+}

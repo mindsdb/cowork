@@ -9,7 +9,10 @@ import { useDraftImageLoader } from './draftImages';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { LiveAppPreview } from './LiveAppPreview';
+import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -41,10 +44,10 @@ function PreviewPlaceholder() {
   );
 }
 
-// A live app runs only at its own address, never inside Cowork, so its viewer
-// names that address while it runs, or says why it isn't running and offers
-// Launch, which asks the agent.
-function LiveAppPanel({ notice, onOpen, onLaunch }) {
+// Live apps keep their own origin while the pane hosts their trusted bootstrap.
+function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
+  const origin = host.isWeb ? liveAppPreviewOrigin(state) : '';
+  if (origin) return <LiveAppPreview key={`${state.launchId}:${reloadKey}`} origin={origin} launchId={state.launchId} reloadKey={reloadKey} onOpen={onOpen} />;
   if (!notice) return <PreviewPlaceholder />;
   const address = notice.address ? new URL(notice.address) : null;
   return (
@@ -80,6 +83,7 @@ export function ArtifactViewerBody({
   const {
     draftUrl: draftPreviewUrl,
     contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -177,7 +181,9 @@ export function ArtifactViewerBody({
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
   ) : liveApp ? (
-    <LiveAppPanel notice={liveApp.notice} onOpen={liveApp.onOpen} onLaunch={liveApp.onLaunch} />
+    <LiveAppPanel {...liveApp} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />

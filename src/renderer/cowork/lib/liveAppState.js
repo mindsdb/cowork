@@ -17,6 +17,8 @@ import { canShareLiveApp, receivedFromLine } from './liveAppSharing';
  *
  * @typedef {object} LiveAppState
  * @property {string} projectId
+ * @property {number} slot
+ * @property {string} launchId
  * @property {string} slug
  * @property {'running' | 'stopped'} state
  * @property {string} address The app's own address, e.g. http://app1.view.localhost:8080/
@@ -53,6 +55,8 @@ export function liveAppStatesFrom(data) {
     states.set(liveAppKey(item.projectId, item.slug), {
       projectId: String(item.projectId),
       slug: String(item.slug),
+      slot: item.slot,
+      launchId: String(item.launchId ?? ''),
       state: item.state,
       address: String(item.address ?? ''),
       stoppedAt: String(item.stoppedAt ?? ''),
@@ -120,11 +124,10 @@ function httpAddress(address) {
 }
 
 /**
- * What a live app's viewer shows in place of a preview, and what its open
- * controls open. A live app runs only at its own address: the deployment
- * refuses the in-Cowork preview, and the serve route's copy of its page has no
- * backend. So while the app runs the viewer names that address, and
- * otherwise says why it isn't running and what to do, as the card says it.
+ * The viewer's fallback notice and external-open address. Supported web
+ * deployments mount a running app at its own origin through the trusted
+ * preview bridge. Other contexts show this notice; the static serve route
+ * cannot provide the app's backend.
  *
  * `address` is the running app's http(s) address, or '' when there is
  * nothing to open. `canLaunch` is whether the app is known not to run, so the
