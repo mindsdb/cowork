@@ -37,6 +37,8 @@
     "test:release-smoke": "playwright test --config playwright.release-smoke.config.ts",
     "test:macos-setup": "node scripts/macos-setup-smoke.mjs",
     "test:macos-setup-contract": "node --test scripts/macos-setup-contract.test.mjs",
+    "test:windows-setup": "node scripts/windows-setup-smoke.mjs",
+    "test:windows-setup-contract": "node --test scripts/windows-setup-contract.test.mjs",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
     "dev:web": "node scripts/dev-web.mjs",
     "start": "electron dist/main/main/index.js",
