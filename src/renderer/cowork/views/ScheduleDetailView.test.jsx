@@ -56,15 +56,17 @@ describe('ScheduleDetailView — runs', () => {
     expect(fetchScheduleRuns).toHaveBeenCalledWith('s1', { limit: 100 });
     expect(screen.getByText('Loading…')).toBeInTheDocument();
     resolve({ runs: RUNS });
-    expect(await screen.findAllByRole('button', { name: 'Open task' })).toHaveLength(2);
+    expect(await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ })).toHaveLength(2);
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
 
-  it('renders each run with its duration, manual badge and error, and opens its task', async () => {
+  it('lists each run with its status, duration, manual badge and error, and opens its conversation', async () => {
     const { user, props } = setup();
-    const open = await screen.findAllByRole('button', { name: 'Open task' });
-    expect(screen.getByText('MANUAL')).toBeInTheDocument();
-    expect(screen.getByText('Tool timed out')).toBeInTheDocument();
+    const open = await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
+    expect(screen.getByText('Manual')).toBeInTheDocument();
+    // A failure's reason is on its status, and named when opening the run.
+    expect(screen.getByLabelText('Failed: Tool timed out')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open the failed run from .*: Tool timed out$/ })).toBeInTheDocument();
     expect(screen.getByText('500ms')).toBeInTheDocument();
     expect(screen.getByText('2.5s')).toBeInTheDocument();
     // A run with no conversation offers nothing to open.
@@ -73,39 +75,63 @@ describe('ScheduleDetailView — runs', () => {
     expect(props.onOpenRunSession).toHaveBeenCalledWith('conv-2');
   });
 
-  it('summarizes run health', async () => {
-    setup();
-    await screen.findAllByRole('button', { name: 'Open task' });
-    // Each metric reads as "<label> <value>" within its own group.
-    expect(screen.getByText('Total runs').parentElement).toHaveTextContent(/^Total runs\s*3$/);
-    expect(screen.getByText('Success rate').parentElement).toHaveTextContent(/^Success rate\s*67%$/);
-    expect(screen.getByText('Avg duration').parentElement).toHaveTextContent(/^Avg duration\s*1\.3s$/);
-    expect(screen.getByRole('img', { name: 'Run history sparkline' })).toBeInTheDocument();
+  it('titles the page with the task, under a trail back to the list', async () => {
+    const { user, props } = setup();
+    expect(screen.getByRole('heading', { level: 1, name: 'Weekly metrics' })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Scheduled Tasks' }));
+    expect(props.onBack).toHaveBeenCalled();
   });
 
-  it('shows empty run and health states when there are no runs', async () => {
+  it('says how many runs succeeded instead of a health chart', async () => {
+    setup();
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
+    expect(screen.getByText('2 of 3 runs succeeded')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Run history sparkline' })).not.toBeInTheDocument();
+  });
+
+  it('shows the slots it skipped while the app was closed', async () => {
+    setup({ task: { ...TASK, lastSkipped: { slotCount: 3, reason: 'offline', firstSlot: '2026-10-01T09:00:00Z', lastSlot: '2026-10-03T09:00:00Z' } } });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
+    expect(screen.getByText(/^Skipped 3 runs while the server was down/)).toBeInTheDocument();
+  });
+
+  it('shows older runs on request', async () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({
+      id: `r${i}`, status: 'success', startedAt: new Date(Date.UTC(2026, 8, 30 - i, 9)).toISOString(), conversationId: `c${i}`,
+    }));
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: many });
+    const { user } = setup();
+    expect(await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ })).toHaveLength(20);
+    await user.click(screen.getByRole('button', { name: 'Show older runs' }));
+    expect(screen.getAllByRole('button', { name: /^Open the (failed )?run from/ })).toHaveLength(25);
+  });
+
+  it('shows an empty state when there are no runs', async () => {
     vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [] });
     setup();
-    expect(await screen.findByText(/No runs yet\. Click/)).toBeInTheDocument();
-    expect(screen.getByText('No runs yet — health appears after the first run.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open task' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/No runs yet\. Click Run now/)).toBeInTheDocument();
   });
 
   it('treats a failed runs fetch as no runs', async () => {
     vi.mocked(fetchScheduleRuns).mockRejectedValue(new Error('boom'));
     setup();
-    expect(await screen.findByText(/No runs yet\. Click/)).toBeInTheDocument();
+    expect(await screen.findByText(/No runs yet\. Click Run now/)).toBeInTheDocument();
   });
 });
 
-describe('ScheduleDetailView — hero', () => {
-  it('shows the schedule summary', async () => {
+describe('ScheduleDetailView — header and summary', () => {
+  it('states the schedule in words, its project and its model', async () => {
     setup();
     expect(screen.getByText('Summarize the KPIs')).toBeInTheDocument();
-    expect(screen.getByText('Runs weekly')).toBeInTheDocument();
+    expect(screen.getByText(/^Every Friday at 9:00.*UTC$/)).toBeInTheDocument();
     expect(screen.getByText('Metrics')).toBeInTheDocument();
     expect(screen.getByText('gpt-x')).toBeInTheDocument();
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
+  });
+
+  it('names the account default model rather than the raw sentinel', () => {
+    setup({ task: { ...TASK, model: 'default' } });
+    expect(screen.getByText('Account default model')).toBeInTheDocument();
   });
 
   it('goes back from the breadcrumb', async () => {
@@ -131,19 +157,18 @@ describe('ScheduleDetailView — hero', () => {
     expect(await screen.findByText('Runner offline')).toBeInTheDocument();
   });
 
-  it('pauses from the enable switch, and resumes a paused schedule', async () => {
+  it('pauses from the switch, and resumes a paused schedule', async () => {
     const { user, props, unmount } = setup();
-    const toggle = screen.getByRole('switch');
+    const toggle = screen.getByRole('switch', { name: 'Schedule enabled' });
     expect(toggle).toBeChecked();
-    expect(screen.getByText('Enabled')).toBeInTheDocument();
     await user.click(toggle);
     expect(props.onPause).toHaveBeenCalledWith('s1');
     unmount();
 
     const paused = setup({ task: { ...TASK, enabled: false } });
-    expect(screen.getByRole('switch')).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Schedule enabled' })).not.toBeChecked();
     expect(screen.getAllByText('Paused').length).toBeGreaterThan(0);
-    await paused.user.click(screen.getByRole('switch'));
+    await paused.user.click(screen.getByRole('switch', { name: 'Schedule enabled' }));
     expect(paused.props.onResume).toHaveBeenCalledWith('s1');
   });
 
@@ -196,7 +221,7 @@ describe('ScheduleDetailView — auto-pause', () => {
 
   it('shows no auto-pause alert for a schedule the user paused', async () => {
     setup({ task: { ...TASK, enabled: false } });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.queryByText(/failed runs in a row/)).not.toBeInTheDocument();
   });
 });
@@ -209,7 +234,7 @@ describe('ScheduleDetailView — how the last run went', () => {
   it('counts opening an auto-paused schedule as reviewing that pause, once', async () => {
     const task = { ...TASK, enabled: false, state: 'auto_paused', autoPausedAt: '2026-10-14T09:00:00Z' };
     const { props, rerender } = setup({ task, onReviewedAutoPause: vi.fn() });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(props.onReviewedAutoPause).toHaveBeenCalledWith(task);
     rerender(<ScheduleDetailView {...props} task={{ ...task }} />);
     expect(props.onReviewedAutoPause).toHaveBeenCalledTimes(1);
@@ -240,7 +265,7 @@ describe('ScheduleDetailView — how the last run went', () => {
 
   it('offers no Run again while a run is still going', async () => {
     setup({ task: { ...TASK, state: 'active', running: true, lastRun: failed('interrupted') } });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.queryByRole('button', { name: 'Run again' })).not.toBeInTheDocument();
   });
 
@@ -262,7 +287,7 @@ describe('ScheduleDetailView — how the last run went', () => {
 
   it('says nothing when the last run succeeded', async () => {
     setup({ task: { ...TASK, state: 'active', lastRun: { id: 'run-1', status: 'success' } } });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
@@ -270,7 +295,7 @@ describe('ScheduleDetailView — how the last run went', () => {
 describe('ScheduleDetailView — controls by state', () => {
   it('says what happens when a recurring task misses its time', async () => {
     setup();
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.getByText(/runs once when it’s back, for the latest time it missed/)).toBeInTheDocument();
   });
 
@@ -281,7 +306,9 @@ describe('ScheduleDetailView — controls by state', () => {
     await user.click(within(box).getByRole('button', { name: 'Run now' }));
     expect(props.onRunNow).toHaveBeenCalledWith('s1');
     expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
-    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/Missed/);
+    // The status says Missed once; no next run is offered.
+    expect(screen.getByText('Missed')).toBeInTheDocument();
+    expect(screen.queryByText(/^Next run/)).not.toBeInTheDocument();
     expect(screen.getByText(/within the hour/)).toBeInTheDocument();
   });
 
@@ -296,16 +323,16 @@ describe('ScheduleDetailView — controls by state', () => {
 
   it('shows a done one-off with no switch and no next run', async () => {
     setup({ task: { ...TASK, cadence: 'once', enabled: false, state: 'done', lastRun: { id: 'r', status: 'success' } } });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
-    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/—/);
+    expect(screen.queryByText(/^Next run/)).not.toBeInTheDocument();
   });
 });
 
 describe('ScheduleDetailView — one run at a time', () => {
   it('turns Run now into Stop run while a run is going', async () => {
     const { props, user } = setup({ task: { ...TASK, state: 'active', running: true }, onStopRun: vi.fn().mockResolvedValue(undefined) });
-    await screen.findAllByRole('button', { name: 'Open task' });
+    await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });
     expect(screen.queryByRole('button', { name: /Run now/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Stop run/ }));
     expect(props.onStopRun).toHaveBeenCalledWith('s1');

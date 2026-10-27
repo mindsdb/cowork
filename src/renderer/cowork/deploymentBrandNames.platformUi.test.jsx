@@ -26,7 +26,7 @@ const shellProps = { route: 'unknown', tasks: [], projects: [], scheduled: [], a
 describe("a deployment brand's name", () => {
   it('names the product when creating a scheduled task', () => {
     render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText("Acme & Co's Cowork runs this prompt on the cadence you set.")).toBeInTheDocument();
+    expect(screen.getByText("Acme & Co's Cowork runs this on its own, even with this tab closed.")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
   });
@@ -34,7 +34,7 @@ describe("a deployment brand's name", () => {
   it('keeps the product name when editing a scheduled task', () => {
     render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton"
       task={{ id: 's1', title: 'Digest', prompt: 'Summarize the report', cadence: 'daily', enabled: true }} />);
-    expect(screen.getByText("Update the cadence or prompt. Acme & Co's Cowork picks up changes on the next run.")).toBeInTheDocument();
+    expect(screen.getByText("What should Acme & Co's Cowork do?")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
   });

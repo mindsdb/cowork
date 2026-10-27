@@ -231,7 +231,7 @@ export default function UpdatesSection({
                   </span>
                 )}
                 {shellTooOld && (
-                  <Alert variant="warning" icon={Ico.warning ? Ico.warning(16) : undefined} data-testid="shell-too-old">
+                  <Alert variant="warning" data-testid="shell-too-old">
                     This app is too old for this version of Cowork. Some features are hidden until the
                     app updates to {shellSupport.latestShellVersion}. Use Software updates below.
                   </Alert>
