@@ -77,6 +77,8 @@ export function extractFormSpec(markdown) {
 // Apply a series of cheap, deterministic fixups for common LLM
 // mistakes. Order matters — stripping comments before fixing
 // trailing commas, etc.
+// cowork-server copies every fixup here but comment stripping
+// (stream_formatter.py _loose_json); change both together.
 function _looseClean(s) {
   let out = String(s);
 
@@ -85,8 +87,7 @@ function _looseClean(s) {
   out = out.replace(/^\s*```(?:json|data-vault-form|js|javascript)?\s*\n/, '');
   out = out.replace(/\n\s*```\s*$/, '');
 
-  // Normalise smart quotes → ASCII. cowork-server reads a pasted form_id with
-  // the same sets (stream_formatter.py _SMART_QUOTES); change both together.
+  // Normalise smart quotes → ASCII.
   out = out
     .replace(/[‘’‚‛′‵]/g, "'")
     .replace(/[“”„‟″‶]/g, '"');
