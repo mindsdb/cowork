@@ -47,7 +47,9 @@ const SAVED_TEXT = 'Saved to your skills';
 const SHARED_TEXT = 'Saved and shared with everyone';
 const SHARING_KEPT_TEXT = "Saved over the existing skill. Who can use it didn't change: set it on the skill's page.";
 
-function SkillModal({ skill, open, onClose }) {
+// The skill preview: read-only SKILL.md. Opened from the card body, and from
+// the skill's step row in the thinking block (ChatView).
+export function SkillModal({ skill, open, onClose }) {
   const body = skill.instructions || skill.skill_md || '_No content._';
   return (
     <Modal open={open} onClose={onClose} width="640px" labelledBy="skill-card-modal-title">

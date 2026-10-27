@@ -28,6 +28,19 @@ import { WorkingIndicator } from './WorkingIndicator';
 import { truncateLabel } from '../../lib/responseStreamAdapter';
 import { useFold } from '../../hooks/useFold';
 
+/** A row for something the turn made (an artifact, a skill draft). The
+ *  same object also renders as a card under the answer. */
+export function isObjectStep(step) {
+  return step?.badge === 'Artifact' || step?.badge === 'Skill';
+}
+
+/** Whether clicking the row opens something: the object it made, or the
+ *  scratchpad / tool call behind it. Memory and compaction rows have nothing
+ *  to inspect, so they are not clickable. */
+export function isActivatableStep(step) {
+  return Boolean(step && (step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress' || isObjectStep(step)));
+}
+
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
   const s = Math.floor(ms / 1000);
@@ -128,8 +141,10 @@ export function ThinkingBlock({
 
   const toggleExpanded = useCallback(() => setIsExpanded((p) => !p), []);
 
-  // Nothing to show: not active and no recorded steps.
-  if (!isActive && !hasSteps) return null;
+  // Nothing to show: not active and no recorded work. A finished block of
+  // object rows only (a skill-draft turn) is left out too: the card under
+  // the answer already shows the object, and the fold would hold nothing else.
+  if (!isActive && !steps.some((s) => !isObjectStep(s))) return null;
 
   return (
     <div className="w-full">
@@ -197,7 +212,7 @@ export function ThinkingBlock({
               step={step}
               isFirst={index === 0}
               isLast={!currentThought?.text && index === steps.length - 1}
-              onActivate={onActivateStep}
+              onActivate={isActivatableStep(step) ? onActivateStep : undefined}
             />
           ))}
           {/* Live train-of-thought — the model's inner dialogue, NOT a
