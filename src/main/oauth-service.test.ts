@@ -56,6 +56,18 @@ afterEach(() => {
 });
 
 describe('oauthConnect', () => {
+  it.each([
+    'file:///Applications/Calculator.app',
+    'http://kc.example/realms/x/auth',
+    'smb://attacker.example/share',
+    'not a url',
+  ])('refuses to open a non-https authorize URL: %s', async (authUrl) => {
+    (shell.openExternal as ReturnType<typeof vi.fn>).mockClear();
+    const result = await oauthConnect({ ...OPTS, authUrl });
+    expect(result).toEqual({ ok: false, reason: 'OAuth authorize URL must use https.' });
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
   it('serves the success page and exchanges the code for tokens', async () => {
     const nextAuthUrl = captureAuthUrl();
     const fetchMock = vi.fn(async () => ({
