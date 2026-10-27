@@ -57,6 +57,15 @@ vi.mock('../components/doc/DocPane', async (importOriginal) => {
   return { default: (props) => (conv.realPane ? <RealDocPane {...props} /> : <FakeDocPane {...props} />) };
 });
 
+// The rail lists the project's artifacts; here it only has to open a doc.
+vi.mock('../components/rail/WorkingFolderLive', () => ({
+  WorkingFolderLive: ({ onOpenDoc }) => (
+    <button type="button" onClick={() => onOpenDoc?.({ id: 'ffffffffffffffffffffffffffffffff', title: 'Rail doc', format: 'doc', projectId: 'proj-1' })}>
+      Rail doc
+    </button>
+  ),
+}));
+
 vi.mock('../components/doc/useConversationDocs', () => ({
   useConversationDocs: (_id, handlers) => { conv.handlers = handlers; conv.enabled = handlers.enabled; },
 }));
@@ -160,6 +169,17 @@ describe('the doc beside a turn that is running', () => {
 
     act(() => docApi.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 2, touched: { t_1: ['b_1'] }, doc: liveDoc(2) }));
     expect(screen.getByText('Agent is writing')).toBeInTheDocument();
+  });
+});
+
+describe('a doc opened from the chat\'s Artifacts rail', () => {
+  it('opens beside the chat, as from its card', () => {
+    render(<ChatView task={task([])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Rail doc' }));
+    const pane = screen.getByTestId('doc-pane');
+    expect(pane.dataset.artifact).toBe('ffffffffffffffffffffffffffffffff');
+    expect(pane.dataset.project).toBe('proj-1');
+    expect(docContextFor('conv-a')).toMatchObject({ artifactId: 'ffffffffffffffffffffffffffffffff' });
   });
 });
 

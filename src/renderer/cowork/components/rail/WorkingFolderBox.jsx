@@ -18,6 +18,7 @@ export function WorkingFolderBox({
   maxBodyHeight = 320,
   conversationId = null,
   onAddressWithAgent,
+  onOpenDoc,
 }) {
   const liveApps = useLiveApps();
   /*
@@ -38,6 +39,7 @@ export function WorkingFolderBox({
           isStreaming={isStreaming}
           conversationId={conversationId}
           onAddressWithAgent={onAddressWithAgent}
+          onOpenDoc={onOpenDoc}
           onProjectResolved={setResolvedProjectId}
           receivedCopy={receivedCopy}
           onReceivedCopyShown={() => setReceivedCopy(null)}

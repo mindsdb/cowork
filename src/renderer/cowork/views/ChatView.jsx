@@ -1967,6 +1967,9 @@ export default function ChatView({
   // the active turn finishes.
   queuedMessages = [],
   onRemoveFromQueue,
+  // A doc to open beside this chat as it shows, then `onDocDocked`.
+  dockDoc = null,
+  onDocDocked,
   agentLabel,
   // Conversation ids the server currently has an active producer for
   // (App.jsx's cross-client sync feed). Used to decide whether an
@@ -2050,6 +2053,13 @@ export default function ChatView({
   // The doc open beside the chat. A doc the agent creates in this
   // conversation opens here the moment it exists.
   const docSide = useDocBesideChat({ taskId: task?.id, projectId: project?.id, streaming: isStreaming, onSend });
+  // A doc the app brought this chat up for ("Edit with agent" on a doc from
+  // the library) opens beside it, once.
+  useEffect(() => {
+    if (!dockDoc) return;
+    docSide.open(dockDoc);
+    onDocDocked?.();
+  }, [dockDoc, docSide.open, onDocDocked]);
   const handleArtifactOpen = (artifact) => {
     if (isDocArtifact(artifact)) {
       docSide.open(artifact);
@@ -3461,6 +3471,7 @@ export default function ChatView({
           isStreaming={isStreaming}
           conversationId={task?.id || null}
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
+          onOpenDoc={docSide.open}
         />
         <ContextBox
           projects={projects}

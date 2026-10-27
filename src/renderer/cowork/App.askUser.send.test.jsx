@@ -23,6 +23,10 @@ const spies = vi.hoisted(() => ({
   conversationDocs: null,
   // The passage the doc pane reports picked when its "Pick a passage" is clicked.
   picked: null,
+  // The library's artifacts; none unless a test lists some.
+  fetchArtifactsStrict: vi.fn(async () => []),
+  // An artifact another viewer resolves a repair's chat for, mid-repair.
+  otherArtifact: null,
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -46,6 +50,7 @@ vi.mock('./api', async (importOriginal) => {
     fetchConversationList: vi.fn(async () => []),
     fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
     fetchArtifacts: vi.fn(async () => []),
+    fetchArtifactsStrict: (...args) => spies.fetchArtifactsStrict(...args),
     fetchSettings: vi.fn(async () => ({})),
     fetchPins: vi.fn(async () => []),
     fetchSchedules: vi.fn(async () => []),
@@ -137,6 +142,24 @@ vi.mock('./components/doc/DocPane', async () => {
     },
   };
 });
+
+// The artifact viewer is tested on its own; here it addresses a comment the
+// way it does from the library (resolve the chat, then send), with another
+// viewer's resolution landing in between.
+vi.mock('./components/artifact', () => ({
+  ArtifactViewer: ({ open, artifact, onAddressWithAgent, resolveRepairConversation }) => (open ? (
+    <button
+      type="button"
+      onClick={async () => {
+        const conversationId = await resolveRepairConversation(artifact);
+        await resolveRepairConversation(spies.otherArtifact);
+        await onAddressWithAgent({ artifact, prompt: 'Address the comment', conversationId });
+      }}
+    >
+      Address the comment
+    </button>
+  ) : null),
+}));
 
 // Spread the real host rather than listing methods, and override only what
 // these tests need to control. A hand-listed mock breaks whenever App gains a
@@ -1890,6 +1913,105 @@ describe('"Edit with agent" from the doc beside the chat', () => {
     expect(spies.streamMessage.mock.calls[1][2].attachmentIds).toEqual([]);
     expect(uploadAttachments).not.toHaveBeenCalled();
     expect(screen.getByText('notes.txt')).toBeInTheDocument();
+  });
+});
+
+describe('"Edit with agent" on a doc opened from the library', () => {
+  const plan = {
+    id: 'b'.repeat(32), title: 'Hiring plan', format: 'doc', type: 'document', mtime: 1, projectName: 'general',
+    path: '/tmp/general/.anton/artifacts/hiring-plan/doc.cdoc.json', primary: 'doc.cdoc.json',
+  };
+  const docRequest = {
+    artifactId: plan.id, projectId: 'local', tab: 't_1', selection: { blockIds: ['b_1'], quote: 'Acme leads' }, request: 'Make it shorter',
+  };
+  // Before, not after: an upload an earlier test started can land late.
+  beforeEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+  afterEach(() => { spies.fetchArtifactsStrict.mockReset().mockResolvedValue([]); });
+
+  async function askFromTheLibrary(user) {
+    await user.click(screen.getByRole('button', { name: /Live Artifacts/ }));
+    await user.click(await screen.findByRole('button', { name: /Hiring plan/ }));
+    await user.click(await screen.findByRole('button', { name: 'Edit with agent' }));
+  }
+
+  it('asks in the doc\'s own chat, which keeps its history, and leaves the composer\'s files staged', async () => {
+    // Found in review: the library sent the request through the new-chat
+    // path under the doc's chat's id, so it built an empty task over that
+    // chat (its history gone from view, a second row with its key, a new
+    // session streamed) and took the composer's staged files with it.
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...plan, originConversationId: 'conv-a' }]);
+    spies.fetchSessionResult.mockImplementation(async (id) => (id === 'conv-a'
+      ? { status: 'ok', task: {
+        id: 'conv-a', title: 'Alpha task', status: 'idle', projectName: 'general', messagesStatus: 'loaded',
+        messages: [{ role: 'user', content: 'Draft the hiring plan' }, { role: 'assistant', content: 'The plan is in a doc.' }],
+      } }
+      : { status: 'unavailable', code: 0 }));
+    const user = userEvent.setup();
+    await openTask(user);
+    expect(await screen.findByText('The plan is in a doc.')).toBeInTheDocument();
+    await attach(user, 'notes.txt');
+    await askFromTheLibrary(user);
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    const [conversation, text, opts] = spies.streamMessage.mock.calls[0];
+    expect(conversation).toBe('conv-a');
+    expect(text).toBe('> Acme leads\n\nMake it shorter');
+    expect(opts).toMatchObject({ attachmentIds: [], docContext: docRequest });
+    expect(streams.filter((h) => h.kind === 'new')).toHaveLength(0);
+    expect(uploadAttachments).not.toHaveBeenCalled();
+    // Back in that chat: its history, the file still staged, the doc beside it.
+    expect(await screen.findByText('The plan is in a doc.')).toBeInTheDocument();
+    expect(screen.getByText('Draft the hiring plan')).toBeInTheDocument();
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pick a passage' })).toBeInTheDocument();
+  });
+
+  it('starts a new chat with the doc beside it when the doc has no chat to go back to', async () => {
+    spies.fetchArtifactsStrict.mockResolvedValue([plan]);
+    const user = userEvent.setup();
+    // Home, past the boot choreography (see the new-session tests above).
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await waitFor(() => { if (!document.querySelector('textarea')) throw new Error('composer not mounted'); });
+    await attach(user, 'notes.txt');
+    await askFromTheLibrary(user);
+
+    const started = await waitFor(() => {
+      const handle = streams.find((h) => h.kind === 'new');
+      if (!handle) throw new Error('no new session yet');
+      return handle;
+    });
+    expect(started.opts).toMatchObject({ conversationId: 'conv-new', attachmentIds: [], docContext: docRequest });
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    expect(uploadAttachments).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Pick a passage' })).toBeInTheDocument();
+    // A new chat clears the composer as any chat switch does, without sending its files (ENG-3661).
+    expect(screen.queryByText('notes.txt')).toBeNull();
+  });
+});
+
+describe('a comment addressed from the library while another viewer resolves its chat', () => {
+  afterEach(() => { spies.fetchArtifactsStrict.mockReset().mockResolvedValue([]); });
+
+  it('still resumes the chat the artifact came from, never a new one under its id', async () => {
+    // Found in review: a resolution for another artifact replaced the one
+    // held for this repair, and the repair's chat id went to the new-chat
+    // path, which built an empty task over that chat.
+    const card = (id, title, chat) => ({ id, title, type: 'html', mtime: 1, projectName: 'general', path: `/tmp/general/.anton/artifacts/${id}/index.html`, originConversationId: chat });
+    spies.fetchArtifactsStrict.mockResolvedValue([card('alpha-page', 'Alpha page', 'conv-a')]);
+    spies.otherArtifact = card('beta-page', 'Beta page', 'conv-b');
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /Live Artifacts/ }));
+    await user.click(await screen.findByRole('button', { name: /Alpha page/ }));
+    await user.click(await screen.findByRole('button', { name: 'Address the comment' }));
+
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0].slice(0, 2)).toEqual(['conv-a', 'Address the comment']);
+    expect(streams.filter((h) => h.kind === 'new')).toHaveLength(0);
   });
 });
 

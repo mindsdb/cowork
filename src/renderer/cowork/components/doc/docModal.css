@@ -1,0 +1,3 @@
+/* A doc opened over the page (DocModal): the modal is its frame, the whole
+   window, so the pane draws no border of its own. */
+.doc-pane--modal { border-left: 0; }
