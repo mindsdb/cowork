@@ -48,7 +48,7 @@ import {
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
-import { inlineHtmlAssets } from '../../lib/inlineHtmlAssets';
+import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
 import { DOWNLOAD_FAILED_NOTE, DocumentPreview, PREVIEW_FAILED_DOWNLOADED_NOTE } from '../../preview/DocumentPreview';
@@ -497,12 +497,11 @@ export default function ContextFileModal({
               showNoPreview(read.refused);
               return;
             }
-            const html = await inlineHtmlAssets(
-              read.text,
+            const html = await inlineHtmlFromApi(read.text, {
+              rootUrl: projectFileDownloadUrl(projectName, ''),
               filePath,
-              (path) => fetchAuthenticatedResponse(projectFileDownloadUrl(projectName, path)),
-              { baseUrl: projectFileDownloadUrl(projectName, filePath), signal: reading.signal },
-            );
+              signal: reading.signal,
+            });
             if (cancelled) return;
             setPreviewHtml(html);
             setMode('html');
