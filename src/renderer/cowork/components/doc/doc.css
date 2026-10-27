@@ -1,0 +1,543 @@
+/* Doc editor — the page and every block, wherever the editor is hosted (the
+   pane's own chrome is docPane.css). Built on the app's tokens (globals.css,
+   which also holds the status tones and chart series); doc-only roles are
+   declared once here and re-stepped for dark mode, never flipped
+   automatically. */
+
+.doc-root {
+  --doc-page-max: 760px;
+  --doc-gutter: 56px;
+  --doc-body: 15px;
+  --doc-line: 1.65;
+  --doc-hover: color-mix(in srgb, var(--ink) 5%, transparent);
+  --doc-select: color-mix(in srgb, var(--accent) 16%, transparent);
+  --doc-flash: color-mix(in srgb, var(--accent) 12%, transparent);
+  --doc-code-bg: var(--surface-2);
+  --doc-table-head: var(--surface-2);
+  --chart-grid: var(--line);
+  --chart-surface: var(--surface);
+  /* Accent as text (links, "Agent is writing", the agent button). */
+  --doc-accent-ink: var(--accent-2);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-body);
+}
+/* Holding the focus after an undo took its block away (DocPane): no ring. */
+.doc-root:focus { outline: none; }
+
+body[data-theme="dark"] .doc-root {
+  --doc-hover: color-mix(in srgb, var(--ink) 7%, transparent);
+  --doc-select: color-mix(in srgb, var(--accent) 26%, transparent);
+  --doc-flash: color-mix(in srgb, var(--accent) 18%, transparent);
+  --doc-accent-ink: var(--accent);
+}
+
+/* One reset for the doc's own controls and fields; each rule below adds its
+   look. It comes first so those rules win at the same specificity. */
+:is(.doc-iconbtn, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
+  .doc-check, .doc-cellbtn, .doc-addbtn, .doc-float__btn, .doc-slash__item) {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+:is(.doc-tab__input, .doc-code__lang, .doc-code__text, .doc-date-input, .doc-float__input, .doc-ask__input) {
+  all: unset;
+  box-sizing: border-box;
+}
+
+/* The popovers' surface: the slash menu, the selection bar, the chart tooltip. */
+:is(.doc-float, .doc-slash, .doc-tooltip) {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-popup);
+}
+
+/* The editor's icon buttons (a code block's copy, a chart's tools, the
+   pane's header). */
+.doc-iconbtn {
+  width: 30px; height: 30px;
+  border-radius: var(--r);
+  display: inline-grid; place-items: center;
+  color: var(--ink-3);
+}
+.doc-iconbtn:hover { background: var(--ghost-hover); color: var(--ink); }
+.doc-iconbtn:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-iconbtn[aria-pressed="true"] { background: var(--ghost-press); color: var(--ink); }
+.doc-iconbtn:disabled { color: var(--ink-5); cursor: default; background: transparent; }
+
+/* ─── Tabs rail ───────────────────────────────────────────────────────── */
+
+.doc-tabs {
+  width: 196px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--line);
+  padding: 14px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Folding away moves as the app's sidebar does: the width closes while the
+     rail settles a little to the left, fades and softens. */
+  transform-origin: left center;
+  transition: width var(--dur-layout) var(--ease-out), padding var(--dur-layout) var(--ease-out),
+    opacity var(--dur-layout) var(--ease-out), transform var(--dur-layout) var(--ease-out),
+    filter var(--dur-layout) var(--ease-out), border-color var(--dur-layout) var(--ease-out);
+}
+/* Its rows keep their width while it closes, so they slide out of view rather than squeeze. */
+.doc-tabs > * { min-width: 180px; }
+.doc-tabs[data-hidden] {
+  width: 0;
+  padding-inline: 0;
+  border-right-color: transparent;
+  opacity: 0;
+  transform: translateX(-12px) scale(0.985);
+  filter: blur(6px);
+  pointer-events: none;
+}
+.doc-tabs__head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 6px 8px; }
+.doc-tabs__label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.doc-tabs__hide {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px; margin: -6px 0; border-radius: var(--r);
+  color: var(--ink-4);
+}
+.doc-tabs__hide:hover { background: var(--doc-hover); color: var(--ink); }
+.doc-tabs__hide:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-tab {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 30px;
+  padding: 5px 6px 5px 8px;
+  border-radius: var(--r);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+.doc-tabs__list { display: flex; flex-direction: column; gap: 2px; }
+.doc-tab:hover { background: var(--doc-hover); }
+/* The strip's tab is the .doc-tab itself; the rail's row holds its tab. */
+.doc-tab:is([aria-selected="true"], [data-selected="true"]) { background: var(--ghost-press); color: var(--ink); font-weight: 600; }
+.doc-tab:focus-visible, .doc-tab:has(> .doc-tab__title:focus-visible) { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-tab__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-tab__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.doc-tab__more { opacity: 0; }
+.doc-tab:hover .doc-tab__more, .doc-tab:focus-within .doc-tab__more { opacity: 1; }
+.doc-tab__input {
+  flex: 1; min-width: 0;
+  font: inherit; color: var(--ink);
+  border-bottom: 1px solid var(--accent);
+}
+.doc-tabs__add {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 5px 8px;
+  border-radius: var(--r);
+  font-size: var(--text-sm); color: var(--ink-3);
+}
+.doc-tabs__add:hover { background: var(--doc-hover); color: var(--ink); }
+.doc-tabstrip { display: flex; align-items: center; gap: 4px; padding: 10px 16px 0; }
+.doc-tabstrip__tabs { display: flex; gap: 4px; min-width: 0; overflow-x: auto; }
+.doc-tabstrip .doc-tab { flex: 0 0 auto; }
+.doc-tabstrip__add {
+  flex: 0 0 auto; display: inline-grid; place-items: center;
+  width: 28px; height: 28px; border-radius: var(--r); color: var(--ink-3);
+}
+.doc-tabstrip__add:hover { background: var(--doc-hover); color: var(--ink); }
+/* A changed tab scrolled past this end of the strip. */
+.doc-tabstrip__more {
+  flex: 0 0 auto; display: inline-grid; place-items: center;
+  width: 20px; height: 28px; border-radius: var(--r);
+}
+.doc-tabstrip__more:hover { background: var(--doc-hover); }
+
+/* ─── Page ────────────────────────────────────────────────────────────── */
+
+.doc-scroll { flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
+.doc-page {
+  max-width: var(--doc-page-max);
+  margin: 0 auto;
+  padding: 36px var(--doc-gutter) 160px;
+  font-size: var(--doc-body);
+  line-height: var(--doc-line);
+}
+
+.doc-title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 6px;
+  outline: none;
+  word-break: break-word;
+}
+.doc-title:empty::before { content: attr(data-placeholder); color: var(--ink-4); }
+.doc-byline {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+  margin-bottom: 22px;
+}
+.doc-byline__dot { color: var(--ink-5); }
+/* "Add tab", quiet at the end of the byline of a doc of one tab. */
+.doc-byline__add {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--r); color: var(--ink-3);
+}
+.doc-byline__add:hover, .doc-byline__add:focus-visible { background: var(--doc-hover); color: var(--ink-2); }
+
+/* A block: the gutter (handle + add) floats in the page's left padding. */
+.doc-block {
+  position: relative;
+  border-radius: var(--r);
+  transition: background-color 900ms var(--ease-out);
+}
+.doc-block--flash { background: var(--doc-flash); transition: none; }
+.doc-block--selected { background: var(--doc-select); }
+.doc-gutter {
+  position: absolute;
+  /* Sits in the page's own left padding, whatever its width, so the handles are
+     never clipped by the pane edge. */
+  left: calc(-1 * var(--doc-gutter) + 2px);
+  top: 2px;
+  width: calc(var(--doc-gutter) - 6px);
+  display: flex;
+  justify-content: flex-end;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 80ms;
+}
+.doc-block:hover > .doc-gutter, .doc-gutter:focus-within, .doc-gutter[data-open="true"] { opacity: 1; }
+.doc-gutter__btn {
+  width: 22px; height: 24px;
+  display: inline-grid; place-items: center;
+  border-radius: 5px;
+  color: var(--ink-4);
+}
+.doc-gutter__btn:hover { background: var(--doc-hover); color: var(--ink-2); }
+.doc-block--heading > .doc-gutter { top: calc(0.4em); }
+
+/* Editable text */
+.doc-editable { outline: none; white-space: pre-wrap; word-break: break-word; min-height: 1.65em; }
+.doc-editable[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--ink-4);
+  pointer-events: none;
+  position: absolute;
+}
+.doc-empty-hint { margin: 0; color: var(--ink-4); font-size: var(--doc-body); line-height: var(--doc-line); }
+/* An empty paragraph shows its hint only where the caret is (or when it is the page's only block). */
+.doc-p:not(.doc-p--lonely)[data-empty="true"]:not(:focus)::before { content: none; }
+.doc-editable a { color: var(--doc-accent-ink); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.doc-editable code {
+  font-family: var(--font-mono);
+  font-size: .86em;
+  padding: .12em .36em;
+  border-radius: 5px;
+  background: var(--doc-code-bg);
+  color: var(--ink);
+}
+.doc-editable strong { color: var(--ink); font-weight: 620; }
+
+.doc-p { padding: 3px 0; }
+.doc-h { color: var(--ink); font-weight: 650; letter-spacing: -0.01em; }
+.doc-h--1 { font-size: 24px; line-height: 1.3; margin-top: 30px; padding: 3px 0; }
+.doc-h--2 { font-size: 19px; line-height: 1.35; margin-top: 26px; padding: 3px 0; }
+.doc-h--3 { font-size: 16px; line-height: 1.4; margin-top: 18px; padding: 2px 0; font-weight: 620; }
+.doc-block:first-child .doc-h { margin-top: 4px; }
+
+.doc-li { display: flex; align-items: flex-start; gap: 8px; padding: 2px 0; }
+.doc-li__mark {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 1.65em;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.doc-li__bullet { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.doc-li__bullet--2 { background: transparent; border: 1.2px solid currentColor; }
+.doc-li__bullet--3 { border-radius: 1px; }
+.doc-li > .doc-editable { flex: 1; min-width: 0; }
+.doc-check {
+  width: 16px; height: 16px; margin-top: 4px;
+  border-radius: 4px;
+  border: 1.5px solid var(--line-2);
+  display: inline-grid; place-items: center;
+  color: var(--accent-solid-ink);
+  flex-shrink: 0;
+}
+.doc-check:hover { border-color: var(--ink-4); }
+.doc-check[aria-checked="true"] { background: var(--accent-solid); border-color: var(--accent-solid); }
+.doc-check:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-li--done > .doc-editable { color: var(--ink-4); text-decoration: line-through; text-decoration-color: var(--ink-5); }
+
+.doc-quote { border-left: 3px solid var(--line-2); padding: 2px 0 2px 14px; margin: 4px 0; color: var(--ink-2); }
+
+.doc-callout {
+  display: flex; gap: 10px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.doc-callout__icon { flex-shrink: 0; margin-top: 3px; }
+.doc-callout__body { flex: 1; min-width: 0; }
+.doc-callout__title { font-weight: 620; color: var(--ink); }
+.doc-callout--info { background: var(--tone-blue-bg); } .doc-callout--info .doc-callout__icon { color: var(--tone-blue-ink); }
+.doc-callout--success { background: var(--tone-green-bg); } .doc-callout--success .doc-callout__icon { color: var(--tone-green-ink); }
+.doc-callout--warning { background: var(--tone-yellow-bg); } .doc-callout--warning .doc-callout__icon { color: var(--tone-yellow-ink); }
+.doc-callout--danger { background: var(--tone-red-bg); } .doc-callout--danger .doc-callout__icon { color: var(--tone-red-ink); }
+.doc-callout--note { background: var(--surface-2); } .doc-callout--note .doc-callout__icon { color: var(--ink-3); }
+
+.doc-divider { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+
+/* Chips */
+.doc-chip {
+  display: inline-flex; align-items: center;
+  padding: 0 7px;
+  height: 1.5em;
+  border-radius: 6px;
+  font-size: .86em;
+  line-height: 1;
+  vertical-align: baseline;
+  background: var(--tone-gray-bg);
+  color: var(--tone-gray-ink);
+  white-space: nowrap;
+  user-select: all;
+}
+.doc-chip--user { background: var(--accent-bg); color: var(--accent-2); }
+.doc-tone--gray { background: var(--tone-gray-bg); color: var(--tone-gray-ink); }
+.doc-tone--blue { background: var(--tone-blue-bg); color: var(--tone-blue-ink); }
+.doc-tone--green { background: var(--tone-green-bg); color: var(--tone-green-ink); }
+.doc-tone--yellow { background: var(--tone-yellow-bg); color: var(--tone-yellow-ink); }
+.doc-tone--red { background: var(--tone-red-bg); color: var(--tone-red-ink); }
+.doc-tone--purple { background: var(--tone-purple-bg); color: var(--tone-purple-ink); }
+
+/* Code */
+.doc-code { margin: 8px 0; border-radius: var(--r-lg); background: var(--doc-code-bg); border: 1px solid var(--line); overflow: hidden; }
+.doc-code__bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border-bottom: 1px solid var(--line); }
+.doc-code__lang { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-3); flex: 1; min-width: 0; }
+.doc-code__text {
+  display: block; width: 100%;
+  padding: 12px 14px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  color: var(--ink); white-space: pre; overflow-x: auto; resize: none;
+  tab-size: 2;
+}
+
+/* Image */
+.doc-figure { margin: 10px 0; }
+.doc-figure img { max-width: 100%; border-radius: var(--r-lg); border: 1px solid var(--line); display: block; }
+.doc-figure figcaption { font-size: var(--text-sm); color: var(--ink-3); margin-top: 6px; }
+.doc-figure__loading { height: 120px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface-2); }
+
+/* Pending: what the agent will write here */
+.doc-pending {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  border: 1px dashed var(--line-2);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+.doc-pending__head { display: flex; align-items: center; gap: 8px; }
+.doc-pending__intent { color: var(--ink-2); }
+.doc-pending--live { border-style: solid; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.doc-pending__lines { margin-top: 10px; display: grid; gap: 7px; }
+.doc-pending__line {
+  height: 9px; border-radius: 5px;
+  background: linear-gradient(90deg, var(--surface-3) 0%, var(--surface-2) 40%, var(--surface-3) 80%);
+  background-size: 200% 100%;
+  animation: doc-shimmer 1.4s linear infinite;
+}
+@keyframes doc-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+/* ─── Tables ──────────────────────────────────────────────────────────── */
+
+/* A wide table scrolls sideways in the wrap. Each row's options handle sits
+   left of the table, and an overflow box clips at its padding edge, so the
+   wrap reaches into the page margin by a handle's width and pads it back:
+   the handle is inside the scroll box but beside the table. The border is
+   the frame's, which grows with the table. */
+.doc-table-wrap {
+  --doc-row-handle: 28px;
+  margin: 10px 0 10px calc(-1 * var(--doc-row-handle));
+  padding-left: var(--doc-row-handle);
+  overflow-x: auto;
+}
+.doc-table-frame { width: fit-content; min-width: 100%; border: 1px solid var(--line); border-radius: var(--r-lg); }
+/* The frame can't clip (the handles would go with it), so the corner cells
+   round their own fill. */
+.doc-table thead th:first-child { border-top-left-radius: calc(var(--r-lg) - 1px); }
+.doc-table thead th:last-child { border-top-right-radius: calc(var(--r-lg) - 1px); }
+.doc-table-frame > .doc-table:last-child tbody tr:last-child td:first-child { border-bottom-left-radius: calc(var(--r-lg) - 1px); }
+.doc-table-frame > .doc-table:last-child tbody tr:last-child td:last-child { border-bottom-right-radius: calc(var(--r-lg) - 1px); }
+.doc-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; line-height: 1.5; }
+.doc-table th, .doc-table td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 0;
+  text-align: left;
+  vertical-align: top;
+  /* Wide enough for a long word ("communications") on one line: in a narrow
+     pane the table scrolls sideways rather than break words mid-way. */
+  min-width: 140px;
+}
+.doc-table tr > :last-child { border-right: 0; }
+.doc-table tbody tr:last-child td { border-bottom: 0; }
+.doc-table th { background: var(--doc-table-head); color: var(--ink-3); font-weight: 600; font-size: var(--text-sm); }
+.doc-th { display: flex; align-items: center; gap: 4px; padding: 7px 6px 7px 12px; }
+.doc-th__kind { color: var(--ink-4); display: inline-grid; place-items: center; }
+.doc-th__name { flex: 1; min-width: 0; outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-th__menu { opacity: 0; }
+.doc-table th:hover .doc-th__menu, .doc-th__menu[data-open="true"] { opacity: 1; }
+.doc-td { padding: 7px 12px; min-height: 22px; color: var(--ink-2); }
+.doc-td--number { text-align: right; font-variant-numeric: tabular-nums; }
+.doc-td .doc-editable { min-height: 1.5em; }
+.doc-table td:focus-within { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.doc-table tbody tr:hover td { background: var(--doc-hover); }
+.doc-row-menu { position: absolute; left: calc(2px - var(--doc-row-handle)); top: 6px; opacity: 0; }
+.doc-table tbody tr:hover .doc-row-menu, .doc-row-menu[data-open="true"] { opacity: 1; }
+.doc-cellbtn { display: block; width: 100%; min-height: 22px; }
+.doc-cellbtn:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); border-radius: 4px; }
+.doc-date-input { font: inherit; color: var(--ink); width: 100%; }
+.doc-table__foot { display: flex; gap: 4px; padding: 4px; border-top: 1px solid var(--line); }
+.doc-table .doc-table__addcol { width: 34px; min-width: 34px; }
+.doc-addbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: var(--r);
+  font-size: var(--text-sm); color: var(--ink-3);
+}
+.doc-addbtn:hover { background: var(--doc-hover); color: var(--ink); }
+
+/* ─── Charts ──────────────────────────────────────────────────────────── */
+
+.doc-chart { margin: 12px 0; padding: 14px 16px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--chart-surface); }
+.doc-chart__head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.doc-chart__titles { flex: 1; min-width: 0; }
+.doc-chart__title { font-size: var(--text-base); font-weight: 620; color: var(--ink); outline: none; }
+.doc-chart__sub { font-size: var(--text-xs); color: var(--ink-3); }
+.doc-chart__tools { display: flex; gap: 2px; opacity: 0; transition: opacity 80ms; }
+.doc-chart:hover .doc-chart__tools, .doc-chart__tools:focus-within { opacity: 1; }
+.doc-chart__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--text-xs); color: var(--ink-2); margin: 2px 0 6px; }
+.doc-chart__key { display: inline-flex; align-items: center; gap: 6px; }
+.doc-chart__swatch { width: 10px; height: 10px; border-radius: 3px; }
+.doc-chart__swatch--line { height: 2px; width: 14px; border-radius: 2px; }
+.doc-chart svg { display: block; overflow: visible; }
+.doc-chart text { font-family: var(--font-body); }
+.doc-chart__empty { padding: 30px 0; text-align: center; color: var(--ink-3); font-size: var(--text-sm); }
+.doc-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: var(--r-8);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+}
+.doc-tooltip__label { font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.doc-tooltip__row { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.doc-tooltip__row > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.doc-tooltip__val { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+
+/* ─── Metrics ─────────────────────────────────────────────────────────── */
+
+.doc-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0; }
+.doc-metric { padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface-2); min-width: 0; }
+.doc-metric__label { font-size: var(--text-sm); color: var(--ink-3); outline: none; }
+.doc-metric__value { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); line-height: 1.25; margin-top: 2px; outline: none; }
+.doc-metric__delta { font-size: var(--text-xs); color: var(--ink-3); margin-top: 2px; outline: none; display: flex; align-items: center; gap: 4px; }
+.doc-metric__delta [data-empty="true"]::before { content: none; }
+/* Room to click before there is a change to show (its placeholder shows on hover). */
+.doc-metric__delta .doc-editable[data-empty="true"] { min-width: 6em; }
+.doc-metric:hover .doc-metric__delta [data-empty="true"]::before,
+.doc-metric__delta [data-empty="true"]:focus::before { content: attr(data-placeholder); }
+.doc-metric__delta--good { color: var(--success-text); }
+.doc-metric__delta--bad { color: var(--danger-text); }
+
+/* ─── Floating toolbars & menus ───────────────────────────────────────── */
+
+.doc-float {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-lg);
+  animation: doc-in var(--dur-popover-in) var(--ease-out);
+}
+@keyframes doc-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.doc-float__sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+.doc-float__btn {
+  height: 28px; min-width: 28px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 6px;
+  font-size: var(--text-sm); color: var(--ink-2);
+}
+.doc-float__btn:hover { background: var(--doc-hover); color: var(--ink); }
+.doc-float__btn--agent { color: var(--doc-accent-ink); font-weight: 600; }
+.doc-float__input {
+  height: 28px; width: 280px; padding: 0 8px;
+  font-size: var(--text-sm); color: var(--ink);
+}
+.doc-float__input::placeholder { color: var(--ink-4); }
+.doc-ask { flex-direction: column; align-items: stretch; width: 340px; padding: 8px; gap: 6px; }
+.doc-ask__quote {
+  font-size: var(--text-xs); color: var(--ink-3);
+  border-left: 2px solid var(--line-2); padding: 2px 0 2px 8px;
+  max-height: 54px; overflow: hidden;
+}
+.doc-ask__row { display: flex; align-items: center; gap: 6px; }
+.doc-ask__input {
+  flex: 1;
+  min-height: 32px; padding: 6px 8px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-2);
+  font-size: var(--text-sm); color: var(--ink);
+}
+.doc-ask__input:focus { border-color: var(--accent); box-shadow: var(--ring); }
+
+.doc-slash {
+  position: fixed;
+  z-index: 80;
+  width: 264px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--r-lg);
+  animation: doc-in var(--dur-popover-in) var(--ease-out);
+}
+.doc-slash__group { font-size: var(--text-2xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-4); padding: 6px 8px 4px; }
+.doc-slash__item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 6px 8px; border-radius: 6px;
+  font-size: var(--text-sm); color: var(--ink-2);
+}
+.doc-slash__item[data-active="true"] { background: var(--doc-hover); color: var(--ink); }
+.doc-slash__icon {
+  width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-3);
+}
+.doc-slash__hint { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--ink-4); }
+.doc-slash__empty { padding: 10px; font-size: var(--text-sm); color: var(--ink-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-pending__line { animation: none; }
+  .doc-block, .doc-tabs { transition: none; }
+}
