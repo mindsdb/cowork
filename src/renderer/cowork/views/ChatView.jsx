@@ -31,6 +31,11 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import DocCard from '../components/doc/DocCard';
+import DocColumn from '../components/doc/DocColumn';
+import { isDocArtifact } from '../components/doc/docArtifact';
+import { docGridColumns } from '../components/doc/docLayout';
+import { useDocBesideChat } from '../components/doc/useDocBesideChat';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
@@ -619,19 +624,26 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, projectPath, live = false, activeDocId = null }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
-      {artifacts.map((s) => (
-        <ArtifactCard
-          key={s.id}
-          artifact={artifactStepToCard(s, projectPath)}
-          onOpen={onOpen}
-          live={live}
-        />
-      ))}
+      {artifacts.map((s) => {
+        const card = artifactStepToCard(s, projectPath);
+        // A doc opens beside the chat in the doc editor, not in the file viewer.
+        if (isDocArtifact(card)) {
+          return <DocCard key={s.id} artifact={card} onOpen={onOpen} live={live} active={!!activeDocId && card.id === activeDocId} />;
+        }
+        return (
+          <ArtifactCard
+            key={s.id}
+            artifact={card}
+            onOpen={onOpen}
+            live={live}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -2034,7 +2046,15 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  const isStreaming = task.messages.some((m) => m.role === '_streaming');
+  // The doc open beside the chat. A doc the agent creates in this
+  // conversation opens here the moment it exists.
+  const docSide = useDocBesideChat({ taskId: task?.id, projectId: project?.id, streaming: isStreaming, onSend });
   const handleArtifactOpen = (artifact) => {
+    if (isDocArtifact(artifact)) {
+      docSide.open(artifact);
+      return;
+    }
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewArt(artifact);
@@ -2088,7 +2108,6 @@ export default function ChatView({
   };
   const cancelTitleRename = () => setTitleEditing(false);
 
-  const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
   // Usage state (ENG-1782): decides where "Add funds" lands and whether the
   // stopped-task cards offer auto top up. Null outside the provider (tests).
@@ -2314,7 +2333,9 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] ${docSide.resizing ? '' : 'transition-[grid-template-columns] duration-layout ease-out'} bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      // A doc open beside the chat takes the right column (the rail steps aside).
+      style={docSide.doc && !isNarrow ? { gridTemplateColumns: docGridColumns(docSide.share, docSide.expanded) } : undefined}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -3201,7 +3222,7 @@ export default function ChatView({
                       onOpen={handleArtifactOpen}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
@@ -3265,7 +3286,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (
@@ -3378,6 +3399,9 @@ export default function ChatView({
           }}
         />
       )}
+      {docSide.doc && (
+        <DocColumn side={docSide} narrow={isNarrow} areaRef={chatRef} />
+      )}
       <aside
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
@@ -3391,6 +3415,8 @@ export default function ChatView({
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
           opacity: effectiveRailOpen ? 1 : 0,
+          // The doc open beside the chat holds this column.
+          ...(docSide.doc ? { display: 'none' } : null),
         }}
       >
         {/* Rail header bar — collapse button. Stays visible on mobile

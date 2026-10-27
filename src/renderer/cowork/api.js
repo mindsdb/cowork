@@ -712,7 +712,7 @@ function idleWindowAfter(msg, idleTimeoutMs) {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, output, docContext, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -772,6 +772,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           ...(disabledConnections !== undefined
             ? { disabled_connections: disabledConnections }
             : {}),
+          // This app shows docs: the server gives the agent its doc tools
+          // only on a request that says so.
+          docs: true,
+          // The doc the person had open beside the conversation when they
+          // sent this message, with its own "Edit with agent" target, so
+          // "this section" means what they were looking at (the caller takes
+          // it then: a message that waited its turn keeps its own); and the
+          // composer's "Write it as a doc".
+          ...(docContext ? { doc_context: docContext } : {}),
+          ...(output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });

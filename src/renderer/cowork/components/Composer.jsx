@@ -220,9 +220,18 @@ export default function Composer({
   // the default agent and always offered.
   harnessClaudeCodeEnabled = true,
 }) {
-  const [value, setValue] = useDraft(draftKey || conversationId || 'new');
+  const surface = draftKey || conversationId || 'new';
+  const [value, setValue] = useDraft(surface);
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  // Output: Doc — the next message asks for its answer as a doc. Held as the
+  // surface it was picked on and dropped when that changes, during render as
+  // useDraft adopts a surface's text: ChatView keeps one Composer across
+  // chats, so a pick made in one chat went out with the next chat's message.
+  const [docPick, setDocPick] = useState(null);
+  if (docPick && docPick !== surface) setDocPick(null);
+  const docOutput = docPick === surface;
+  const setDocOutput = (on) => setDocPick(on ? surface : null);
   const [codingHarness, setCodingHarness] = useState('anton');
   // Detected but not gating: shown as a non-blocking hint on the Claude Code
   // option rather than hiding the picker. A user should be able to configure
@@ -966,11 +975,18 @@ export default function Composer({
       // 2nd argument. `effectiveHarness`/`effectiveModelId` (not the raw
       // `codingHarness`/`model?.id`) so a same-tick send can't slip through
       // with a disabled harness or nothing pickable for Claude Code.
+      //
+      // "Write it as a doc" rides with this message the same way: parked for
+      // whichever turn started next, it went to the wrong message when this
+      // one queued, waited on a provider, or became an answer. ChatView's
+      // onSend takes options third (see `sendsMeta`).
+      const output = docOutput ? { output: 'doc' } : null;
       const result = sendsMeta
-        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId })
-        : onSend(value.trim());
+        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId, ...output })
+        : output ? onSend(value.trim(), null, output) : onSend(value.trim());
       await Promise.resolve(result);
       setValue('');
+      setDocOutput(false);
       // Clear the error only AFTER a successful send. Clearing it up
       // front meant a user hammering Send/Enter on a failing send wiped
       // the error before they could read it — the failure looked like a
@@ -1295,6 +1311,17 @@ export default function Composer({
                 {Ico.plus(16)}
               </button>
               </Tooltip>
+              {docOutput && (
+                <button
+                  type="button"
+                  className="ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-solid border-line bg-accent-bg text-accent-2 text-xs font-medium cursor-pointer"
+                  aria-label="Output: Doc. Remove"
+                  title="The answer will be written as a doc. Click to remove."
+                  onClick={() => setDocOutput(false)}
+                >
+                  {Ico.doc(12)} Doc {Ico.close(12)}
+                </button>
+              )}
               {openMenu === 'attach' && (
                 <div
                   ref={attachMenuRef}
@@ -1311,6 +1338,16 @@ export default function Composer({
                 >
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} Attach files or photos
+                  </button>
+                  <button
+                    className="menu-item"
+                    role="menuitemcheckbox"
+                    aria-checked={docOutput}
+                    onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
+                  >
+                    {Ico.doc(14)}
+                    <span className="flex-1">Write it as a doc</span>
+                    {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
                   </button>
                   {onAddGoogleDriveFiles && (
                     <button

@@ -799,3 +799,60 @@ describe('Composer — slash menu entrance direction', () => {
     expect(openSlashWithComposerAt(600)).not.toHaveClass('menu--drop-down');
   });
 });
+
+describe('Composer — "Write it as a doc"', () => {
+  const pick = async (user) => {
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
+  };
+  const sendText = async (user, text) => {
+    await user.type(screen.getByRole('textbox'), text);
+    await user.keyboard('{Enter}');
+  };
+
+  it('goes with the one message it was chosen for in a chat', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-chat' });
+    await pick(user);
+    expect(screen.getByRole('button', { name: 'Output: Doc. Remove' })).toBeInTheDocument();
+    await sendText(user, 'Write up the plan');
+    // Third, after the attachments position ChatView's onSend keeps for queued files.
+    expect(props.onSend).toHaveBeenLastCalledWith('Write up the plan', null, { output: 'doc' });
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await sendText(user, 'Thanks');
+    expect(props.onSend).toHaveBeenLastCalledWith('Thanks');
+  });
+
+  it('rides in the send meta from home', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ sendsMeta: true, draftKey: 'doc-output-home' });
+    await pick(user);
+    await sendText(user, 'Draft the memo');
+    expect(props.onSend).toHaveBeenLastCalledWith('Draft the memo', expect.objectContaining({ output: 'doc' }));
+  });
+
+  it('can be taken back before the send', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-undo' });
+    await pick(user);
+    await user.click(screen.getByRole('button', { name: 'Output: Doc. Remove' }));
+    await sendText(user, 'Just answer');
+    expect(props.onSend).toHaveBeenLastCalledWith('Just answer');
+  });
+
+  it('stays with the chat it was chosen in', async () => {
+    // Found in review: ChatView keeps one Composer across chats, so a doc
+    // chosen in one chat went out with the next chat's message.
+    const user = userEvent.setup();
+    const props = { onSend: vi.fn(), project: { name: 'general' }, projects: [{ name: 'general' }], onProjectChange: vi.fn(), models: [] };
+    const { rerender } = render(<Composer {...props} conversationId="doc-pick-a" />);
+    await pick(user);
+    rerender(<Composer {...props} conversationId="doc-pick-b" />);
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await sendText(user, 'Just answer');
+    expect(props.onSend).toHaveBeenLastCalledWith('Just answer');
+    // Nor does it come back with the chat it was chosen in.
+    rerender(<Composer {...props} conversationId="doc-pick-a" />);
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+  });
+});
