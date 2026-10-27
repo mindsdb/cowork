@@ -53,4 +53,29 @@ describe('nextScrollAnchor', () => {
     });
     expect(isPrepend).toBe(false);
   });
+
+  describe('action', () => {
+    const previousAnchor = { taskId: 't1', firstKey: 'a', messageCount: 2, scrollHeight: 500 };
+    const rows = (...roles) => roles.map((role, i) => ({ id: String.fromCharCode(97 + i), role }));
+    const actionFor = (args) => nextScrollAnchor({ taskId: 't1', scrollHeight: 600, ...args }).action;
+
+    it('goes to the end when a conversation opens or changes', () => {
+      expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: null })).toBe('end');
+      expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: { ...previousAnchor, taskId: 't0' } })).toBe('end');
+    });
+
+    it('goes to the end when the reader sends a message', () => {
+      expect(actionFor({ messages: rows('user', 'assistant', 'user'), previousAnchor })).toBe('end');
+    });
+
+    it('only follows when a reply lands or nothing new was added', () => {
+      expect(actionFor({ messages: rows('user', 'assistant', 'assistant'), previousAnchor })).toBe('follow');
+      expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor })).toBe('follow');
+    });
+
+    it('holds the reader in place across a prepend', () => {
+      const messages = [{ id: 'z', role: 'assistant' }, ...rows('user', 'assistant')];
+      expect(actionFor({ messages, previousAnchor })).toBe('hold');
+    });
+  });
 });
