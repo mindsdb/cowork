@@ -159,6 +159,61 @@ it('sends no effort for a no-levels task that still stores one from an earlier m
 });
 
 
+it('keeps the stored effort when the task model is missing from the catalog', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'retired-model', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'retired-model', reasoning_effort: 'max', web_search: true,
+  })));
+});
+
+
+it('keeps the stored effort before the model catalog loads', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'gpt', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      models={[]}
+      modelMeta={{}}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'gpt', reasoning_effort: 'max', web_search: true,
+  })));
+});
+
+
 it('offers the effort levels of the model in hand and moves to the new default when the model lacks the current level', async () => {
   const user = userEvent.setup();
   const onApply = vi.fn(async () => {});
