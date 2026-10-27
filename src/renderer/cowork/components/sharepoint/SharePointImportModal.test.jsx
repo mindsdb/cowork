@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -117,19 +117,20 @@ describe('SharePointImportModal', () => {
   });
 
   it('stops new picks at 100', async () => {
-    const user = userEvent.setup();
     const many = Array.from({ length: 101 }, (_, n) => file(`01f${n}`, `f${n}.txt`));
     mocks.listSharePointChildren.mockResolvedValue({ items: many, cursor: null });
     renderModal();
 
     await within(tree()).findByText('f100.txt');
+    // fireEvent, not userEvent: the pick logic is the subject, not pointer events.
     for (let n = 0; n < 100; n += 1) {
-      await user.click(screen.getByRole('checkbox', { name: `Pick f${n}.txt` }));
+      fireEvent.click(screen.getByRole('checkbox', { name: `Pick f${n}.txt` }));
     }
 
     expect(screen.getByText(/100 of 100 picked/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Pick f100.txt' })).toHaveAttribute('data-disabled');
-  });
+    // A hundred re-renders of a 101-row tree take about 3 s on an idle machine.
+  }, 20_000);
 
   it('imports the picks in one request, shows the result and announces the new files', async () => {
     const user = userEvent.setup();
