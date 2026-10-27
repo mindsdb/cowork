@@ -15,7 +15,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
-  WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
+  INTERVAL_MINUTES, WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
 import { productName } from '../../../lib/deploymentBrand';
@@ -35,6 +35,8 @@ const NO_PROJECT = '__no_project__';
 
 const CADENCE_OPTIONS = [
   { value: 'once',     label: 'Once' },
+  { value: 'every_15_minutes', label: 'Every 15 minutes' },
+  { value: 'every_30_minutes', label: 'Every 30 minutes' },
   { value: 'hourly',   label: 'Every hour' },
   { value: 'daily',    label: 'Every day' },
   { value: 'weekdays', label: 'Every weekday' },
@@ -221,7 +223,7 @@ export default function ScheduleTaskModal({
                   style={{ ...fieldInput, width: 170 }}
                 />
               )}
-              <span className="px-0.5 text-sm text-ink-3">{form.cadence === 'hourly' ? 'at minute' : 'at'}</span>
+              <span className="px-0.5 text-sm text-ink-3">{INTERVAL_MINUTES[form.cadence] ? 'at minute' : 'at'}</span>
               <Input
                 type="time"
                 aria-label="Time"

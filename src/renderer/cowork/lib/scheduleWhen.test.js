@@ -25,6 +25,11 @@ describe('nextRuns', () => {
     expect(iso(nextRuns({ cadence: 'hourly', time: '00:15' }, NOW))).toEqual(['14 11:15', '14 12:15', '14 13:15']);
   });
 
+  it('every 15 or 30 minutes: from the chosen minute, that far apart', () => {
+    expect(iso(nextRuns({ cadence: 'every_15_minutes', time: '00:05' }, NOW))).toEqual(['14 10:35', '14 10:50', '14 11:05']);
+    expect(iso(nextRuns({ cadence: 'every_30_minutes', time: '00:00' }, NOW))).toEqual(['14 11:00', '14 11:30', '14 12:00']);
+  });
+
   it('once: the date and time, or nothing when it has passed', () => {
     expect(iso(nextRuns({ cadence: 'once', time: '09:00', date: '2026-10-16' }, NOW))).toEqual(['16 9:00']);
     expect(nextRuns({ cadence: 'once', time: '09:00', date: '2026-10-14' }, NOW)).toEqual([]);
@@ -41,6 +46,8 @@ describe('describeWhen', () => {
     [{ cadence: 'weekdays', time: '09:00' }, /^Every weekday at 9:00/],
     [{ cadence: 'weekly', time: '09:00', weekday: 1 }, /^Every Monday at 9:00/],
     [{ cadence: 'hourly', time: '00:15' }, /^Every hour at :15$/],
+    [{ cadence: 'every_15_minutes', time: '00:05' }, /^Every 15 minutes$/],
+    [{ cadence: 'every_30_minutes', time: '00:05' }, /^Every 30 minutes$/],
     [{ cadence: 'once', time: '09:00', date: '2026-10-16' }, /^Once, on Fri, Oct 16 at 9:00/],
   ])('%o', (when, sentence) => {
     expect(describeWhen(when)).toMatch(sentence);

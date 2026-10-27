@@ -26,6 +26,8 @@ function absoluteTime(iso) {
 function cadenceLabel(cadence) {
   return {
     once:     'One-off',
+    every_15_minutes: 'Every 15 min',
+    every_30_minutes: 'Every 30 min',
     hourly:   'Hourly',
     daily:    'Daily',
     weekdays: 'Weekdays',
