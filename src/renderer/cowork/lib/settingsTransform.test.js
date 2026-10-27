@@ -33,6 +33,16 @@ describe('favicon settings translation', () => {
   });
 });
 
+describe('keep-awake setting translation', () => {
+  it('reads the server row and writes the opt-out back to it', () => {
+    expect(transformSettingsRows([{ key: 'schedule_keep_awake', value: false }]).scheduleKeepAwake).toBe(false);
+    expect(diffSettingsForWrite({ scheduleKeepAwake: false }, { scheduleKeepAwake: true }))
+      .toEqual({ schedule_keep_awake: 'false' });
+    expect(committedSettingsPatch({ scheduleKeepAwake: false }, ['schedule_keep_awake']))
+      .toEqual({ scheduleKeepAwake: false });
+  });
+});
+
 describe('show_figure_sources translation', () => {
   it('round-trips the switch both ways and commits it', () => {
     expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'False', is_sensitive: false }]).showFigureSources).toBe(false);

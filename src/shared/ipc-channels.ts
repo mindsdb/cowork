@@ -46,6 +46,10 @@ export const IPC = {
   UPDATE_JOURNAL_DRAIN: 'update:journal-drain',
   UPDATE_JOURNAL_ACK: 'update:journal-ack',
 
+  // Renderer reports whether a scheduled run is in flight or about to fire;
+  // main holds off system sleep while it is (the display may still sleep).
+  SCHEDULE_KEEP_AWAKE: 'schedules:keep-awake',
+
   // Renderer awaits this before leaving the loading screen, so a boot-time
   // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).
   BOOT_AWAIT_READY: 'boot:await-ready',

@@ -1181,3 +1181,22 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
     expect(typeof mod.host.getShellSupport).toBe('function');
   });
 });
+
+describe('setScheduleKeepAwake()', () => {
+  it('passes the state to the bridge on Electron', async () => {
+    const setScheduleKeepAwake = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { setScheduleKeepAwake };
+    const host = await importHost();
+    host.setScheduleKeepAwake(true);
+    host.setScheduleKeepAwake(false);
+    expect(setScheduleKeepAwake.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('does nothing on web or on a shell without the channel', async () => {
+    let host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+  });
+});
