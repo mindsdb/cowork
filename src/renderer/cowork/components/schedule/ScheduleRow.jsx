@@ -77,7 +77,7 @@ export default function ScheduleRow({
         : cadenceLabel(task.cadence)}
     </span>
   );
-  // Badge variants (accent, muted, danger, success) are StatusDot tones.
+  // Badge variants (accent, muted, warning, danger, success) are StatusDot tones.
   const statusDot = <StatusDot tone={status.variant}>{status.label}</StatusDot>;
 
   return (

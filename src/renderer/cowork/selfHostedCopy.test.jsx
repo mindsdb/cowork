@@ -64,19 +64,21 @@ describe('platform build', () => {
     });
   });
 
-  it('says scheduled tasks run while the app is open', () => {
+  // Hosted web runs scheduled tasks on its server like any web build, so it
+  // shares the self-hosted wording rather than the desktop app's.
+  it('says scheduled tasks run on the server', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Local scheduled Anton tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence.',
+      "Scheduled Anton tasks run on the server, even with this tab closed. If a run was due while the server was down, Anton runs the latest one when it's back.",
     )).toBeInTheDocument();
     expect(screen.getByText(
-      'Create a recurring Anton task — a Monday digest, an hourly log sweep, a daily KPI snapshot. Anton runs them while the desktop app is open.',
+      'Create a recurring Anton task — a Monday digest, an hourly log sweep, a daily KPI snapshot. Anton runs them on the server, even with this tab closed.',
     )).toBeInTheDocument();
   });
 
-  it('names the desktop app when scheduling', () => {
+  it('describes the cadence without a desktop requirement when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByText('Anton runs this prompt on the cadence you set.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
   });
 

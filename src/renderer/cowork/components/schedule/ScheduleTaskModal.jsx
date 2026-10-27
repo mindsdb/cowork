@@ -11,8 +11,9 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
-import { PLATFORM_UI } from '../../../lib/deployment';
 import { productName } from '../../../lib/deploymentBrand';
+import { host } from '../../../platform/host';
+import { askToNotify } from '../../hooks/useAutoPauseNotifications';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -133,6 +134,8 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
+    // Still inside the click, which browsers require before they will ask.
+    askToNotify();
     // The server keys the project association by `project_id` (a UUID); a
     // bare name is silently dropped and the schedule falls back to the general
     // project (ENG-1255). Resolve the selected path → project id via
@@ -176,9 +179,9 @@ export default function ScheduleTaskModal({
         title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
         subtitle={isEdit
           ? `Update the cadence or prompt. ${displayName} picks up changes on the next run.`
-          : PLATFORM_UI
-            ? `${displayName} runs this prompt on the cadence you set, while the desktop app is open.`
-            : `${displayName} runs this prompt on the cadence you set.`}
+          : host.isWeb
+            ? `${displayName} runs this prompt on the cadence you set.`
+            : `${displayName} runs this prompt on the cadence you set, while the desktop app is open.`}
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
