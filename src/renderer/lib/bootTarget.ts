@@ -12,13 +12,18 @@ export interface BootDecision {
    * would render desktop-only artifact actions in an org deployment.
    */
   orgMode: boolean | null;
+  /**
+   * Whether the deployment runs live apps. False when /health could not be
+   * read: hiding the live-app controls is the safe answer either way.
+   */
+  liveApps: boolean;
 }
 
 // The minimal host surface the boot decision needs. Kept as its own interface
 // so tests can pass a stub without the full platform bridge.
 export interface BootHost {
   readSettings: () => Promise<Record<string, string>>;
-  checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean }>;
+  checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean; liveApps?: boolean }>;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   // Resolves once the boot sequence (sidecar start + boot-time update poll) has
   // settled. Awaited only on the terminal route so the loading screen stays up
@@ -87,6 +92,7 @@ export async function resolveBootTarget(
   // Unknown until /health answers. Reported as null rather than false so the
   // caller can tell "standalone" apart from "could not find out".
   let orgMode: boolean | null = null;
+  let liveApps = false;
   try {
     // readSettings() and checkConfigured() are independent, so run them
     // concurrently — on web these are two ingress round-trips that used to be
@@ -104,20 +110,21 @@ export async function resolveBootTarget(
     ]);
     const { configured } = configuredResult;
     orgMode = Boolean(configuredResult.orgMode);
+    liveApps = configuredResult.liveApps === true;
     const consented =
       settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent || hasRegistrationConsent;
     if (consented && configured) {
       const status = await host.checkInstall();
-      if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode };
+      if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode, liveApps };
       // Headed into the app — but wait for the boot sequence to settle first, so
       // a pending boot-time update (which restarts the sidecar) doesn't flash the
       // chat UI in a server-down state before reloading (ENG-749). Fast when
       // nothing is pending.
       await host.awaitBootReady();
-      return { target: 'terminal', orgMode };
+      return { target: 'terminal', orgMode, liveApps };
     }
   } catch {
-    return { target: 'auth', orgMode: null };
+    return { target: 'auth', orgMode: null, liveApps: false };
   }
-  return { target: 'auth', orgMode };
+  return { target: 'auth', orgMode, liveApps };
 }

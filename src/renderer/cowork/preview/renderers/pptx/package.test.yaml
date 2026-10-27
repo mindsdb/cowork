@@ -1,0 +1,62 @@
+# What package.test.ts checks.
+
+# [source part, relationship Target, the part it names or null]. A Target that
+# names a URL, leaves the package or can't be decoded names no part.
+partNames:
+  - [ppt/presentation.xml, slides/slide1.xml, ppt/slides/slide1.xml]
+  - [ppt/slides/slide1.xml, ../media/image1.png, ppt/media/image1.png]
+  - [ppt/slides/slide1.xml, ./.././media/./image1.png, ppt/media/image1.png]
+  - [ppt/slides/slide1.xml, /ppt/media/image1.png, ppt/media/image1.png]
+  - [ppt/slides/slide1.xml, ../media/image%201.png, ppt/media/image 1.png]
+  - ['', ppt/presentation.xml, ppt/presentation.xml]
+  - [ppt/slides/slide1.xml, ../../../outside.png, null]
+  - [ppt/slides/slide1.xml, /../outside.png, null]
+  - [ppt/slides/slide1.xml, https://example.com/image.png, null]
+  - [ppt/slides/slide1.xml, HTTPS://example.com/image.png, null]
+  - [ppt/slides/slide1.xml, //example.com/image.png, null]
+  - [ppt/slides/slide1.xml, 'javascript:alert(1)', null]
+  - [ppt/slides/slide1.xml, 'file:///etc/hosts', null]
+  - [ppt/slides/slide1.xml, 'data:image/png;base64,AAAA', null]
+  - [ppt/slides/slide1.xml, 'C:/images/image.png', null]
+  - [ppt/slides/slide1.xml, '..\media\image1.png', null]
+  - [ppt/slides/slide1.xml, ../media%2Fimage1.png, null]
+  - [ppt/slides/slide1.xml, ../media%5Cimage1.png, null]
+  - [ppt/slides/slide1.xml, ../media/%E0%A4%A.png, null]
+
+# A package whose part names differ in case from the names that point at them,
+# and whose slide has internal and External relationships.
+archive:
+  '[Content_Types].xml': <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>
+  _rels/.rels: >-
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="PPT/Presentation.xml"/>
+    </Relationships>
+  ppt/presentation.xml: <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>
+  ppt/slides/Slide1.xml: <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>
+  ppt/slides/_rels/slide1.xml.rels: >-
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png" TargetMode="External"/>
+    <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/" TargetMode="External"/>
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/second.png"/>
+    </Relationships>
+  ppt/media/image1.png: image bytes
+  ppt/broken.xml: <p:sld><p:cSld></p:sld>
+  ppt/doctype.xml: >-
+    <!DOCTYPE p:sld [<!ENTITY lol "lol">]>
+    <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">&lol;</p:sld>
+
+# Names of the archive's ppt/slides/Slide1.xml that differ only in case. The
+# reader reads that entry, and its relationships part, once for all of them.
+slideSpellings:
+  - ppt/slides/slide1.xml
+  - PPT/SLIDES/SLIDE1.XML
+  - ppt/Slides/Slide1.xml
+  - Ppt/sLides/sLide1.Xml
+
+# The relationships of ppt/slides/slide1.xml as the reader returns them. The
+# second rId1 is a duplicate, so the first one stands.
+slideRelationships:
+  - { id: rId1, kind: image, target: ../media/image1.png, external: false, part: ppt/media/image1.png }
+  - { id: rId2, kind: image, target: ../media/image1.png, external: true, part: null }
+  - { id: rId3, kind: hyperlink, target: 'https://example.com/', external: true, part: null }

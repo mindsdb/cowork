@@ -1,4 +1,7 @@
+import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
+import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
 // the loopback server on the per-OS-user port main resolved (ENG-439); Vite
@@ -15,6 +18,8 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -311,8 +316,8 @@ function _failedEventMeta(events) {
 }
 
 // Replay the server-persisted SSE event log through the live stream
-// reducer to reconstruct `steps` + `startedAt` for each assistant
-// turn. The server saves raw events in a sidecar file and returns
+// reducer to reconstruct `steps`, `startedAt` and `figureSources` for each
+// assistant turn. The server saves raw events in a sidecar file and returns
 // them inline on `/conversations/{id}/items`; doing the replay
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
@@ -335,7 +340,9 @@ function _hydrateAssistantEvents(messages) {
       ...(state.steps?.length > 0
         ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
         : {}),
+      ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -376,12 +383,15 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
   // the replay at the api boundary so the rest of the app sees a
   // consistent message shape regardless of whether the data came from
   // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
       .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
-    : [];
+    : undefined;
 
   return {
     id: conv.id,
@@ -451,6 +461,13 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
 /** Default page size for the paginated /items envelope. Matches
  * the server's own default so the two agree without either side needing to
  * repeat the number. */
@@ -502,9 +519,11 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
   //
   // Only warmed when a caller is actually listening. Seven of the eight
   // `fetchSessions` call sites want the list and nothing else (every task
@@ -512,27 +531,36 @@ export async function fetchSessions({ onItems } = {}) {
   // every one away, which is 50 wasted requests on the app's most common
   // interaction.
   if (onItems) {
-    for (const c of conversations.slice(0, EAGER)) {
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
       // Bounded like every other transcript fetch. Warming the FULL history of
       // the 50 most recent conversations moved the unbounded fetch from
       // task-open to startup rather than removing it — and it pre-filled a long
       // conversation so completely that neither the loading state nor
       // "load earlier" ever engaged for the tasks most likely to be opened.
       req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
-        .then((r) => {
-          const page = _pageFromItemsResponse(r);
-          onItems(c.id, _hydrateAssistantEvents(page.items), {
-            hasMoreMessages: page.hasMore,
-            messagesCursor: page.nextBefore,
-          });
-        })
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
         .catch(() => {});
-    }
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
   }
 
   // Guarded: the outer try/catch that used to wrap this whole function is gone,
@@ -548,7 +576,7 @@ export async function fetchSessions({ onItems } = {}) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
         // eslint-disable-next-line no-console
-        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        diagnostic("renderer.cowork.api", "WARNING", "fetchsessions_skipped_a_malformed_conversation_row", '[fetchSessions] skipped a malformed conversation row', c?.id, err);
         return null;
       }
     })
@@ -601,12 +629,16 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
  * treated as an empty conversation on a 404 (the one benign case); any other
  * items failure is 'unavailable' so a real transcript is never silently blanked.
  *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
-export async function fetchSessionResult(id) {
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`),
-    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -697,6 +729,20 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
+  // MODEL_ROUTER_ID never leaves the renderer — it's how the
+  // composer represents "let this account's Settings decide"
+  // (modelCatalog.js). The server already treats a null/absent
+  // model as exactly that. With platform UI off, only the operator's
+  // picker (lib/modelPicker) sends a model, and App hands it only the
+  // models that picker offers. With it off, all callers use
+  // operator-configured role settings, including restored tasks.
+  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  // A per-task effort is available with platform UI on, and under the
+  // operator's picker for an effort it lets users pick on the model this
+  // question sends, a retried task's saved effort included. Omit the key
+  // otherwise so this request cannot override role settings.
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
   (async () => {
     try {
       bumpIdle();
@@ -705,22 +751,13 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          // MODEL_ROUTER_ID never leaves the renderer — it's how the
-          // composer represents "let this account's Settings decide"
-          // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that.
-          model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: sentModel,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // Per-task reasoning-effort override (ENG-1940) — takes precedence
-          // over the account-wide per-role effort setting for this turn only.
-          // Same conditional-key pattern as `harness` just above: omitted
-          // entirely when the caller doesn't pass one, so older servers and
-          // effort-less models never see the field.
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -1294,14 +1331,32 @@ export async function readProjectFile(projectName, path) {
   return req(`/projects/${enc(projectName)}/files/${safe}`);
 }
 
+export function listSharedProjectFiles(projectId) {
+  // Bounded so one hung request can't stall the access recheck that runs after it.
+  return req(`/shared-projects/${enc(projectId)}/files`, { cache: 'no-store', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function readSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return req(`/shared-projects/${enc(projectId)}/files/${safe}`, { cache: 'no-store' });
+}
+
+export async function downloadSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  const response = await authFetch(`${BASE}/shared-projects/${enc(projectId)}/files-raw/${safe}`, { cache: 'no-store' });
+  if (!response.ok) throw await responseError(response, 'Download unavailable');
+  return response.blob();
+}
+
 // HTML preview-mount for a project file — server registers the
-// parent dir under a token and returns a relative URL the iframe
-// should load with `src=`. Mirrors the artifact preview flow.
+// parent dir under a token and returns `relUrl`, relative to BASE.
+// `url` is the absolute iframe `src`.
 export async function mountProjectFilePreview(projectName, path) {
-  return req(`/projects/preview-mount-file`, {
+  const data = await req(`/projects/preview-mount-file`, {
     method: 'POST',
     body: JSON.stringify({ name: projectName, path }),
   });
+  return { ...data, url: data?.relUrl ? `${BASE}${data.relUrl}` : '' };
 }
 
 // Absolute URL for downloading a project file's raw bytes. Server
@@ -1497,12 +1552,6 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
-// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
-// writes the result into the same artifact folder and returns its path.
-export async function exportArtifact(path, format) {
-  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
-}
-
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the
@@ -1528,7 +1577,7 @@ export async function openArtifactFile(artifact) {
     const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
     if (!url) return { ok: false, reason: 'no-serve-url' };
     try { await host.openExternal(url); }
-    catch { window.open(url, '_blank', 'noreferrer'); }
+    catch { return { ok: false, reason: 'open-failed' }; }
     return { ok: true };
   }
   return openArtifact(artifact?.path || '');
@@ -1863,6 +1912,25 @@ export async function deleteMemory(payload) {
   return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
+/* Whether the server removes the caller's whole memory in one step. A server
+   without the route answers 404 or 405, which means it offers no reset; any
+   other failure is the caller's to report. */
+export async function fetchMemoryCapabilities() {
+  try {
+    const capabilities = await req('/memory/capabilities');
+    return { canReset: capabilities?.canReset === true };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return { canReset: false };
+    throw err;
+  }
+}
+
+/* Removes all of the caller's learned memory: their profile, rules and
+   lessons, in every project of theirs. */
+export async function resetMemory() {
+  return req('/memory/all', { method: 'DELETE' });
+}
+
 export async function fetchSkills() {
   return req('/skills/');
 }
@@ -1874,12 +1942,25 @@ export async function saveSkill(payload, isEdit = false) {
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function uploadSkillFile(file) {
+/* `shared` is the create-time "Who can use it" answer. The form field goes
+   out only when the caller passes a boolean, so a caller that never asks
+   leaves it to the server's default, Only me. */
+export async function uploadSkillFile(file, { shared } = {}) {
   const form = new FormData();
   form.append('file', file, file.name);
+  if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
   if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
+}
+
+/* Shares the caller's own skill with everyone, read-only, or stops sharing
+   it. The refusal's sentence comes back as the error message. */
+export async function setSkillSharing(label, shared) {
+  return req(`/skills/${encodeURIComponent(label)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({ shared }),
+  });
 }
 
 export async function deleteSkill(label) {
@@ -1904,12 +1985,12 @@ export async function fetchDatasources() {
 // retired ConnectView still imports them; they are unreachable in the
 // current routing. Remove when ConnectView is fully deleted.
 export async function saveDatasource(_payload) {
-  console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "savedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'saveDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { ok: true };
 }
 
 export async function validateDatasource(_payload) {
-  console.warn('validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "validatedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'validateDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { valid: true };
 }
 
@@ -2256,6 +2337,93 @@ export async function activateArtifactVersion(path, md5) {
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
+
+export function createLiveAppPreview(launchId) {
+  return req('/live-apps/previews', { method: 'POST', body: JSON.stringify({ launchId }), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function keepLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}/keepalive`, { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function revokeLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS, keepalive: true });
+}
+
+export async function revokeLiveAppPreviews() {
+  try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
+  catch (error) { if (error.status !== 404) throw error; }
+}
+
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
 }
 
 export async function fetchBrowseStatus() {
@@ -2667,8 +2835,8 @@ export const MOCK_DATA = {
       { role: 'user', content: 'Write website copy for agent platform' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
-    { id: 't5', title: 'Create website copy for MindsHub Cowork', subtitle: '2 weeks ago', status: 'done', messages: [
-      { role: 'user', content: 'Create website copy for MindsHub Cowork' },
+    { id: 't5', title: `Create website copy for ${STOCK_PRODUCT_NAME}`, subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: `Create website copy for ${STOCK_PRODUCT_NAME}` },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
     { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
@@ -2679,7 +2847,7 @@ export const MOCK_DATA = {
   projects: [
     { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
     { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
-    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the MindsHub Cowork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p3', name: 'Cowork brand', description: `Brand and identity for the ${STOCK_PRODUCT_NAME} app`, taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
     { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
   ],
 

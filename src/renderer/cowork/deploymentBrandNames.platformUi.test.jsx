@@ -1,0 +1,71 @@
+// A deployment brand's name and logo on the surfaces it covers, on a web build
+// with the platform UI off. The stock text these surfaces fall back to is
+// pinned by their own tests, which run with the platform UI on.
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+vi.hoisted(() => {
+  window.COWORK_DEPLOYMENT_BRAND = { productName: "Acme & Co's Cowork", logoUrl: '/brand/logo.svg?v=1' };
+});
+vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
+vi.mock('../platform/host', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, host: { ...actual.host, isWeb: true, isElectron: false, logout: vi.fn() } };
+});
+vi.mock('./lib/analytics', () => ({ resetDeviceIdentity: vi.fn() }));
+
+import { WelcomeLoading } from '../WelcomeLoading';
+import SearchModal from './components/SearchModal';
+import MobileShell from './components/MobileShell';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
+import { LOGOUT_CONFIRM_COPY } from './hooks/useLogout';
+
+const shellProps = { route: 'unknown', tasks: [], projects: [], scheduled: [], artifacts: [] };
+
+describe("a deployment brand's name", () => {
+  it('names the product when creating a scheduled task', () => {
+    render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton" />);
+    expect(screen.getByText("Acme & Co's Cowork runs this prompt on the cadence you set.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
+  });
+
+  it('keeps the product name when editing a scheduled task', () => {
+    render(<ScheduleTaskModal open onClose={vi.fn()} onSubmit={vi.fn()} projects={[]} agentLabel="Anton"
+      task={{ id: 's1', title: 'Digest', prompt: 'Summarize the report', cadence: 'daily', enabled: true }} />);
+    expect(screen.getByText("Update the cadence or prompt. Acme & Co's Cowork picks up changes on the next run.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask Acme & Co's Cowork to…")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Anton|desktop app/);
+  });
+
+  it('welcomes the user', () => {
+    render(<WelcomeLoading />);
+    expect(screen.getByText("Welcome to Acme & Co's Cowork")).toBeInTheDocument();
+  });
+
+  it('labels search and its empty result', async () => {
+    const user = userEvent.setup();
+    render(<SearchModal open onClose={vi.fn()} onSelect={vi.fn()} onSearch={vi.fn().mockResolvedValue({ results: [] })} />);
+    const input = screen.getByLabelText("Search Acme & Co's Cowork");
+    await user.type(input, 'nothing');
+    await waitFor(() => expect(screen.getByText("No Acme & Co's Cowork results found.")).toBeInTheDocument());
+  });
+
+  it('titles the phone header and drawer, with the brand logo', () => {
+    render(<MobileShell {...shellProps}>content</MobileShell>);
+    expect(screen.getAllByText("Acme & Co's Cowork")).toHaveLength(2);
+    expect(document.querySelector('.mshell__drawer-logo')?.getAttribute('src')).toBe('/brand/logo.svg?v=1');
+  });
+
+  it("lets a sidebar title and logo set in Settings win in the phone drawer", () => {
+    render(<MobileShell {...shellProps} route="home" navTitle="Team space" navLogo="data:image/png;base64,aWNvbg==">content</MobileShell>);
+    expect(screen.getByText('Team space')).toBeInTheDocument();
+    expect(document.querySelector('.mshell__drawer-logo')?.getAttribute('src')).toBe('data:image/png;base64,aWNvbg==');
+  });
+
+  it('names the product when signing out', () => {
+    expect(LOGOUT_CONFIRM_COPY.title).toBe("Sign out of Acme & Co's Cowork?");
+    expect(LOGOUT_CONFIRM_COPY.message).toBe("This signs you out of Acme & Co's Cowork. You'll need to sign in again to keep using it.");
+  });
+});

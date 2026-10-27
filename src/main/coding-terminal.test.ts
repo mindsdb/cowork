@@ -304,13 +304,14 @@ describe('coding-terminal', () => {
     expect(forkMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the prod inference host if minds_url is unavailable', async () => {
-    revealMindsBaseUrlMock.mockResolvedValue(null);
+  // null: minds_url unavailable, so the prod fallback applies.
+  it.each([[null], ['https://api.mindshub.ai/v1']])('resolves ANTHROPIC_BASE_URL to the bare prod root for minds_url %s', async (stored) => {
+    revealMindsBaseUrlMock.mockResolvedValue(stored);
     const { startCodingTerminal } = await import('./coding-terminal');
     const child = new FakeUtilityProcess();
     forkMock.mockReturnValue(child);
 
-    const resultPromise = startCodingTerminal('task-fallback-url', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    const resultPromise = startCodingTerminal(`task-base-url-${stored}`, { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
     await waitForStartPosted(child);
     child.emit('message', { type: 'started' });
     await resultPromise;

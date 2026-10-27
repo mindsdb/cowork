@@ -5,7 +5,9 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
+import {
+  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+} from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -21,18 +23,22 @@ import {
   TableHeader,
   TableBody,
 } from './MarkdownTable';
+import { FigureMark } from './FigureMark';
+import { MarkdownImage } from './MarkdownImage';
 import { host } from '../../../platform/host';
+import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
+import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
-// is replaced by the nodes `splitText` returns (kept as-is when it returns
-// null), every other node is walked. `code` / `inlineCode` keep their source
-// in `value`, not in text children, so they are never split.
+// is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
+// returns null), every other node is walked. `code` / `inlineCode` keep their
+// source in `value`, not in text children, so they are never split.
 function expandTextNodes(node, splitText) {
   if (!Array.isArray(node.children)) return;
   const next = [];
   for (const child of node.children) {
-    const parts = child.type === 'text' ? splitText(child.value) : null;
+    const parts = child.type === 'text' ? splitText(child.value, child) : null;
     if (parts) {
       next.push(...parts);
     } else {
@@ -92,86 +98,92 @@ function remarkSoftBreaks() {
   return (tree) => expandTextNodes(tree, splitText);
 }
 
-// Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
-// do NOT include javascript:, file:, data:, or anything that could
-// navigate the Electron renderer to a privileged location. mailto: is
-// allowed because `host.openExternal` routes it through the OS handler.
-const _SAFE_HREF_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+/* Nodes whose figures stay plain text: code and math keep their source
+   verbatim, and a link or image is already its own control. */
+const _FIGURE_SKIPPED_NODES = new Set([
+  'code', 'inlineCode', 'math', 'inlineMath',
+  'link', 'linkReference', 'image', 'imageReference', 'definition', 'html',
+]);
 
-function isSafeExternalHref(href) {
-  if (!href || typeof href !== 'string') return false;
-  let url;
-  try {
-    url = new URL(href, 'http://_local');
-  } catch {
-    return false;
+function _figureSkippedRanges(node, out) {
+  if (!Array.isArray(node.children)) return out;
+  for (const child of node.children) {
+    if (_FIGURE_SKIPPED_NODES.has(child.type)) {
+      const start = child.position?.start?.offset;
+      const end = child.position?.end?.offset;
+      if (start != null && end != null) out.push([start, end]);
+    } else {
+      _figureSkippedRanges(child, out);
+    }
   }
-  return _SAFE_HREF_SCHEMES.has(url.protocol);
+  return out;
 }
 
-// A finished artifact's local path or a fabricated sandbox: URL that anton emits
-// as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
-// it (ENG-1636).
-//
-// Asymmetric by design: ANY Windows drive path is caught, but a POSIX path only
-// under `.anton/artifacts/`, `.cowork/`, or the pod's `/mnt/` root. Scoping
-// POSIX to those shapes keeps a real web `/route` link from being swallowed;
-// the trade is a POSIX-shaped hole — a file anton writes elsewhere on
-// macOS/Linux still renders as a dead link. Artifacts live under
-// `.anton/artifacts` and every scratchpad-pod path starts at `/mnt/`, so the
-// canonical cases are covered; widening to bare-absolute-POSIX is where
-// over-matching would start. (`/mnt/` can be a real mount point on the Linux
-// desktop — but a bare-path chat link is dead on every desktop anyway:
-// `shell.openExternal` cannot open a schemeless path — so neutralising it into
-// panel-pointing text is an improvement there too, not a regression.)
-//
-// `web` gates the loopback test only: in a browser tab `127.0.0.1`/`localhost`
-// is the USER'S machine, so a loopback URL anton emits from the scratchpad pod
-// is dead by construction (ENG-2421) — but on desktop the same shape can be
-// real (the sidecar serves on `127.0.0.1:26866`, and a fullstack app's dev
-// server on `localhost:PORT` genuinely opens). The default is the desktop
-// behaviour so a bare call can never widen the net; the remark plugin below
-// passes the live surface.
-export function isArtifactLocalPath(href, { web = false } = {}) {
-  if (!href || typeof href !== 'string') return false;
-  const h = href.trim();
-  if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
-  if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
-  // Loopback http(s) on web — MUST run before the https? bail below, which is
-  // exactly the early-return that let `http://127.0.0.1:PORT` reach users as a
-  // live link (ENG-2421).
-  if (web && /^https?:/i.test(h)) {
-    let hostname = '';
-    try { hostname = new URL(h).hostname.toLowerCase(); } catch { return false; }
-    // A single trailing root dot is the same name (RFC 1034) — `localhost.`
-    // and `127.0.0.1.` must not slip past the exact-match tests below.
-    hostname = hostname.replace(/\.$/, '');
-    if (
-      // RFC 6761 reserves `localhost` AND every name under `.localhost` as
-      // loopback (`app.localhost` resolves to 127.0.0.1 in browsers), while
-      // `localhost.example.com` is an ordinary name and stays live.
-      hostname === 'localhost' || hostname.endsWith('.localhost')
-      || hostname === '0.0.0.0'
-      || hostname === '[::1]' || hostname === '::1'
-      // Full dotted-quad only — `^127\.` alone would catch REGISTERED domains
-      // like `127.net` (review finding on #956). Loses no loopback coverage:
-      // new URL() normalises every shorthand (`127.1`, decimal `2130706433`,
-      // hex `0x7f000001`) to the dotted quad before this test runs.
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-    ) return true;
-  }
-  // POSIX artifact path (bare path — absolute or relative). A REAL web link
-  // (http/https/mailto) whose URL merely happens to contain the marker — e.g. a
-  // published `https://…/.cowork/…` URL — must stay clickable, so bail before
-  // the marker test. The `(?:^|/)` boundary matches both an absolute path
-  // (`/Users/…/.anton/artifacts/…`) and a leading-relative one
-  // (`.anton/artifacts/…`) while not matching a stray `foo.cowork/…`.
-  // `/mnt/…` is anchored to the string start: it is the pod's filesystem root
-  // on web (and at worst an already-dead bare-path link on a Linux desktop —
-  // see the header note); the anchor keeps route shapes like `/mnt-docs/x`
-  // or `docs/mnt/x` clickable.
-  if (/^(?:https?|mailto):/i.test(h)) return false;
-  return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h) || /^\/mnt\//.test(h);
+/* remark plugin: mark each figure the server traced (lib/figureSources). The
+   figures' offsets index `text`, the answer as written; placeFigures carries
+   them onto the markdown source this plugin parses, which the normalizing
+   passes in MarkdownContent rewrote, and places none in code, math or a link.
+   Each placed figure is then split out of the text node that holds it into an
+   <anton-figure data-figure={index}> element, which the `components` map
+   renders as a FigureMark. Raw HTML in an answer never becomes an element, so
+   only this plugin can produce one. Runs before the other text-splitting
+   plugins: the nodes they create carry no source position. */
+function remarkFigureSources({ figures, text }) {
+  return (tree, file) => {
+    const source = String(file.value);
+    const marks = placeFigures(source, figures, { original: text, skipped: _figureSkippedRanges(tree, []) });
+    if (marks.length === 0) return;
+    expandTextNodes(tree, (value, node) => {
+      const from = node.position?.start?.offset;
+      const to = node.position?.end?.offset;
+      if (from == null || to == null) return null;
+      const out = [];
+      let last = 0;
+      for (const m of marks) {
+        if (m.start < from || m.end > to) continue;
+        const figure = { start: m.start - from, end: m.end - from, text: figures[m.index].text };
+        /* The node's value can be shorter than its source (an escape, a
+           blockquote marker): carry the figure over, else look near its
+           offset, past the marks already made. */
+        const at = carryFigure(source.slice(from, to), value, figure)
+          ?? locateFigure(value, figure, (start) => start >= last);
+        if (!at || at.start < last) continue;
+        if (at.start > last) out.push({ type: 'text', value: value.slice(last, at.start) });
+        out.push({
+          type: 'figureSource',
+          data: { hName: 'anton-figure', hProperties: { dataFigure: m.index } },
+          children: [{ type: 'text', value: figure.text }],
+        });
+        last = at.end;
+      }
+      if (out.length === 0) return null;
+      if (last < value.length) out.push({ type: 'text', value: value.slice(last) });
+      return out;
+    });
+  };
+}
+
+/**
+ * The figures of the answer being rendered and their openers, for the
+ * `anton-figure` renderer. Read through context so new figure data (a refetch
+ * hands over equal data as new objects) re-renders the marks without
+ * rebuilding `components`, which would remount the whole answer.
+ *
+ * @typedef {{
+ *   figures: import('../../lib/figureSources').LinkedFigure[] | null,
+ *   onOpenStep: ((stepId: string) => void) | null,
+ *   onViewFile: ((source: import('../../lib/figureSources').LinkedFigureSource) => void) | null,
+ * }} FigureSourcesContextValue
+ */
+const FigureSourcesContext = createContext(
+  /** @type {FigureSourcesContextValue} */ ({ figures: null, onOpenStep: null, onViewFile: null }),
+);
+
+function FigureSourceMark({ index, children }) {
+  const { figures, onOpenStep, onViewFile } = useContext(FigureSourcesContext);
+  const figure = figures?.[index];
+  if (!figure) return children;
+  return <FigureMark figure={figure} onOpenStep={onOpenStep} onViewFile={onViewFile}>{children}</FigureMark>;
 }
 
 const _ARTIFACT_LOCAL_LINK_TITLE =
@@ -245,23 +257,14 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
   };
 }
 
-function openMarkdownHref(href) {
-  if (!isSafeExternalHref(href)) return;
-  // Prefer the host bridge (Electron routes through shell.openExternal;
-  // web falls back to window.open with noopener,noreferrer).
-  if (host && typeof host.openExternal === 'function') {
-    Promise.resolve(host.openExternal(href)).catch(() => {});
-    return;
-  }
-  try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
-}
-
 // Allow the extra attributes our chart blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
 // pre-processor (see `_renderEngramComments`) can route metadata
-// through the `a` component override into a styled chip.
+// through the `a` component override into a styled chip. The figure
+// marks remarkFigureSources creates pass through with their index.
 const sanitizeSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'anton-figure'],
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
@@ -270,6 +273,7 @@ const sanitizeSchema = {
     // Artifacts tooltip survives without a span entry, but ['*'] omits
     // className — which the engram chips and this plugin both set.
     span: [...(defaultSchema.attributes?.span || []), ['className']],
+    'anton-figure': ['dataFigure'],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
@@ -611,8 +615,42 @@ export function MarkdownContent({
   // the assistant-only inline-code rewrite (the ask_user prompt) sets it
   // on its own.
   neutralizeLoopback = isAssistant,
+  /* Where each figure in a finished answer came from, each source joined to
+     its step (linkFigureSteps in lib/figureSources). Null, an empty list, or
+     figures that all come from the question render the text exactly as
+     without it. */
+  figureSources = null,
+  /* Opens a figure source's step in the scratchpad, by step id; without it a
+     source's popover offers no "Open step". */
+  onOpenFigureStep = null,
+  /* Opens the file a figure source read in the file viewer, called with the
+     source (a project file by `path`, a conversation attachment by
+     `attachment_id`); without it the popover offers no "View file". */
+  onViewFigureFile = null,
+  /* Loads an image the document names from the document's own folder, for a
+     host that serves that folder (the artifact viewer's useDraftImageLoader).
+     Called with the image's `src`; returns a promise of its Blob, or null
+     when that `src` may not load. Without it images render as written, which
+     is what chat keeps (see remarkArtifactLocalLinks). */
+  loadImage = null,
 }) {
   const rootRef = useRef(null);
+  /* Read at click time, so a parent passing fresh callbacks every render
+     hands the marks the same openers. */
+  const openFigureStepRef = useRef(onOpenFigureStep);
+  const viewFigureFileRef = useRef(onViewFigureFile);
+  useEffect(() => {
+    openFigureStepRef.current = onOpenFigureStep;
+    viewFigureFileRef.current = onViewFigureFile;
+  });
+  const canOpenFigureStep = !!onOpenFigureStep;
+  const canViewFigureFile = !!onViewFigureFile;
+  const markFigures = hasFigureMarks(figureSources);
+  const figureContext = useMemo(() => /** @type {FigureSourcesContextValue} */ ({
+    figures: markFigures ? figureSources : null,
+    onOpenStep: canOpenFigureStep ? (stepId) => openFigureStepRef.current?.(stepId) : null,
+    onViewFile: canViewFigureFile ? (source) => viewFigureFileRef.current?.(source) : null,
+  }), [markFigures, figureSources, canOpenFigureStep, canViewFigureFile]);
   // Only run the form-fence normalization pass when forms are enabled.
   // User messages bypass it so a typed ```data-vault-form block stays
   // a normal fenced code block instead of getting auto-tidied for the
@@ -646,6 +684,7 @@ export function MarkdownContent({
     () => [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
+      ...(markFigures ? [[remarkFigureSources, { figures: figureSources, text }]] : []),
       [remarkSkillMentions, skillNames],
       // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
@@ -658,7 +697,7 @@ export function MarkdownContent({
       // Last, so every transform above sees the unchanged tree.
       ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, neutralizeLoopback, softBreaks],
+    [skillNames, neutralizeLoopback, softBreaks, markFigures, figureSources, text],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
@@ -838,6 +877,14 @@ export function MarkdownContent({
         </a>
       );
     },
+    'anton-figure': ({ node, children, ...rest }) => (
+      <FigureSourceMark index={Number(rest['data-figure'])}>{children}</FigureSourceMark>
+    ),
+    ...(loadImage ? {
+      img: ({ src, alt, title }) => (
+        <MarkdownImage src={src} alt={alt} title={title} loadImage={loadImage} />
+      ),
+    } : {}),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -866,10 +913,11 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
+      <FigureSourcesContext.Provider value={figureContext}>
       <Markdown
         remarkPlugins={remarkPlugins}
         // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
@@ -885,6 +933,7 @@ export function MarkdownContent({
       >
         {normalized || ''}
       </Markdown>
+      </FigureSourcesContext.Provider>
     </div>
   );
 }

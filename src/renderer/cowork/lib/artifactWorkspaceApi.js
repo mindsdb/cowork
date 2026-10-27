@@ -28,6 +28,8 @@ async function request(path, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.detail = detail;
+    // Same field `responseError` in api.js sets, so callers branch on one shape.
+    error.code = payload?.code || detail?.code || null;
     throw error;
   }
   if (response.status === 204) return { ok: true };
@@ -153,6 +155,36 @@ export async function loadArtifactDraftDocument(draftUrl) {
     contentType,
     isHtml: contentType.toLowerCase().startsWith('text/html'),
   };
+}
+
+/*
+ * A card's draft URL, `/api/v1/artifacts/drafts/{project_ref}/{artifact_id}/{path}`,
+ * names the project and the artifact the export route takes. Reading both from
+ * the URL addresses exactly the artifact whose file the card links to.
+ */
+const DRAFT_PATH_RE = /^\/api\/v1\/artifacts\/drafts\/([^/]+)\/([^/]+)\/[^/]/;
+
+function draftArtifactRef(draftUrl) {
+  const match = DRAFT_PATH_RE.exec(new URL(resolveSameOriginDraftUrl(draftUrl)).pathname);
+  if (!match) throw new Error('Artifact draft URL names no artifact');
+  return { projectRef: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]) };
+}
+
+/**
+ * Exports the artifact's primary file to `format`, written beside it. The body
+ * names the format and nothing else: the route always exports the primary
+ * file, and answers 422 to any other field.
+ *
+ * @param {string} draftUrl
+ * @param {import('../components/artifact').ArtifactExportFormat} format
+ * @returns {Promise<import('../components/artifact').ArtifactExportResult>}
+ */
+export async function requestArtifactExport(draftUrl, format) {
+  const { projectRef, artifactId } = draftArtifactRef(draftUrl);
+  return request(
+    `/artifacts/workspace/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/export`,
+    { method: 'POST', body: JSON.stringify({ format }) },
+  );
 }
 
 export function loadArtifactSource(artifact, path = null) {

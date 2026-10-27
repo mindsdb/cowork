@@ -229,3 +229,27 @@ describe('open in a browser tab — web / org', () => {
     expect(openExternal).toHaveBeenCalledWith(absolute);
   });
 });
+
+describe('a failed hand-off', () => {
+  beforeEach(() => { shell.electron = false; });
+
+  // host.openExternal is what restricts the agent-writable URL to safe
+  // schemes, so a rejection must not reach window.open with the raw value.
+  it.each([
+    ['the published link', 'javascript:alert(1)'],
+    ['the served artifact', ''],
+  ])('reports an error instead of opening %s with window.open', async (_label, published) => {
+    publishState.publishedUrl = published;
+    openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      await clickBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
+
+      expect(openExternal).toHaveBeenCalledTimes(1);
+      expect(opened).not.toHaveBeenCalled();
+      await waitFor(() => expect(bodyProps.current?.preview?.error).toBe('Could not open this artifact in a browser.'));
+    } finally {
+      opened.mockRestore();
+    }
+  });
+});

@@ -28,6 +28,18 @@ function ConnectionLogo({ engine, label, custom, logoColor }) {
   );
 }
 
+/* The confirm text before a delete. `shared` is the caller's own connection
+   that others use: they read it live from its creator's vault (cowork-server's
+   LayeredDataVault), so deleting it removes it for them too. The operator's
+   share stays listed under its name, and cowork-server refuses a new
+   connection under that name until the operator stops sharing it. */
+export function disconnectPrompt({ engine, name, shared }) {
+  const question = `Disconnect ${engine}/${name}?`;
+  return shared
+    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
+    : question;
+}
+
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
@@ -44,9 +56,18 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const connected = connection.status == null || connection.status === 'connected';
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
+  /* Only an explicit `managed: true` from the server makes the card read-only;
+     a connection without the field keeps its Disconnect button. An explicit
+     `shared: true` badges it Shared, whether someone else shares it with the
+     caller (`managed` too, so read-only) or it's the caller's own that others
+     use (keeps Disconnect). Managed is left for a connection the operator
+     provides, which no person created. */
+  const managed = connection.managed === true;
+  const shared = connection.shared === true;
+  const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -58,13 +79,20 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   return {
     leading: <ConnectionLogo engine={engine} label={title} custom={connection.custom} logoColor={connection.logo_color} />,
     title,
-    badges: connection.custom ? <Badge variant="accent" size="xs">Custom</Badge> : undefined,
+    badges: connection.custom || badge ? (
+      <>
+        {connection.custom && <Badge variant="accent" size="xs">Custom</Badge>}
+        {badge && <Badge variant="muted" size="sm">{badge}</Badge>}
+      </>
+    ) : undefined,
     description: subtitle,
     children: legacy
       ? <span className="text-xs text-ink-4">Saved by an older version. Disconnect it and connect again.</span>
       : undefined,
     onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
-    activateLabel: `${needsReconnect ? 'Reconnect' : 'Manage'} ${describedTitle}: ${subtitle}${repairHint}`,
+    /* The details of a managed connection open read-only, with no Reconnect,
+       so its name says View. */
+    activateLabel: `${managed ? 'View' : needsReconnect ? 'Reconnect' : 'Manage'} ${describedTitle}: ${subtitle}${repairHint}`,
     busy,
     className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
     meta: (
@@ -72,11 +100,13 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         <StatusDot tone={needsReconnect ? 'warning' : connected ? 'success' : 'muted'}>{statusLabel}</StatusDot>
         {/* Shown at rest, above the item's click area, so Disconnect never
             opens the details. */}
-        <ItemActions className="ml-auto">
-          <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
-            {busy ? 'Removing…' : 'Disconnect'}
-          </Button>
-        </ItemActions>
+        {!managed && (
+          <ItemActions className="ml-auto">
+            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+              {busy ? 'Removing…' : 'Disconnect'}
+            </Button>
+          </ItemActions>
+        )}
       </>
     ),
   };

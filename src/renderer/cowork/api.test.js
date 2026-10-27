@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -87,6 +87,40 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('memory reset', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads whether the server offers a reset', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ canReset: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchMemoryCapabilities()).resolves.toEqual({ canReset: true });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/memory/capabilities');
+  });
+
+  it('takes a server without the route as offering no reset', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ detail: 'Not Found' }, false, 404)));
+
+    await expect(fetchMemoryCapabilities()).resolves.toEqual({ canReset: false });
+  });
+
+  it('lets any other failure reach the caller', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ detail: 'boom' }, false, 500)));
+
+    await expect(fetchMemoryCapabilities()).rejects.toMatchObject({ status: 500 });
+  });
+
+  it('removes the whole memory with one DELETE', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ removed: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(resetMemory()).resolves.toEqual({ removed: true });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/memory/all');
+    expect(init.method).toBe('DELETE');
   });
 });
 
@@ -239,6 +273,21 @@ describe('testProviders', () => {
     const result = await testProviders([{ type: 'minds-cloud' }]);
     expect(result).toMatchObject({ providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {} });
     expect(result.error).toBeTruthy();
+  });
+});
+
+/* The server's `relUrl` is relative to `/api/v1`; dropping `/v1` 404s the iframe. */
+describe('mountProjectFilePreview', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('points the iframe url at the preview-asset route under /api/v1', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({
+      token: 'tok', entry: 'report.html', relUrl: '/projects/preview-asset/tok/report.html',
+    })));
+    const res = await mountProjectFilePreview('acme', 'report.html');
+    expect(res.url).toBe('http://127.0.0.1:26866/api/v1/projects/preview-asset/tok/report.html');
   });
 });
 
@@ -641,6 +690,26 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.requestId).toBe('corr-abc');
   });
 
+  it('carries the incomplete reason onto an answer that stopped early', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Stopped at a limit.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'round_cap' } } },
+      ] },
+      { role: 'user', content: 'again' },
+      { role: 'assistant', content: 'Done.', events: [
+        { type: 'response.created' },
+        { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const answers = task.messages.filter((m) => m.role === 'assistant');
+    expect(answers[0].incompleteReason).toBe('round_cap');
+    expect(answers[1]).not.toHaveProperty('incompleteReason');
+  });
+
   it("carries a hosted billing stop's reset instant onto its error row", async () => {
     stubEndpoints([
       { role: 'user', content: 'hi' },
@@ -659,6 +728,52 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const task = await fetchSession('c1');
     const err = task.messages.find((m) => m.role === 'error');
     expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
+  });
+});
+
+/* A turn's figure sources come back with its saved events, so a reloaded
+   answer marks its figures the way the live one did. */
+describe('fetchSession figure sources hydration', () => {
+  const FIGURES = {
+    project_id: 'proj-1',
+    steps: [{ tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] }],
+    figures: [
+      { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+      { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+    ],
+  };
+  const stubItems = (items) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? items : { id: 'c1', title: 'T', project: null },
+    )));
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the figure sources on the hydrated assistant turn', async () => {
+    stubItems([
+      { role: 'user', content: 'How many mugs?' },
+      { role: 'assistant', id: 'a1', content: 'You have 250 units; last year $30.', events: [
+        { type: 'response.created' },
+        { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+        { type: 'response.figure_sources', item_id: 'msg-1', ...FIGURES },
+        { type: 'response.completed' },
+      ] },
+    ]);
+    const task = await fetchSession('c1');
+    const answer = task.messages.find((m) => m.role === 'assistant');
+    expect(answer.figureSources).toEqual(FIGURES);
+    expect(answer.steps[0]._toolUseId).toBe('toolu_01');
+  });
+
+  it('adds no figure sources to a turn that sent none', async () => {
+    stubItems([
+      { role: 'assistant', id: 'a1', content: 'hi', events: [{ type: 'response.created' }, { type: 'response.completed' }] },
+    ]);
+    const task = await fetchSession('c1');
+    expect(task.messages[0]).not.toHaveProperty('figureSources');
   });
 });
 
@@ -975,6 +1090,36 @@ describe('streamNewSession — stream closes without a terminal event', () => {
     expect(result.event?.code).toBeUndefined();
     expect(result.done).toBe(true);
   });
+
+  it('ends with onDone when the answer stopped early (status incomplete)', async () => {
+    const enc = new TextEncoder();
+    const completed = {
+      type: 'response.completed',
+      response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } },
+    };
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode(`event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`),
+    ];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => (i < frames.length
+            ? { done: false, value: frames[i++] }
+            : { done: true, value: undefined }),
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ event }) });
+    });
+
+    expect(result.done).toBe(true);
+  });
 });
 
 // The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
@@ -1196,6 +1341,35 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
     const res = await fetchSessionResult('c1');
     expect(res.status).toBe('ok');
     expect(res.task.messages).toEqual([]);
+  });
+
+  it('leaves disabledConnections undefined when the server sends none', async () => {
+    // The server does not store a chat's mutes; an empty list here would
+    // overwrite the ones the chat's last send recorded locally.
+    stub({ body: meta }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toBeUndefined();
+  });
+
+  it('normalizes disabled_connections when the server sends them', async () => {
+    stub({ body: { ...meta, disabled_connections: [{ engine: ' gmail ', name: 'mail ' }, { engine: 1 }] } }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toEqual([{ engine: 'gmail', name: 'mail' }]);
+  });
+
+  it('reads a timed-out request as unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, {}));
+      const { fetchSessionResult } = await import('./api');
+      const resultPromise = fetchSessionResult('c1', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+      expect(await resultPromise).toEqual({ status: 'unavailable', code: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -1631,5 +1805,23 @@ describe('updateSettings committed result', () => {
     const result = await updateSettings({ greeting: 'Submitted greeting' });
     expect(result.status).toBe('ok');
     expect(result.settings.greeting).toBe('Canonical greeting');
+  });
+});
+
+/* The shared-project view rechecks access with this list, one request at a time.
+   A request that never settles would hold every later recheck, so files whose
+   access was revoked would stay on screen. */
+describe('listSharedProjectFiles gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('rejects after SHORT_REQUEST_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(10 * 60_000, { files: [] }));
+
+    let outcome = 'pending';
+    listSharedProjectFiles('project-id').then(() => { outcome = 'resolved'; }, () => { outcome = 'rejected'; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(outcome).toBe('rejected');
   });
 });

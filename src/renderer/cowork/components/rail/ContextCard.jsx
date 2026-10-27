@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 // Context card body — surfaces memories (Project + Global) AND
 // project instructions (`.anton/anton.md`) plus any legacy `.context/`
 // files. Listed via GET /projects/{name}/files; Working folder hides
@@ -602,9 +603,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => { cancelled = true; };
   }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
 
-  // Order: Project section first, Global second.
+  // Order: Project section first, Global second. The deployment's rules are
+  // nothing learned, so they stay on the Memories page.
   const ordered = useMemo(() => {
-    const sorted = [...sections].sort((a, b) => {
+    const sorted = sections.filter((s) => s.scope !== 'Deployment').sort((a, b) => {
       if (a.scope === 'Project' && b.scope !== 'Project') return -1;
       if (b.scope === 'Project' && a.scope !== 'Project') return 1;
       return 0;
@@ -888,10 +890,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
               const closeAttachmentMenu = () => setOpenAttachmentMenuId(null);
               const menuItems = [
+                /* Desktop has nowhere to open an upload, so it saves it
+                   (openAuthenticatedResource) and says Download. */
                 rawUrl && {
                   id: 'open',
-                  label: 'Open',
-                  icon: Ico.upload(14),
+                  label: host.isWeb ? 'Open' : 'Download',
+                  icon: host.isWeb ? Ico.upload(14) : Ico.download(14),
                   onClick: () => {
                     closeAttachmentMenu();
                     openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});
@@ -950,9 +954,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
                   onOpen={() => {
                     // Open the shared ContextFileModal — same UX as a
-                    // project file. The modal renders images inline and
-                    // gives non-images an "Open" (OS shell via rawUrl)
-                    // escape hatch.
+                    // project file. The modal shows images, text, Office
+                    // files and PDFs inline, and downloads anything else on
+                    // web or gives it a Download escape hatch on desktop.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -1064,11 +1068,15 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
           does no project-file IO: images render inline from `rawUrl`,
-          non-images land in 'binary' mode with an Open action that uses
-          `rawUrl` via the OS shell. `filePath` is the name only (for the
-          image-extension sniff + header title), NOT a real project path.
-          `remover` reuses the same attachment delete the row's menu and
-          ConfirmModal use, then closes the modal. */}
+          .xlsx/.docx/.pptx/.pdf open in the document preview, UTF-8 text
+          under the inline cap shows as text, and anything else lands in
+          'binary' mode, which downloads it on web and offers Download on
+          desktop: the OS browser an Open would hand `rawUrl` to carries
+          no server token.
+          `filePath` is the name only (for the extension checks + header
+          title), NOT a real project path, so there is nothing for Edit to
+          save to. `remover` reuses the same attachment delete the row's
+          menu and ConfirmModal use, then closes the modal. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1076,6 +1084,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         rawUrl={openAttachment
           ? attachmentRawUrl(project?.name, conversationId, openAttachment.id)
           : ''}
+        showRawText
+        showEditAction={false}
         remover={async () => {
           const target = openAttachment;
           if (!target?.id) return;
@@ -1087,7 +1097,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
             setTaskUploadError(err?.message || 'Could not delete attachment.');
             bumpAttachments();
           }
@@ -1131,7 +1141,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             if (isInstructions) reloadFiles({ forceFresh: true });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete file failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_file_failed", '[context] delete file failed', err);
             setUploadError(err?.message || 'Could not delete file.');
             // Restore by refetching the canonical list from server.
             reloadFiles();
@@ -1161,7 +1171,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] remove drive file failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_remove_drive_file_failed", '[context] remove drive file failed', err);
             setUploadError(err?.message || 'Could not remove file.');
             reloadDriveFiles();
           }
@@ -1193,7 +1203,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error('[context] delete attachment failed', err);
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
             setTaskUploadError(err?.message || 'Could not delete attachment.');
             bumpAttachments();
           }

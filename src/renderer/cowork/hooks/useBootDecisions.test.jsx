@@ -100,4 +100,25 @@ describe('useBootDecisions', () => {
     const { d } = render({ serverOnline: true, projects: [{ id: 'g', name: 'general' }], selectedProject: { id: 'x' } });
     expect(d.setSelectedProject).not.toHaveBeenCalled();
   });
+
+  /* A project link the caller can't open, and a bare /projects, both end on
+     route 'projects' with no selection; defaulting to general there would push
+     general's URL over that route. */
+  it('does not default to general on the projects route', () => {
+    const general = { id: 'g', name: 'general' };
+    const { d } = render({ serverOnline: true, route: 'projects', projects: [general], selectedProject: null });
+    expect(d.setSelectedProject).not.toHaveBeenCalled();
+    expect(apiMock.createProject).not.toHaveBeenCalled();
+  });
+
+  it('still defaults to general on Home after the projects route left the one-shot unused', () => {
+    const general = { id: 'g', name: 'general' };
+    const setSelectedProject = vi.fn();
+    const props = { ...baseDeps(), serverOnline: true, projects: [general], selectedProject: null, setSelectedProject };
+    const hook = renderHook((p) => useBootDecisions(p), { initialProps: { ...props, route: 'projects' } });
+    expect(setSelectedProject).not.toHaveBeenCalled();
+
+    hook.rerender({ ...props, route: 'home' });
+    expect(setSelectedProject).toHaveBeenCalledWith(general);
+  });
 });

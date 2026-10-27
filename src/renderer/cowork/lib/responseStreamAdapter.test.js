@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { initialStreamState, reduceStream, reduceAll, truncateLabel } from './responseStreamAdapter';
+import { STAND_IN_PHRASES, answerBody, initialStreamState, looksLikeAnswer, reduceStream, reduceAll, standInPhrase, stepDisplayLabel, truncateLabel, visibleFirstTake } from './responseStreamAdapter';
 
 const ASK = {
   type: 'response.ask_user',
@@ -344,92 +344,202 @@ describe('model_wait: the still-working line while a model call is silent', () =
   });
 });
 
-describe('preamble reclassification (ENG-1108 — narration before a tool call is not the answer)', () => {
+describe('narration becomes steps, the answer area switches once (ENG-1108, ENG-3554)', () => {
   const now = () => 1000;
+  const created = (harness = 'anton') => ({ type: 'response.created', response: { id: 'r1' }, harness });
+  const text = (delta) => ({ type: 'response.output_text.delta', delta });
+  const take = (delta) => ({ type: 'response.first_take.delta', delta });
+  const toolStart = { type: 'response.in_progress', thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' };
+  const padStart = { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' };
+  const notes = (state) => state.steps.filter((s) => s.badge === 'Note');
 
-  it('moves answer text that precedes a scratchpad tool call into the thought line, clearing bodyText', () => {
-    const state = reduceAll([
-      { type: 'response.created', response: { id: 'r1' } },
-      { type: 'response.output_text.delta', delta: "Let me verify SpaceX's status first." },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
-    ], initialStreamState(), now);
+  it('streams narration as a live Note step, never into the answer, and keeps the first take', () => {
+    const state = reduceAll([created(), take('Looking into your sales.'), text('Let me check '), text('the sheet.')], initialStreamState(), now);
+    expect(answerBody(state)).toBe('');
+    expect(notes(state)).toEqual([expect.objectContaining({ label: 'Let me check the sheet.', status: 'in_progress' })]);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('Looking into your sales.');
+  });
 
-    // Preamble is NOT left sitting in the answer…
+  it('keeps the narration as a finished Note before the tool step when a tool starts', () => {
+    const state = reduceAll([created(), text("Let me verify SpaceX's status first."), padStart], initialStreamState(), now);
     expect(state.bodyText).toBe('');
-    // …it's shown as the current inner-dialogue thought instead.
-    expect(state.currentThought).toEqual({
-      text: "Let me verify SpaceX's status first.",
-      startedAt: 1000,
-      _isPreamble: true,
-    });
-    // And the tool call still became a real step.
-    expect(state.steps).toHaveLength(1);
-    expect(state.steps[0]._isScratchpad).toBe(true);
-  });
-
-  it('moves preamble before a tool_call.start too', () => {
-    const state = reduceAll([
-      { type: 'response.created', response: { id: 'r1' } },
-      { type: 'response.output_text.delta', delta: 'Checking the docs.' },
-      { type: 'response.in_progress', thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' },
-    ], initialStreamState(), now);
-
-    expect(state.bodyText).toBe('');
-    expect(state.currentThought).toEqual({
-      text: 'Checking the docs.',
-      startedAt: 1000,
-      _isPreamble: true,
-    });
-  });
-
-  it('replaces reclassified narration when genuine reasoning resumes', () => {
-    const state = reduceAll([
-      { type: 'response.created', response: { id: 'r1' } },
-      { type: 'response.output_text.delta', delta: 'Checking the docs.' },
-      { type: 'response.in_progress', thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' },
-      {
-        type: 'response.in_progress',
-        thought_role: 'thought.progress',
-        subtype: 'reasoning',
-        content: 'Analyzing the result.',
-        at_ms: 2000,
-      },
-    ], initialStreamState(), now);
-
-    expect(state.currentThought).toEqual({
-      text: 'Analyzing the result.',
-      startedAt: 2000,
-    });
-  });
-
-  it('keeps the FINAL round text (no tool call after it) as the answer', () => {
-    const state = reduceAll([
-      { type: 'response.created', response: { id: 'r1' } },
-      { type: 'response.output_text.delta', delta: 'First, let me check.' },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.result', tool_use_id: 'a', content: '{"stdout":"ok"}' },
-      { type: 'response.output_text.delta', delta: 'Here is the real answer.' },
-      { type: 'response.completed' },
-    ], initialStreamState(), now);
-
-    // Only the final round's text survives as the answer — the preamble
-    // ("First, let me check.") is gone from bodyText.
-    expect(state.bodyText).toBe('Here is the real answer.');
-    // Thought line is cleared once the turn completes.
     expect(state.currentThought).toBeNull();
+    expect(state.steps.map((s) => s.badge || (s._isScratchpad ? 'pad' : '?'))).toEqual(['Note', 'Script']);
+    expect(state.steps[0]).toEqual(expect.objectContaining({ label: "Let me verify SpaceX's status first.", status: 'completed' }));
   });
 
-  it('seals the reasoning burst on a tool start when there is no preamble (next burst starts fresh)', () => {
+  it('switches the answer area once: first take until the final answer, which replaces it', () => {
+    const seen = [];
+    let state = initialStreamState();
+    for (const ev of [
+      created(), take('On it.'), { type: 'response.first_take.done' },
+      text('First, let me check.'), toolStart,
+      text('Here is '), text('the real answer.'), { type: 'response.completed' },
+    ]) {
+      state = reduceStream(state, ev, now);
+      seen.push(answerBody(state) ? 'answer' : visibleFirstTake(state.firstTake) ? 'take' : 'empty');
+    }
+    // Never back to empty or to the take once the answer shows, and the take
+    // never gives way to narration.
+    expect(seen).toEqual(['empty', 'take', 'take', 'take', 'take', 'take', 'take', 'answer']);
+    expect(state.bodyText).toBe('Here is the real answer.');
+    expect(notes(state).map((n) => n.label)).toEqual(['First, let me check.']);
+  });
+
+  it('takes text for the answer as soon as it is plainly one, so the answer still streams', () => {
+    const state = reduceAll([created(), take('On it.'), text('Here is what I found:\n\n- Revenue rose')], initialStreamState(), now);
+    expect(answerBody(state)).toBe('Here is what I found:\n\n- Revenue rose');
+    expect(notes(state)).toEqual([]);
+    expect(visibleFirstTake(state.firstTake)).toBeNull();
+  });
+
+  it('looksLikeAnswer tells a one-line note from an answer', () => {
+    expect(looksLikeAnswer('Let me check the sheet first.')).toBe(false);
+    expect(looksLikeAnswer('a'.repeat(300))).toBe(true);
+    for (const t of ['One.\n\nTwo.', '# Title', '- item', '1. step', '| a | b |', '```js', '> quote']) {
+      expect(looksLikeAnswer(t)).toBe(true);
+    }
+  });
+
+  it("streams the gate's own answer straight into the answer", () => {
+    const state = reduceAll([created('cowork-direct'), text('Hi!')], initialStreamState(), now);
+    expect(answerBody(state)).toBe('Hi!');
+    expect(notes(state)).toEqual([]);
+  });
+
+  it('turns a long narration back into a Note when a tool follows it', () => {
+    const long = `Let me look at ${'x'.repeat(300)}`;
+    const state = reduceAll([created(), text(long), toolStart], initialStreamState(), now);
+    expect(answerBody(state)).toBe('');
+    expect(notes(state)).toEqual([expect.objectContaining({ label: long, status: 'completed' })]);
+  });
+
+  it('a short final answer becomes the answer when the turn completes', () => {
+    const state = reduceAll([created(), take('On it.'), text('Done: 42.'), { type: 'response.completed' }], initialStreamState(), now);
+    expect(answerBody(state)).toBe('Done: 42.');
+    expect(notes(state)).toEqual([]);
+    expect(visibleFirstTake(state.firstTake)).toBeNull();
+  });
+
+  it("a forced continuation's replacement streams as the answer", () => {
+    const state = reduceAll([created(), text('Short.'), { type: 'response.answer_reset' }, text('Better.')], initialStreamState(), now);
+    expect(answerBody(state)).toBe('Better.');
+  });
+
+  it('a tool announced by progress markers ends the round too (create_artifact, in-process)', () => {
+    // The event order of a real desktop turn: narration, create_artifact
+    // announced through progress markers, the next round's narration (led by
+    // the server's round break), a scratchpad, then the answer.
+    const progress = (extra) => ({ type: 'response.in_progress', thought_role: 'thought.progress', ...extra });
+    const seen = [];
+    let state = initialStreamState();
+    for (const ev of [
+      created(), take("I'll build that hybrid game for you."),
+      text("I'll create a hybrid game combining tic-tac-toe and Tetris mechanics. Let me register the artifact and build it."),
+      progress({ content: 'create_artifact', tool_use_id: 'toolu_1' }),
+      progress({ content: '{"name": "Hybrid"}', tool_use_id: 'toolu_1' }),
+      progress({ content: 'tool_start: create_artifact', phase: 'tool_start', message: 'create_artifact', tool_use_id: '' }),
+      progress({ content: 'reasoning_done', phase: 'reasoning_done', tool_use_id: '' }),
+      text("\n\nNow I'll build the game and write it to the artifact folder:"),
+      padStart,
+      text("\n\nPerfect! I've created the game.\n\n## How it works"),
+      { type: 'response.completed' },
+    ]) {
+      state = reduceStream(state, ev, now);
+      seen.push(answerBody(state) ? 'answer' : visibleFirstTake(state.firstTake) ? 'take' : 'empty');
+    }
+    // The take holds until the answer, which replaces it once.
+    expect(seen.slice(1)).toEqual(['take', 'take', 'take', 'take', 'take', 'take', 'take', 'take', 'answer', 'answer']);
+    expect(notes(state).map((n) => n.label)).toEqual([
+      "I'll create a hybrid game combining tic-tac-toe and Tetris mechanics. Let me register the artifact and build it.",
+      "Now I'll build the game and write it to the artifact folder:",
+    ]);
+    expect(answerBody(state).trim()).toBe("Perfect! I've created the game.\n\n## How it works");
+  });
+
+  it("shows a stand-in for Anton's opening line while the first take is on screen", () => {
     const state = reduceAll([
-      { type: 'response.created', response: { id: 'r1' } },
+      { ...created(), response: { id: 'resp_42' } }, take('Building your solar system.'),
+      text("I'll create an interactive solar system."), padStart,
+      text("Now I'll add the orbits."), toolStart,
+    ], initialStreamState(), now);
+    const [opening, later] = notes(state);
+    // The opening line keeps its own text; it just shows a stand-in phrase.
+    expect(opening.label).toBe("I'll create an interactive solar system.");
+    expect(STAND_IN_PHRASES).toContain(opening.standIn);
+    expect(opening.standIn).toBe(standInPhrase('resp_42'));
+    expect(stepDisplayLabel(opening)).toBe(opening.standIn);
+    // Later narration is shown as written.
+    expect(later.standIn).toBeUndefined();
+    expect(stepDisplayLabel(later)).toBe("Now I'll add the orbits.");
+  });
+
+  it('keeps the opening line as written when no first take is showing', () => {
+    const noTake = reduceAll([created(), text("I'll create the game."), padStart], initialStreamState(), now);
+    expect(notes(noTake)[0].standIn).toBeUndefined();
+    // A reload replays saved events, which never include the take.
+    const replayed = [created(), take('On it.'), text("I'll create the game."), padStart]
+      .filter((e) => !e.type.startsWith('response.first_take'))
+      .reduce((s, e) => reduceStream(s, e, now, { replay: true }), initialStreamState());
+    expect(notes(replayed)[0].standIn).toBeUndefined();
+  });
+
+  it('has twenty distinct stand-in phrases, picked the same way every time', () => {
+    expect(new Set(STAND_IN_PHRASES).size).toBe(20);
+    expect(standInPhrase('a')).toBe(standInPhrase('a'));
+    const picks = new Set(Array.from({ length: 200 }, (_, i) => standInPhrase(`resp_${i}`)));
+    expect(picks.size).toBeGreaterThan(10);
+  });
+
+  it("keeps a long, two-paragraph opening narration a step and the first take on screen (Pac-Man turn)", () => {
+    const opening = 'I\'ll build you a hybrid Pac-Man and Tetris game — a puzzle game where Tetris pieces fall down the screen, '
+      + 'you rotate and place them strategically, and clearing rows makes "food pellets" appear that you collect with a '
+      + 'moving Pac-Man character for bonus points.\n\nLet me start by registering the artifact and then building the game.';
+    const progress = (extra) => ({ type: 'response.in_progress', thought_role: 'thought.progress', ...extra });
+    const seen = [];
+    let state = initialStreamState();
+    for (const ev of [
+      created(), take("I'll build that Pac-Man and Tetris hybrid."), text(opening),
+      progress({ content: 'tool_start: create_artifact', phase: 'tool_start', tool_use_id: '' }),
+      text("\n\nNow I'll build the game in the scratchpad and write it to the artifact folder."), padStart,
+    ]) {
+      state = reduceStream(state, ev, now);
+      seen.push(answerBody(state) ? 'answer' : visibleFirstTake(state.firstTake) ? 'take' : 'empty');
+    }
+    expect(seen.slice(1)).toEqual(['take', 'take', 'take', 'take', 'take']);
+    const [first, second] = notes(state);
+    expect(first.label).toBe(opening);
+    expect(STAND_IN_PHRASES).toContain(first.standIn);
+    expect(second.standIn).toBeUndefined();
+  });
+
+  it('gives the first take back when text taken for the answer was narration after all', () => {
+    const state = reduceAll([
+      created(), take('On it.'), text('Here is the plan:\n- register the artifact\n- build the game'), padStart,
+    ], initialStreamState(), now);
+    expect(visibleFirstTake(state.firstTake)?.text).toBe('On it.');
+    expect(answerBody(state)).toBe('');
+    expect(notes(state)[0]).toEqual(expect.objectContaining({ status: 'completed' }));
+    expect(STAND_IN_PHRASES).toContain(notes(state)[0].standIn);
+  });
+
+  it('after a tool, a paragraph or a few sentences already reads as the answer', () => {
+    expect(looksLikeAnswer('Done.\n\nIt works.')).toBe(true);
+    expect(looksLikeAnswer('Done.\n\nIt works.', { opening: true })).toBe(false);
+    expect(looksLikeAnswer('x'.repeat(300), { opening: true })).toBe(false);
+    expect(looksLikeAnswer('x'.repeat(900), { opening: true })).toBe(true);
+    expect(looksLikeAnswer('## Result', { opening: true })).toBe(true);
+  });
+
+  it('seals the reasoning burst on a tool start when there is no narration (next burst starts fresh)', () => {
+    const state = reduceAll([
+      created(),
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'Planning.' },
-      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
+      padStart,
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'New plan.' },
     ], initialStreamState(), now);
-
-    // The tool call sealed the first burst, so the resumed reasoning is a
-    // fresh burst — no "Planning." leaking into it.
     expect(state.bodyText).toBe('');
+    expect(notes(state)).toEqual([]);
     expect(state.currentThought).toEqual({ text: 'New plan.', startedAt: 1000 });
   });
 });
@@ -758,6 +868,44 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
   });
 });
 
+describe('bodyTextMap retains exact server offsets through continuations', () => {
+  const delta = (text) => ({ type: 'response.output_text.delta', delta: text });
+  const reset = { type: 'response.answer_reset' };
+  const restore = (text) => ({ type: 'response.answer_restore', text });
+  const tool = (thought_role) => ({ type: 'response.in_progress', thought_role, tool_use_id: 'toolu_01' });
+
+  it.each(['thought.scratchpad.start', 'thought.tool_call.start'])('keeps the gap removed by %s after a restore', (role) => {
+    const state = reduceAll([
+      delta('📦 250'), reset, delta('Checking 250.'), tool(role), restore('📦 250'), delta(' Still 250.'),
+    ]);
+    expect(state.bodyText).toBe('📦 250 Still 250.');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 30, ranges: [[0, 6], [19, 30]] });
+  });
+
+  it('coalesces chunked text and a restore with no removed narration', () => {
+    const before = reduceAll([delta('Old'), reset, delta('25'), delta('0')]);
+    const state = reduceStream(before, restore('A '));
+    expect(before.bodyTextMap).toEqual({ sourceLength: 3, ranges: [[0, 3]] });
+    expect(state.bodyText).toBe('A 250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+
+  it('discards the previous source coordinates at each reset', () => {
+    const state = reduceAll([
+      delta('First'), reset, delta('Checking'), tool('thought.scratchpad.start'), restore('First'),
+      delta(' Handing back.'), reset, delta('Replacement'),
+    ]);
+    expect(state.bodyText).toBe('Replacement');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 11, ranges: [[0, 11]] });
+  });
+
+  it('retains whitespace when tool-start handling retains the body', () => {
+    const state = reduceAll([delta('\n\n'), tool('thought.scratchpad.start'), delta('250')]);
+    expect(state.bodyText).toBe('\n\n250');
+    expect(state.bodyTextMap).toEqual({ sourceLength: 5, ranges: [[0, 5]] });
+  });
+});
+
 // The persisted assistant message id rides response.completed/
 // response.failed at the frame ROOT (not nested under `response`) — same
 // placement as conversation_id/harness on response.created.
@@ -944,5 +1092,146 @@ describe('ToolProgress rows (ENG-2981)', () => {
       ['other tool line', 'in_progress'],
       ['Verifying the backend (step 5 of 9)', 'in_progress'],
     ]);
+  });
+});
+
+// ENG-3436: an answer that stopped early says why on response.completed.
+describe('incompleteReason', () => {
+  it('starts null', () => {
+    expect(initialStreamState().incompleteReason).toBeNull();
+  });
+
+  it('captures the reason when the response is incomplete', () => {
+    const state = reduceAll([
+      { type: 'response.output_text.delta', delta: 'part' },
+      { type: 'response.completed', response: { status: 'incomplete', incomplete_details: { reason: 'spend_ceiling' } } },
+    ]);
+    expect(state.status).toBe('done');
+    expect(state.incompleteReason).toBe('spend_ceiling');
+    expect(state.bodyText).toBe('part');
+  });
+
+  it('stays null for a finished answer, and for a server that sends no status', () => {
+    expect(reduceAll([
+      { type: 'response.completed', response: { status: 'completed', incomplete_details: null } },
+    ]).incompleteReason).toBeNull();
+    expect(reduceAll([{ type: 'response.completed' }]).incompleteReason).toBeNull();
+  });
+});
+
+describe('response.figure_sources', () => {
+  const STEPS = [
+    { tool_use_id: 'toolu_01', kind: 'file', label: 'stock.csv', path: 'stock.csv', attachment_id: null, url: null, queries: [], requests: [] },
+  ];
+  const FIGURES = [
+    { start: 9, end: 12, text: '250', origin: 'step', sources: [{ tool_use_id: 'toolu_01', page: null }] },
+    { start: 30, end: 33, text: '$30', origin: 'none', sources: [] },
+  ];
+  const turn = (withFigures) => [
+    { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+    { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01', at_ms: 1100 },
+    { type: 'response.output_text.delta', delta: 'You have 250 units; last year $30.', at_ms: 1200 },
+    ...(withFigures
+      ? [{ type: 'response.figure_sources', sequence_number: 57, item_id: 'msg-1', at_ms: 1300, project_id: 'proj-1', steps: STEPS, figures: FIGURES }]
+      : []),
+    { type: 'response.completed', assistant_message_id: 'a1', at_ms: 1400 },
+  ];
+  const fold = (events, replay) => events.reduce(
+    (s, e) => reduceStream(s, e, () => 5000, { replay }),
+    initialStreamState(),
+  );
+
+  it('starts null', () => {
+    expect(initialStreamState().figureSources).toBeNull();
+  });
+
+  it.each([[false], [true]])('keeps the steps and figures on a live stream and on replay (replay=%s)', (replay) => {
+    expect(fold(turn(true), replay).figureSources).toEqual({ project_id: 'proj-1', steps: STEPS, figures: FIGURES });
+  });
+
+  it('changes nothing else in the state', () => {
+    const { figureSources, ...withEvent } = fold(turn(true), false);
+    const { figureSources: none, ...without } = fold(turn(false), false);
+    expect(figureSources).toEqual({ project_id: 'proj-1', steps: STEPS, figures: FIGURES });
+    expect(none).toBeNull();
+    expect(withEvent).toEqual(without);
+  });
+
+  it('ignores an event without a figure list', () => {
+    const before = fold(turn(false).slice(0, 3), false);
+    expect(reduceStream(before, { type: 'response.figure_sources' })).toBe(before);
+    expect(reduceStream(before, { type: 'response.figure_sources', steps: STEPS })).toBe(before);
+  });
+});
+
+/* The figures' offsets index the answer the server saved, which keeps the
+   narration a live message moves into a thought at the next tool call. */
+describe('answerText', () => {
+  const NARRATION = 'Let me read stock.csv first.';
+  const ANSWER = '\n\nYou have 250 units.';
+  const completed = (text) => ({
+    type: 'response.completed',
+    assistant_message_id: 'a1',
+    response: { id: 'r1', status: 'completed', output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text }] }] },
+  });
+  const fold = (events) => events.reduce((s, e) => reduceStream(s, e, () => 5000), initialStreamState());
+
+  it('starts null', () => {
+    expect(initialStreamState().answerText).toBeNull();
+  });
+
+  it('is the text response.completed carries, narration included, while bodyText is the last round', () => {
+    const state = fold([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: NARRATION },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'toolu_01' },
+      { type: 'response.output_text.delta', delta: ANSWER },
+      completed(NARRATION + ANSWER),
+    ]);
+    expect(state.answerText).toBe(NARRATION + ANSWER);
+    expect(state.bodyText).toBe(ANSWER);
+  });
+
+  it('keeps the text of an answer that stopped early, next to its reason', () => {
+    const state = fold([
+      { type: 'response.output_text.delta', delta: ANSWER },
+      {
+        type: 'response.completed',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'spend_ceiling' },
+          output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text: ANSWER }] }],
+        },
+      },
+    ]);
+    expect(state.answerText).toBe(ANSWER);
+    expect(state.incompleteReason).toBe('spend_ceiling');
+  });
+
+  it('stays null when response.completed carries no text', () => {
+    expect(fold([{ type: 'response.output_text.delta', delta: ANSWER }, { type: 'response.completed' }]).answerText).toBeNull();
+    expect(fold([{ type: 'response.completed', response: { output: [{ content: [{ text: 7 }] }] } }]).answerText).toBeNull();
+  });
+});
+
+describe('startedAt', () => {
+  const now = () => 9_000_000;
+
+  it('takes the server stamp on response.created, not the replay clock', () => {
+    // Reopening a chat replays its saved events. The answer footer shows this
+    // time, so reading the clock here made the last turn show "now".
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1_000 },
+    ], initialStreamState(), now);
+
+    expect(state.startedAt).toBe(1_000);
+  });
+
+  it('falls back to the clock when the event has no stamp', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+    ], initialStreamState(), now);
+
+    expect(state.startedAt).toBe(9_000_000);
   });
 });

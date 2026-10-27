@@ -25,6 +25,12 @@ const workspaceMock = vi.hoisted(() => ({
 
 const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
 const loadArtifactDraftText = vi.hoisted(() => vi.fn());
+const fetchAuthenticatedResponse = vi.hoisted(() => vi.fn());
+
+vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchAuthenticatedResponse,
+}));
 
 vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -83,6 +89,7 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { ARTIFACT_FRAME_POLICY } from './artifactPreviewUtils';
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -126,6 +133,55 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('srcdoc')).toContain(
       '<base href="https://cowork.example/api/v1/artifacts/drafts/proj-1/'
       + 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/">',
+    );
+  });
+
+  /* The iframe can't fetch the draft's own files without the token, so they
+     are read through the drafts route with it and inlined. */
+  it('inlines a file the draft loads from its folder, read through the drafts route', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(
+      htmlDoc('<html><head></head><body><img src="img/logo.png"></body></html>'),
+    );
+    fetchAuthenticatedResponse.mockResolvedValue({
+      headers: new Headers(),
+      blob: async () => new Blob(['PNG'], { type: 'image/png' }),
+    });
+
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(
+      'https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/img/logo.png',
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(frame.getAttribute('srcdoc')).toContain('src="data:image/png;base64,');
+  });
+
+  it('still shows the draft, with its base, when inlining fails', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    vi.spyOn(DOMParser.prototype, 'parseFromString').mockImplementation(() => {
+      throw new Error('parse failed');
+    });
+    try {
+      render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+      const frame = await screen.findByTitle('Launch brief');
+      expect(frame.getAttribute('srcdoc')).toContain(
+        '<base href="https://cowork.example/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/">',
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps the frame sources an artifact page had before live apps', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame.getAttribute('srcdoc')).toContain(
+      `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_FRAME_POLICY}">`,
     );
   });
 
