@@ -266,3 +266,48 @@ describe('ScheduleDetailView — how the last run went', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('ScheduleDetailView — controls by state', () => {
+  it('says what happens when a recurring task misses its time', async () => {
+    setup();
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.getByText(/runs once when it’s back, for the latest time it missed/)).toBeInTheDocument();
+  });
+
+  it('gives a missed one-off Run now, and no switch to resume to a time that has passed', async () => {
+    const task = { ...TASK, cadence: 'once', enabled: false, state: 'missed', nextRunAt: '2026-10-01T09:00:00Z' };
+    const { props, user } = setup({ task });
+    const box = (await screen.findByText('This one-time task’s time passed while the server was down')).closest('[role="alert"]');
+    await user.click(within(box).getByRole('button', { name: 'Run now' }));
+    expect(props.onRunNow).toHaveBeenCalledWith('s1');
+    expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
+    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/Missed/);
+    expect(screen.getByText(/within the hour/)).toBeInTheDocument();
+  });
+
+  it('lets the run of a paused task finish, and says Stop run ends it', async () => {
+    const task = { ...TASK, enabled: false, state: 'paused', running: true };
+    setup({ task });
+    expect(screen.getByText('Paused · finishing run')).toBeInTheDocument();
+    // An informational notice, not an error: a status, not an alert.
+    const box = screen.getByText('Paused — the current run will finish').closest('[role="status"]');
+    expect(within(box).getByText(/Stop run ends it now; anything it has already done stays done/)).toBeInTheDocument();
+  });
+
+  it('shows a done one-off with no switch and no next run', async () => {
+    setup({ task: { ...TASK, cadence: 'once', enabled: false, state: 'done', lastRun: { id: 'r', status: 'success' } } });
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.queryByRole('switch', { name: 'Schedule enabled' })).not.toBeInTheDocument();
+    expect(screen.getByText('Next run').parentElement).toHaveTextContent(/—/);
+  });
+});
+
+describe('ScheduleDetailView — one run at a time', () => {
+  it('turns Run now into Stop run while a run is going', async () => {
+    const { props, user } = setup({ task: { ...TASK, state: 'active', running: true }, onStopRun: vi.fn().mockResolvedValue(undefined) });
+    await screen.findAllByRole('button', { name: 'Open task' });
+    expect(screen.queryByRole('button', { name: /Run now/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Stop run/ }));
+    expect(props.onStopRun).toHaveBeenCalledWith('s1');
+  });
+});

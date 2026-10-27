@@ -7,15 +7,14 @@ import { TaskRow, ScheduleGroupRow, chatTaskMenu, chatTaskRow, groupScheduleRuns
 export function TaskList({
   tasks = [],
   schedules = [],
-  scheduleRunsIndex = {},
   onSelectTask,
   onOpenSchedule,
   onDeleteTask,
   onMoveTaskToProject,
 }) {
   const rows = useMemo(
-    () => groupScheduleRuns(tasks, scheduleRunsIndex),
-    [tasks, scheduleRunsIndex],
+    () => groupScheduleRuns(tasks),
+    [tasks],
   );
   const schedulesById = useMemo(
     () => new Map((schedules || []).map((s) => [s?.id, s])),

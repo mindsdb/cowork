@@ -18,7 +18,8 @@ import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
-import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
+import { ScheduleStatusBadge, scheduleState } from '../components/schedule/ScheduleStatusBadge';
+import { missedRunText } from '../lib/scheduleCopy';
 import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
 import { relativeTime } from '../lib/formatTime';
 
@@ -179,6 +180,8 @@ export default function ScheduleDetailView({
   onRunNow,                 // (id)
   // (task) — this page counts as reviewing an auto-pause it shows.
   onReviewedAutoPause,
+  // (scheduleId) — stops the run in flight, as the chat's Stop does.
+  onStopRun,
   agentLabel,
 }) {
   const [runs, setRuns] = useState([]);
@@ -242,6 +245,8 @@ export default function ScheduleDetailView({
     finally     { setBusy(false); }
   }
 
+  const state = scheduleState(task);
+
   // Resolve the project name from the stored id (ENG-1255) — the schedule
   // response keys the project by id (a UUID), not a name.
   // The label, resolved by id -- named for what it holds (ENG-1676).
@@ -283,23 +288,39 @@ export default function ScheduleDetailView({
               </div>
             </div>
             <div className="sched-hero-actions inline-flex items-center gap-[10px] shrink-0">
-              <EnableToggle
-                enabled={task.enabled}
-                busy={busy}
-                onChange={(next) => withBusy(async () => {
-                  if (next) await onResume?.(task.id);
-                  else      await onPause?.(task.id);
-                })}
-              />
-              <Button
-                variant="primary"
-                onClick={() => withBusy(() => onRunNow?.(task.id))}
-                disabled={busy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                {Ico.send ? Ico.send(14) : null}
-                {busy ? 'Running…' : 'Run now'}
-              </Button>
+              {/* A one-off that has run, or was missed, has no time left to
+                  resume to: Run now, or Edit for a new time. */}
+              {!(task.cadence === 'once' && ['done', 'missed'].includes(state)) && (
+                <EnableToggle
+                  enabled={state === 'active'}
+                  busy={busy}
+                  onChange={(next) => withBusy(async () => {
+                    if (next) await onResume?.(task.id);
+                    else      await onPause?.(task.id);
+                  })}
+                />
+              )}
+              {/* One run at a time: while one is going, this stops it. */}
+              {task.running ? (
+                <Button
+                  onClick={() => withBusy(() => onStopRun?.(task.id))}
+                  disabled={busy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {Ico.stop(12)}
+                  {busy ? 'Stopping…' : 'Stop run'}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  onClick={() => withBusy(() => onRunNow?.(task.id))}
+                  disabled={busy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {Ico.send ? Ico.send(14) : null}
+                  {busy ? 'Running…' : 'Run now'}
+                </Button>
+              )}
               {/* Edit + Delete live in the overflow — Delete opens a confirm,
                   and never sits inside the edit form (ENG-1245). */}
               <OverflowMenu
@@ -323,12 +344,15 @@ export default function ScheduleDetailView({
             <div className="px-[14px] py-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-body)] text-[13px] text-ink-2 leading-[1.55] whitespace-pre-wrap max-h-[168px] overflow-y-auto">{task.prompt}</div>
           )}
 
+          {/* What happens when the app is closed at its time. */}
+          <div className="font-[family-name:var(--font-body)] text-[12px] text-ink-3">{missedRunText(task.cadence)}</div>
+
           {/* Next + last run summary. */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-[14px]">
             <SummaryStat
               label="Next run"
-              value={task.enabled ? (relativeTime(task.nextRunAt) ?? '—') : 'Paused'}
-              hint={absoluteTime(task.nextRunAt)}
+              value={nextRunLabel(task, state)}
+              hint={state === 'active' ? absoluteTime(task.nextRunAt) : undefined}
             />
             <SummaryStat
               label="Last run"
@@ -427,6 +451,13 @@ export default function ScheduleDetailView({
   );
 }
 
+
+function nextRunLabel(task, state) {
+  if (state === 'missed') return 'Missed';
+  if (state === 'done') return '—';
+  if (state !== 'active') return 'Paused';
+  return relativeTime(task.nextRunAt) ?? '—';
+}
 
 function SummaryStat({ label, value, hint }) {
   return (
