@@ -24,6 +24,7 @@ import {
   TableBody,
 } from './MarkdownTable';
 import { FigureMark } from './FigureMark';
+import { MarkdownImage } from './MarkdownImage';
 import { host } from '../../../platform/host';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
@@ -626,6 +627,12 @@ export function MarkdownContent({
      source (a project file by `path`, a conversation attachment by
      `attachment_id`); without it the popover offers no "View file". */
   onViewFigureFile = null,
+  /* Loads an image the document names from the document's own folder, for a
+     host that serves that folder (the artifact viewer's useDraftImageLoader).
+     Called with the image's `src`; returns a promise of its Blob, or null
+     when that `src` may not load. Without it images render as written, which
+     is what chat keeps (see remarkArtifactLocalLinks). */
+  loadImage = null,
 }) {
   const rootRef = useRef(null);
   /* Read at click time, so a parent passing fresh callbacks every render
@@ -873,6 +880,11 @@ export function MarkdownContent({
     'anton-figure': ({ node, children, ...rest }) => (
       <FigureSourceMark index={Number(rest['data-figure'])}>{children}</FigureSourceMark>
     ),
+    ...(loadImage ? {
+      img: ({ src, alt, title }) => (
+        <MarkdownImage src={src} alt={alt} title={title} loadImage={loadImage} />
+      ),
+    } : {}),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -901,7 +913,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>

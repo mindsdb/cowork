@@ -133,6 +133,27 @@ it('saves a retained setting without changing an unnamed hidden provider', async
   expectNoProviderCheck();
 });
 
+it('clears the tested confirmation timer when the view unmounts', async () => {
+  const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  try {
+    const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
+    const { unmount } = renderSettings(settingsFor(provider));
+    fireEvent.click(screen.getByRole('switch', { name: 'Act first, ask later' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(mocks.validateSettings).toHaveBeenCalledOnce());
+    await waitFor(() => expect(setTimeoutSpy.mock.calls.some(([, ms]) => ms === 2400)).toBe(true));
+    const index = setTimeoutSpy.mock.calls.findIndex(([, ms]) => ms === 2400);
+    const timer = setTimeoutSpy.mock.results[index].value;
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+  } finally {
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  }
+});
+
 it('requires a name before saving an editable custom provider', async () => {
   mocks.deployment.PLATFORM_UI = true;
   const provider = { type: 'openai-compatible', apiKey: '***', baseUrl: 'http://localhost:11434/v1' };
