@@ -35,7 +35,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
 }));
 
 import { requestAgentRepair } from '../../../lib/artifactWorkspaceApi';
-import { useArtifactWorkspace } from './useArtifactWorkspace';
+import { PREVIEW_ONLY, useArtifactWorkspace } from './useArtifactWorkspace';
 
 const artifact = {
   id: '11111111111141118111111111111111',
@@ -186,6 +186,7 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(true);
+    expect(result.current.commentsOffReason).toBe('');
     expect(api.enableDraftComments).toHaveBeenCalledWith(artifact);
   });
 
@@ -297,6 +298,9 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(false);
+    expect(result.current.commentsOffReason).toBe(
+      "Comments aren't available right now. Reopen the artifact to try again.",
+    );
     expect(result.current.error).toBe('');
     expect(result.current.source).toEqual(source);
   });
@@ -768,5 +772,40 @@ describe('useArtifactWorkspace addressWithAgent preview errors', () => {
         previewErrors: [{ message: 'boom', file: 'a.html', line: 44 }],
       }),
     );
+  });
+});
+
+/* An .xlsx, .docx, .pptx or .pdf file previews read-only. The server can still
+   answer the source request with a text sibling of the primary file, which the
+   editor would otherwise open. */
+describe('useArtifactWorkspace previewOnly', () => {
+  const sibling = { ...source, path: 'notes.md', content: '# notes' };
+
+  it.each([false, true])('loads no editable source and names the preview-only reason (web: %s)', async (isWeb) => {
+    platform.isWeb = isWeb;
+    api.loadArtifactSource.mockResolvedValue(sibling);
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('unsupported'));
+    expect(result.current.unsupportedReason).toBe(PREVIEW_ONLY);
+    expect(result.current.previewOnly).toBe(true);
+    expect(result.current.source).toBeNull();
+    expect(result.current.currentRevision).toBeNull();
+    await act(() => result.current.load());
+    expect(result.current.source).toBeNull();
+    expect(api.loadArtifactSource).not.toHaveBeenCalled();
+    expect(api.loadArtifactReview).not.toHaveBeenCalled();
+    expect(api.enableDraftComments).not.toHaveBeenCalled();
+  });
+
+  it('returns previewOnly false for an editable artifact', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.previewOnly).toBe(false);
+  });
+
+  it('reads Preview only: Cowork can\'t edit this file type.', () => {
+    expect(PREVIEW_ONLY).toBe("Preview only: Cowork can't edit this file type.");
   });
 });

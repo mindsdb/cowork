@@ -13,6 +13,7 @@ export function ArtifactSourceEditor({
   onChange,
   onSave,
   draftUrl,
+  loadImage = null,
   onTextSelection,
 }) {
   const editorRef = useRef(null);
@@ -78,7 +79,7 @@ export function ArtifactSourceEditor({
         <section className="artifact-render-pane" aria-label="Markdown preview">
           <div className="artifact-pane-label section-label"><span>Preview</span><em>Updates as you type</em></div>
           <div className="artifact-markdown-preview">
-            <MarkdownContent text={value} id={`${source.artifactId}:draft`} />
+            <MarkdownContent text={value} id={`${source.artifactId}:draft`} loadImage={loadImage} />
           </div>
         </section>
       )}

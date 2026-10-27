@@ -789,6 +789,21 @@ export default function SettingsView({
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
+  // "Tested" is a brief confirmation. Own its timer so a stale one can't
+  // clear a newer result, and none fires after the view unmounts.
+  const testedTimerRef = useRef(null);
+  const showTested = ({ autoHide = false } = {}) => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(true);
+    if (autoHide) testedTimerRef.current = setTimeout(() => setTested(false), 2400);
+  };
+  const resetTested = () => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(false);
+  };
+  useEffect(() => () => clearTimeout(testedTimerRef.current), []);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
@@ -1167,7 +1182,7 @@ export default function SettingsView({
       if (JSON.stringify(value) !== JSON.stringify(settings[key])) patch[key] = value;
     }
     setTesting(true);
-    setTested(false);
+    resetTested();
     setSaveError(null);
     let result;
     try {
@@ -1195,15 +1210,14 @@ export default function SettingsView({
         const freshProviders = result?.settings?.providers || normalized.providers || providers;
         await runProviderTests(visibleProviderCards(normalized, freshProviders, PLATFORM_UI).filter(providerConfigured));
       }
-      setTested(true);
-      setTimeout(() => setTested(false), 2400);
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
         configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
       });
-      setTested(true);
+      showTested();
     } finally {
       setTesting(false);
     }
@@ -1212,15 +1226,14 @@ export default function SettingsView({
   const validate = async () => {
     if (testing) return;
     setTesting(true);
-    setTested(false);
+    resetTested();
     try {
       const [result] = await Promise.all([
         validateSettings(),
         runProviderTests(),
       ]);
       setValidation(result);
-      setTested(true);
-      setTimeout(() => setTested(false), 2400);
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',

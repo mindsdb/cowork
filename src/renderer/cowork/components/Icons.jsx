@@ -87,6 +87,7 @@ import {
   Trash2,
   TriangleAlert,
   Upload,
+  UserPlus,
   UserRound,
   Users,
   Wifi,
@@ -174,6 +175,8 @@ const Ico = {
   // A single person — "created by another member" marker (ENG-2979).
   // Not `people`: that one already means "Restricted" access.
   user:     ico(UserRound),
+  // Share with one named person — a live app's "Share with…".
+  userPlus: ico(UserPlus),
   robot:    ico(Bot),
   link:     ico(Link),
   // Isometric cube — a discrete composable unit; Skills library nav.
