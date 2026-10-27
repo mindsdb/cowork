@@ -84,6 +84,10 @@ export function RuntimeControlsModal({
   // Switching to a model that lacks the current level moves to its default, so
   // the update never carries a level the new model cannot run.
   const effortLevels = useMemo(() => effortLevelsFor(draft.model, modelMeta.modelEfforts), [draft.model, modelMeta.modelEfforts]);
+  // The catalog lists levels only for models that have them, so a model
+  // missing from the listing (delisted, or not loaded yet) is unknown, not
+  // level-less. Only a listed model with no levels drops the stored effort.
+  const offersNoEffort = !effortLevels && models.some((model) => model.id === draft.model);
   const chooseModel = (next: string) => {
     setDraft((current) => {
       const levels = effortLevelsFor(next, modelMeta.modelEfforts);
@@ -106,7 +110,7 @@ export function RuntimeControlsModal({
       // A model with no levels rejects any effort, including one the task
       // still stores from an earlier model. The draft keeps it so switching
       // back restores it; only the update drops it.
-      await onApply(effortLevels ? draft : { ...draft, reasoning_effort: null });
+      await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
     }
