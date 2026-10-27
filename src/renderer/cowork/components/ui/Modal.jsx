@@ -103,6 +103,9 @@ export function Modal({
   // 'center' | 'left' (pinned near leftOffset) | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
+  // A dialog opened over another dialog gets no backdrop of its own (Base
+  // UI's default), so the one under it stays as bright. This dims it too.
+  backdropWhenNested = false,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
@@ -145,6 +148,7 @@ export function Modal({
     >
       <Dialog.Portal>
         <Dialog.Backdrop
+          forceRender={backdropWhenNested}
           className={FADE_BACKDROP}
           style={{
             position: 'fixed', inset: 0, zIndex: z,

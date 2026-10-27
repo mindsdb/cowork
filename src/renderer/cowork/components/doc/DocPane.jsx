@@ -1,8 +1,9 @@
 // DocPane — a doc open beside the chat (or in a modal from the library).
 //
-// Header: title, live state ("Agent is writing", "Saving…"), export, share,
-// expand and close. It saves itself as you type, like a Google Doc: no save
-// button, no versions to manage (snapshots are still kept server-side).
+// Header: title, live state ("Agent is writing", "Saving…"), version history,
+// export, share, expand and close. It saves itself as you type, like a Google
+// Doc: no save button. The clock lists the versions its editing sessions left;
+// picking one shows it read-only, ready to restore.
 // Body: the tabs (two or more) and the page. The pane reports what the person
 // is looking at — tab, selection — so the next chat message carries it as the
 // doc view context. Cmd+Z and Shift+Cmd+Z are the doc's undo and redo
@@ -22,6 +23,9 @@ import { blockPlainText, isTextBlock } from './docModel';
 import { placeCaret } from './caret';
 import { useDraftImageLoader } from '../artifact/draftImages';
 import { copyText } from '../../lib/clipboard';
+import { RestoreDialog, RestoredNote, VersionBanner, VersionMenu } from './DocVersions';
+import { useVersionHistory } from './useVersionHistory';
+import { changedSince } from './versionHistory';
 import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
 import { host } from '../../../platform/host';
@@ -31,6 +35,8 @@ import './docPane.css';
 
 // The app's own server, as the transport useDoc reads and writes through.
 const LOCAL_TRANSPORT = { fetchDoc, followDoc, postDocOps };
+const NO_TABS = new Set();
+const NO_FLASH = {};
 
 /**
  * Whose top-left corner the header sits in, where something is drawn over
@@ -152,6 +158,11 @@ export default function DocPane({
       return null;
     }
   }, [projectRef, artifactId, warn]);
+  const history = useVersionHistory({ projectRef, artifactId, onError: warn });
+  // An earlier version being looked at, read-only, in place of the doc; its
+  // blocks that read differently now are marked.
+  const version = history.preview;
+  const changed = useMemo(() => (version ? changedSince(version.doc, doc) : undefined), [version, doc]);
 
   useEffect(() => {
     if (!rootRef.current || typeof ResizeObserver === 'undefined') return undefined;
@@ -180,6 +191,8 @@ export default function DocPane({
     }
   }, [doc, apply, setTabsHidden]);
   const named = useCallback(() => setNaming(null), []);
+  const shown = version?.doc || doc;
+  const shownTab = version ? shown.tabs.find((t) => t.id === activeTab) || shown.tabs[0] : tab;
 
   // A tab the agent writes into while the person reads another gets a dot.
   const prevFlash = useRef(flash);
@@ -278,7 +291,7 @@ export default function DocPane({
       pane.focus({ preventScroll: true });
     });
   }, [stepBack]);
-  const ownUndo = (target) => editable && !(target instanceof HTMLInputElement);
+  const ownUndo = (target) => editable && !version && !(target instanceof HTMLInputElement);
   const onKeyDownCapture = (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
@@ -339,7 +352,7 @@ export default function DocPane({
   // The agent writing this doc, as its own changes show: a turn running in
   // the chat beside it may be about something else entirely.
   const live = agentActive;
-  const tabbed = (doc?.tabs.length || 0) > 1;
+  const tabbed = (shown?.tabs.length || 0) > 1;
   const offline = writeError?.code === 'offline';
   const statusEl = live
     ? <span className="doc-header__status doc-header__status--agent"><span className="doc-header__pulse" aria-hidden="true" />Agent is writing</span>
@@ -361,9 +374,9 @@ export default function DocPane({
         {tabbed && !narrow && tabsHidden ? (
           <Tooltip content="Show tabs">
             <button type="button" ref={showTabsRef} className="doc-iconbtn doc-header__tabs" onClick={showTabs}
-              aria-label={unseen.size ? 'Show tabs (a tab has changed)' : 'Show tabs'}>
+              aria-label={unseen.size && !version ? 'Show tabs (a tab has changed)' : 'Show tabs'}>
               <Icon of={PanelLeftOpen} size={16} />
-              {unseen.size > 0 && <span className="doc-header__tabs-dot" />}
+              {unseen.size > 0 && !version && <span className="doc-header__tabs-dot" />}
             </button>
           </Tooltip>
         ) : (
@@ -371,6 +384,7 @@ export default function DocPane({
         )}
         <span className="doc-header__title" title={doc?.title || fallbackTitle}>{doc?.title || fallbackTitle || 'Doc'}</span>
         <span aria-live="polite">{statusEl}</span>
+        {doc && editable && <VersionMenu history={history} />}
         {doc && (
           <Menu
             ariaLabel="Export"
@@ -410,6 +424,7 @@ export default function DocPane({
         )}
       </header>
 
+      {version && <VersionBanner history={history} />}
       {/* No stale refusals here: the app sends no ifRev, and its server
           rebases every edit onto the doc as it stands. */}
       {writeError && (
@@ -439,32 +454,33 @@ export default function DocPane({
       {status === 'error' && !doc && (
         <div className="doc-state">{error?.status === 404 ? 'This doc no longer exists.' : `Could not open this doc. ${error?.message || ''}`}</div>
       )}
-      {doc && tab && (
+      {shown && shownTab && (
         <div className="doc-body">
           {tabbed && !narrow && (
-            <TabRail tabs={doc.tabs} activeId={tab.id} unseen={unseen} editable={editable}
+            <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
               onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} />
           )}
           <div className="doc-scroll">
             {tabbed && narrow && (
-              <TabStrip tabs={doc.tabs} activeId={tab.id} onSelect={setActiveTab} idBase={tabsId}
-                onAdd={editable ? addTab : undefined} unseen={unseen} />
+              <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
+                onAdd={editable && !version ? addTab : undefined} unseen={version ? NO_TABS : unseen} />
             )}
-            <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, tab.id) } : {})}>
+            <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
               <PendingEdits.Provider value={onPendingChange}>
                 <DocImageLoader.Provider value={loadImage}>
                 <DocCanvas
-                  key={tab.id}
-                  doc={doc}
-                  tab={tab}
-                  editable={editable}
+                  key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
+                  doc={shown}
+                  tab={shownTab}
+                  editable={editable && !version}
                   apply={apply}
-                  flash={flash}
+                  flash={version ? NO_FLASH : flash}
+                  changed={changed}
                   agentLive={live}
                   onAskAgent={onAskAgent}
                   onSelectionChange={onSelectionChange}
                   onAddTab={addTab}
-                  nameTitle={naming === tab.id}
+                  nameTitle={naming === shownTab.id}
                   onNamed={named}
                   onUploadImage={uploadImage}
                 />
@@ -474,6 +490,8 @@ export default function DocPane({
           </div>
         </div>
       )}
+      {version && <RestoreDialog history={history} shared={!!pub.publishedUrl} agentWriting={live} />}
+      <RestoredNote history={history} />
     </section>
   );
 }
