@@ -80,34 +80,32 @@ const webSpaFallback = {
   },
 };
 
+// A build-time change to the web entry's page. Only that page has the anchors
+// these transforms look for; the dev server also serves other pages. 'post'
+// runs the transform on the page as shipped.
+function webEntryTransform(name: string, transform: (html: string) => string) {
+  return {
+    name,
+    transformIndexHtml: {
+      order: 'post' as const,
+      handler: (html: string, ctx: { filename: string }) =>
+        path.basename(ctx.filename) === WEB_ENTRY ? transform(html) : html,
+    },
+  };
+}
+
 // A web build with the platform UI off loads a deployment brand at run time
 // (shared/deployment-brand.ts). The tags go in at build time, so hosted web
-// and desktop pages stay byte-identical and never request the brand. Only the
-// web entry has the brand's anchors; the dev server also serves other pages.
-const deploymentBrand = {
-  name: 'cowork-deployment-brand',
-  transformIndexHtml: {
-    order: 'post' as const,
-    handler: (html: string, ctx: { filename: string }) =>
-      path.basename(ctx.filename) === WEB_ENTRY ? withDeploymentBrand(html) : html,
-  },
-};
+// and desktop pages stay byte-identical and never request the brand.
+const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploymentBrand);
 
 // A web build with the platform UI on is the hosted build, whose preview frame
 // loads signed draft links, so its page's CSP must let a frame load the draft
 // hosts (shared/draft-link-origins.ts). They go in at build time: one hosted
 // build serves every environment, and the self-hosted and white-label pages
-// built from the same template must not name them. 'post' runs the function's
-// single-CSP checks on the page as shipped; the brand plugin above, also
-// 'post', is never in the same build, so the two need no order between them.
-const draftLinkFrameSources = {
-  name: 'cowork-draft-link-frame-sources',
-  transformIndexHtml: {
-    order: 'post' as const,
-    handler: (html: string, ctx: { filename: string }) =>
-      path.basename(ctx.filename) === WEB_ENTRY ? withDraftLinkFrameSources(html) : html,
-  },
-};
+// built from the same template must not name them. Never in the same build as
+// the brand transform, so the two need no order between them.
+const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources', withDraftLinkFrameSources);
 
 // The build's platform switch: on for desktop, and for web only when
 // VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
