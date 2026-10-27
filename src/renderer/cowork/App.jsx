@@ -42,6 +42,7 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -3082,6 +3083,16 @@ function AppCore() {
     setRoute,
   });
 
+  const { startSharePointImport, sharePointModals } = useSharePointImport({
+    connections: connectors,
+    orgMode,
+    onConnectionsChanged: () => {
+      fetchDatasources()
+        .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+        .catch(() => setConnectors([]));
+    },
+  });
+
   // Cmd/Ctrl+N follows the workspace on screen while preserving the latest
   // Cowork new-task closure (which captures fresh setRoute/setTasks).
   useEffect(() => {
@@ -5870,6 +5881,7 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -5936,6 +5948,7 @@ function AppCore() {
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
@@ -6062,6 +6075,7 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
@@ -6357,6 +6371,8 @@ function AppCore() {
         onSelect={handleSearchSelect}
         recents={searchOpen ? searchRecents(tasks, projects) : undefined}
       />
+
+      {sharePointModals}
 
       <SharePointSetupModal
         open={sharePointSetupOpen}
