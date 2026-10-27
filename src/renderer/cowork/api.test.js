@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -1823,5 +1823,141 @@ describe('listSharedProjectFiles gives up on a server that does not answer', () 
     await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
 
     expect(outcome).toBe('rejected');
+  });
+});
+
+describe('SharePoint routes', () => {
+  const KEY = {
+    tenantId: 'contoso.onmicrosoft.com',
+    clientId: '11111111-2222-3333-4444-555555555555',
+    clientSecret: 'sp-secret',
+    siteUrls: 'https://contoso.sharepoint.com/sites/team',
+  };
+  const answer = (status, body) => vi.fn(async () => new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  }));
+  const sent = (fetch) => {
+    const [url, init] = fetch.mock.calls[0];
+    return { url: String(url), method: init?.method || 'GET', body: init?.body ? JSON.parse(init.body) : undefined };
+  };
+
+  beforeEach(() => {
+    hostMock.isWeb = false;
+  });
+  afterEach(() => {
+    hostMock.isWeb = true;
+    vi.unstubAllGlobals();
+  });
+
+  it('creates a connection with exactly the route fields', async () => {
+    const fetch = answer(201, { ok: true, name: 'corp', user_label: 'Corp' });
+    vi.stubGlobal('fetch', fetch);
+
+    const saved = await createSharePointConnection({ name: 'corp', userLabel: 'Corp', ...KEY });
+
+    expect(saved.name).toBe('corp');
+    expect(sent(fetch)).toEqual({
+      url: 'http://127.0.0.1:26866/api/v1/connectors/sharepoint/connections',
+      method: 'POST',
+      body: {
+        name: 'corp',
+        user_label: 'Corp',
+        tenant_id: KEY.tenantId,
+        client_id: KEY.clientId,
+        client_secret: KEY.clientSecret,
+        site_urls: KEY.siteUrls,
+      },
+    });
+  });
+
+  it('leaves out an empty label', async () => {
+    const fetch = answer(201, { ok: true, name: 'corp', user_label: null });
+    vi.stubGlobal('fetch', fetch);
+
+    await createSharePointConnection({ name: 'corp', userLabel: '', ...KEY });
+
+    expect(Object.keys(sent(fetch).body).sort()).toEqual(['client_id', 'client_secret', 'name', 'site_urls', 'tenant_id']);
+  });
+
+  it('edits by encoded name and can keep the stored secret', async () => {
+    const fetch = answer(200, { ok: true, name: 'corp one', user_label: null });
+    vi.stubGlobal('fetch', fetch);
+
+    await editSharePointConnection('corp one', { ...KEY, clientSecret: CONNECTIONS_VAULT_KEEP });
+
+    const request = sent(fetch);
+    expect(request.url).toBe('http://127.0.0.1:26866/api/v1/connectors/sharepoint/connections/corp%20one');
+    expect(request.method).toBe('PUT');
+    expect(request.body).toEqual({
+      tenant_id: KEY.tenantId,
+      client_id: KEY.clientId,
+      client_secret: 'ANTON_VAULT_KEEP',
+      site_urls: KEY.siteUrls,
+    });
+  });
+
+  it('lists libraries and a folder page with every query value encoded', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ items: [], cursor: null, libraries: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await listSharePointLibraries('corp', 'https://contoso.sharepoint.com/sites/a&b');
+    await listSharePointChildren('corp', { site: 'https://contoso.sharepoint.com/sites/team', driveId: 'b!Lib', itemId: '01F', cursor: 'p2&x' });
+    await listSharePointChildren('corp', { site: 'https://contoso.sharepoint.com/sites/team', driveId: 'b!Lib' });
+
+    const [libraries, page, root] = fetch.mock.calls.map(([url]) => new URL(String(url)));
+    expect(libraries.pathname).toBe('/api/v1/connectors/sharepoint/connections/corp/drives');
+    expect(libraries.searchParams.get('site')).toBe('https://contoso.sharepoint.com/sites/a&b');
+    expect(page.pathname).toBe('/api/v1/connectors/sharepoint/connections/corp/children');
+    expect(Object.fromEntries(page.searchParams)).toEqual({
+      site: 'https://contoso.sharepoint.com/sites/team', drive_id: 'b!Lib', item_id: '01F', cursor: 'p2&x',
+    });
+    expect(root.searchParams.get('item_id')).toBe('root');
+    expect(root.searchParams.has('cursor')).toBe(false);
+  });
+
+  it('imports with one request to the project route', async () => {
+    const fetch = answer(200, { imported: [{ path: 'a.txt', size: 1 }], skipped: [] });
+    vi.stubGlobal('fetch', fetch);
+
+    const result = await importSharePointFiles('my project', {
+      connection: 'corp', site: KEY.siteUrls, driveId: 'b!Lib', itemIds: ['01a', '01b'],
+    });
+
+    expect(result.imported).toEqual([{ path: 'a.txt', size: 1 }]);
+    expect(sent(fetch)).toEqual({
+      url: 'http://127.0.0.1:26866/api/v1/projects/my%20project/files/import/sharepoint',
+      method: 'POST',
+      body: { connection: 'corp', site: KEY.siteUrls, drive_id: 'b!Lib', folder: '', item_ids: ['01a', '01b'] },
+    });
+  });
+
+  it.each([
+    [404, { detail: 'Not Found' }],
+    [405, { detail: 'Method Not Allowed' }],
+  ])('a server without the routes (%s) asks for an update', async (status, body) => {
+    vi.stubGlobal('fetch', answer(status, body));
+
+    const err = await listSharePointLibraries('corp', KEY.siteUrls).catch((e) => e);
+
+    expect(err.message).toBe(SHAREPOINT_UNAVAILABLE_MESSAGE);
+    expect(err.code).toBe('sharepoint_unavailable');
+    expect(err.status).toBe(status);
+  });
+
+  it.each([
+    [404, 'Connection not found.'],
+    [404, "The app can't open https://contoso.sharepoint.com/sites/team. Ask your admin to grant it this site."],
+    [409, 'A SharePoint connection with this name already exists.'],
+    [413, 'This import is over the 100-file limit. Pick fewer files or folders.'],
+    [422, "Microsoft rejected the client secret. Check that it is right and hasn't expired."],
+  ])("the route's own %s keeps its message", async (status, detail) => {
+    vi.stubGlobal('fetch', answer(status, { detail }));
+
+    const err = await createSharePointConnection({ name: 'corp', ...KEY }).catch((e) => e);
+
+    expect(err.message).toBe(detail);
+    expect(err.status).toBe(status);
+    expect(err.code).not.toBe('sharepoint_unavailable');
   });
 });

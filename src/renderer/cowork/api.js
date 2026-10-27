@@ -2051,6 +2051,71 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 // name, the two are deliberately distinct and must not be conflated.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/* `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored secret. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/drives?${query}`);
+}
+
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/* One request for the whole import; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
 // Predefined JSON specs in server/connectors/. Three calls:
