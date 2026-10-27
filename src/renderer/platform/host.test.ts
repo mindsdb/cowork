@@ -337,6 +337,56 @@ describe('web mode (no bridge)', () => {
     },
   );
 
+  it('openPendingTab opens a blank tab with its opener already cut', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    open.mockClear();
+
+    const pending = host.openPendingTab();
+
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    expect(pending).not.toBeNull();
+    expect(tab.opener).toBeNull();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('openPendingTab returns null when the browser blocks the tab', async () => {
+    const host = await importHost();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    expect(host.openPendingTab()).toBeNull();
+  });
+
+  it('a pending tab goes to an https address', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).toHaveBeenCalledWith('https://draft.example/_t/x/index.html');
+  });
+
+  it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'not a url'])(
+    'a pending tab refuses what openExternal refuses, and stays where it is: %s',
+    async (url) => {
+      const host = await importHost();
+      const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+      vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+      expect(host.openPendingTab()?.navigate(url)).toBe(false);
+      expect(tab.location.replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it('closing a pending tab the user already closed throws nothing', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(() => { throw new Error('gone'); }) };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(() => host.openPendingTab()?.close()).not.toThrow();
+    expect(tab.close).toHaveBeenCalled();
+  });
+
   it('MindsHub PKCE bridges refuse with a reason (web uses Keycloak redirect)', async () => {
     const host = await importHost();
     await expect(host.mindshubLogin()).resolves.toMatchObject({ ok: false });

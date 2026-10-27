@@ -246,6 +246,36 @@ export async function openExternal(url: string): Promise<void> {
   if (browserUrl) window.open(browserUrl, '_blank', 'noopener,noreferrer');
 }
 
+export interface PendingTab {
+  /** Points the tab at `url`; false, leaving the tab as it is, for a URL openExternal would refuse. */
+  navigate(url: string): boolean;
+  close(): void;
+}
+
+// Web: a tab for an address known only after an await. It opens blank inside
+// the click, where popup blockers allow it, and its opener is cut at once:
+// `noopener` would make window.open return null and leave no tab to point at
+// the address. The address passes the same scheme rule as openExternal. Null
+// when the browser blocks the tab.
+export function openPendingTab(): PendingTab | null {
+  let tab: Window | null = null;
+  try { tab = window.open('', '_blank'); } catch { tab = null; }
+  if (!tab) return null;
+  const opened = tab;
+  opened.opener = null;
+  return {
+    navigate(url) {
+      const browserUrl = normalizeExternalBrowserUrl(url);
+      if (!browserUrl) return false;
+      opened.location.replace(browserUrl);
+      return true;
+    },
+    close() {
+      try { opened.close(); } catch { /* the tab is already gone */ }
+    },
+  };
+}
+
 export async function openPath(path: string): Promise<{ ok: boolean; reason?: string }> {
   if (isElectron && typeof bridge.openPath === 'function') {
     return bridge.openPath(path);
@@ -1703,6 +1733,7 @@ export const host = {
   serverStop,
   serverDiagnostics,
   openExternal,
+  openPendingTab,
   openPath,
   showItemInFolder,
   pickCodeFolder,
