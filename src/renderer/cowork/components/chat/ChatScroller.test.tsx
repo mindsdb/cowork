@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fakeScrollBox, type FakeScrollBox } from '../../../../../tests/helpers/scrollBox';
 import { ChatScroller } from './ChatScroller';
-import { anchorPlan, useStickToBottom } from './useStickToBottom';
+import { anchorPlan, useStickToBottom, type StickToBottom } from './useStickToBottom';
 
 function Transcript() {
   const stick = useStickToBottom();
@@ -31,6 +32,15 @@ describe('the scroll-to-latest button', () => {
     expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
   });
 
+  it('waits until the reader is a screen away', () => {
+    render(<Transcript />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => fake.scrollReaderTo(box(), 900));
+    expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
+    act(() => fake.scrollReaderTo(box(), 700));
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+  });
+
   it('appears once the reader scrolls up, and takes them back to the end', () => {
     render(<Transcript />);
     act(() => fake.scrollReaderTo(box(), 1400));
@@ -39,6 +49,22 @@ describe('the scroll-to-latest button', () => {
     act(() => { fireEvent.click(jump); });
     expect(box().scrollTop).toBe(1400);
     expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
+  });
+
+  it('appears when the answer grows below a reader who stopped short of the end', () => {
+    let stick!: ReturnType<typeof useStickToBottom>;
+    function Exposed() {
+      stick = useStickToBottom();
+      return <ChatScroller stick={stick} scrollProps={{ 'data-scroll': 'true' }}><p>Conversation</p></ChatScroller>;
+    }
+    render(<Exposed />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => fake.scrollReaderTo(box(), 1000));
+    expect(screen.queryByRole('button', { name: /scroll to latest/i })).toBeNull();
+    // The answer streams on; content resizes but nothing scrolls.
+    fake.height = 3000;
+    act(() => stick.updateReserve());
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
   });
 
   it('comes back within reach of the end without the button', () => {
@@ -58,8 +84,18 @@ describe('anchorPlan', () => {
   });
 });
 
-describe('scrolling up with a wheel', () => {
+describe('when following pauses', () => {
   let fake: FakeScrollBox;
+  let probe: StickToBottom;
+  function Probe({ children }: { children?: ReactNode }) {
+    probe = useStickToBottom();
+    return (
+      <ChatScroller stick={probe} scrollProps={{ 'data-scroll': 'true' }}>
+        <p>Conversation</p>
+        {children}
+      </ChatScroller>
+    );
+  }
   beforeEach(() => {
     fake = fakeScrollBox((el) => el.dataset?.scroll === 'true');
     fake.height = 2000;
@@ -67,11 +103,33 @@ describe('scrolling up with a wheel', () => {
   });
   afterEach(() => fake.restore());
 
-  it('unpins the transcript before the position moves far', () => {
-    render(<Transcript />);
+  it('unpins on a wheel scroll up, before the position moves far', () => {
+    render(<Probe />);
     act(() => fake.scrollReaderTo(box(), 1400));
     act(() => { fireEvent.wheel(box(), { deltaY: -40 }); });
-    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+    expect(probe.isStuck()).toBe(false);
+  });
+
+  it('unpins while the reader selects text in the transcript, and stays unpinned near the end', () => {
+    render(<Probe />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    const text = screen.getByText('Conversation').firstChild as Node;
+    const getSelection = vi.spyOn(document, 'getSelection').mockReturnValue({ isCollapsed: false, anchorNode: text } as unknown as Selection);
+    try {
+      act(() => { document.dispatchEvent(new Event('selectionchange')); });
+      expect(probe.isStuck()).toBe(false);
+      act(() => fake.scrollReaderTo(box(), 1390));
+      expect(probe.isStuck()).toBe(false);
+    } finally {
+      getSelection.mockRestore();
+    }
+  });
+
+  it('unpins when the reader opens a collapsed block', () => {
+    render(<Probe><details><summary>Worked for 2m</summary><p>Steps</p></details></Probe>);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => { fireEvent.click(screen.getByText('Worked for 2m')); });
+    expect(probe.isStuck()).toBe(false);
   });
 });
 
@@ -141,5 +199,12 @@ describe('a sent message held at the top', () => {
     expect(box().scrollTop).toBe(376);
     act(() => stick.updateReserve());
     expect(box().scrollTop).toBe(476);
+  });
+});
+
+describe('the transcript', () => {
+  it('is a log, so new entries are announced politely', () => {
+    render(<Transcript />);
+    expect(screen.getByRole('log')).toBe(box());
   });
 });
