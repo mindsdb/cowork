@@ -378,6 +378,15 @@ describe('web mode (no bridge)', () => {
     },
   );
 
+  it('a pending tab the user closed is left closed, and that is not a failure', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, closed: true, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
   it('closing a pending tab the user already closed throws nothing', async () => {
     const host = await importHost();
     const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(() => { throw new Error('gone'); }) };

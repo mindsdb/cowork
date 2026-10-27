@@ -247,7 +247,11 @@ export async function openExternal(url: string): Promise<void> {
 }
 
 export interface PendingTab {
-  /** Points the tab at `url`; false, leaving the tab as it is, for a URL openExternal would refuse. */
+  /**
+   * Points the tab at `url`; false, leaving the tab as it is, for a URL
+   * openExternal would refuse. A tab the user has closed meanwhile is left
+   * closed, and that is not a failure.
+   */
   navigate(url: string): boolean;
   close(): void;
 }
@@ -267,7 +271,7 @@ export function openPendingTab(): PendingTab | null {
     navigate(url) {
       const browserUrl = normalizeExternalBrowserUrl(url);
       if (!browserUrl) return false;
-      opened.location.replace(browserUrl);
+      if (!opened.closed) opened.location.replace(browserUrl);
       return true;
     },
     close() {

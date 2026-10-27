@@ -547,6 +547,7 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     );
     checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: false });
     loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
 
@@ -554,6 +555,48 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     expect(screen.queryByText(/Draft links are not available/)).not.toBeInTheDocument();
     expect(getDraftLinks()).toBe(false);
     expect(createDraftLink).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.map(([line]) => JSON.parse(line))).toContainEqual(
+      expect.objectContaining({ event: 'draft_links_off', status_code: 404 }),
+    );
+  });
+
+  it('offers a reload once the link expires, and the reload asks for a new link', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: LINK, expiresAt: Date.now() / 1000 + 0.05 })
+      .mockResolvedValueOnce({ url: NEXT_LINK, expiresAt: Date.now() / 1000 + 1800 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    const notice = await screen.findByRole('button', { name: /link has expired/ });
+
+    act(() => { notice.click(); });
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
+    });
+    expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+  });
+
+  it('shows no expiry notice while the link is still valid', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: Date.now() / 1000 + 1800 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 100); }); });
+
+    expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+  });
+
+  // Embedded content makes no request, so there is no draft on the server to
+  // link to: it renders from its own URL, as with links off.
+  it('keeps an embedded data: draft on its own URL', async () => {
+    const embedded = { ...linked, draftUrl: 'data:text/html;charset=utf-8,%3Ch1%3EHi%3C%2Fh1%3E' };
+
+    render(<ArtifactViewer open artifact={embedded} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('src', embedded.draftUrl);
+    expect(createDraftLink).not.toHaveBeenCalled();
   });
 
   it('keeps links on and shows the error when /health cannot be read', async () => {
@@ -579,17 +622,13 @@ describe('ArtifactViewer draft preview through a signed link', () => {
   });
 
   // The link never reaches the frame, and this page's CSP could not frame
-  // another host anyway: links go off and the preview falls back to srcdoc.
-  it.each([
-    ['another host', 'https://evil.example/_t/v1.a.b/index.html'],
-    ['a path that names another host', 'https://draft-staging.mindshub.co//evil.example/x'],
-    ['a backslash path', 'https://draft-staging.mindshub.co/\\evil.example/x'],
-    ['a path outside /_t/', 'https://draft-staging.mindshub.co/index.html'],
-    ['plain http', 'http://draft-staging.mindshub.co/_t/v1.a.b/index.html'],
-    ['not a URL', 'javascript:alert(1)'],
-  ])('refuses a link outside the draft hosts and falls back to srcdoc: %s', async (_label, url) => {
+  // another host anyway: links go off, with a warning that says why, and the
+  // preview falls back to srcdoc. Which links are refused: draftLinkRules.test.js.
+  it('refuses a link outside the draft hosts and falls back to srcdoc', async () => {
+    const url = 'https://evil.example/_t/v1.a.b/index.html';
     createDraftLink.mockResolvedValue({ url, expiresAt: 1 });
     loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
 
@@ -599,6 +638,9 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     expect(frame.getAttribute('srcdoc')).not.toContain(url);
     expect(getDraftLinks()).toBe(false);
     expect(createDraftLink).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls.map(([line]) => JSON.parse(line));
+    expect(logged).toContainEqual(expect.objectContaining({ event: 'draft_link_refused', log_level: 'WARNING' }));
+    expect(JSON.stringify(logged)).not.toContain('evil.example');
   });
 
   it('keeps a card without a full identity on srcdoc', async () => {
@@ -659,17 +701,5 @@ describe('ArtifactViewer draft preview through a signed link', () => {
 
     expect(screen.queryByText('Draft links are not available (HTTP 404)')).not.toBeInTheDocument();
     expect(screen.getByTitle('Other brief')).toBeInTheDocument();
-  });
-
-  it('accepts a draft host in any case and with its default port', async () => {
-    createDraftLink.mockResolvedValue({
-      url: 'https://DRAFT-STAGING.mindshub.co:443/_t/v1.a.b/index.html',
-      expiresAt: 1,
-    });
-
-    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
-
-    const frame = await screen.findByTitle('Launch brief');
-    expect(frame.getAttribute('src')).toMatch(/^https:\/\/draft-staging\.mindshub\.co\/_t\/v1\.a\.b\/index\.html\?/);
   });
 });
