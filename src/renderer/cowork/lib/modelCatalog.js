@@ -42,6 +42,9 @@ export const OTHER_MAKER = { key: 'other', name: 'Other' };
 // "use account settings" (see ResponsesRequest.model in cowork-server).
 export const MODEL_ROUTER_ID = 'model-router';
 export const MODEL_ROUTER_LABEL = 'Model Router';
+// The same row under an operator's picker (lib/modelPicker), which has no
+// account Settings to route by: the question runs on the operator's models.
+export const OPERATOR_DEFAULT_LABEL = 'Operator default';
 export const MODEL_ROUTER = {
   id: MODEL_ROUTER_ID,
   name: MODEL_ROUTER_LABEL,

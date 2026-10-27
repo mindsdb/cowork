@@ -11,6 +11,12 @@ export default defineConfig({
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },
+    /* Vitest never loads the renderer's Vite config, so the document preview
+       bundles and their registry are generated here before any test imports them. */
+    globalSetup: ['scripts/preview-bundles.mjs'],
+    /* The generator runs on Node's own loader in its tests, as it does in the
+       npm hooks, so its import() of a renderer's build.config.mjs works. */
+    server: { deps: { external: [/\/scripts\/preview-bundles\.mjs$/] } },
     // Floors are measured values — raise them as coverage grows, never lower.
     // `include` = whole src tree, so new untested modules count against them.
     coverage: {
@@ -131,6 +137,9 @@ export default defineConfig({
             // App/Settings regressions import these compiled consumers too. Run
             // their dedicated cases so coverage includes both execution forms.
             'src/renderer/cowork/hooks/useLogout.test.js',
+            // The production build compiles the pane: its memoized handlers read state during render.
+            'src/renderer/cowork/components/artifact/LiveAppPreview.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
             'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',

@@ -4,6 +4,8 @@ interface AntonTronAPI {
   serverPort?: number | null;
   codeControlPlaneOrigin?: string | null;
   codeModeAvailable?: boolean;
+  /** True on shells whose main process guards the document preview frame. */
+  supportsDocumentPreview?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;

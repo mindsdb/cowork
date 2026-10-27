@@ -7,6 +7,7 @@ import {
   isOwnerOnlySelection,
   buildAccessPayload,
   ACCESS_LABELS,
+  newAccessDraft,
 } from './AccessChooser';
 
 const restricted = (emailsText, orgAllowed = false) => ({
@@ -135,5 +136,17 @@ describe('owner-only as its own selection', () => {
       <AccessChooser value={{ mode: 'ownerOnly', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
     expect(screen.queryByPlaceholderText('alice@acme.com, bob@acme.com')).toBeNull();
+  });
+});
+
+describe('a first share with the platform UI on', () => {
+  it('starts on Public', () => {
+    expect(newAccessDraft().mode).toBe('public');
+    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe('public');
+  });
+
+  it('describes Public and Password as reaching the internet', () => {
+    expect(ACCESS_LABELS.public.desc).toBe('Anyone on the internet with the URL');
+    expect(ACCESS_LABELS.password.desc).toBe('Anyone on the internet with the password');
   });
 });

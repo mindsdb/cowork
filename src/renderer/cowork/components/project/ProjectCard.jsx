@@ -16,9 +16,11 @@ import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
 import SharedResourceAttribution from '../SharedResourceAttribution';
+import SharedProjectReference from './SharedProjectReference';
 import { isReservedProjectName } from '../../lib/sharedResourceAccess';
 
 function tasksFor(project, tasks) {
+  if (project?.shared) return [];
   return (tasks || []).filter((t) =>
     t.projectName === project?.name || t.projectPath === project?.path,
   );
@@ -58,14 +60,14 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   const [artCount, setArtCount] = useState(null);
 
   useEffect(() => {
-    if (!project?.id && !project?.path) return;
+    if (project?.shared || (!project?.id && !project?.path)) return;
     let cancelled = false;
     fetchMemory(project).then((data) => {
       if (cancelled) return;
       setMemCount(countNonEmptyMemory(data));
     }).catch(() => setMemCount(0));
     return () => { cancelled = true; };
-  }, [project?.id, project?.path]);
+  }, [project?.id, project?.path, project?.shared]);
 
   useEffect(() => {
     if (!project?.path) return;
@@ -80,7 +82,7 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   return {
     tasks: tasksFor(project, tasks).length,
     memories: memCount ?? 0,
-    schedules: (scheduled || []).filter((s) =>
+    schedules: project?.shared ? 0 : (scheduled || []).filter((s) =>
       (s.project || s.projectName) === project?.name,
     ).length,
     artifacts: artCount ?? 0,
@@ -238,9 +240,13 @@ function useProjectSlots({
     busy: deleting,
     onActivate: editing ? undefined : () => onOpen?.(project),
     description: deleting ? 'Deleting…'
+      : project.shared ? 'Shared with you · Read only'
       : summary ? summary.text
       : <span className="italic text-ink-4">No activity yet</span>,
-    children: <SharedResourceAttribution resource={project} />,
+    children: <>
+      <SharedProjectReference project={project} />
+      <SharedResourceAttribution resource={project} />
+    </>,
     meta: (
       <>
         {active ? <StatusDot tone="success">{when}</StatusDot> : <span className="whitespace-nowrap">{when}</span>}
