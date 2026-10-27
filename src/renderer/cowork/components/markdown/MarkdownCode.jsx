@@ -1,15 +1,10 @@
 // react-markdown `code` slot replacement. Adapted from mdb-ai/MarkdownCode.
 // Three behaviours:
-//   - ```chartjs <full Chart.js config> → render the chart inline
-//   - ```chart  <intent JSON>          → not supported yet (no compile
-//                                        endpoint in our backend),
-//                                        shows error placeholder.
-//   - everything else                  → plain <code> with our token style
+//   - ```data-vault-form / -patch → form side panel (assistant turns only)
+//   - other fenced blocks         → highlighted code block with Copy
+//   - inline code                 → plain <code> with our token style
 
 import { useEffect, useMemo, useRef } from 'react';
-import { ChartLoadingState, ChartErrorState } from './ChartStates';
-import { MessageChart } from './MessageChart';
-import { parseChartIntent } from './utils';
 import { highlightCode } from './hljs';
 import Ico from '../Icons';
 import { Alert } from '../ui';
@@ -20,16 +15,13 @@ export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
   const isBlock = props?.block === true;
-  const id = props?.id;
   const complete = props?.complete !== false; // assume complete unless told otherwise
   const conversationId = props?.conversationId || null;
-  // Capability flags. Assistant turns leave these defaulted to true so
-  // existing behavior (forms, charts, parse-error pointers) is
-  // unchanged. User turns pass `false` so a typed ```data-vault-form
-  // / ```chart / ```chartjs fence falls through to the ordinary code
-  // block branch and never triggers a side-effect renderer.
+  // Capability flag. Assistant turns leave it defaulted to true so forms
+  // and parse-error pointers work. User turns pass `false` so a typed
+  // ```data-vault-form fence falls through to the ordinary code block
+  // branch and never triggers a side-effect renderer.
   const enableForms = props?.enableForms !== false;
-  const enableCharts = props?.enableCharts !== false;
   // Track whether this block was already complete when first mounted.
   // Historical messages mount with complete=true immediately; live
   // streams mount with complete=false and flip to true when the chunk
@@ -42,7 +34,7 @@ export function MarkdownCode(props) {
   // Critical: every useMemo/useEffect must run on every render of
   // this component instance, in the same order. The earlier version
   // had `useMemo(formSpec)` + `useEffect` followed by an early return
-  // for `data-vault-form`, which meant `useMemo(chartIntent)` below
+  // for `data-vault-form`, which meant a later memo
   // ran on some renders and not others — that's a rules-of-hooks
   // violation that React surfaces as a max-update-depth crash.
   //
@@ -62,24 +54,16 @@ export function MarkdownCode(props) {
   const formSpec = parseAttempt.spec;
   const parseError = parseAttempt.error;
 
-  const chartIntent = useMemo(() => {
-    if (enableCharts && lang === 'chart' && text) return parseChartIntent(text);
-    return null;
-  }, [enableCharts, lang, text]);
-
-  // Highlighted output for ordinary fenced blocks. We skip the special
-  // langs (chartjs/chart/data-vault-form*) so we don't pay the hljs
-  // cost on blocks that have their own renderer. Computed unconditionally
-  // (i.e. always returning `null` for the special branches) keeps the
-  // hook count stable across renders, in line with the comment above
-  // about rules-of-hooks discipline. When charts/forms are disabled the
-  // special langs flow through here so they render as plain highlighted
-  // code blocks (and `lang` is preserved as a header label).
+  // Highlighted output for ordinary fenced blocks. We skip the form
+  // langs so we don't pay the hljs cost on blocks that have their own
+  // renderer. Computed unconditionally (i.e. always returning `null` for
+  // the form branch) keeps the hook count stable across renders, in line
+  // with the comment above about rules-of-hooks discipline. When forms
+  // are disabled the form langs flow through here so they render as
+  // plain highlighted code blocks (and `lang` is preserved as a header
+  // label).
   const highlighted = useMemo(() => {
-    const isChartLang = lang === 'chart' || lang === 'chartjs';
-    const isSpecial = isFormLang || (enableCharts && isChartLang);
-
-    if (isSpecial) return null;
+    if (isFormLang) return null;
 
     // Inline code has no language and is not inside a <pre>, so it should
     // remain inline. Fenced/indented code without a language is marked by
@@ -90,7 +74,7 @@ export function MarkdownCode(props) {
     // Strip a single trailing newline left by remark — keeps Copy output
     // clean and avoids a phantom blank line at the bottom of the block.
     return highlightCode(text.replace(/\n$/, ''), lang || 'plaintext');
-  }, [lang, isBlock, isFormLang, enableCharts, text]);
+  }, [lang, isBlock, isFormLang, text]);
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
@@ -215,25 +199,6 @@ export function MarkdownCode(props) {
         </span>
       </div>
     );
-  }
-
-  // Intent format — needs a server endpoint to compile JSON into a real
-  // Chart.js config. We don't have that yet, so surface a clear message.
-  // Gated on `enableCharts`; when disabled (user turns), fall through to
-  // the ordinary highlighted code block below.
-  if (enableCharts && lang === 'chart') {
-    if (!complete) return <ChartLoadingState />;
-    if (!chartIntent || chartIntent.error) {
-      return <ChartErrorState error={chartIntent?.error || 'Invalid chart specification'} />;
-    }
-    return (
-      <ChartErrorState error="`chart` intent format requires a backend compile endpoint (not wired yet). Use `chartjs` for full configs." />
-    );
-  }
-
-  // Legacy / direct chartjs format — full Chart.js config in the block.
-  if (enableCharts && lang === 'chartjs') {
-    return complete ? <MessageChart id={id || 'chart'} text={text} /> : <ChartLoadingState />;
   }
 
   // Ordinary fenced block — Claude-style card with a language header,

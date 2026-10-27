@@ -1,7 +1,7 @@
 // Drop-in replacement for our old TextBlock in chat turns.
 //
 // Wires react-markdown + remark-gfm + rehype-sanitize with our own
-// component overrides for code (charts!), tables, and basic block tags.
+// component overrides for code (forms, highlighting), tables, and basic block tags.
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
@@ -257,7 +257,7 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
   };
 }
 
-// Allow the extra attributes our chart blocks need on <code>, and
+// Allow the language class our code blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
 // pre-processor (see `_renderEngramComments`) can route metadata
 // through the `a` component override into a styled chip. The figure
@@ -591,13 +591,11 @@ export function MarkdownContent({
   conversationId = null,
   dense = false,
   // Variant + capability flags — assistant turns default to the full
-  // feature set (forms, charts, engram chips). User turns pass
-  // `variant="user"` with forms/charts off so a user typing
-  // ```data-vault-form or ```chart in their composer doesn't
-  // accidentally pop the form panel / a chart in the chat column.
+  // feature set (forms, engram chips). User turns pass `variant="user"`
+  // with forms off so a user typing ```data-vault-form in their composer
+  // doesn't accidentally pop the form panel.
   variant = 'assistant',
   enableForms = true,
-  enableCharts = true,
   // High-frequency coding-agent streams already arrive in visible chunks.
   // They can opt out of per-word DOM wrappers and animations so transcript
   // rendering never competes with typing in the composer.
@@ -787,7 +785,6 @@ export function MarkdownContent({
         conversationId={conversationId}
         variant={variant}
         enableForms={enableForms}
-        enableCharts={enableCharts}
         {...props}
       />
     ),
@@ -913,7 +910,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, loadImage]);
+  }, [id, complete, conversationId, dense, variant, enableForms, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
