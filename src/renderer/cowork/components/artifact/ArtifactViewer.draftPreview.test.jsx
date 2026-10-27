@@ -560,21 +560,30 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     );
   });
 
+  // Fake clock: the link's lifetime is counted from when it arrives, so a
+  // real-time expiry a few milliseconds out would race a slow render.
   it('offers a reload once the link expires, and the reload asks for a new link', async () => {
-    createDraftLink
-      .mockResolvedValueOnce({ url: LINK, expiresAt: Date.now() / 1000 + 0.05 })
-      .mockResolvedValueOnce({ url: NEXT_LINK, expiresAt: Date.now() / 1000 + 1800 });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      createDraftLink
+        .mockResolvedValueOnce({ url: LINK, expiresAt: Date.now() / 1000 + 600 })
+        .mockResolvedValueOnce({ url: NEXT_LINK, expiresAt: Date.now() / 1000 + 1800 });
 
-    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
-    await screen.findByTitle('Launch brief');
-    const notice = await screen.findByRole('button', { name: /link has expired/ });
+      render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+      await screen.findByTitle('Launch brief');
+      expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(600_000); });
+      const notice = await screen.findByRole('button', { name: /link has expired/ });
 
-    act(() => { notice.click(); });
+      act(() => { notice.click(); });
 
-    await waitFor(() => {
-      expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
-    });
-    expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
+      });
+      expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows no expiry notice while the link is still valid', async () => {

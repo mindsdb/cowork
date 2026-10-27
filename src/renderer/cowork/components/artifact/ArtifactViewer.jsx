@@ -1194,7 +1194,7 @@ export function ArtifactViewer({
       )}
       {draftLinkExpired && (
         <button type="button" className="artifact-feedback-notice" onClick={onReload}>
-          {Ico.reload(14)} <span>This preview&apos;s link has expired. Reload the preview to keep using it.</span>
+          {Ico.reload(14)} <span>This preview&apos;s link has expired, so pages and files it opens from now on may not load. Reload to get a new link.</span>
         </button>
       )}
       {feedbackNotice && (
