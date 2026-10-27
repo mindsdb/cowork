@@ -359,6 +359,8 @@ function _mergeInlineCodeLines(text) {
 // for the pattern wherever it appears and inject the missing
 // newlines around it so the markdown parser treats it as a real
 // fenced code block.
+// cowork-server reads a glued opening the same way (stream_formatter.py
+// _GLUED_FORM_FENCE) before it adds a form; change both together.
 function _normalizeFormFences(text) {
   if (!text || typeof text !== 'string') return text;
   // Catches both `data-vault-form` (full spec) and

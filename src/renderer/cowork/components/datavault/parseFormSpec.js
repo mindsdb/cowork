@@ -63,7 +63,9 @@ export function extractFormSpec(markdown) {
   }
   // `[ \t]*\r?\n` after the info string means `data-vault-form-patch`
   // won't match (its `-patch` suffix isn't whitespace/newline).
-  const re = /```data-vault-form[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```/g;
+  // cowork-server copies this regex (stream_formatter.py _FORM_BLOCK) to tell
+  // whether a reply already holds its form; change both together.
+  const re =/```data-vault-form[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```/g;
   let m;
   let lastBody = null;
   while ((m = re.exec(markdown)) !== null) lastBody = m[1];
@@ -83,7 +85,8 @@ function _looseClean(s) {
   out = out.replace(/^\s*```(?:json|data-vault-form|js|javascript)?\s*\n/, '');
   out = out.replace(/\n\s*```\s*$/, '');
 
-  // Normalise smart quotes → ASCII.
+  // Normalise smart quotes → ASCII. cowork-server reads a pasted form_id with
+  // the same sets (stream_formatter.py _SMART_QUOTES); change both together.
   out = out
     .replace(/[‘’‚‛′‵]/g, "'")
     .replace(/[“”„‟″‶]/g, '"');
