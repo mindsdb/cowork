@@ -11,7 +11,9 @@
 // `transport` is where the doc lives, the caller's to choose, behind three
 // calls: fetchDoc(projectRef, artifactId) → { doc, capabilities, card },
 // followDoc(projectRef, artifactId, { onEvent, onReconnect }) → stop, and
-// postDocOps(projectRef, artifactId, body) → { doc }.
+// postDocOps(projectRef, artifactId, body, { onDeferred }) → { doc }. A
+// transport whose writer can be away may defer an edit (calling `onDeferred`)
+// and answer it once applied; the queue waits behind it until then.
 //
 // Undo and redo are the doc's, not the browser's: the browser's Cmd+Z knows
 // only typing and runs across every block on the page. The server answers
@@ -141,8 +143,19 @@ export function useDoc({ projectRef, artifactId, transport }) {
     if (shown()) setSaving(true);
     const item = r.queue[0];
     try {
+      // baseRev: the newest copy seen as this edit goes out, not the one it
+      // was typed on (one queued behind another goes out on that one's
+      // answer). A transport may hand it to a stale guard, or ignore it.
       const res = await postDocOps(r.projectRef, r.artifactId, {
-        ops: item.ops, tab: item.tab, clientId,
+        ops: item.ops, tab: item.tab, clientId, baseRev: r.base?.rev,
+      }, {
+        // Taken for later: the doc's writer is away, and the transport keeps
+        // the edit until the writer applies it, answering then. It stays in
+        // flight, so what is typed meanwhile waits behind it (shown, and sent
+        // one at a time on fresh bases once it is answered) rather than going
+        // out together, where the writer would refuse the second edit to a
+        // block as stale.
+        onDeferred: (why) => { if (shown()) setWriteError(why); },
       });
       r.queue.shift();
       r.retry.n = 0;

@@ -61,7 +61,7 @@ describe('useDoc writes', () => {
     expect(texts(result.current.doc)).toEqual(['Three']);
     expect(result.current.saving).toBe(true);
     expect(t.posts).toHaveLength(1);
-    expect(t.posts[0].body).toMatchObject({ ops: edit('b_1', 'Two'), tab: 't_1' });
+    expect(t.posts[0].body).toMatchObject({ ops: edit('b_1', 'Two'), tab: 't_1', baseRev: 1 });
 
     await act(async () => { t.posts[0].resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two' }]) }); });
     expect(t.posts).toHaveLength(2);
@@ -343,6 +343,44 @@ describe('useDoc when the server fails, or answers too late', () => {
   });
 });
 
+describe('useDoc when the doc\'s writer is away', () => {
+  it('holds what is typed behind an edit the transport deferred, and sends it once that one is answered', async () => {
+    // Found in review: a deferral was taken for a refusal, which cleared the
+    // queue, so everything typed while the writer was away was dropped.
+    const t = fakeTransport();
+    const { result } = await opened(t);
+    act(() => { result.current.apply(edit('b_1', 'Two'), { tab: 't_1' }); });
+    const away = Object.assign(new Error('has not saved this yet'), { code: 'owner_offline' });
+    act(() => { t.postDocOps.mock.calls[0][3].onDeferred(away); });
+    act(() => { result.current.apply(edit('b_1', 'Three'), { tab: 't_1' }); });
+    act(() => { result.current.apply(edit('b_1', 'Four'), { tab: 't_1' }); });
+    expect(result.current.writeError).toBe(away);
+    expect(result.current.saving).toBe(true);
+    expect(texts(result.current.doc)).toEqual(['Four']);
+    // One edit out at a time: the writer would refuse a second to the same block as stale.
+    expect(t.posts).toHaveLength(1);
+
+    await act(async () => { t.posts[0].resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two' }]) }); });
+    expect(result.current.writeError).toBeNull();
+    expect(t.posts).toHaveLength(2);
+    expect(t.posts[1].body).toMatchObject({ ops: edit('b_1', 'Three'), baseRev: 2 });
+    await act(async () => { t.posts[1].resolve({ doc: doc('a', 3, [{ id: 'b_1', type: 'paragraph', text: 'Three' }]) }); });
+    expect(t.posts[2].body).toMatchObject({ ops: edit('b_1', 'Four'), baseRev: 3 });
+    await act(async () => { t.posts[2].resolve({ doc: doc('a', 4, [{ id: 'b_1', type: 'paragraph', text: 'Four' }]) }); });
+    expect(texts(result.current.doc)).toEqual(['Four']);
+    expect(result.current.saving).toBe(false);
+  });
+
+  it('says nothing about a deferral that lands after another doc opened', async () => {
+    const t = fakeTransport();
+    const { result, rerender } = await opened(t, 'a', 1);
+    act(() => { result.current.apply(edit('b_1', 'For a'), { tab: 't_1' }); });
+    rerender({ artifactId: 'b' });
+    act(() => { t.postDocOps.mock.calls[0][3].onDeferred(Object.assign(new Error('away'), { code: 'owner_offline' })); });
+    expect(result.current.writeError).toBeNull();
+  });
+});
+
 describe('useDoc flashing what the agent wrote', () => {
   const withBlocks = (rev, ...ids) => doc('a', rev, ids.map((id) => ({ id, type: 'paragraph', text: id })));
 
@@ -500,7 +538,7 @@ describe('useDoc switching docs', () => {
 
     await act(async () => { t.posts[0].resolve({ doc: doc('a', 2, [{ id: 'b_1', type: 'paragraph', text: 'Two' }]) }); });
     expect(t.posts).toHaveLength(2);
-    expect(t.posts[1]).toMatchObject({ artifactId: 'a', body: { ops: edit('b_1', 'Three') } });
+    expect(t.posts[1]).toMatchObject({ artifactId: 'a', body: { ops: edit('b_1', 'Three'), baseRev: 2 } });
     await act(async () => { t.posts[1].resolve({ doc: doc('a', 3, [{ id: 'b_1', type: 'paragraph', text: 'Three' }]) }); });
     // None of it reaches the doc now open.
     expect(result.current.doc).toMatchObject({ id: 'b', rev: 4 });

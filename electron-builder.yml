@@ -154,6 +154,11 @@ extraResources:
       - "**/*"
   - from: build-config.json
     to: build-config.json
+  # The owner editor on a shared doc's page (npm run build:doc-editor). Outside
+  # the asar so the cowork-server sidecar can read it: it copies the files beside
+  # each doc's page, which publishes them with it.
+  - from: dist/doc-editor
+    to: doc-editor
 
 afterPack: scripts/after-pack.js
 afterSign: scripts/notarize.js

@@ -7,6 +7,9 @@
 // server's answer. Inline text stays the Markdown subset the agent writes;
 // `inlineToHtml` / `htmlToInline` translate it for contentEditable.
 
+/** The doc format this editor knows. */
+export const DOC_SCHEMA = 'cowork.doc/1';
+
 export const TEXT_TYPES = ['paragraph', 'heading', 'bullet', 'numbered', 'task', 'quote', 'callout'];
 export const LIST_TYPES = ['bullet', 'numbered', 'task'];
 

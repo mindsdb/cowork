@@ -1,7 +1,8 @@
 /* The design tokens: type, spacing, colour for both themes, and motion.
    Only custom properties (and the colour scheme each theme declares), so a
-   surface outside the app shell can take them without the app's fonts and
-   rules. globals.css imports this first. */
+   surface outside the app shell, such as a shared doc's page editor
+   (doc-web), can take them without the app's fonts and rules. globals.css
+   imports this first. */
 
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
 /* ─── Font stack — two families, three jobs ────────────────────────────────

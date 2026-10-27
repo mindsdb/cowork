@@ -48,6 +48,13 @@ export default defineConfig({
         // The style lock's hold on the corner and phone top-bar buttons.
         'src/renderer/cowork/lib/displayToggle.js': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
+        // Where the sidecar finds the shared-doc page editor: a wrong answer
+        // looks like nothing at all (shared pages just stay read-only).
+        'src/main/doc-editor-env.ts': { statements: 100, branches: 100 },
+        // The shared page's transport. A page that stops hearing the desktop,
+        // or drops an edit while the owner's app is away, fails just as
+        // quietly.
+        'src/renderer/doc-web/cloudTransport.js': { statements: 97, branches: 96 },
         // The sign-out sequence and the sidecar restart it no longer waits for.
         // Pinned for the same reason as the entries above: the ordering has no
         // visible failure mode. A reply that starts waiting on the restart
