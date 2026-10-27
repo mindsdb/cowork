@@ -15,6 +15,7 @@ import { ROOT, useSharePointTree } from './useSharePointTree';
 export const MAX_PICKS = 100;
 export const PROJECT_FILES_CHANGED = 'anton:project-files-changed';
 
+/** A file size for the tree, such as "2.0 KB"; empty for an unknown or zero size. */
 function formatSize(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -27,6 +28,7 @@ function formatSize(bytes) {
   return `${value < 10 && unit > 0 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
+/** The name a person sees for a connection: its label, else its saved name. */
 function connectionLabel(connection) {
   return connection.user_label || connection.name;
 }
@@ -71,6 +73,20 @@ export default function SharePointImportModal({ open, projectName, connections, 
   );
 }
 
+/** Ids of everything loaded under a folder, at any depth. */
+function loadedDescendants(tree, folderId) {
+  const found = [];
+  const pending = [folderId];
+  while (pending.length) {
+    for (const item of tree.node(pending.pop()).items) {
+      found.push(item.id);
+      if (item.kind === 'folder') pending.push(item.id);
+    }
+  }
+  return found;
+}
+
+/** The picking view: connection, site and library choices, the tree, and the import itself. */
 function ImportBody({ projectName, connections, busy, setBusy, onClose, onImported }) {
   const [connection, setConnection] = useState(connections[0]?.name || null);
   const [sites, setSites] = useState([]);
@@ -80,11 +96,15 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
   const [selected, setSelected] = useState(() => new Map());
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  // Set once the connection, site or library choice can't go further, so the
+  // tree shows why instead of loading forever.
+  const [blocked, setBlocked] = useState(null);
 
   useEffect(() => {
     setSites([]);
     setSite(null);
-    setSelected(new Map());
+    setError(null);
+    setBlocked(null);
     if (!connection) return undefined;
     let active = true;
     fetchSavedConnection(SHAREPOINT_ENGINE, connection)
@@ -93,16 +113,18 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
         const urls = String(saved?.fields?.site_urls || '').split('\n').map((line) => line.trim()).filter(Boolean);
         setSites(urls);
         setSite(urls[0] || null);
+        if (!urls.length) setBlocked('This connection names no sites. Edit it in Customize to add one.');
       })
-      .catch((err) => { if (active) setError(err?.message || 'This connection could not be loaded.'); });
+      .catch((err) => { if (active) setBlocked(err?.message || 'This connection could not be loaded.'); });
     return () => { active = false; };
   }, [connection]);
 
   useEffect(() => {
     setLibraries([]);
     setDriveId(null);
-    setSelected(new Map());
+    setError(null);
     if (!connection || !site) return undefined;
+    setBlocked(null);
     let active = true;
     listSharePointLibraries(connection, site)
       .then((data) => {
@@ -110,10 +132,17 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
         const list = Array.isArray(data?.libraries) ? data.libraries : [];
         setLibraries(list);
         setDriveId(list[0]?.id || null);
+        if (!list.length) setBlocked('This site has no document libraries.');
       })
-      .catch((err) => { if (active) setError(err?.message || "This site's libraries could not be listed."); });
+      .catch((err) => { if (active) setBlocked(err?.message || "This site's libraries could not be listed."); });
     return () => { active = false; };
   }, [connection, site]);
+
+  // Picks belong to one library: ids are only meaningful in the drive they came from.
+  useEffect(() => {
+    setSelected(new Map());
+    setError(null);
+  }, [connection, site, driveId]);
 
   const tree = useSharePointTree({ connection, site, driveId });
   const atCap = selected.size >= MAX_PICKS;
@@ -121,8 +150,17 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
   const toggleSelected = (item) => {
     setSelected((prev) => {
       const next = new Map(prev);
-      if (next.has(item.id)) next.delete(item.id);
-      else if (next.size < MAX_PICKS) next.set(item.id, item);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+        return next;
+      }
+      if (next.size >= MAX_PICKS) return next;
+      // A picked folder brings everything in it, so earlier picks inside it
+      // would only count twice toward the cap.
+      if (item.kind === 'folder') {
+        for (const id of loadedDescendants(tree, item.id)) next.delete(id);
+      }
+      next.set(item.id, item);
       return next;
     });
   };
@@ -176,12 +214,13 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
             </Field>
           )}
           <div
-            role="tree"
+            role="region"
             aria-label="SharePoint files and folders"
-            aria-multiselectable="true"
             className="max-h-[360px] overflow-auto rounded-lg border border-solid border-line py-1.5"
           >
-            {driveId ? (
+            {blocked ? (
+              <div className="px-3 py-2 text-[12px] text-danger">{blocked}</div>
+            ) : driveId ? (
               <TreeLevel
                 tree={tree}
                 folderId={ROOT}
@@ -213,23 +252,26 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
   );
 }
 
+/** One folder's loaded items, with its own loading, error, empty and "Load more" rows. */
 function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onToggleSelected }) {
   const node = tree.node(folderId);
   const indent = { paddingLeft: 12 + depth * 18 };
   return (
-    <div role={folderId === ROOT ? undefined : 'group'}>
+    <div>
+      <ul className="m-0 list-none p-0">
       {node.items.map((item) => {
         const picked = selected.has(item.id);
         const checked = covered || picked;
         const isFolder = item.kind === 'folder';
         const child = isFolder ? tree.node(item.id) : null;
         return (
-          <div key={item.id} role="treeitem" aria-selected={checked} aria-expanded={isFolder ? child.expanded : undefined}>
+          <li key={item.id}>
             <div className="flex items-center gap-2 py-1 pr-3 text-[13px]" style={indent}>
               {isFolder ? (
                 <button
                   type="button"
                   className="inline-flex h-4 w-4 items-center justify-center text-ink-3"
+                  aria-expanded={child.expanded}
                   aria-label={child.expanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
                   onClick={() => tree.toggle(item.id)}
                   style={{ transform: child.expanded ? 'rotate(90deg)' : undefined }}
@@ -262,9 +304,10 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
                 onToggleSelected={onToggleSelected}
               />
             )}
-          </div>
+          </li>
         );
       })}
+      </ul>
       {node.loading && (
         <div className="flex items-center gap-2 py-1 text-[12px] text-ink-3" style={indent}>
           <Spinner /> Loading…
@@ -288,6 +331,7 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
   );
 }
 
+/** What the finished import brought in, and what it skipped and why. */
 function ImportResult({ result, onDone }) {
   const imported = result?.imported || [];
   const skipped = result?.skipped || [];

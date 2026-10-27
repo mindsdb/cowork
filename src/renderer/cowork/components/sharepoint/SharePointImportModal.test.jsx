@@ -46,7 +46,7 @@ function renderModal(props = {}) {
   return { onClose, onImported };
 }
 
-const tree = () => screen.getByRole('tree', { name: 'SharePoint files and folders' });
+const tree = () => screen.getByRole('region', { name: 'SharePoint files and folders' });
 
 beforeEach(() => {
   mocks.fetchSavedConnection.mockResolvedValue({ fields: { site_urls: SITE } });
@@ -129,8 +129,7 @@ describe('SharePointImportModal', () => {
 
     expect(screen.getByText(/100 of 100 picked/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Pick f100.txt' })).toHaveAttribute('data-disabled');
-    // A hundred re-renders of a 101-row tree take about 3 s on an idle machine.
-  }, 20_000);
+  }, 20_000); // A hundred re-renders of a 101-row tree take about 3 s on an idle machine.
 
   it('imports the picks in one request, shows the result and announces the new files', async () => {
     const user = userEvent.setup();
@@ -197,12 +196,85 @@ describe('SharePointImportModal', () => {
     expect(screen.getByRole('checkbox', { name: 'Pick notes.docx' })).toHaveAttribute('data-checked');
   });
 
-  it('lets the person choose among several connections', async () => {
+  it('switching connection loads its sites and drops picks made under the other one', async () => {
     const user = userEvent.setup();
+    const EU_SITE = 'https://eu.sharepoint.com/sites/ops';
+    mocks.fetchSavedConnection.mockImplementation(async (_engine, name) => (
+      { fields: { site_urls: name === 'eu' ? EU_SITE : SITE } }
+    ));
+    mocks.importSharePointFiles.mockResolvedValue({ imported: [], skipped: [] });
     renderModal({ connections: [{ name: 'corp', user_label: 'Corp' }, { name: 'eu', user_label: 'EU' }] });
 
-    await within(tree()).findByText('notes.docx');
-    expect(mocks.fetchSavedConnection).toHaveBeenCalledWith('sharepoint', 'corp');
-    expect(screen.getByText('Connection')).toBeInTheDocument();
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick notes.docx' }));
+    await user.click(screen.getByRole('combobox', { name: /connection/i }));
+    await user.click(await screen.findByRole('option', { name: 'EU' }));
+
+    await waitFor(() => expect(mocks.listSharePointLibraries).toHaveBeenCalledWith('eu', EU_SITE));
+    expect(mocks.fetchSavedConnection).toHaveBeenCalledWith('sharepoint', 'eu');
+    expect(await screen.findByText(/0 of 100 picked/)).toBeInTheDocument();
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick notes.docx' }));
+    await user.click(screen.getByRole('button', { name: 'Import into Sales' }));
+    await waitFor(() => expect(mocks.importSharePointFiles).toHaveBeenCalled());
+    expect(mocks.importSharePointFiles.mock.calls[0][1]).toEqual({
+      connection: 'eu', site: EU_SITE, driveId: 'b!Lib', itemIds: ['01a'],
+    });
+  });
+
+  it('switching library drops picks from the other library', async () => {
+    const user = userEvent.setup();
+    mocks.listSharePointLibraries.mockResolvedValue({
+      libraries: [{ id: 'b!Docs', name: 'Documents' }, { id: 'b!Assets', name: 'Site Assets' }],
+    });
+    mocks.listSharePointChildren.mockImplementation(async (_name, { driveId }) => (
+      driveId === 'b!Assets'
+        ? { items: [file('01x', 'logo.png')], cursor: null }
+        : { items: [file('01a', 'notes.docx'), file('01b', 'plan.docx')], cursor: null }
+    ));
+    mocks.importSharePointFiles.mockResolvedValue({ imported: [], skipped: [] });
+    renderModal();
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick notes.docx' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Pick plan.docx' }));
+    await user.click(screen.getByRole('combobox', { name: /library/i }));
+    await user.click(await screen.findByRole('option', { name: 'Site Assets' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick logo.png' }));
+
+    expect(screen.getByText(/1 of 100 picked/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Import into Sales' }));
+    await waitFor(() => expect(mocks.importSharePointFiles).toHaveBeenCalled());
+    expect(mocks.importSharePointFiles.mock.calls[0][1]).toEqual({
+      connection: 'corp', site: SITE, driveId: 'b!Assets', itemIds: ['01x'],
+    });
+  });
+
+  it('shows why a site cannot be browsed instead of loading forever', async () => {
+    mocks.listSharePointLibraries.mockRejectedValue(
+      Object.assign(new Error("The app can't open this site. Ask your admin to grant it."), { status: 404 }),
+    );
+    renderModal();
+
+    expect(await within(tree()).findByText("The app can't open this site. Ask your admin to grant it.")).toBeInTheDocument();
+    expect(within(tree()).queryByText('Loading…')).toBeNull();
+  });
+
+  it('a connection that names no sites says so', async () => {
+    mocks.fetchSavedConnection.mockResolvedValue({ fields: { site_urls: '' } });
+    renderModal();
+
+    expect(await within(tree()).findByText(/names no sites/)).toBeInTheDocument();
+    expect(mocks.listSharePointLibraries).not.toHaveBeenCalled();
+  });
+
+  it('picking a folder drops earlier picks inside it', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(await screen.findByRole('button', { name: 'Expand Reports' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick q3.xlsx' }));
+    expect(screen.getByText(/1 of 100 picked/)).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Pick Reports' }));
+
+    expect(screen.getByText(/1 of 100 picked/)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Pick q3.xlsx' })).toHaveAttribute('data-checked');
   });
 });
