@@ -226,7 +226,7 @@ export default function CodeView({
       return false;
     });
   }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
-  const project = useProjectActions(session?.id);
+  const project = useProjectActions(session?.id, active);
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
