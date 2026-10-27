@@ -1,31 +1,24 @@
 // All-tasks page. Reached via the sidebar's Recents → "View all →"
 // affordance. Replaces the previous RecentsModal which capped at 100
-// rows and didn't surface filtering / sorting. Mirrors the slick-
-// table rhythm we use on Projects, Live Artifacts, and Scheduled
-// (status dot · primary text · per-row meta · hover-only kebab).
+// rows and didn't surface filtering / sorting.
 //
-// List view only — there's no useful "grid" presentation for a flat
-// list of conversations.
-//
-// Columns (left to right):
-//   • dot       — green pulse when task is currently streaming.
-//   • Title     — task title (clickable; whole row routes to chat).
-//   • Project   — project name; clickable, routes to project detail.
-//   • Updated   — relative timestamp (mono).
-//   • trash     — appears on row hover, opens the existing delete
-//                 confirm modal via the parent's onDeleteTask.
+// Rows only, the shared TaskRow (components/task). Every run of one schedule
+// collapses into a single group row that opens the schedule.
 
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
-import { Badge, CardRow, EmptyState, Button, Tooltip } from '../components/ui';
-import { relativeAge } from '../lib/formatTime';
+import { TaskRow, ScheduleGroupRow, chatTaskMenu, chatTaskRow, groupScheduleRuns, latestRun, ts } from '../components/task';
 import {
   PageHeader,
   FilterRow,
   SearchInput,
   SortPill,
+  FilterMenu,
+  FilterChips,
   useCollectionShortcut,
+  CollectionState,
+  ListGroup,
 } from '../components/collection';
 
 const SORT_OPTIONS = [
@@ -33,268 +26,6 @@ const SORT_OPTIONS = [
   { id: 'name',    label: 'Name (A–Z)' },
   { id: 'project', label: 'Project' },
 ];
-
-// 24px dot · title (2.4fr) · project (1.2fr) · updated (110px) ·
-// trash slot (28px). Fixed-width slots stop the column stops from
-// shifting between hover/non-hover so the trash icon doesn't
-// shove the timestamp left when it appears.
-const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
-
-function ListHeaderRow() {
-  const Cell = ({ children, align }) => (
-    <div
-      className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase"
-      style={{ textAlign: align || 'left' }}
-    >{children}</div>
-  );
-  return (
-    <div
-      className="grid gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      <Cell />
-      <Cell>Title</Cell>
-      <Cell>Project</Cell>
-      <Cell>Updated</Cell>
-      <Cell />
-    </div>
-  );
-}
-
-function TaskRow({
-  task, projects = [],
-  onOpen,
-  onOpenProject,
-  onDelete,
-}) {
-  const [hover, setHover] = useState(false);
-  const stop = (e) => { e.stopPropagation(); };
-
-  const projectName = task.projectName || task.project || '';
-  const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
-    : null;
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard on the row. This is what a
-  // person reads. `projectLabel(null)` is null, so an unresolved project falls
-  // back to the slug exactly as before (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
-
-  const isActive = task.status === 'active';
-  const dotColor = isActive ? 'var(--success)' : 'var(--ink-5)';
-
-  // Prefer the same field the rest of the app uses for "last seen"
-  // (updatedAt). Fall back to subtitle (legacy mock-time string)
-  // when the server hasn't stamped the conversation yet.
-  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
-
-  return (
-    <CardRow
-      as="div"
-      onActivate={() => onOpen?.(task)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="grid gap-[14px] py-3 px-[14px] items-center"
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      {/* Status dot */}
-      <div className="flex justify-center">
-        <span
-          aria-hidden
-          className={`w-2 h-2 rounded-full ${isActive ? 'pulse-dot' : ''}`}
-          title={isActive ? 'Running' : ''}
-          style={{
-            background: dotColor,
-            boxShadow: isActive ? '0 0 6px var(--success-glow)' : 'none',
-          }}
-        />
-      </div>
-
-      {/* Title (+ optional preview as quiet sub-line) */}
-      <div className="min-w-0">
-        <div className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{task.title || 'Untitled task'}</div>
-        {task.subtitle && task.subtitle !== updated && (
-          <div className="font-[family-name:var(--font-body)] text-[11.5px] text-ink-4 overflow-hidden text-ellipsis whitespace-nowrap mt-[2px]">{task.subtitle}</div>
-        )}
-      </div>
-
-      {/* Project — clickable when resolved */}
-      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-        {projectName ? (
-          canOpenProject ? (
-            <Tooltip content={`Open ${projectDisplay}`}>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: 'var(--ink-2)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.color = 'var(--accent)';
-                  e.currentTarget.style.textDecoration = 'underline';
-                  e.currentTarget.style.textUnderlineOffset = '2px';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.color = 'var(--ink-2)';
-                  e.currentTarget.style.textDecoration = 'none';
-                }}
-              >{projectDisplay}</button>
-            </Tooltip>
-          ) : projectDisplay
-        ) : <span className="text-ink-5">—</span>}
-      </div>
-
-      {/* Updated */}
-      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em]">{updated}</div>
-
-      {/* Hover-revealed trash. Fixed slot width keeps the Updated
-          column stable; opacity + pointer-events flip on hover so
-          the icon never participates in click bubbling at rest. */}
-      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
-        opacity: hover ? 1 : 0,
-        pointerEvents: hover ? 'auto' : 'none',
-      }}>
-        <Tooltip content="Delete task">
-          <Button
-            variant="danger"
-            icon
-            onClick={() => onDelete?.(task.id)}
-            aria-label="Delete task"
-            style={{ width: 26, height: 26 }}
-          >
-            {Ico.trash(14)}
-          </Button>
-        </Tooltip>
-      </div>
-    </CardRow>
-  );
-}
-
-function ScheduleGroupRow({
-  schedule, runs = [], projects = [],
-  onOpenSchedule, onOpenLatest, onOpenProject,
-}) {
-  const [hover, setHover] = useState(false);
-  const stop = (e) => { e.stopPropagation(); };
-
-  const projectName = schedule?.project || runs[0]?.projectName || runs[0]?.project || '';
-  const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
-    : null;
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard on the row. This is what a
-  // person reads. `projectLabel(null)` is null, so an unresolved project falls
-  // back to the slug exactly as before (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
-
-  // Latest run → drives the timestamp + the "open the actual chat"
-  // affordance. Defaults to the first run when none have a parsable
-  // timestamp (shouldn't happen, but guard anyway).
-  const ts = (raw) => {
-    if (!raw) return 0;
-    if (typeof raw === 'number') return raw;
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
-  const latest = runs.reduce((max, r) =>
-    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-  runs[0]);
-  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
-
-  const isAnyActive = runs.some((r) => r.status === 'active');
-
-  return (
-    <CardRow
-      as="div"
-      className="grouped grid gap-[14px] py-3 px-[14px] items-center"
-      onActivate={onOpenSchedule}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      <div className="flex justify-center">
-        <span
-          aria-hidden
-          title="Scheduled task"
-          className={`w-2 h-2 rounded-full ${isAnyActive ? 'pulse-dot' : ''}`}
-          style={{
-            background: isAnyActive ? 'var(--success)' : 'var(--accent)',
-            boxShadow: isAnyActive ? '0 0 6px var(--success-glow)' : '0 0 6px var(--accent-glow)',
-          }}
-        />
-      </div>
-
-      <div className="min-w-0 flex items-center gap-2">
-        <span className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">{schedule?.title || latest?.title || 'Scheduled task'}</span>
-        <Badge
-          variant="accent"
-          size="sm"
-          className="shrink-0 font-mono uppercase tracking-[0.06em]"
-        >
-          {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </Badge>
-      </div>
-
-      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-        {projectName ? (
-          canOpenProject ? (
-            <Tooltip content={`Open ${projectDisplay}`}>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: 'var(--ink-2)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.color = 'var(--accent)';
-                  e.currentTarget.style.textDecoration = 'underline';
-                  e.currentTarget.style.textUnderlineOffset = '2px';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.color = 'var(--ink-2)';
-                  e.currentTarget.style.textDecoration = 'none';
-                }}
-              >{projectDisplay}</button>
-            </Tooltip>
-          ) : projectDisplay
-        ) : <span className="text-ink-5">—</span>}
-      </div>
-
-      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em]">{updated}</div>
-
-      {/* Action slot — hover-revealed "Open latest" so the user can
-          jump straight to the most recent run instead of going
-          through schedule detail. The card click itself routes to
-          the schedule view (where per-run history lives). */}
-      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
-        opacity: hover ? 1 : 0,
-        pointerEvents: hover ? 'auto' : 'none',
-      }}>
-        <Tooltip content="Open latest run">
-          <Button
-            variant="subtle"
-            icon
-            onClick={onOpenLatest}
-            aria-label="Open latest run"
-            style={{ width: 26, height: 26 }}
-          >
-            {Ico.externalLink(13)}
-          </Button>
-        </Tooltip>
-      </div>
-    </CardRow>
-  );
-}
 
 export default function TasksView({
   tasks = [],
@@ -309,6 +40,7 @@ export default function TasksView({
   onOpenProject,
   onOpenSchedule,
   onDeleteTask,
+  onMoveTaskToProject,
 }) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
@@ -332,43 +64,10 @@ export default function TasksView({
     return out;
   }, [schedules]);
 
-  // Augment each task with its scheduled id (from server-side
-  // scheduledId OR the index lookup as a fallback for older
-  // records that were saved before the field was plumbed).
-  const augmented = useMemo(() => (
-    (tasks || []).map((t) => {
-      const sid = t.scheduledId || scheduleRunsIndex[t.id] || null;
-      return sid ? { ...t, scheduledId: sid } : t;
-    })
-  ), [tasks, scheduleRunsIndex]);
-
-  // Group: any task with a scheduledId rolls into one row keyed on
-  // that id. Non-scheduled tasks pass through 1:1.
-  const grouped = useMemo(() => {
-    const out = [];
-    const groupsBySchedId = new Map();
-    for (const t of augmented) {
-      if (!t.scheduledId) {
-        out.push({ kind: 'task', task: t });
-        continue;
-      }
-      let g = groupsBySchedId.get(t.scheduledId);
-      if (!g) {
-        g = { kind: 'group', scheduledId: t.scheduledId, runs: [] };
-        groupsBySchedId.set(t.scheduledId, g);
-        out.push(g);
-      }
-      g.runs.push(t);
-    }
-    return out;
-  }, [augmented]);
-
-  const ts = (raw) => {
-    if (!raw) return 0;
-    if (typeof raw === 'number') return raw;
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
+  const grouped = useMemo(
+    () => groupScheduleRuns(tasks, scheduleRunsIndex),
+    [tasks, scheduleRunsIndex],
+  );
 
   // Compute a row-shape representative for filtering / sorting that
   // works for both lone tasks AND collapsed schedule groups.
@@ -393,9 +92,7 @@ export default function TasksView({
       };
     }
     const sched = schedulesById.get(row.scheduledId);
-    const latest = row.runs.reduce((max, r) =>
-      ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-    row.runs[0]);
+    const latest = latestRun(row.runs);
     return {
       title: sched?.title || latest?.title || 'Scheduled task',
       project: sched?.project || latest?.projectName || latest?.project || ORPHAN_SCHEDULE_PROJECT,
@@ -440,22 +137,27 @@ export default function TasksView({
     return set;
   }, [tasks]);
   const projectFilterOptions = useMemo(() => {
-    const opts = [{ id: 'all', label: 'All projects' }];
+    const opts = [{ value: 'all', label: 'All projects' }];
     const seen = new Set();
     for (const p of projects) {
       if (!projectsWithTasks.has(p.name) || seen.has(p.name)) continue;
       seen.add(p.name);
-      opts.push({ id: p.name, label: projectLabel(p) });
+      opts.push({ value: p.name, label: projectLabel(p) });
     }
     // Catch any task whose project isn't in the registered project
     // list (e.g. project was deleted but tasks linger).
     for (const n of projectsWithTasks) {
       if (seen.has(n)) continue;
       seen.add(n);
-      opts.push({ id: n, label: n });
+      opts.push({ value: n, label: n });
     }
     return opts;
   }, [projects, projectsWithTasks]);
+
+  const filters = [{
+    id: 'project', label: 'Project', value: projectFilter, allValue: 'all',
+    options: projectFilterOptions, onChange: setProjectFilter,
+  }];
 
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
@@ -475,76 +177,62 @@ export default function TasksView({
               placeholder="Search tasks"
             />
           }
-          sort={
-            <>
-              <SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />
-              <SortPill
-                value={projectFilter}
-                onChange={setProjectFilter}
-                options={projectFilterOptions}
-                label="Project"
-              />
-            </>
-          }
+          filter={<FilterMenu filters={filters} />}
+          chips={<FilterChips filters={filters} onClear={() => setProjectFilter('all')} />}
+          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
           counts={
             <>
               {(search || '').trim().length > 0 || projectFilter !== 'all'
-                ? `Showing ${visible.length} of ${tasks.length}`
+                ? `${visible.length} of ${tasks.length} tasks`
                 : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`}
             </>
           }
         />
       )}
 
-      {tasks.length === 0 ? (
-        <EmptyState
-          bordered
-          icon={<span className="inline-flex text-ink-4">{Ico.chats(28)}</span>}
-          title="No tasks yet"
-          description="Start a conversation from the home screen — every chat shows up here."
-          style={{ margin: '40px 28px' }}
-        />
-      ) : (
-        <div className="pt-2 px-7 pb-7">
-          <ListHeaderRow />
+      <CollectionState
+        total={tasks.length}
+        shown={visible.length}
+        query={search}
+        onClear={() => { setSearch(''); setProjectFilter('all'); }}
+        // Search and the project filter both narrow the list, so the copy
+        // and the action cover both.
+        noMatchTitle="No tasks match these filters."
+        clearLabel="Clear filters"
+        empty={{
+          bordered: true,
+          icon: <span className="inline-flex text-ink-4">{Ico.chats(32)}</span>,
+          title: 'No tasks yet',
+          description: 'Start a conversation from the home screen — every chat shows up here.',
+          className: 'mx-8 my-10',
+        }}
+      >
+        <ListGroup className="mx-8 mb-8">
           {visible.map((row) => {
             if (row.kind === 'task') {
               return (
                 <TaskRow
                   key={row.task.id}
-                  task={row.task}
-                  projects={projects}
-                  onOpen={(task) => onOpenTask?.(task.id)}
-                  onOpenProject={onOpenProject}
-                  onDelete={(id) => onDeleteTask?.(id)}
+                  {...chatTaskRow(row.task, { projects, onOpenProject })}
+                  onOpen={() => onOpenTask?.(row.task.id)}
+                  menuItems={chatTaskMenu(row.task, { onMoveToProject: onMoveTaskToProject, onDelete: onDeleteTask })}
                 />
               );
             }
-            const sched = schedulesById.get(row.scheduledId);
             return (
               <ScheduleGroupRow
                 key={`sched:${row.scheduledId}`}
-                schedule={sched}
+                schedule={schedulesById.get(row.scheduledId)}
                 runs={row.runs}
                 projects={projects}
                 onOpenSchedule={() => onOpenSchedule?.(row.scheduledId)}
-                onOpenLatest={() => {
-                  const latest = row.runs.reduce((max, r) =>
-                    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-                  row.runs[0]);
-                  if (latest?.id) onOpenTask?.(latest.id);
-                }}
+                onOpenTask={onOpenTask}
                 onOpenProject={onOpenProject}
               />
             );
           })}
-          {visible.length === 0 && (
-            <div className="py-10 px-[14px] font-[family-name:var(--font-body)] text-[13px] text-ink-4 text-center">
-              No tasks match these filters.
-            </div>
-          )}
-        </div>
-      )}
+        </ListGroup>
+      </CollectionState>
     </div>
   );
 }

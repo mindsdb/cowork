@@ -202,22 +202,5 @@ export function useCodeTaskActions({
     }
   };
 
-  const remove = async () => {
-    if (!session) return false;
-    beginAction();
-    setError('');
-    try {
-      await codingApi.deleteSession(session.id);
-      onSelectionChangeRef.current(null, false);
-      await reconcile(() => loadSessions(), 'The task was deleted');
-      return true;
-    } catch (reason) {
-      setError(errorMessage(reason, 'Could not delete this coding task.'));
-      return false;
-    } finally {
-      endAction();
-    }
-  };
-
-  return { busy, error, setError, run, runResult: execute, create, fork, toggleArchive, remove };
+  return { busy, error, setError, run, runResult: execute, create, fork, toggleArchive };
 }

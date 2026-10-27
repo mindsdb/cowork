@@ -17,7 +17,7 @@
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
-import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
+import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
 import { isModelLocked, knownModelDisabledReasons, orderByFamily, unavailableModelFields } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
@@ -53,9 +53,11 @@ export const SETTINGS_KEY_MAP = {
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
+  show_figure_sources: 'showFigureSources',
   nav_title: 'navTitle',
   nav_title_color: 'navTitleColor',
   nav_logo: 'navLogo',
+  favicon: 'favicon',
   show_theme_toggle: 'showThemeToggle',
   show_8bit_toggle: 'show8bitToggle',
   show_coding_mode_toggle: 'showCodingModeToggle',
@@ -638,7 +640,7 @@ function backfillProviders(result) {
   if (result.mindsApiKey === '***' && !hasType('minds-cloud')) {
     providers.push({
       type: 'minds-cloud', apiKey: '***',
-      mindsUrl: (result.mindsUrl || `${MINDS_API_BASE}/v1`).replace(/\/v1$/, ''),
+      mindsUrl: mindsApiRoot(result.mindsUrl) || MINDS_API_BASE,
       isDefault: planningType === 'minds-cloud',
     });
   }
@@ -678,6 +680,23 @@ function backfillProviders(result) {
 /** Keys that are read from the server but never written back — they are
  *  transient UI-only state (e.g. provider test results). */
 const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails', 'providerStatusReasons']);
+
+// Accepted values remain usable if the canonical post-write read fails. Only
+// acknowledged keys enter shared state, and credentials keep the read-side mask.
+export function committedSettingsPatch(patch, serverKeys) {
+  const confirmed = {};
+  for (const serverKey of serverKeys) {
+    const key = SETTINGS_KEY_MAP[serverKey];
+    if (!key || !(key in patch) || WRITE_SKIP.has(key)) continue;
+    const value = patch[key];
+    if (key.endsWith('ApiKey')) confirmed[key] = value ? '***' : '';
+    else if (key === 'providers' && Array.isArray(value)) {
+      confirmed[key] = value.map((p) => ({ ...p, apiKey: p.apiKey ? '***' : '' }));
+    } else confirmed[key] = value;
+  }
+  if ('planningModel' in confirmed) confirmed.defaultModel = confirmed.planningModel;
+  return confirmed;
+}
 
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};

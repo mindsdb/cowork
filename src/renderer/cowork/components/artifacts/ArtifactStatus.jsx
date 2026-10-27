@@ -23,9 +23,9 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 // content, so the label is always shown (ENG-1475); when a tight cell also holds
 // the "Unshared changes" badge the two wrap to a second line.
 const ACCESS_BADGE = {
-  public: { variant: 'success', icon: Ico.globe(11), label: 'Public' },
-  password: { variant: 'default', icon: Ico.lock(11), label: 'Password' },
-  restricted: { variant: 'default', icon: Ico.people(11), label: 'Restricted' },
+  public: { variant: 'success', icon: Ico.globe(12), label: 'Public' },
+  password: { variant: 'default', icon: Ico.lock(12), label: 'Password' },
+  restricted: { variant: 'default', icon: Ico.people(12), label: 'Restricted' },
 };
 
 // Fail CLOSED: only a positively-recognised mode gets its badge, and only
@@ -36,7 +36,7 @@ const ACCESS_BADGE = {
 // resolves to a neutral protected pill instead of defaulting to Public.
 // `Object.hasOwn` (not `mode in`/`ACCESS_BADGE[mode]`) also stops a mode string
 // like `constructor`/`__proto__` from yielding a blank inherited-property pill.
-const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
+const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(12), label: 'Restricted' };
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
@@ -78,7 +78,11 @@ export function artifactStatusHint(artifact, publishable = true) {
 // member" / "Unknown owner" tag right after the primary badge (ENG-2979).
 // Pass null, not an element that renders nothing, when there is none: without
 // it the DOM is exactly what it was.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null }) {
+//
+// `pageBadge` — false drops the idle "Not shared" / "Draft" badge of an
+// unpublished artifact that can't become a page (a live app shares through
+// "Share with…" instead). Phases and the authorship tag still show.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true }) {
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -112,6 +116,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
+    if (!pageBadge) return tag;
     return withExtra(
       <Tooltip content={artifactStatusHint(artifact, publishable)}>
         <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>

@@ -32,4 +32,16 @@ describe('EmptyState', () => {
     render(<EmptyState title="Empty" />);
     expect(screen.getByText('Empty').closest('.card')).toBeNull();
   });
+
+  it('renders the compact size without the default heading or min-height', () => {
+    render(<EmptyState size="sm" className="panel-empty" icon={<svg data-testid="icon" />} title="No matches" description="Try a filename." />);
+    const title = screen.getByText('No matches');
+    expect(title).not.toHaveClass('s-h3');
+    expect(title).toHaveStyle({ fontSize: '12px' });
+    expect(screen.getByText('Try a filename.')).toHaveStyle({ fontSize: '11px' });
+    expect(screen.getByTestId('icon')).toBeInTheDocument();
+    const root = title.closest('.panel-empty');
+    expect(root).not.toBeNull();
+    expect(root.style.minHeight).toBe('');
+  });
 });

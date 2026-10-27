@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import type { EngineCommand, SkillLibraryItem } from './api';
 import { skillSupersedesHint } from './presentation';
 import { useSkillLibrary } from './useSkillLibrary';
@@ -203,19 +204,20 @@ export function CodeCommandPalette({
       style={availableHeight ? { maxHeight: availableHeight } : undefined}
       onKeyDown={handleKeyDown}
     >
-      <label className="code-command-palette__search">
-        <span aria-hidden="true">{Ico.search(13)}</span>
-        <input
+      <div className="code-command-palette__search">
+        <Input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={onQueryChange}
+          size="sm"
+          leading={Ico.search(14)}
           placeholder="Search skills and commands"
           aria-label="Search skills and commands"
         />
-      </label>
+      </div>
       <div className="code-command-palette__list">
         {skills.length > 0 && (
           <section aria-label="MindsHub skills">
-            <div className="code-command-palette__section">
+            <div className="code-command-palette__section section-label">
               <span>MindsHub skills</span>
             </div>
             {skills.map(renderItem)}
@@ -223,7 +225,7 @@ export function CodeCommandPalette({
         )}
         {commands.length > 0 && (
           <section aria-label={`${agentLabel} commands`}>
-            <div className="code-command-palette__section">
+            <div className="code-command-palette__section section-label">
               <span>{agentLabel} commands</span>
             </div>
             {commands.map(renderItem)}

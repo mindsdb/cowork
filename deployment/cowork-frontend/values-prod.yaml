@@ -3,6 +3,9 @@ deployment:
     # The prod tier. Only a main build writes this repository, so prod never
     # runs a pull request or staging image.
     repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork
+  extraEnvs:
+    - name: ACCESS_LOG_MODE
+      value: "all"
   ingress:
     enabled: true
     name: cowork-frontend

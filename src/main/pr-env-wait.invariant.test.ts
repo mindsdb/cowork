@@ -6,9 +6,9 @@ import { fileURLToPath } from 'url';
 // Regression guard: the PR-environment wait looks for the value the PR build
 // stamps.
 //
-// mindsdb/deployer serves a pull request's `development-head-<head sha>` image.
+// The PR environment serves a pull request's `development-head-<head sha>` image.
 // GitHub builds a PR from a merge commit that it regenerates whenever the base
-// moves, and a rebuild for the same head does not change the tag the deployer
+// moves, and a rebuild for the same head does not change the tag the reconciler
 // pins. So the environment keeps serving the earlier build, stamped with the
 // earlier merge commit. A live PR environment did exactly that: it served a
 // bundle stamped with a merge commit its pull request no longer had.

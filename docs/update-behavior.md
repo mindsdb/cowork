@@ -63,8 +63,11 @@ visible refresh of the window.
 ## Shell (installer) update notice (ENG-849)
 
 The Electron **shell** (`src/main`, preload, the runtime, native deps) is *not*
-covered by OTA — it updates only when the user downloads and reinstalls a new
-installer. So the app can't apply a shell update; it can only *notice* one:
+covered by OTA — it changes only when the app relaunches into a new build,
+either through the background auto-update below (ENG-850) or a hand-installed
+installer. The notice in this section is the fallback for shells that cannot
+update themselves (auto-update disabled or terminally failed, Linux, and shells
+from before 2.26.8.24.1). It can only *notice* an update, never apply one:
 
 - The boot/periodic poll compares the installed shell CalVer against
   `shellVersion` in `latest.json`. If a newer shell exists it pushes a
@@ -100,6 +103,52 @@ When enabled, main owns one immutable shell-update snapshot:
   mode waits for an explicit download and explicit restart. Either way the quit
   path first drains any in-flight UI/server apply (bounded) before the process
   terminates, so the on-quit install cannot overlap an apply.
+- **Restart asks first while tasks run (ENG-3291).** A restart that stops the
+  sidecar ends every running turn. So the in-app Restart (Settings card,
+  sidebar banner, and any other button that reaches `installShellAutoUpdate`
+  or a UI/server apply that includes a server update) first asks main how
+  many turns the sidecar is running, bounded at 2 seconds in total. Main reads
+  two things at once: chat turns from `/responses/in-flight-list`, and Code
+  turns as `/coding/sessions` entries whose status is `running` or
+  `awaiting_approval`, since the stop interrupts those through
+  `/coding/runtime/prepare-shutdown`. Either read failing counts as "cannot
+  tell". The session status is persisted state, so a stale `running` left by a
+  crash asks once too often, never too seldom. With none, the
+  restart proceeds as before. Otherwise main answers
+  `{ confirm: true, runningTasks }` instead of acting, and the renderer shows
+  one dialog, "Stop N running tasks and restart?", with **Restart anyway** and
+  **Cancel**. Cancel leaves the update ready. When the sidecar does not answer
+  in time, `runningTasks` is null and the dialog says Cowork cannot tell. The
+  exchange lives in `src/renderer/platform/restart-guard.ts` behind
+  `host.applyUpdate` / `host.installShellAutoUpdate`, so every restart button
+  inherits it; the dialog is `RestartConfirmHost`, mounted once in `App.tsx`.
+  A plain quit (Cmd+Q) does not ask.
+- **The sidecar stops before the shell exits.** `installShellAutoUpdate` first
+  freezes the pending install (`ready-to-install` → `installing`), so a
+  background refresh that finds a newer build during the stop is refused rather
+  than moving the target. It then stops the sidecar (bounded by the stop's own
+  worst case, 8.5 seconds, then force-reaped, the same ceiling as the quit
+  drain) and only then calls `quitAndInstall`. The
+  install counts as launched only when the app begins quitting (electron-
+  updater's `before-quit-for-update`, or Electron's `before-quit`). A normal
+  return from `quitAndInstall` is not enough: the library's `install()` catches
+  installer exceptions, emits `error` and returns false, and on macOS Squirrel
+  can fail while staging the bundle after the call returns. If the stop throws,
+  the installer throws or reports an `error` event, or the app has not begun
+  quitting within 60 seconds, the install is re-armed (`INSTALL_ABORTED`, back
+  to `ready-to-install`) and the sidecar is
+  started again, so an app that stays open keeps its backend. The reason stays
+  on the snapshot until the next attempt: the sidebar pill reads "Last restart
+  attempt failed" with a **Try again** action, and the Settings card says the
+  same under its title, so the pill never flips from "Installing…" back to
+  "Update ready" with no explanation. An installer `error` that arrives while a
+  background refresh check is still out on the network is attributed by that
+  check's own promise: a failed check also rejects it, an installer fault does
+  not, so the abort waits for the check to settle (its socket timeout bounds
+  that) rather than for the whole launch window. The boot install of a
+  stranded update (ENG-2764) goes through the same function. On macOS the updater's quit tears the process down before
+  `before-quit` can drain, so without this the shell was gone while a turn was
+  still being written. The quit drain then finds nothing left to stop.
 - Concurrent boot, periodic, and manual checks coalesce into one operation.
 - The renderer pulls the snapshot on mount and subscribes to full snapshot
   changes, so a UI reload cannot lose progress/readiness state.
@@ -112,20 +161,199 @@ When enabled, main owns one immutable shell-update snapshot:
   quit drain above.
 - Signature/checksum failures are terminal for automatic update, while the
   existing manual installer URL remains available.
+- A stalled check or download cannot starve later checks. `CHECK_REQUESTED` is
+  refused while the phase is `checking` or `downloading`, so a check or download
+  that settled without emitting its event would otherwise hold that phase for
+  the rest of the process. The next `check()` abandons a check idle for more
+  than 10 minutes (recoverable `check-stalled`) or a download with no progress
+  event for 30 minutes (`download-stalled`), then proceeds. A stalled refresh
+  behind a pending install just ends, leaving the armed download alone.
+  `check-stalled` raises no banner, since there is nothing for the user to
+  retry; the next scheduled check simply runs. `download-stalled` keeps its
+  target and offers Retry. electron-updater deduplicates: a second
+  `checkForUpdates()` or `downloadUpdate()` returns the promise already in
+  flight. So abandoning a download also cancels it in the updater, through a
+  CancellationToken the adapter mints for every download it starts, which
+  settles that promise and frees the slot for a fresh transfer. The token
+  cannot come from the check result: the library emits `update-available`,
+  which starts the automatic download, before it creates that token. A check needs no cancelling: its feed
+  request has a 60-second socket timeout in the library, so it always settles
+  with an `error`, and a new check meanwhile adopts the same pending promise
+  rather than starting a second request. Cancellation reaches only the
+  transfer itself: a download stalled inside the library's checksum validation
+  or its rename retries is not cancellable and stays bounded by the library.
+  An `installing` phase that neither quits the app nor reports an error within
+  60 seconds is re-armed by the install's own launch window (see the quit order
+  above), which also restores the sidecar, so the stall guard leaves it alone.
+  A late `error` from an operation the guard already abandoned
+  is dropped rather than reported twice. While a check or download is in
+  flight the periodic timer runs every 30 minutes, as it does with an install
+  pending, so a stalled one is released within 30 minutes of crossing its
+  threshold.
 
 ### Watching a rollout in PostHog
 
 - `shell_update_phase` records each shell auto-update milestone once per app
   run, from the first launch screen onward: `available` (an update was found;
   in auto mode, its download started), `ready-to-install`, `installing` (the
-  user clicked Restart), `failed` (with `error_code` and `recoverable`), and
+  user clicked Restart, or launch installed a stranded update; `install_source`
+  is `user` or `boot`),
+  `failed` (with `error_code` and `recoverable`), and
   `relaunched`. `relaunched` is the boot verdict on the previous download:
   `error_code` is `install-not-applied` when the app came back on the old
-  shell. An install on normal quit sends no `installing`; it appears only as
+  shell, and `install_source` is `boot` when a launch-time install produced the
+  verdict. Count `installing` with `install_source=boot` against `relaunched`
+  with the same source to watch the stranded-install rollout. `relaunched`
+  fires once per install attempt: a launch that reports it rewrites the
+  evidence as reported, so later launches still on the old shell stay quiet. An install on normal quit sends no `installing`; it appears only as
   the next launch's `relaunched`. Checks that find nothing send nothing.
-- `boot_screen_resolved` carries `shell_version` and `build_kind` on every
-  launch. Use them for shell adoption, not `app_version`: that is the running
-  UI bundle, which OTA moves independently of the shell.
+- `boot_screen_resolved` carries `shell_version`, `ui_version`,
+  `server_version` and `build_kind` on every launch: one row names the
+  running version of each layer, so adoption per layer is a count on this
+  event with no join. `server_version` is null when the sidecar had not
+  answered `/health` by the time the first screen resolved. Use
+  `shell_version` for shell adoption, not `app_version`: that is the running
+  UI bundle (the same value as `ui_version`), which OTA moves independently
+  of the shell.
+- `update_phase` records each UI and server update outcome, one event per
+  outcome. The outcome happens in main while the window reloads, so main
+  journals it (`update-journal.json`, beside `shell-update-target.json`) and
+  the next renderer to boot reports it and acks what landed. Events therefore
+  arrive one launch late, but each carries the time of the outcome, not of
+  the send, so a daily count lands on the day the update happened. An entry
+  whose send failed is retried at the next launch under the same event
+  `uuid` (its `journal_id`), so PostHog keeps one event even when the first
+  send landed and only its ack was lost. Properties:
+  `channel` (`ui` or `server`), `phase`, `from` and `to` (that layer's
+  versions, a short commit on the git channel), `error_code`, `trigger`
+  (`boot`, `periodic` or `manual`), `duration_ms`, `build_kind`, `component`
+  (`anton-agent` when an anton-only release moved; absent means
+  cowork-server), `repair` (the move was the stream repair, whatever its
+  outcome) and `journaled_at`. The phases:
+  - `applied`: the new version is live and passed its health check. A UI
+    activated with no window to load it into carries `error_code`
+    `unverified-no-window`; it serves at the next boot.
+  - `rolled-back`: the apply ran, the health check failed, and the previous
+    version is back. A UI rollback also quarantines the bundle (`error_code`
+    `renderer-load`); a server rollback is `health-check`.
+  - `failed`: nothing changed, or the rollback itself failed. `error_code` is
+    `not-applied` (the UI download, checksum, extraction or activation
+    failed; the app log says which, and `to` is the version the apply
+    downloaded, which can be newer than the one the check offered), `install` (the server reinstall
+    failed), `uv-missing`, `unknown-installed-version`, `rollback-failed` or
+    `restore-failed` (rolled back, but the restored server did not start).
+  - `repaired`: a reinstall that was not a version move: the server stream
+    repair (`from` an rc, `to` the stable), or a venv rebuilt at boot
+    (`error_code` `unsupported-python` or `broken-install`).
+  - `skipped`: a UI the check offered that this pass did not download, with
+    the offered version as `to`: held behind a failed server update
+    (`server-update-failed`), or withdrawn, quarantined or held for server
+    compatibility by the time the apply ran (`not-attempted`).
+
+  The first question it answers: on a given day, how many devices applied UI
+  version X, how many of those rolled back, and how many server updates
+  succeeded, by `build_kind`. In PostHog: filter `update_phase` on
+  `channel = ui` and `to = X`, break down by `phase` and `build_kind`. For
+  cowork-server adoption, filter `channel = server` and exclude
+  `component = anton-agent`.
+
+### Stranded updates: installed at the next launch (ENG-2764)
+
+Install-on-quit only runs on a clean quit. After a force-quit, crash, or reboot,
+the update stays downloaded and uninstalled, and the user meets the same banner
+every launch.
+
+When `shell-update-target.json` shows an earlier launch downloaded a target
+this launch is not running, and no install of that target has been attempted,
+by a boot install or a Restart click, the loading gate also waits on the shell
+boot check, for up to 10 seconds in all. The install itself runs to completion
+in the background (sidecar stop, hand-off, launch window, and the sidecar
+restored if the installer neither quits nor errors); the gate only waits for its
+outcome while that budget lasts. Every other launch
+skips the wait. If that check replays a cached download, the app installs it
+and relaunches before it is shown. The install starts only after the OTA boot
+apply has settled, so it never quits the app mid-apply; the gate is held by
+that apply anyway. On Windows the loading screen reads "Installing the update
+— Cowork will reopen…" while the quit drains; on macOS the updater closes the
+window before the renderer paints. The stale record stays on disk until the
+check answers, so a crash in between does not lose it. `decideBootShellInstall`
+in `src/main/update-logic.ts` requires all of:
+
+- the snapshot is at `ready-to-install`;
+- the mode is `auto`;
+- no bytes were transferred this launch. electron-updater replays a cached
+  download without emitting `download-progress`, so this separates a stranded
+  update from a fresh one. The gate is released at the first progress event, and
+  a fresh download is left to the banner and the next quit;
+- no install of this target has been attempted. A failed boot install is
+  marked before it runs; a failed Restart click leaves `installSource` behind.
+  Either falls back to the banner.
+
+A stranded update and a failed install look the same afterwards, so the attempt
+is recorded in `shell-update-target.json` before it is made. The marker persists
+until the target installs or a newer target replaces it, and the install is
+skipped if the marker cannot be written.
+
+## Supported desktop window (ENG-1047)
+
+The three parts run on three clocks, and the shell's is the slowest: after each
+release the boot check applies the new UI and sidecar at once, while the new
+shell only starts downloading and installs on the next quit. So on an existing
+install every new UI first runs on the previous shell, and an app that sat
+unlaunched for weeks runs a brand-new UI on a weeks-old shell until its user
+restarts. The UI copes by probing bridge methods and falling back silently,
+which is how a 5-week-old shell came to hide Code mode and the onboarding
+organization picker on 6 October 2026 without a word. This section names how
+far back that gap may reach.
+
+**The window.** A prod shell is supported when both hold:
+
+- it is **`2.26.9.21.1` or newer** — the hard floor. That shell introduced
+  per-account data roots (ENG-548) and the post-update auth probe (ENG-2852);
+  older shells show one account's data to whoever signs in, and it already
+  carries every bridge member today's UI reads;
+- it is **at most 14 days older than the newest published prod shell**, the
+  `shellVersion` in `latest.json`. Measured against the shell, never the UI:
+  UI-only publishes ship without a new shell, so a rule measured against the UI
+  would call the newest shell too old after a pause in shell releases. Prod
+  shells shipped 11 times in the 33 days to 4 October 2026, never more than 6
+  days apart, so 14 days spans at least two releases.
+
+The newest published prod shell is always inside the window. Web, stable and
+preview builds are never judged: web has no shell, and stable/preview always run
+their bundled UI, so their shell and UI cannot drift apart.
+
+**Where it lives.** Both values are constants in
+[src/shared/shell-support.ts](../src/shared/shell-support.ts)
+(`MIN_SUPPORTED_SHELL`, `SUPPORTED_SHELL_WINDOW_DAYS`), applied by the pure
+`assessShellSupport()`. They are the ENG-1047 proposal, pending the product
+decision recorded on that ticket. **Who moves them:** the engineer shipping a
+UI or cowork-server change that an older shell cannot run raises the floor in
+the same PR, with this section and cowork-server's `README.md` updated to match.
+The window should move only when a shell below it would break, not on a
+schedule.
+
+**No server ceiling.** Shells keep taking every new cowork-server release, as
+they do today. cowork-server keeps its desktop-facing contract working for
+every shell in the window (`tests/test_desktop_contract.py` there is the
+guard), and server-side compatibility fixes keep reaching shells below it.
+
+**What a user below the window sees.** The check runs in the UI bundle, because
+that is the only code that reaches shells already installed. On the first
+screen after launch — onboarding or the chat app — a warning names the installed
+shell version and offers one action: **Restart to update** when the auto-updater
+has the new shell downloaded, **Download update** when it has found one, and
+**Download the latest app** (opens `https://mindshub.ai/download`) on shells that
+cannot update themselves. Dismissing it lasts for that launch only. Settings →
+Updates marks the App shell row "⚠ too old" and says so in a warning under the
+version block. When the UI cannot read or parse a version the rule needs — the
+installed shell version, or the manifest's `shellVersion` — it shows nothing and
+the app works as before.
+
+Not covered here, by design: a shell too old to load OTA bundles at all (before
+2.26.7.20.1) never runs this code, so only cowork-server reaches it; a
+minimum-shell field in the manifest that the shell itself enforces would reach
+only shells built after it ships and is a follow-up once the window has settled.
 
 ## Build kinds
 
@@ -234,15 +462,24 @@ banner behind; the single derived banner removes both.
 The possible banners, in priority order:
 
 - **Shell** (auto-update) → a pill that walks the phases **"New app version
-  available — Download" → "Downloading update (42%)…" → "App update ready —
-  Restart"** (in auto mode the download happens on its own; a restart installs it).
+  available — Download" → "Downloading update (42%)…" → "Update ready — Restart
+  now"** (in auto mode the download happens on its own; a restart installs it).
+  In auto mode the pill is a shortcut: `autoInstallOnAppQuit` installs the update
+  on the next normal quit, and the tooltip says so. Manual mode shows no such
+  tooltip. The OTA pill's tooltip likewise notes the next launch applies it.
 - **Shell** (manual fallback) → a dismissible **"New version available —
   Download"** notice linking to the installer.
 - **UI/server found mid-session** (only when no shell update is pending) → a
   sidebar **"Update ready — Restart"** pill and a Settings card ("Server → …" /
   "UI → …"). The Restart reloads the renderer.
 - **UI/server auto-apply** (boot) is not a banner at all → a brief full-screen
-  overlay (spinner + "Updating…" / "Almost there…"), then the window reloads.
+  overlay (spinner + "Downloading the latest update…" / "Finishing up…"), then
+  the window reloads.
+
+The boot overlay describes **OTA only** (ENG-2764). A shell download is never
+applied by the gate, so naming it announced an update the app then asked the user
+to apply by hand. The copy makes no completion claim ("Finishing up…"), so it
+cannot contradict a pending shell update.
 
 | Updates pending | What the user sees |
 |---|---|
@@ -253,8 +490,10 @@ The possible banners, in priority order:
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
 | **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
-| **Shell only** (auto-update eligible) | Independent of the overlay. The pill/card walk "available → downloading (%) → ready-to-install". Background download; nothing installs until the user clicks **Restart** (or, in auto mode, on the next normal quit). |
+| **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches before the app is shown. A failed attempt falls back to the banner. |
+| **Shell only** (auto-update eligible) | Never named on the loading screen. The pill/card walk "available → downloading (%) → ready-to-install". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
+| **Shell below the supported window** (`prod`, see above) | On the first screen after launch, a warning names the installed shell and offers one action — Restart / Download through the auto-updater, or the download page on shells that cannot update themselves. Dismissible per launch; Settings → Updates marks the App shell "⚠ too old". |
 | **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
 
 Notes:
@@ -271,7 +510,12 @@ Notes:
   into one unified CalVer and flags "⚠ out of sync" when they drift more than
   `SKEW_WARN_DAYS` apart — so a server-only update that lands before its matching
   UI can briefly show that warning until the next UI bundle catches up. The app
-  shell is shown on its own line (it changes only on reinstall/relaunch).
+  shell is shown on its own line (it changes only on a relaunch), with the
+  supported-window verdict beside it.
+  The Server and Agent rows read `/health` with a 10-second bound and retry
+  every 5 seconds while the panel is open; until a read answers they show
+  "Loading…" and then "Unavailable", never a bare dash, and the details Copy
+  copies that state (ENG-3291).
 - A **failed** UI/server apply keeps the banner as a "Try again" retry instead
   of silently vanishing until the next poll.
 

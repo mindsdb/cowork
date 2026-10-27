@@ -159,7 +159,7 @@ export function MarkdownCode(props) {
           fontFamily: 'var(--font-body)', fontSize: 12.5,
           display: 'inline-flex', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
           Preparing form…
         </div>
       );
@@ -208,7 +208,7 @@ export function MarkdownCode(props) {
           cursor: 'pointer',
         }}
       >
-        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
         <span>
           <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>
           {' — fill it out in the side panel →'}

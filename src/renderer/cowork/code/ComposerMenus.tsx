@@ -39,7 +39,7 @@ export function PromptQueue({
                 aria-label={`Steer with queued instruction ${index + 1}`}
                 onClick={() => void onSteer(instruction.id)}
               >
-                {Ico.arrowUpLeft(11)} Steer
+                {Ico.arrowUpLeft(12)} Steer
               </Button>
             )}
             <Button
@@ -50,7 +50,7 @@ export function PromptQueue({
               aria-label={`Remove queued instruction ${index + 1}`}
               onClick={() => void onRemove(instruction.id)}
             >
-              {Ico.trash(11)}
+              {Ico.trash(12)}
             </Button>
           </div>
         </div>
@@ -73,7 +73,7 @@ export function SlashMenu({
   if (commands.length === 0) return null;
   return (
     <div className="code-slash-menu" role="listbox" aria-label="Code commands">
-      <div className="code-slash-menu__label">Commands</div>
+      <div className="code-slash-menu__label section-label">Commands</div>
       {commands.map((command, index) => (
         <button
           key={command.name}
@@ -109,7 +109,7 @@ export function MentionMenu({
   if (items.length === 0) return null;
   return (
     <div className="code-slash-menu code-mention-menu" role="listbox" aria-label="Task files">
-      <div className="code-slash-menu__label">Files and folders in this task</div>
+      <div className="code-slash-menu__label section-label">Files and folders in this task</div>
       {items.slice(0, 8).map((reference, index) => (
         <button
           key={reference.path}

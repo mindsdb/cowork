@@ -120,6 +120,21 @@ jobs:
       platform: mac
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-macos.outputs.artifact_name }}
+    secrets:
+      AWS_PROD_ACCOUNT_ID: ${{ secrets.AWS_PROD_ACCOUNT_ID }}
+
+  macos-setup:
+    needs: upload-macos
+    if: ${{ inputs.build_kind == 'stable' || inputs.build_kind == 'prod' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/macos-setup-smoke.yml
+    with:
+      channels: ${{ inputs.build_kind }}
+      expected-url: ${{ needs.upload-macos.outputs.download_url }}
+      expected-version: ${{ inputs.app_version }}
+    secrets: inherit
 
   build-windows:
     if: inputs.windows
@@ -143,6 +158,21 @@ jobs:
       platform: windows
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
+    secrets:
+      AWS_PROD_ACCOUNT_ID: ${{ secrets.AWS_PROD_ACCOUNT_ID }}
+
+  windows-setup:
+    needs: upload-windows
+    if: ${{ inputs.build_kind == 'stable' || inputs.build_kind == 'prod' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-setup-smoke.yml
+    with:
+      channels: ${{ inputs.build_kind }}
+      expected-url: ${{ needs.upload-windows.outputs.download_url }}
+      expected-version: ${{ inputs.app_version }}
+    secrets: inherit
 
   build-linux-amd64:
     if: inputs.linux_amd64
@@ -167,6 +197,8 @@ jobs:
       platform: linux-amd64
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-linux-amd64.outputs.artifact_name }}
+    secrets:
+      AWS_PROD_ACCOUNT_ID: ${{ secrets.AWS_PROD_ACCOUNT_ID }}
 
   build-linux-arm64:
     if: inputs.linux_arm64
@@ -191,3 +223,5 @@ jobs:
       platform: linux-arm64
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-linux-arm64.outputs.artifact_name }}
+    secrets:
+      AWS_PROD_ACCOUNT_ID: ${{ secrets.AWS_PROD_ACCOUNT_ID }}

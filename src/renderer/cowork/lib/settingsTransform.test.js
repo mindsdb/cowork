@@ -4,6 +4,7 @@ import {
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
+  committedSettingsPatch,
   effectiveRoleModel,
   effectiveRoleProvider,
   recommendedModelOptions,
@@ -20,6 +21,28 @@ import {
   transformSettingsRows,
   routerRoleSubtitle,
 } from './settingsTransform';
+
+describe('favicon settings translation', () => {
+  it('round-trips the image, commits it, and writes an empty removal', () => {
+    const favicon = 'data:image/png;base64,aWNvbg==';
+    expect(transformSettingsRows([{ key: 'favicon', value: favicon, is_sensitive: false }]).favicon).toBe(favicon);
+    expect(diffSettingsForWrite({ favicon }, { favicon: '' })).toEqual({ favicon });
+    expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
+    expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
+    expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
+describe('show_figure_sources translation', () => {
+  it('round-trips the switch both ways and commits it', () => {
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'False', is_sensitive: false }]).showFigureSources).toBe(false);
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'true', is_sensitive: false }]).showFigureSources).toBe(true);
+    expect(diffSettingsForWrite({ showFigureSources: false }, { showFigureSources: true })).toEqual({ show_figure_sources: 'false' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: false })).toEqual({ show_figure_sources: 'true' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: true })).toEqual({});
+    expect(committedSettingsPatch({ showFigureSources: false }, ['show_figure_sources'])).toEqual({ showFigureSources: false });
+  });
+});
 
 describe('modelLabel', () => {
   it('formats named GPT coding models without a version hyphen', () => {
@@ -1045,5 +1068,28 @@ describe('routerRoleSubtitle (ENG-1851)', () => {
       .toMatch(/off until a model is picked here/);
     expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
       .toMatch(/off: no model is available/);
+  });
+});
+
+
+describe('committedSettingsPatch', () => {
+  it('includes only accepted writable keys and masks credential copies', () => {
+    const patch = {
+      anthropicApiKey: 'new-secret',
+      providers: [{ type: 'anthropic', apiKey: 'new-secret', baseUrl: 'https://provider.example' }],
+      maxContinuations: '9',
+      modelEnabled: { opus: true },
+    };
+    expect(committedSettingsPatch(patch, ['anthropic_api_key', 'providers_json'])).toEqual({
+      anthropicApiKey: '***',
+      providers: [{ type: 'anthropic', apiKey: '***', baseUrl: 'https://provider.example' }],
+    });
+  });
+
+  it('preserves credential removal and model tombstones', () => {
+    expect(committedSettingsPatch({ anthropicApiKey: '', planningModel: null },
+      ['anthropic_api_key', 'planning_model'])).toEqual({
+      anthropicApiKey: '', planningModel: null, defaultModel: null,
+    });
   });
 });

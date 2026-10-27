@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
-import { ConfirmModal } from '../components/ConfirmModal';
 import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
@@ -24,8 +23,9 @@ import { NewTaskPanel } from './NewTaskPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
-import { RenameTaskModal } from './RenameTaskModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
+import type { CodeTaskListActions } from './useCodeTaskMenu';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
 import { TaskTerminal } from './TaskTerminal';
@@ -79,6 +79,7 @@ export default function CodeView({
   onSessionsChange,
   onSelectionChange,
   onAttentionSelect,
+  taskActions,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
@@ -106,8 +107,9 @@ export default function CodeView({
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
   onAttentionSelect?: (sessionId: string) => void;
+  /** Row actions for the All tasks list; without them its rows have no menu. */
+  taskActions?: CodeTaskListActions;
 }) {
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const openReview = useCallback(() => {
@@ -140,8 +142,8 @@ export default function CodeView({
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
-  const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
   // Back returns to the originating draft/settings. Project-scoped visits also
   // add newly connected accounts to that project; folder-only visits do not.
@@ -191,7 +193,6 @@ export default function CodeView({
     create: createTask,
     fork: forkTask,
     toggleArchive,
-    remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
   const commitTask = (sessionId: string, message: string) => runAction(async () => {
@@ -232,11 +233,9 @@ export default function CodeView({
     setFilesOpen(false);
     setPreviewOpen(false);
     setTerminalFocusId(null);
-    setDeleteOpen(false);
     setActionError('');
     setControlsOpen(false);
     setExtensionsOpen(false);
-    setRenameOpen(false);
     setResolvingApprovalId(null);
     setResolvingQuestionId(null);
     setRecoveringTaskId(null);
@@ -400,19 +399,7 @@ export default function CodeView({
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
             onOpenControls={() => setControlsOpen(true)}
-            onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
-            onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
-            onRename={() => setRenameOpen(true)}
             onFork={() => void forkTask()}
-            onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
-            onStatus={() => void runAction(
-              () => isActiveStatus(taskBarSession.status)
-                ? codingApi.steer(taskBarSession.id, '/status')
-                : codingApi.turn(taskBarSession.id, '/status'),
-              true,
-            )}
-            onArchive={() => void toggleArchive()}
-            onDelete={() => setDeleteOpen(true)}
           />
         )}
 
@@ -455,12 +442,12 @@ export default function CodeView({
         ) : connectorsOpen && !draftSuspended ? null : projectsOpen ? (
           <CodeProjectsView
             projects={projects.projects}
-            selectedId={projects.selectedId}
             loading={projects.loading}
             error={projects.error}
             onOpen={onOpenTasks}
             onCreate={() => setProjectEditor({ id: null })}
             onEdit={(id) => setProjectEditor({ id })}
+            onDelete={setDeletingProjectId}
           />
         ) : tasksOpen ? (
           <CodeTasksView
@@ -473,11 +460,13 @@ export default function CodeView({
             error={taskList.error || projects.error}
             onOpen={(id) => onSelectionChange(id, false)}
             onOpenProject={onOpenTasks}
+            taskActions={taskActions}
             onNewTask={(id) => {
               projects.setSelectedId(id);
               onSelectionChange(null, true);
             }}
             onEditProject={(id) => setProjectEditor({ id })}
+            onDeleteProject={setDeletingProjectId}
             onBack={onOpenProjects}
             onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
@@ -739,18 +728,6 @@ export default function CodeView({
         ) : (
           <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
         )}
-        <ConfirmModal
-          open={deleteOpen}
-          title="Delete this coding task?"
-          message="This removes the task history and any isolated working copy. Your original files are left alone."
-          confirmLabel="Delete task"
-          destructive
-          busy={busy}
-          onClose={() => { if (!busy) setDeleteOpen(false); }}
-          onConfirm={async () => {
-            if (await deleteTask()) setDeleteOpen(false);
-          }}
-        />
         {session && can('task_controls') && (
           <RuntimeControlsModal
             open={controlsOpen}
@@ -820,15 +797,15 @@ export default function CodeView({
             setProjectEditor(null);
             onOpenSkills();
           }}
-          onDelete={projectEditor?.id ? async () => {
-            setProjectBusy(true);
-            try {
-              await projects.remove(projectEditor.id!);
-              setProjectEditor(null);
-            } finally {
-              setProjectBusy(false);
-            }
-          } : undefined}
+        />
+        <DeleteProjectModal
+          open={deletingProjectId !== null}
+          onClose={() => setDeletingProjectId(null)}
+          onDelete={async () => {
+            await projects.remove(deletingProjectId!);
+            // The project's own page has nothing left to show.
+            if (tasksOpen && tasksProjectId === deletingProjectId) onOpenProjects();
+          }}
         />
         {session && can('extensions') && (
           <ExtensionsModal
@@ -836,18 +813,6 @@ export default function CodeView({
             sessionId={session.id}
             initialTab={extensionTab}
             onClose={() => setExtensionsOpen(false)}
-          />
-        )}
-        {session && (
-          <RenameTaskModal
-            open={renameOpen}
-            title={session.title}
-            busy={busy}
-            onClose={() => setRenameOpen(false)}
-            onRename={async (title) => {
-              await runAction(() => codingApi.renameSession(session.id, title), true, true);
-              setRenameOpen(false);
-            }}
           />
         )}
       </div>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ConnectionCard from './ConnectionCard';
+import ConnectionCard, { ConnectionRow } from './ConnectionCard';
 
 const connection = { engine: 'github', label: 'GitHub', name: 'ianu82', display_name: 'ianu82' };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -21,6 +21,26 @@ describe('ConnectionCard', () => {
     expect(container.querySelector('img')).toBeInTheDocument();
     expect(screen.getByText('Reconnect needed')).toBeInTheDocument();
     expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reconnect GitHub: ianu82' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['card', ConnectionCard],
+    ['row', ConnectionRow],
+  ])('never names a managed %s that needs reconnecting Reconnect', async (_, Item) => {
+    // How a connection someone else shares reaches the caller once its access expires.
+    const managed = { ...connection, managed: true, shared: true, status: 'needs_reconnect' };
+    const onModify = vi.fn();
+    render(<Item connection={managed} onModify={onModify} />);
+    expect(screen.getByText('Reconnect needed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Reconnect/ })).not.toBeInTheDocument();
+    // Its details open read-only, with no Reconnect of their own.
+    await userEvent.click(screen.getByRole('button', { name: 'View GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
+  });
+
+  it("names the creator's own shared connection that needs reconnecting Reconnect", () => {
+    render(<ConnectionCard connection={{ ...connection, shared: true, status: 'needs_reconnect' }} onModify={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Reconnect GitHub: ianu82' })).toBeInTheDocument();
   });
 
@@ -91,5 +111,87 @@ describe('ConnectionCard', () => {
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
+  });
+
+  it.each([
+    // The operator's own connection, which no person created.
+    ['card', ConnectionCard, { ...connection, managed: true }, 'Managed', 'Shared'],
+    ['row', ConnectionRow, { ...connection, managed: true }, 'Managed', 'Shared'],
+    // How a connection someone else shares reaches the caller.
+    ['card shared with the caller', ConnectionCard, { ...connection, managed: true, shared: true }, 'Shared', 'Managed'],
+    ['row shared with the caller', ConnectionRow, { ...connection, managed: true, shared: true }, 'Shared', 'Managed'],
+  ])('shows a managed connection as a read-only %s with its badge and no Disconnect', async (_, Item, managed, badge, otherBadge) => {
+    const onModify = vi.fn();
+    render(<Item connection={managed} onModify={onModify} onDelete={vi.fn()} />);
+    expect(screen.getByText(badge)).toBeInTheDocument();
+    expect(screen.queryByText(otherBadge)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    // The details still open, read-only, from the item itself, named View.
+    expect(screen.queryByRole('button', { name: /^Manage/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(managed);
+  });
+
+  it.each([
+    ['card', ConnectionCard, { ...connection, shared: true }],
+    ['row', ConnectionRow, { ...connection, shared: true }],
+    ['card with managed false', ConnectionCard, { ...connection, shared: true, managed: false }],
+  ])("shows the creator's own shared connection as a %s with a Shared badge and Disconnect", async (_, Item, shared) => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const onDelete = vi.fn();
+    render(<Item connection={shared} onModify={vi.fn()} onDelete={onDelete} />);
+    expect(screen.getByText('Shared')).toBeInTheDocument();
+    expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage GitHub: ianu82' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(shared);
+  });
+
+  it.each([
+    ['card', ConnectionCard],
+    ['row', ConnectionRow],
+  ])("says before a %s disconnects the creator's own shared connection that everyone loses it and its name stays taken", async (_, Item) => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const onDelete = vi.fn();
+    render(<Item connection={{ ...connection, shared: true }} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
+      "Disconnect github/ianu82?\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
+    );
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['with shared false', { ...connection, shared: false }],
+    ['with a non-boolean shared value', { ...connection, shared: 'true' }],
+  ])('asks only the plain question before disconnecting a connection %s', async (_, conn) => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect github/ianu82?');
+  });
+
+  it.each([
+    ['without either field', connection],
+    ['with managed false', { ...connection, managed: false }],
+    ['with a non-boolean managed value', { ...connection, managed: 'true' }],
+    ['with shared false', { ...connection, shared: false }],
+    ['with a non-boolean shared value', { ...connection, shared: 'true' }],
+  ])('keeps Disconnect and no badge for a connection %s', (_, conn) => {
+    render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(screen.queryByText('Managed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
+  });
+
+  it('renders the same content and actions as a list row', async () => {
+    const onModify = vi.fn();
+    render(<ConnectionRow connection={connection} onModify={onModify} />);
+    expect(screen.getByText('ianu82')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
   });
 });

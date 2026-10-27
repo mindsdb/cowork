@@ -4,12 +4,13 @@
 // start time, log tail). Exit code + offline-specific causes / hints
 // only surface when the backend isn't currently up.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ico from './Icons';
 import { Alert, Button, Tooltip } from './ui';
 import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
+import { scrubLog } from '../lib/diagnostics';
 
 export default function ServerOfflineHelpModal({
   open,
@@ -53,7 +54,9 @@ export default function ServerOfflineHelpModal({
   // Esc + backdrop dismissal are handled by <Modal>.
 
   const error = diag?.lastError;
-  const log = (diag?.recentLog || '').trim();
+  // Scrubbed: this is raw sidecar output and it is about to be on screen.
+  // Memoised because the scrub walks the whole 32KB tail on every render.
+  const log = useMemo(() => scrubLog(diag?.recentLog).trim(), [diag?.recentLog]);
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
@@ -216,7 +219,7 @@ export default function ServerOfflineHelpModal({
               borderColor: `color-mix(in srgb, ${HEADER.iconBgMix} 35%, transparent)`,
             }}
           >
-            {Ico.power(18)}
+            {Ico.power(20)}
           </span>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-[14.5px] text-ink">{HEADER.title}</div>
@@ -243,17 +246,17 @@ export default function ServerOfflineHelpModal({
             style={{ gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))` }}
           >
             <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-              <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Port</div>
+              <div className="section-label">Port</div>
               <div className="text-ink mt-[2px]">{port ?? '—'}</div>
             </div>
             {state === 'offline' && (
               <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-                <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Exit code</div>
+                <div className="section-label">Exit code</div>
                 <div className="text-ink mt-[2px]">{exitLabel}</div>
               </div>
             )}
             <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
-              <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Last attempt</div>
+              <div className="section-label">Last attempt</div>
               <div className="text-ink mt-[2px]">{startedAt ?? '—'}</div>
             </div>
           </div>
@@ -272,7 +275,7 @@ export default function ServerOfflineHelpModal({
 
           {/* Recent log */}
           <div>
-            <div className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.1em] uppercase mb-[6px]">Recent log</div>
+            <div className="section-label mb-[6px]">Recent log</div>
             <pre className="m-0 py-[10px] px-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[280px] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
           </div>
 

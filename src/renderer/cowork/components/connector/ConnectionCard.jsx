@@ -1,7 +1,10 @@
+// `<ConnectionCard>` / `<ConnectionRow>` — one connected app as a grid card or
+// a list row, built from one set of collection-kit slots, so the view toggle
+// changes layout, not content.
+
 import { useState } from 'react';
-import { TriangleAlert } from 'lucide-react';
-import { Button } from '../ui';
-import { cn } from '../../lib/cn';
+import { Badge, Button } from '../ui';
+import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
 
 function ConnectionLogo({ engine, label }) {
@@ -18,7 +21,19 @@ function ConnectionLogo({ engine, label }) {
   );
 }
 
-export default function ConnectionCard({ connection, onDelete, onModify }) {
+/* The confirm text before a delete. `shared` is the caller's own connection
+   that others use: they read it live from its creator's vault (cowork-server's
+   LayeredDataVault), so deleting it removes it for them too. The operator's
+   share stays listed under its name, and cowork-server refuses a new
+   connection under that name until the operator stops sharing it. */
+export function disconnectPrompt({ engine, name, shared }) {
+  const question = `Disconnect ${engine}/${name}?`;
+  return shared
+    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
+    : question;
+}
+
+function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
@@ -30,9 +45,18 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
   const connected = connection.status == null || connection.status === 'connected';
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
+  /* Only an explicit `managed: true` from the server makes the card read-only;
+     a connection without the field keeps its Disconnect button. An explicit
+     `shared: true` badges it Shared, whether someone else shares it with the
+     caller (`managed` too, so read-only) or it's the caller's own that others
+     use (keeps Disconnect). Managed is left for a connection the operator
+     provides, which no person created. */
+  const managed = connection.managed === true;
+  const shared = connection.shared === true;
+  const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -41,45 +65,38 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
     }
   };
 
-  return (
-    <article className={cn(
-      'relative flex min-h-[120px] flex-col gap-2.5 rounded-[10px] px-4 py-3.5',
-      '[transition:background_.15s_ease,border-color_.15s_ease]',
-      needsReconnect
-        ? 'border border-solid border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]'
-        : 'border border-solid border-line bg-surface hover:border-line-2 hover:bg-surface-2',
-    )}>
-      {typeof onModify === 'function' && (
-        <button
-          type="button"
-          aria-label={`${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`}
-          title={`${title} — ${subtitle}`}
-          disabled={busy}
-          onClick={() => onModify(connection)}
-          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait"
-        />
-      )}
-      <div className="flex min-w-0 items-center gap-2.5">
-        <ConnectionLogo engine={engine} label={title} />
-        <span className="min-w-0 flex-1 truncate font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-normal text-ink">
-          {title}
-        </span>
-      </div>
-      <span className="truncate text-sm text-ink-3">{subtitle}</span>
-      <div className="flex-1" />
-      <div className="flex items-center gap-2.5 border-x-0 border-b-0 border-t border-solid border-line pt-2.5">
-        <span className={cn('flex min-w-0 flex-1 items-center gap-2 text-xs', needsReconnect ? 'text-warning' : 'text-ink-3')}>
-          {needsReconnect
-            ? <TriangleAlert size={12} className="shrink-0" aria-hidden="true" />
-            : <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', connected ? 'bg-[var(--success)]' : 'bg-ink-4')} />}
-          <span className="truncate">{statusLabel}</span>
-        </span>
-        {/* z-20: must stay above the overlay button's z-10, or the whole-card
-            click target swallows this click and Disconnect becomes unreachable. */}
-        <Button variant="subtle" size="sm" className="relative z-20" onClick={handleRemove} disabled={busy}>
-          {busy ? 'Removing…' : 'Disconnect'}
-        </Button>
-      </div>
-    </article>
-  );
+  return {
+    leading: <ConnectionLogo engine={engine} label={title} />,
+    title,
+    badges: badge ? <Badge variant="muted" size="sm">{badge}</Badge> : undefined,
+    description: subtitle,
+    onActivate: typeof onModify === 'function' ? () => onModify(connection) : undefined,
+    /* The details of a managed connection open read-only, with no Reconnect,
+       so its name says View. */
+    activateLabel: `${managed ? 'View' : needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`,
+    busy,
+    className: needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined,
+    meta: (
+      <>
+        <StatusDot tone={needsReconnect ? 'warning' : connected ? 'success' : 'muted'}>{statusLabel}</StatusDot>
+        {/* Shown at rest, above the item's click area, so Disconnect never
+            opens the details. */}
+        {!managed && (
+          <ItemActions className="ml-auto">
+            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+              {busy ? 'Removing…' : 'Disconnect'}
+            </Button>
+          </ItemActions>
+        )}
+      </>
+    ),
+  };
+}
+
+export default function ConnectionCard(props) {
+  return <ItemCard as="article" {...useConnectionSlots(props)} />;
+}
+
+export function ConnectionRow(props) {
+  return <ListItem as="article" {...useConnectionSlots(props)} />;
 }

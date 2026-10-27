@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Mutable so the Debian cases can flip the platform the card reads.
 const platformMock = vi.hoisted(() => ({ value: 'darwin' }));
@@ -159,6 +159,25 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it('says why the last restart did not finish and offers Try again (ENG-3291)', () => {
+    const onInstallShellAutoUpdate = vi.fn();
+    render(
+      <SettingsView
+        {...baseProps}
+        shellAutoUpdate={{
+          phase: 'ready-to-install', mode: 'auto', channel: 'prod',
+          currentVersion: '2.260713.1', targetVersion: '2.260720.1',
+          recoverable: true, errorCode: 'update-request-failed', errorMessage: 'installer launch failed',
+        }}
+        onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+      />
+    );
+    expect(screen.getByText(/Last restart attempt failed: installer launch failed/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
+    expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
     // A failure with no targetVersion (rejected check / failed retry check) still
     // shows its own Retry card, but must NOT suppress a valid OTA update — a shell
@@ -257,5 +276,107 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     fireEvent.click(await screen.findByRole('button', { name: /Restart now/ }));
     expect(await screen.findByRole('button', { name: /Try again/ })).toBeInTheDocument();
     expect(screen.getByText(/Couldn't apply the update/)).toBeInTheDocument();
+  });
+});
+
+// ENG-3291: a restart that stops the sidecar ends every running turn, so main
+// may answer an install request with `{ confirm, runningTasks }` instead of
+// acting. The renderer guard (platform/restart-guard) asks through
+// RestartConfirmHost and re-sends with `force` on a yes. These cases drive the
+// real guard and dialog behind the Settings buttons with a fake main.
+import RestartConfirmHost from '../../../RestartConfirmHost';
+import { guardRestart, resetRestartConfirmationForTests } from '../../../platform/restart-guard';
+
+function fakeMain({ runningTasks }) {
+  // Mirrors main: ask unless forced, then report the install as done.
+  return vi.fn(async (options = {}) => {
+    if (!options.force && (runningTasks === null || runningTasks > 0)) return { confirm: true, runningTasks };
+    return true;
+  });
+}
+
+describe('SettingsView desktop — confirm before a restart ends running tasks (ENG-3291)', () => {
+  afterEach(() => resetRestartConfirmationForTests());
+
+  const readyShell = { phase: 'ready-to-install', mode: 'auto', channel: 'prod', currentVersion: '2.260713.1', targetVersion: '2.260720.1' };
+
+  it('asks before "App update ready" Restart now while tasks run, and Cancel keeps the update ready', async () => {
+    const main = fakeMain({ runningTasks: 2 });
+    render(
+      <>
+        <RestartConfirmHost />
+        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    expect(await screen.findByText('Stop 2 running tasks and restart?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    await screen.findByRole('button', { name: /Restart now/ });
+    // One probe, no forced install: the tasks keep running and the card still offers Restart now.
+    expect(main).toHaveBeenCalledTimes(1);
+    expect(main).not.toHaveBeenCalledWith({ force: true });
+    expect(screen.queryByText(/and restart\?/)).toBeNull();
+  });
+
+  it('restarts after Restart anyway', async () => {
+    const main = fakeMain({ runningTasks: 1 });
+    render(
+      <>
+        <RestartConfirmHost />
+        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    expect(await screen.findByText('Stop 1 running task and restart?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Restart anyway/ }));
+    await waitFor(() => expect(main).toHaveBeenCalledWith({ force: true }));
+  });
+
+  it('restarts at once with no task running, with a single install call', async () => {
+    const main = fakeMain({ runningTasks: 0 });
+    render(
+      <>
+        <RestartConfirmHost />
+        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    await waitFor(() => expect(main).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/and restart\?/)).toBeNull();
+  });
+
+  it('still asks when the sidecar does not answer, and says it cannot tell', async () => {
+    const main = fakeMain({ runningTasks: null });
+    render(
+      <>
+        <RestartConfirmHost />
+        <SettingsView {...baseProps} shellAutoUpdate={readyShell} onInstallShellAutoUpdate={() => guardRestart(main)} />
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    expect(await screen.findByText(/cannot tell whether any tasks are running/)).toBeInTheDocument();
+  });
+
+  it('asks before an "Update ready" Restart now that includes a server update', async () => {
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: true, serverVersion: '0.26.7.20.1', shellUpdateAvailable: false,
+    });
+    const main = fakeMain({ runningTasks: 3 });
+    host.applyUpdate.mockImplementationOnce(() => guardRestart(main));
+    render(
+      <>
+        <RestartConfirmHost />
+        <SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />
+      </>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Restart now/ }));
+    expect(await screen.findByText('Stop 3 running tasks and restart?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    // A cancelled apply is not a failure: the card returns to Restart now, not "Try again".
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't apply the update/)).toBeNull();
   });
 });

@@ -19,9 +19,106 @@ permissions:
   contents: read
 
 jobs:
+  locked-server-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the Docker installer's uv version
+        run: python -m pip install uv==0.7.22
+      - name: Verify supplied locks, install ordering and real wheel enforcement
+        run: |
+          uv --version
+          python -m unittest discover -s scripts -p 'test_install_locked_server*.py' -v
+
+  release-server-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Windows'
+        with:
+          node-version: 22
+      - name: Install the supported resolver and the fixture packaging and TLS libraries
+        run: python -m pip install uv==0.7.22 packaging==26.0 cryptography==50.0.2
+      - name: Verify release installs, rollback, controlled-index failures and download trust
+        run: python -m unittest discover -s scripts -p test_install_release_server.py -v
+      # pip, or any Windows HTTPS client, would download these roots again, so
+      # the trim runs after every step that reaches PyPI or GitHub.
+      - name: Remove the roots a fresh Windows downloads only on demand
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $saved = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\removed-roots"
+          # Hosted images keep these roots in Root on some runs and AuthRoot on
+          # others. The Root view includes AuthRoot, so AuthRoot goes first.
+          foreach ($store in 'AuthRoot', 'Root') {
+            foreach ($root in 'D69B561148F01C77C54578C10926DF5B856976AD', 'CABD2A79A1076A31F21D253635CB039D4329A5E8') {
+              $path = "Cert:\LocalMachine\$store\$root"
+              if (Test-Path $path) {
+                Export-Certificate -Cert $path -FilePath "$saved\$store-$root.cer" | Out-Null
+                Remove-Item $path
+                "Removed $root from LocalMachine\$store"
+              }
+            }
+          }
+      - name: Verify real downloads on that store, without and with the runtime's roots
+        if: runner.os == 'Windows'
+        env:
+          COWORK_PUBLIC_ROOTS: ${{ runner.temp }}\public-roots.pem
+        run: |
+          node -e "require('fs').writeFileSync(process.env.COWORK_PUBLIC_ROOTS, require('tls').rootCertificates.join('\n') + '\n')"
+          python -m unittest discover -s scripts -p test_install_release_server.py -k WindowsStoreTests -v
+      # The runner reports the finished job over HTTPS through the same store;
+      # without these roots it can't, and GitHub cancels the job.
+      - name: Restore the removed roots
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:RUNNER_TEMP\removed-roots" -Filter *.cer -ErrorAction SilentlyContinue | ForEach-Object {
+            $store = $_.BaseName.Split('-')[0]
+            Import-Certificate -FilePath $_.FullName -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+            "Restored $($_.BaseName)"
+          }
+
+  nginx-logging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native nginx test dependencies
+        run: sudo apt-get update && sudo apt-get install -y nginx gettext-base
+      - name: Verify access, failure, privacy and shutdown behavior
+        run: python3 scripts/test-nginx-logging.py
+
+  spa-wrapper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install SPA wrapper test dependencies
+        run: python -m pip install fastapi==0.141.1 httpx==0.28.1
+      - name: SPA wrapper route tests
+        run: python -m unittest discover -s scripts -p test_spa_wrapper.py -v
+
   test:
     runs-on: ubuntu-latest # unit/component only — no native/Electron dep
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       COWORK_SERVER_CHANNEL: ''
       ANTHROPIC_API_KEY: ''
@@ -37,6 +134,10 @@ jobs:
           command: npm ci
       - name: Typecheck (main + renderer)
         run: npm run typecheck
+      - name: Published macOS setup smoke contract
+        run: npm run test:macos-setup-contract
+      - name: Published Windows setup smoke contract
+        run: npm run test:windows-setup-contract
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
       - name: Unit + component tests + coverage

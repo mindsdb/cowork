@@ -6,16 +6,15 @@
 // Sort:      default "Published first", then Recent · Oldest · Title · Type.
 // Grid:      ArtifactBubble cards as today (HTML preview, URL pill,
 //            Publish/Unpublish action).
-// List:      compact rows — status dot · title · kind · project · updated · ⋯.
-//
-// Status dot: cyan = published, green-pulse = live preview, none = local.
+// List:      kit rows (ListGroup / ListItem) — icon · title · filename, then
+//            status · project · updated inline, ↗ and ⋯ shown at rest.
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
+import OverflowMenu from '../components/OverflowMenu';
 import { useToastManager } from '../components/ui/Toast';
-import { EmptyState } from '../components/ui/EmptyState';
 import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
@@ -23,14 +22,25 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
-import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
+import {
+  NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete,
+} from '../lib/artifactActions';
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
+import { useLiveApps } from '../../lib/liveApps';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
+import {
+  LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines, liveAppOpenAddress,
+} from '../lib/liveAppState';
+import { useLiveAppStates } from '../hooks/useLiveAppStates';
+import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
+import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
-  canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact,
-  isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
+  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
+import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -40,6 +50,10 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
+import {
+  OWNED_BY_OTHER_USER_MESSAGE,
+  isOwnedByOtherUserError,
+} from '../components/artifact/publish/publishErrors';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -49,15 +63,24 @@ import {
   SearchInput,
   SortPill,
   HoverMenu,
+  ViewToggle,
+  CollectionState,
+  ListGroup,
+  ListItem,
+  ItemActions,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const EMPTY_ARTIFACTS = [];
+
+// Page padding of the row group, shared with its loading skeleton so loading
+// does not shift the layout.
+const LIST_CLASS = 'mx-8 mb-[60px]';
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
@@ -182,7 +205,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
         width: 28, height: 28, borderRadius: 7,
         display: 'inline-grid', placeItems: 'center',
         background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-        color: 'var(--ink-4)', transition: 'background .12s ease, color .12s ease',
+        color: 'var(--ink-4)', transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
       onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
       onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-4)'; }}
@@ -197,44 +220,24 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
  * expired bearer, a file deleted server-side, or a network drop resolves it
  * false — and a discarded promise leaves the click doing nothing at all
  * (review pass 2 on #764). Every download this page offers routes through
- * here so the failure reaches a toast.
+ * here so the failure reaches a toast. `note`, when given, is a neutral toast
+ * shown only once the download succeeded.
  */
-async function downloadWithFeedback(artifact, toastManager) {
+async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (!(await downloadArtifactFile(artifact))) {
     toastManager.add({ title: 'Could not download this artifact.', type: 'danger' });
+    return;
   }
+  if (note) toastManager.add({ title: note });
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
-  const orgMode = useOrgMode();
-  const toastManager = useToastManager();
-  /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
-  const published = !!artifact.publishedUrl;
-  // In the browser the artifact's address is its HTTP serve URL, not a local
-  // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+  /* Same open rules as the list row: the body opens the best destination, and
+     ↗ opens the artifact outside the app. */
+  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
-
-  const onOpenPublished = async () => {
-    if (!published) return;
-    try { await host.openExternal(artifact.publishedUrl); } catch {
-      window.open(artifact.publishedUrl, '_blank', 'noreferrer');
-    }
-  };
-  const onOpenPrivate = async () => {
-    if (!privateUrl) return;
-    try { await host.openExternal(privateUrl); } catch {
-      window.open(privateUrl, '_blank', 'noreferrer');
-    }
-  };
 
   // Not `projectLabel`: that name belongs to the imported
   // `projectLabel(project)` function the tooltip below calls, and shadowing it
@@ -268,23 +271,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // own artifact, so ArtifactStatus renders exactly what it did before.
   const authorship = artifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
-  // Open the live thing: published URL, else served URL, else local file. In org
-  // mode the last fallback is skipped — there is no local file the user can reach,
-  // and `privateUrl` is empty there by construction.
-  const openBest = () => {
-    if (canPreview) onOpenViewer?.(artifact);
-    else if (published) onOpenPublished();
-    else if (privateUrl) onOpenPrivate();
-    // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
-    // save them rather than do nothing (ENG-2044). Same rule as
-    // artifactOpenTarget's 'download'.
-    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
-  };
+  // A duplicated live app says whose it was, in the line a web app leaves empty.
+  const received = liveLines?.received ?? null;
   // ↗
   const onOpenExternal = (e) => {
     e.stopPropagation();
-    openBest();
+    openOutside();
   };
 
   return (
@@ -292,9 +284,9 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       as="div"
       interactive
       padding="none"
-      className="cw-artifact-card flex flex-col overflow-hidden"
+      className="railed cw-artifact-card flex flex-col"
       {...hoverProps}
-      onActivate={() => (canPreview ? onOpenViewer(artifact) : openBest())}
+      onActivate={openBest}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div className="flex flex-col gap-3 py-[14px] px-4 flex-1">
@@ -314,9 +306,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             </div>
             <div
               className="flex items-baseline min-w-0 font-[family-name:var(--font-body)] text-[12px] leading-[1.2] min-h-[1.2em]"
-              title={secondary ? secondary.name + secondary.ext : undefined}
+              title={received || (secondary ? secondary.name + secondary.ext : undefined)}
             >
-              {secondary && (
+              {received ? (
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{received}</span>
+              ) : secondary && (
                 <>
                   <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{secondary.name}</span>
                   <span className="shrink-0 text-ink-4">{secondary.ext}</span>
@@ -326,9 +320,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div className="flex items-center gap-0.5 shrink-0">
-            <Tooltip content="Open">
-              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
-            </Tooltip>
+            {canOpenOutside && (
+              <Tooltip content="Open">
+                <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
+              </Tooltip>
+            )}
             <Tooltip content="More actions">
               <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
                 onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
@@ -345,13 +341,18 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             publishable={publishable}
             onRetry={onRetry}
             authorship={authorship}
+            // A live app has no page link to report; its state line says what matters.
+            pageBadge={!liveAppCard}
           />
         </div>
+        {liveLines?.state && (
+          <div className="font-[family-name:var(--font-body)] text-[12px] leading-[1.35] text-ink-3">{liveLines.state}</div>
+        )}
       </div>
 
       {/* Footer — project origin + last-updated, divided from the body. */}
-      <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
-        <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
+      <div className="card__rail flex items-center gap-2 py-[9px] px-4">
+        <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
         {canOpenProject ? (
           <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
             <button
@@ -363,7 +364,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
                 all: 'unset', cursor: 'pointer',
                 fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-3)',
                 minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                transition: 'color 120ms ease',
+                transition: 'color var(--dur-hover) ease',
               }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
@@ -379,102 +380,266 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 }
 
 // ─── List view ───────────────────────────────────────────────────────────
-
-// Status dot · Title · Published · Type · Kind · Project · Updated · ⋯
 //
-// `Type` is the bare file extension (html, csv, png, …) and lives
-// before `Kind` (the broader category — Dashboard, Data, Image, …)
-// so the at-a-glance scan reads from concrete to abstract.
-// Name · Project · Status · (updated + actions). The trailing column is a
-// FIXED width — not `auto` — so the header grid (empty trailing cell) and each
-// row grid (updated + 2 icons) distribute their fr columns identically and the
-// Name/Project/Status headers line up exactly over their values.
-const LIST_GRID = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 2fr) 200px';
+// Rows sit on the collection kit (ListGroup / ListItem): the title is a real
+// button stretched over the row, and anything else clickable (the project
+// link, the status badges and their Try again, the ↗ and ⋯ controls) is
+// lifted above it. The ↗ and ⋯ controls show at rest, like the grid card's.
 
-function ListHeaderRow() {
-  const Cell = ({ children }) => (
-    <div className="font-[family-name:var(--font-body)] text-[13px] font-semibold text-ink-2">{children}</div>
-  );
+async function openUrl(url) {
+  try { await host.openExternal(url); } catch {}
+}
+
+// How a row or a grid card opens. `liveAppAddress` is where an unpublished
+// live app runs (liveAppOpenAddress), '' while it isn't running.
+function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
+  const orgMode = useOrgMode();
+  const toastManager = useToastManager();
+  const published = !!artifact.publishedUrl;
+  // In the browser the artifact's address is its HTTP serve URL, not a local
+  // OS path the user can't reach — open that "private" URL instead.
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+  /*
+   * A click means "show me this artifact" in both deployments: Desktop renders
+   * the local bytes, org mode renders the authenticated draft. What org mode
+   * cannot render (a fullstack app, an image) falls through to the shared
+   * page, then to a download. Desktop hands an image to the default app; with
+   * no shell to hand it to, the viewer shows it, as the chat card does. The
+   * document types join both previews wherever the shared document gate
+   * allows them.
+   */
+  const hasBridge = host.isElectron;
+  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const target = artifactOpenTarget({
+    orgMode,
+    published,
+    canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
+    canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+    hasBridge,
+    hasDraft: canDownloadOrgDraft(artifact),
+    canDownload: canDownloadArtifact(artifact),
+  });
+
+  /*
+   * Open the live thing: the viewer, else a download that says why, else the
+   * shared page. Desktop tries the shared page before it hands the file to the
+   * default app.
+   */
+  const openBest = () => {
+    if (target === 'preview') onOpenViewer?.(artifact);
+    else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: NO_PREVIEW_DOWNLOADED_NOTE });
+    else if (published) openUrl(artifact.publishedUrl);
+    else if (target === 'os') openArtifactFile(artifact);
+  };
+  /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
+     Org mode has no serve URL and no local file, so there ↗ opens only the
+     shared page. A live app opens only where it runs: the serve URL's copy of
+     its page has no backend. */
+  const openOutside = async () => {
+    if (liveAppCard) {
+      if (liveAppAddress) await openUrl(liveAppAddress);
+      return;
+    }
+    const url = published ? artifact.publishedUrl : privateUrl;
+    if (url) await openUrl(url);
+    else if (!orgMode) openArtifactFile(artifact);
+  };
+  /* Org mode offers ↗ only once a shared link exists, the same rule as its
+     "Open shared link" menu item; an unshared file saves from the menu's
+     Download. On web a tab shows only what canShowInBrowserTab allows and
+     saves anything else without a word, so ↗ is offered for those alone. A
+     live app offers ↗ only while it runs, as its viewer does. */
+  const canOpenOutside = liveAppCard
+    ? Boolean(liveAppAddress)
+    : isArtifactActionAvailable('open', { orgMode, published })
+      && (!host.isWeb || canShowInBrowserTab(artifact));
+  return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
+}
+
+// Name: title primary, filename secondary (ENG-1123 Bug 1). Web apps have no
+// secondary line. The extension always stays visible.
+function ArtifactTitle({ artifact }) {
+  const { base } = splitArtifactName(artifact);
+  return <span title={base}>{base}</span>;
+}
+
+function ArtifactFileName({ artifact, liveLines = null }) {
+  /* A live app's state, and whom a duplicated one came from, in the line a web app leaves empty. */
+  const live = liveLines ? [liveLines.state, liveLines.received].filter(Boolean).join(' · ') : '';
+  if (live) return <span className="min-w-0 truncate text-ink-3" title={live}>{live}</span>;
+  const { secondary } = splitArtifactName(artifact);
+  if (!secondary) return null;
   return (
-    <div
-      className="grid gap-4 py-2.5 px-4 border-b border-t-0 border-x-0 border-solid border-line"
-      style={{ gridTemplateColumns: LIST_GRID }}
-    >
-      <Cell>Name</Cell>
-      <Cell>Project</Cell>
-      <Cell>Status</Cell>
-      <Cell />
-    </div>
+    <span className="flex min-w-0 items-baseline" title={secondary.name + secondary.ext}>
+      <span className="min-w-0 truncate text-ink-3">{secondary.name}</span>
+      <span className="shrink-0 text-ink-4">{secondary.ext}</span>
+    </span>
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
+// Project origin. When it resolves to a known project, the label opens it.
+function ArtifactProject({ artifact, projects, onOpenProject }) {
+  // Not `projectName`: that name is reserved for slugs (projectLabelSurfaces
+  // guards it). projectNameOf routes through projectLabel itself.
+  const projectDisplay = projectNameOf(artifact, projects);
+  const projectMatch = projectOf(artifact, projects);
+  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
+      {canOpenProject ? (
+        <ItemActions className="min-w-0 shrink">
+          <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 font-body text-xs text-ink-3 underline-offset-2 transition-colors hover:text-accent hover:underline"
+            >{projectDisplay}</button>
+          </Tooltip>
+        </ItemActions>
+      ) : (
+        <span title={projectDisplay} className="min-w-0 truncate text-ink-3">{projectDisplay}</span>
+      )}
+    </span>
+  );
+}
+
+// Status badges carry tooltips and a Try again link, so they sit above the
+// stretched open button.
+function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+  return (
+    <ItemActions className="min-w-0 shrink">
+      <ArtifactStatus
+        artifact={artifact}
+        phase={phase}
+        // Publishable = HTML + Markdown (isPublishableArtifact — the same
+        // predicate the Share action + backend use); those show "Not shared",
+        // everything else "Draft".
+        publishable={isPublishableArtifact(artifact)}
+        onRetry={onRetry}
+        inlineChanges={inlineChanges}
+        pageBadge={pageBadge}
+        // "Another member" / "Unknown owner" tag (ENG-2979). Null for the
+        // viewer's own artifact.
+        authorship={artifactAuthorship(artifact.capabilities)}
+      />
+    </ItemActions>
+  );
+}
+
+function ArtifactActions({ onOpen, showOpen, menuItems }) {
+  return (
+    <>
+      {showOpen && (
+        <Tooltip content="Open">
+          {/* Same ghost icon Button as the menu trigger beside it. */}
+          <Button
+            icon
+            size="sm"
+            variant="subtle"
+            aria-label="Open"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          >
+            {Ico.externalLink(14)}
+          </Button>
+        </Tooltip>
+      )}
+      <OverflowMenu
+        items={menuItems}
+        label="Artifact menu"
+        title="More actions"
+        icon={Ico.moreVert(16)}
+        size="sm"
+        zIndex={60}
+      />
+    </>
+  );
+}
+
+// The list view's menu. Built separately from the grid's (in the view) — the
+// two have always offered different items; the org-mode gate covers both.
+function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onShareLiveApp, onLaunchLiveApp, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
-  const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
-  const items = [
-    {
+  return [
+    (orgMode || onOpen) && {
       id: 'open',
       /*
        * "Open viewer" would be a lie in org mode: the row itself previews the
        * authenticated draft there, and this item is the page a collaborator
-       * opens. The filter below drops it when nothing is shared yet.
+       * opens. The filter below drops it when nothing is shared yet. Outside
+       * org mode the row leaves out onOpen when its click downloads, since the
+       * Download item below already does that.
        */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
-      icon: Ico.externalLink(13),
+      icon: Ico.externalLink(14),
       onClick: orgMode ? onOpenShared : onOpen,
     },
     // Org only: on Desktop the item above already opens the viewer.
-    orgMode && canPreviewOrgDraft(artifact) && {
+    orgMode && (canPreviewOrgDraft(artifact) || canPreviewDocument(artifact, host)) && {
       id: 'preview',
       label: 'Preview',
-      icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+      icon: (Ico.eye?.(13) || Ico.sparkle(14)),
       onClick: onPreview,
     },
     onReveal && {
       id: 'reveal',
       label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
-      icon: Ico.folder(13),
+      icon: Ico.folder(14),
       onClick: onReveal,
     },
-    // Presence of EITHER url, checked without building it: the org draft URL
-    // is what makes a non-HTML artifact downloadable on web (ENG-2044).
-    onDownload && (artifact?.serveUrl || canDownloadOrgDraft(artifact)) && {
+    /* Presence of EITHER url, checked without building it; a fullstack app's
+       primary is only its shell, so it gets none. */
+    onDownload && canDownloadArtifact(artifact) && {
       id: 'download',
       label: 'Download',
-      icon: Ico.download(13),
+      icon: Ico.download(14),
       onClick: onDownload,
     },
     published && {
       id: 'copy-url',
       label: 'Copy URL',
-      icon: Ico.copy(13),
+      icon: Ico.copy(14),
       onClick: onCopyUrl,
     },
     published && artifact.modified && {
       id: 'update',
       label: 'Update',
-      icon: Ico.refresh(13),
+      icon: Ico.refresh(14),
       onClick: onUpdate,
     },
-    !published && isPublishableArtifact(artifact) && {
+    // A live app shares through "Share with…": cowork-server refuses it as a page.
+    !published && isPublishableArtifact(artifact) && !isLiveAppCard(artifact, liveApps) && {
       id: 'publish',
       label: 'Share',
-      icon: Ico.upload(13),
+      icon: Ico.upload(14),
       onClick: onPublish,
     },
     published && {
       id: 'unpublish',
       label: 'Stop sharing',
-      icon: Ico.upload(13),
+      icon: Ico.upload(14),
       onClick: onUnpublish,
+    },
+    onShareLiveApp && canShareLiveApp(artifact, liveApps) && {
+      id: 'share-live-app',
+      label: SHARE_LIVE_APP_LABEL,
+      icon: Ico.userPlus(14),
+      onClick: onShareLiveApp,
+    },
+    // Only for an app that isn't running (canLaunchLiveApp), so the caller passes it or not.
+    onLaunchLiveApp && {
+      id: 'launch-live-app',
+      label: LAUNCH_LIVE_APP_LABEL,
+      icon: Ico.play(14),
+      onClick: onLaunchLiveApp,
     },
     onDelete && { divider: true },
     onDelete && {
       id: 'delete',
       // See the grid menu's delete for why this is disabled while busy.
       label: busy ? 'Deleting…' : 'Delete artifact',
-      icon: Ico.trash(13),
+      icon: Ico.trash(14),
       danger: true,
       disabled: busy,
       onClick: onDelete,
@@ -483,218 +648,109 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
     .filter(Boolean)
     // Mode gate on top of each item's own condition — see lib/artifactActions.
     .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
-      orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(artifact),
+      orgMode,
+      hasBridge: host.isElectron,
+      published,
+      hasDraft: canDownloadOrgDraft(artifact),
+      canDownload: canDownloadArtifact(artifact),
     }));
-
-  return (
-    <HoverMenu
-      open={open}
-      anchorRect={anchorRect}
-      onClose={onClose}
-      width={200}
-      items={items}
-    />
-  );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject, phase, onRetry }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState(null);
-  const triggerRef = useRef(null);
-  const { hovered, hoverProps } = useRevealOnHover(menuOpen);
-
-  const orgMode = useOrgMode();
-  const toastManager = useToastManager();
-  /*
-   * Same rule as ArtifactBubble above: a click previews whatever the deployment
-   * can render, from local bytes on Desktop and from the draft URL in org mode.
-   */
-  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
-  const published = !!artifact.publishedUrl;
-  const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
-  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
-  // own artifact, so ArtifactStatus renders exactly what it did before.
-  const authorship = artifactAuthorship(artifact.capabilities);
-  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
-  const { base, secondary } = splitArtifactName(artifact);
-  const project = projectNameOf(artifact, projects);
-  const projectMatch = projectOf(artifact, projects);
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-
-  const onCopyUrl = async () => {
-    if (!published) return false;
-    return copyText(artifact.publishedUrl);
-  };
-  const openUrl = async (url) => {
-    try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); }
-  };
-  const onRowOpen = () => {
-    if (canPreview) onOpenViewer?.(artifact);
-    else if (published) openUrl(artifact.publishedUrl);
-    else if (privateUrl) openUrl(privateUrl);
-    // Org mode, non-HTML, unshared: same fallback the grid card has — the
-    // draft URL still streams the bytes, so save them (ENG-2044). Without
-    // this branch the row and its Open button silently did nothing in List
-    // view while the identical artifact downloaded in Grid (review pass 2).
-    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
-  };
-  const onOpenExternal = async (e) => {
-    e.stopPropagation();
-    const url = published ? artifact.publishedUrl : privateUrl;
-    // Org mode has no local file or serve URL to fall back to — but the
-    // authenticated draft URL still delivers the bytes as a download.
-    if (url) await openUrl(url);
-    else if (orgMode && canDownloadOrgDraft(artifact)) await downloadWithFeedback(artifact, toastManager);
-    else if (!orgMode) openArtifactFile(artifact);
-  };
-  const openMenu = (e) => {
-    e.stopPropagation();
-    setAnchorRect(triggerRef.current?.getBoundingClientRect() || null);
-    setMenuOpen(true);
-  };
-
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+  const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
+  const liveApps = useLiveApps();
+  const menuItems = rowMenuItems({
+    artifact,
+    orgMode,
+    liveApps,
+    onOpen: target === 'download' ? undefined : openBest,
+    onOpenShared: () => openUrl(artifact.publishedUrl),
+    onPreview: () => onOpenViewer?.(artifact),
+    onReveal: host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } },
+    onDownload: () => downloadWithFeedback(artifact, toastManager),
+    onCopyUrl: async () => (published ? copyText(artifact.publishedUrl) : false),
+    onPublish: () => doPublish?.(artifact),
+    onUnpublish: () => doUnpublish?.(artifact),
+    onUpdate: () => doUpdate?.(artifact),
+    onShareLiveApp: doShareLiveApp ? () => doShareLiveApp(artifact) : undefined,
+    onLaunchLiveApp: doLaunchLiveApp ? () => doLaunchLiveApp(artifact) : undefined,
+    onDelete: doDelete && artifact?.capabilities?.canEdit !== false
+      ? () => doDelete(artifact)
+      : undefined,
+    // Derived from `phase` rather than threading a second prop: the row
+    // already receives it, and 'deleting' is exactly the window to disable.
+    busy: phase === 'deleting',
+    isMacPlatform,
+  });
   return (
-    <>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onRowOpen}
-        onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
-        {...hoverProps}
-        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
-        style={{
-          gridTemplateColumns: LIST_GRID,
-          background: hovered ? 'var(--surface-2)' : 'transparent',
-        }}
-      >
-        {/* Name — title primary, filename secondary (ENG-1123 Bug 1). */}
-        <div className="flex items-center gap-[10px] min-w-0">
-          <span className="inline-flex shrink-0 self-start mt-0.5">
-            <ArtifactIcon artifact={artifact} size={16} />
-          </span>
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <div
-              className="flex items-baseline min-w-0 font-[family-name:var(--font-display)] text-base font-semibold leading-[1.2]"
-              title={base}
-            >
-              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink">{base}</span>
-            </div>
-            <div
-              className="flex items-baseline min-w-0 font-[family-name:var(--font-body)] text-[12px] leading-[1.2] min-h-[1.2em]"
-              title={secondary ? secondary.name + secondary.ext : undefined}
-            >
-              {secondary && (
-                <>
-                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{secondary.name}</span>
-                  <span className="shrink-0 text-ink-4">{secondary.ext}</span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Project */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
-          {canOpenProject ? (
-            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  fontFamily: 'var(--font-body)', fontSize: 12.5, color: 'var(--ink-2)',
-                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
-              >{project}</button>
-            </Tooltip>
-          ) : (
-            <span title={project} className="font-[family-name:var(--font-body)] text-sm text-ink-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project}</span>
-          )}
-        </div>
-
-        {/* Status — access chip, "Unshared changes" and the authorship tag
-            flow inline and wrap inside the cell. The container query that
-            used to collapse the chip is gone (ENG-1475). */}
-        <div className="cw-status-cell flex items-center min-w-0">
-          <ArtifactStatus
+    <ListItem
+      leading={<ArtifactIcon artifact={artifact} size={16} />}
+      title={<ArtifactTitle artifact={artifact} />}
+      description={<ArtifactFileName artifact={artifact} liveLines={liveLines} />}
+      onActivate={openBest}
+      actions={<ArtifactActions onOpen={openOutside} showOpen={canOpenOutside} menuItems={menuItems} />}
+      meta={(
+        <>
+          <ArtifactStatusSlot
             artifact={artifact}
             phase={phase}
-            publishable={publishable}
             onRetry={onRetry}
             inlineChanges
-            authorship={authorship}
+            pageBadge={!liveAppCard}
           />
-        </div>
-
-        {/* Updated + open + ⋯ */}
-        <div className="flex items-center gap-1.5 justify-end whitespace-nowrap">
-          <span className="font-[family-name:var(--font-body)] text-[12px] text-ink-4">{artifact.updated || '—'}</span>
-          <Tooltip content="Open">
-            <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
-          </Tooltip>
-          <Tooltip content="More actions">
-            <CardIconButton ref={triggerRef} ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
-          </Tooltip>
-        </div>
-      </div>
-
-      <RowMenu
-        open={menuOpen}
-        anchorRect={anchorRect}
-        artifact={artifact}
-        onClose={() => setMenuOpen(false)}
-        onOpen={onRowOpen}
-        onOpenShared={() => openUrl(artifact.publishedUrl)}
-        onPreview={() => onOpenViewer?.(artifact)}
-        onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
-        onDownload={() => downloadWithFeedback(artifact, toastManager)}
-        onCopyUrl={onCopyUrl}
-        onPublish={() => doPublish?.(artifact)}
-        onUnpublish={() => doUnpublish?.(artifact)}
-        onUpdate={() => doUpdate?.(artifact)}
-        onDelete={doDelete && artifact?.capabilities?.canEdit !== false
-          ? () => doDelete(artifact)
-          : undefined}
-        // Derived from `phase` rather than threading a second prop: the row
-        // already receives it, and 'deleting' is exactly the window to disable.
-        busy={phase === 'deleting'}
-        isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
-      />
-    </>
+          <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
+          <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
+        </>
+      )}
+    />
   );
 }
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({
-  artifacts: initial = EMPTY_ARTIFACTS,
+  artifacts: list = EMPTY_ARTIFACTS,
+  // App owns the list (it also feeds the sidebar count), so publish-state
+  // changes go up rather than into a local copy that the next prop would reset.
+  // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
+  onArtifactChanged,
+  // Reads the list again; a copy of a shared live app is new to it.
+  onRefreshArtifacts,
   projects = [],
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
   agentLabel = 'the agent',
+  // True until the app's first artifacts fetch settles; shows skeletons.
+  loading = false,
 }) {
-  // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
+  // For the grid's shared menu below. The list view's menu (rowMenuItems) reads
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
-  const [list, setList] = useState(initial);
-  const [viewer, setViewer] = useState(null);
-  const { isMobile } = useBreakpoint();
-  const [view, setView] = useState(() =>
-    localStorage.getItem('anton:artifacts-view') === 'list' ? 'list' : 'grid'
-  );
-  // List rows break at phone widths (5-column grid). Force grid on
-  // mobile so the toggle isn't needed; the user's persisted desktop
-  // preference is left untouched.
-  const effectiveView = isMobile ? 'grid' : view;
+  const liveApps = useLiveApps();
+  // App hands down a new list after each turn, so the states re-read with it.
+  const liveAppStates = useLiveAppStates(liveApps, list);
+  const linesOf = (a) => liveAppLines(a, { liveApps, states: liveAppStates });
+  const liveAddressOf = (a) => liveAppOpenAddress(a, { liveApps, states: liveAppStates });
+  // Launch asks the agent in a chat of the app's project, behind the usual card.
+  const launchLiveApp = onAddressWithAgent
+    ? (a) => onAddressWithAgent({ artifact: a, prompt: launchLiveAppPrompt(a) })
+    : null;
+  const launchOf = (a) => (launchLiveApp && canLaunchLiveApp(a, { liveApps, states: liveAppStates })
+    ? launchLiveApp
+    : undefined);
+  // Where a copy made from "Shared with you" goes; boot creates it (hooks/useBootDecisions.js).
+  const generalProjectId = projects.find((p) => p.name === 'general')?.id || null;
+  // The live app whose "Share with…" dialog is open.
+  const [shareTarget, setShareTarget] = useState(null);
+  // By path, so the viewer always shows the current card and closes once the
+  // card leaves the list (e.g. after a delete).
+  const [viewerPath, setViewerPath] = useState(null);
+  const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
+  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
+  // Phones always get the grid (list rows are 5 columns); see ViewToggle.
+  const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('published');
   // Per-artifact-path "in flight" set so multiple cards can publish
@@ -724,35 +780,12 @@ export default function ArtifactsView({
   const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
-  // Reflect parent refreshes exactly. The parent refetches when the
-  // route opens and after streams complete; if a file was trashed from
-  // another surface, the refreshed prop is the source of truth and the
-  // local grid must drop the stale card.
-  useEffect(() => {
-    setList(initial);
-    setViewer((cur) => {
-      if (!cur) return cur;
-      const fresh = initial.find((a) => a.path === cur.path);
-      return fresh ? { ...cur, ...fresh } : null;
-    });
-  }, [initial]);
-
-  // Persist view toggle.
-  useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
 
-  const updateOne = (updated) => {
-    setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
-    setViewer((cur) => (cur && cur.path === updated.path ? { ...cur, ...updated } : cur));
-  };
-
-  const removeOne = (path) => {
-    setList((prev) => prev.filter((a) => a.path !== path));
-    setViewer((cur) => (cur && cur.path === path ? null : cur));
-  };
+  const updateOne = (updated) => onArtifactChanged?.(updated);
 
   const setBusy = (path, isBusy) => {
     setBusyPaths((prev) => {
@@ -781,7 +814,7 @@ export default function ArtifactsView({
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
   // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into the local list so the UI flips to "Published"
+  // the returned URL into App's list so the UI flips to "Published"
   // without a refetch.
   // Publishing is two steps: choose visibility (public / password) in a
   // small dialog, then confirmPublish does the actual POST. Re-publishing
@@ -834,10 +867,12 @@ export default function ArtifactsView({
       }
     } catch (e) {
       const msg = e?.message || String(e);
-      // Map the most common failure to a clearer next step.
-      const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to share artifacts.'
-        : `Sharing failed: ${msg}`;
+      // Map the failures a user can act on to a clearer message.
+      let friendly = `Sharing failed: ${msg}`;
+      if (isOwnedByOtherUserError(e)) friendly = OWNED_BY_OTHER_USER_MESSAGE;
+      else if (/minds_api_key/i.test(msg) || /minds api key/i.test(msg)) {
+        friendly = 'Set your Minds API key in Settings to share artifacts.';
+      }
       setPhase(artifact.path, 'failed');
       showToast({ kind: 'error', message: friendly });
     } finally {
@@ -853,7 +888,9 @@ export default function ArtifactsView({
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      showToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
+      // Without the platform UI the deployment decides where shares live,
+      // so the toast names no service.
+      showToast({ kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
@@ -873,7 +910,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -902,7 +940,6 @@ export default function ArtifactsView({
         await unpublishArtifact(artifact.path);
       }
       await deleteArtifactAndSync(artifact);
-      removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
@@ -944,6 +981,7 @@ export default function ArtifactsView({
   }, [list, search, sort]);
 
   const total = (list || []).length;
+  const { artifactsNote } = surfaceCopy(host.isWeb);
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -965,10 +1003,26 @@ export default function ArtifactsView({
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
           button on the right ("+ New project"), which reads as
-          slightly taller — Artifacts compensates with a few extra. */}
-      <div className="h-5" />
+          slightly taller — Artifacts compensates with a few extra.
+          shrink-0: this is a flex child of the scroll column, so without it
+          the spacer collapses whenever the body overflows (and by a different
+          amount in grid vs list, since their heights differ). */}
+      <div className="h-5 shrink-0" />
 
-      {total > 0 && (
+      {liveApps && generalProjectId && (
+        <SharedLiveAppsSection
+          projectId={generalProjectId}
+          // The copy sorts with the viewer's own artifacts, often below the
+          // fold, so the toast is what says it worked.
+          onDuplicated={() => {
+            showToast({ kind: 'ok', message: 'Duplicated into your General project.' });
+            onRefreshArtifacts?.();
+          }}
+          className="mx-8 mb-6"
+        />
+      )}
+
+      {(loading || total > 0) && (
         <FilterRow
           search={
             <SearchInput
@@ -979,77 +1033,99 @@ export default function ArtifactsView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
+          view={<ViewToggle value={view} onValueChange={setView} />}
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
-          title="No artifacts yet"
+      <CollectionState
+        loading={loading}
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        // Each skeleton takes its loaded layout's own wrapper classes.
+        skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
+        skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
+        skeletonGridClassName="artifacts-grid"
+        empty={{
+          icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
+          title: 'No artifacts yet',
           // Second line (ENG-2169): the two apps keep separate artifacts, so
           // someone looking for work made in the other one is told where it is.
-          description={(
+          description: (
             <>
               {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
-              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+              {artifactsNote && <span className="block mt-2 text-ink-4">{artifactsNote}</span>}
             </>
-          )}
-          style={{ flex: 1 }}
-        />
-      ) : effectiveView === 'grid' ? (
-        <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
-          {/* Grid layout (display + responsive columns + gap) lives in CSS
-              (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-              mobile — pure CSS media queries, no JS resize listener. */}
-          {visible.map((a) => (
-            <ArtifactBubble
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={setViewer}
-              onMenuOpen={(art, rect) => setMenuFor((prev) =>
-                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
-              )}
-              isMenuOpen={menuFor?.artifact?.path === a.path}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
-          <ListHeaderRow />
-          {visible.map((a) => (
-            <ArtifactRow
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={setViewer}
-              onPublish={handlePublish}
-              onUnpublish={handleUnpublish}
-              onUpdate={handleUpdate}
-              onDelete={handleTrash}
-              onOpenProject={onOpenProject}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-            />
-          ))}
-        </div>
-      )}
+          ),
+          style: { flex: 1 },
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <div className="artifacts-grid px-8 pb-[60px]">
+            {/* Grid layout (display + responsive columns + gap) lives in CSS
+                (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+                mobile — pure CSS media queries, no JS resize listener. */}
+            {visible.map((a) => (
+              <ArtifactBubble
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                  prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+                )}
+                isMenuOpen={menuFor?.artifact?.path === a.path}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+                onOpenProject={onOpenProject}
+                liveLines={linesOf(a)}
+                liveAppCard={isLiveAppCard(a, liveApps)}
+                liveAppAddress={liveAddressOf(a)}
+              />
+            ))}
+          </div>
+        ) : (
+          <ListGroup className={LIST_CLASS}>
+            {visible.map((a) => (
+              <ArtifactRow
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onPublish={handlePublish}
+                onUnpublish={handleUnpublish}
+                onUpdate={handleUpdate}
+                onShareLiveApp={setShareTarget}
+                onLaunchLiveApp={launchOf(a)}
+                onDelete={handleTrash}
+                onOpenProject={onOpenProject}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+                isMacPlatform={isMacPlatform}
+                liveLines={linesOf(a)}
+                liveAppCard={isLiveAppCard(a, liveApps)}
+                liveAppAddress={liveAddressOf(a)}
+              />
+            ))}
+          </ListGroup>
+        )}
+      </CollectionState>
 
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewer(null)}
+        onClose={() => setViewerPath(null)}
         onChange={updateOne}
-        onDelete={removeOne}
         onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
       />
+
+      {shareTarget && (
+        <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
+      )}
 
       {publishTarget && (
         <PublishDialog
@@ -1081,33 +1157,34 @@ export default function ArtifactsView({
               items.push({
                 id: 'update',
                 label: busyA ? 'Working…' : 'Update',
-                icon: Ico.refresh(13),
+                icon: Ico.refresh(14),
                 onClick: () => handleUpdate(a),
               });
             }
             items.push({
               id: 'unpublish',
               label: busyA ? 'Working…' : 'Stop sharing',
-              icon: Ico.power(13),
+              icon: Ico.power(14),
               onClick: () => handleUnpublish(a),
             });
-          } else if (isHtml) {
+          } else if (isHtml && !isLiveAppCard(a, liveApps)) {
+            // A live app shares through "Share with…": cowork-server refuses it as a page.
             items.push({
               id: 'publish',
               label: busyA ? 'Sharing…' : 'Share',
-              icon: Ico.power(13),
+              icon: Ico.power(14),
               onClick: () => handlePublish(a),
             });
           }
           // Desktop keeps images here — the viewer renders them, and this menu
           // used to be the only way in (a click on an image card hands the file
           // to the OS instead, which is what it did before this branch too).
-          if (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a)) {
+          if (canPreviewDocument(a, host) || (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a))) {
             items.push({
               id: 'preview',
               label: 'Preview',
-              icon: (Ico.eye?.(13) || Ico.sparkle(13)),
-              onClick: () => setViewer(a),
+              icon: (Ico.eye?.(13) || Ico.sparkle(14)),
+              onClick: () => openViewer(a),
             });
           }
           /*
@@ -1128,16 +1205,15 @@ export default function ArtifactsView({
             items.push({
               id: 'open',
               label: orgMode ? 'Open shared link' : 'Open in browser',
-              icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
+              icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(14)),
               /*
-               * Awaited like the card's own onOpenPublished above: a
-               * synchronous try around an async bridge call cannot reach the
-               * fallback, and the rejection escapes unhandled.
+               * Awaited so a rejected bridge call is caught rather than left
+               * unhandled. No raw window.open fallback: host.openExternal is
+               * what restricts the agent-writable URL to http(s)/mailto.
                */
               onClick: async () => {
                 if (a.publishedUrl) {
-                  try { await host.openExternal(a.publishedUrl); }
-                  catch { window.open(a.publishedUrl, '_blank', 'noopener,noreferrer'); }
+                  try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
                   openArtifactFile(a);
                 }
@@ -1150,22 +1226,38 @@ export default function ArtifactsView({
             items.push({
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
-              icon: Ico.folder(13),
+              icon: Ico.folder(14),
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
           /*
-           * Org mode only: the draft URL is the one route to a non-HTML file's
-           * bytes there (ENG-2044). Desktop's grid keeps its existing menu —
-           * the list view already offers Download from `serveUrl`, and this
-           * fix leaves desktop behaviour untouched.
+           * Org mode and web: the draft or serve URL is the one route to a
+           * file's bytes there. Desktop's grid keeps its existing menu, since the
+           * list view already offers Download from `serveUrl`.
            */
-          if (orgMode && canDownloadOrgDraft(a)) {
+          if ((orgMode || host.isWeb) && canDownloadArtifact(a)) {
             items.push({
               id: 'download',
               label: 'Download',
-              icon: Ico.download(13),
+              icon: Ico.download(14),
               onClick: () => downloadWithFeedback(a, toastManager),
+            });
+          }
+          if (canShareLiveApp(a, liveApps)) {
+            items.push({
+              id: 'share-live-app',
+              label: SHARE_LIVE_APP_LABEL,
+              icon: Ico.userPlus(14),
+              onClick: () => setShareTarget(a),
+            });
+          }
+          const launch = launchOf(a);
+          if (launch) {
+            items.push({
+              id: 'launch-live-app',
+              label: LAUNCH_LIVE_APP_LABEL,
+              icon: Ico.play(14),
+              onClick: () => launch(a),
             });
           }
           if (canManage) {
@@ -1177,7 +1269,7 @@ export default function ArtifactsView({
               // call, but a menu item that still looks clickable reads as "nothing
               // happened" and invites the second click.
               label: busyA ? 'Deleting…' : 'Delete',
-              icon: Ico.trash(13),
+              icon: Ico.trash(14),
               danger: true,
               disabled: busyA,
               onClick: () => handleTrash(a),
@@ -1185,9 +1277,13 @@ export default function ArtifactsView({
           }
           // Same mode gate the list view's menu applies — see lib/artifactActions.
           // Note this menu marks its rule with `separator`, not `divider` like
-          // ArtifactMenu, so the pass-through key differs.
+          // rowMenuItems, so the pass-through key differs.
           return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
-            orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(a),
+            orgMode,
+            hasBridge: host.isElectron,
+            published,
+            hasDraft: canDownloadOrgDraft(a),
+            canDownload: canDownloadArtifact(a),
           }));
         })()}
       />

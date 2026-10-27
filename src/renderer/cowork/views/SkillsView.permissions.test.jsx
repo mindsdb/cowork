@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -46,11 +46,6 @@ vi.mock('../../platform/host', () => ({
 
 import SkillsView from './SkillsView';
 
-const setViewportWidth = (width) => {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-  window.dispatchEvent(new Event('resize'));
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
   skillState.skills = [lockedSkill];
@@ -60,12 +55,6 @@ beforeEach(() => {
     capabilities: { canEdit: true, canDelete: true, canDisable: true },
   });
   localStorage.removeItem('anton:skills-view');
-  setViewportWidth(1200);
-});
-
-afterEach(() => {
-  setViewportWidth(1200);
-  Reflect.deleteProperty(window, 'confirm');
 });
 
 describe('SkillsView shared-resource permissions', () => {
@@ -83,23 +72,57 @@ describe('SkillsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Uninstall/ })).toHaveAttribute('data-disabled');
   });
 
-  it('forces the grid on phone widths when the persisted preference is list', () => {
-    localStorage.setItem('anton:skills-view', 'list');
-    setViewportWidth(500);
+  it('shows a built-in skill with every capability false as read-only built-in', () => {
+    /* The shape cowork-server sends for a built-in or operator-provided skill
+       on a stack where each person has their own space: no capability and no
+       attribution actor. */
+    const builtinSkill = {
+      ...lockedSkill,
+      label: 'operator-skill',
+      description: 'A skill the operator provides.',
+      isBuiltin: true,
+      capabilities: { canEdit: false, canDelete: false, canDisable: false },
+      attribution: { createdBy: null, lastModifiedBy: null, lastModifiedAt: null },
+    };
+    skillState.skills = [builtinSkill];
+    render(<SkillsView />);
+
+    const row = screen.getByRole('article', { name: 'operator-skill' });
+    expect(within(row).getByText('Built-in')).toBeInTheDocument();
+    expect(within(row).queryByText('Shared')).not.toBeInTheDocument();
+    expect(within(row).queryByText('Another member')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('operator-skill'));
+
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('note')).toHaveTextContent('Built-in skills are read only.');
+    expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const edit = screen.getByRole('menuitem', { name: /Edit/ });
+    const uninstall = screen.getByRole('menuitem', { name: /Uninstall/ });
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Built-in');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Built-in');
+  });
+
+  it('renders rows with no view toggle, even with a stored grid preference', () => {
+    localStorage.setItem('anton:skills-view', 'grid');
 
     render(<SkillsView />);
 
-    expect(screen.getByText('locked-skill')).toBeInTheDocument();
-    expect(screen.queryByText('Author')).not.toBeInTheDocument();
-    expect(screen.getByText(/Created by creator@example.com/)).toBeInTheDocument();
+    const row = screen.getByRole('article', { name: 'locked-skill' });
+    expect(within(row).getByText('creator@example.com')).toBeInTheDocument();
+    expect(screen.queryByText(/Created by creator@example.com/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Grid' })).not.toBeInTheDocument();
   });
 
   it('labels the stable creator as Author after another member edits the skill', () => {
-    localStorage.setItem('anton:skills-view', 'list');
-
     render(<SkillsView />);
 
-    const row = screen.getByRole('button', { name: /locked-skill/i });
+    const row = screen.getByRole('article', { name: 'locked-skill' });
     expect(within(row).getByText('creator@example.com')).toBeInTheDocument();
     expect(within(row).queryByText('editor@example.com')).not.toBeInTheDocument();
   });
@@ -118,7 +141,8 @@ describe('SkillsView shared-resource permissions', () => {
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(await screen.findByRole('button', { name: 'Upload' }));
 
-    await waitFor(() => expect(mocks.uploadSkillFile).toHaveBeenCalledWith(file));
+    // The list grants no sharing here, so the upload carries no sharing choice.
+    await waitFor(() => expect(mocks.uploadSkillFile).toHaveBeenCalledWith(file, {}));
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
     expect(mocks.reload.mock.calls[1]).toEqual([{ afterCurrent: true }]);
   });
@@ -189,6 +213,22 @@ describe('SkillsView shared-resource permissions', () => {
       .not.toHaveAttribute('data-disabled');
   });
 
+  it('asks before removing a skill, and Cancel keeps it', async () => {
+    const user = userEvent.setup();
+    skillState.skills = [{ ...lockedSkill, capabilities: { canEdit: true, canDelete: true, canDisable: true } }];
+
+    render(<SkillsView />);
+    await user.click(screen.getByText('locked-skill'));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Uninstall/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(mocks.deleteSkillAndSync).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Skill enabled' })).toBeInTheDocument();
+  });
+
   it('does not clear a newer skill selection when an older delete settles', async () => {
     const user = userEvent.setup();
     let resolveDelete;
@@ -206,15 +246,14 @@ describe('SkillsView shared-resource permissions', () => {
     mocks.deleteSkillAndSync.mockImplementation(() => new Promise((resolve) => {
       resolveDelete = resolve;
     }));
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
 
     render(<SkillsView />);
     await user.click(screen.getByText(first.label));
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: /Uninstall/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Remove skill "first-skill"?')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(mocks.deleteSkillAndSync).toHaveBeenCalledWith(first.label));
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));
@@ -273,4 +312,150 @@ describe('SkillsView shared-resource permissions', () => {
         .toHaveAttribute('aria-checked', 'true');
     },
   );
+});
+
+describe('SkillsView shared skills', () => {
+  // The detail note and cowork-server's 403 message share this sentence.
+  const SHARED_NOTE = "This skill is shared with you and can't be changed here.";
+  const OWNER_CAPABILITIES = { canEdit: true, canDelete: true, canDisable: true };
+  /* What the creator of a shared skill is told: others read the creator's copy
+     live, so the switch and Uninstall reach them too. */
+  const SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
+  const REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
+  const CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
+
+  /* Reads which badges the skill's row shows, then opens its detail view and
+     actions menu and returns the Edit and Uninstall menu items. The row leaves
+     the page with the list, so its badges come back as booleans. */
+  async function openActions(skill) {
+    const user = userEvent.setup();
+    skillState.skills = [skill];
+    render(<SkillsView />);
+    const row = screen.getByRole('article', { name: skill.label });
+    const rowBadges = {
+      shared: within(row).queryByText('Shared') !== null,
+      builtin: within(row).queryByText('Built-in') !== null,
+    };
+    await user.click(screen.getByText(skill.label));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    return {
+      rowBadges,
+      edit: await screen.findByRole('menuitem', { name: /Edit/ }),
+      uninstall: await screen.findByRole('menuitem', { name: /Uninstall/ }),
+    };
+  }
+
+  it('shows a skill someone else shares read-only with a Shared badge', async () => {
+    // How cowork-server sends a skill another person shares with the caller.
+    const { rowBadges, edit, uninstall } = await openActions({ ...lockedSkill, shared: true });
+
+    expect(rowBadges.shared).toBe(true);
+    expect(rowBadges.builtin).toBe(false);
+    expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .toHaveAttribute('aria-disabled', 'true');
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Shared with you');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Shared with you');
+  });
+
+  it('leaves the switch to the server on a skill someone else shares', async () => {
+    /* Turning a shared skill off for oneself is the server's call through
+       canDisable; Shared alone never locks the switch. */
+    const { rowBadges, edit, uninstall } = await openActions({
+      ...lockedSkill,
+      shared: true,
+      capabilities: { canEdit: false, canDelete: false, canDisable: true },
+    });
+
+    expect(rowBadges.shared).toBe(true);
+    expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
+    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+    // Only the creator's switch reaches everyone, so a reader's gets no hint.
+    expect(toggle).not.toHaveAttribute('title');
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Shared with you');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Shared with you');
+  });
+
+  it("keeps every action on the creator's own shared skill and badges it Shared", async () => {
+    const own = { ...lockedSkill, shared: true, capabilities: OWNER_CAPABILITIES };
+    const { rowBadges, edit, uninstall } = await openActions(own);
+
+    expect(rowBadges.shared).toBe(true);
+    // A visible line, not only the switch's hover hint, says changes reach everyone.
+    expect(screen.getByRole('note')).toHaveTextContent(CHANGE_NOTE);
+    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+    expect(toggle).toHaveAttribute('title', SWITCH_HINT);
+    expect(edit).not.toHaveAttribute('data-disabled');
+    expect(edit).not.toHaveTextContent('Shared with you');
+    expect(uninstall).not.toHaveAttribute('data-disabled');
+    expect(uninstall).not.toHaveTextContent('Shared with you');
+
+    await userEvent.click(uninstall);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(`Remove skill "${own.label}"?`);
+    expect(dialog).toHaveTextContent(REMOVE_NOTE);
+  });
+
+  it.each([
+    ['without the field', lockedSkill],
+    ['with shared false', { ...lockedSkill, shared: false }],
+    ['with a non-boolean shared value', { ...lockedSkill, shared: 'true' }],
+  ])('keeps the plain read-only note and hint and no Shared badge for a skill %s', async (_, skill) => {
+    const { rowBadges, edit, uninstall } = await openActions(skill);
+
+    expect(rowBadges.shared).toBe(false);
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Read only — only the creator or an organization admin can change this skill.',
+    );
+    expect(edit).toHaveAttribute('data-disabled');
+    expect(edit).toHaveTextContent('Admin or creator');
+    expect(uninstall).toHaveAttribute('data-disabled');
+    expect(uninstall).toHaveTextContent('Admin or creator');
+  });
+
+  it.each([
+    ['without the field', { ...lockedSkill, capabilities: OWNER_CAPABILITIES }],
+    ['with a non-boolean shared value', { ...lockedSkill, shared: 'true', capabilities: OWNER_CAPABILITIES }],
+  ])('keeps every action and no badge or sharing hint for a plain skill the caller owns %s', async (_, skill) => {
+    const { rowBadges, edit, uninstall } = await openActions(skill);
+
+    expect(rowBadges.shared).toBe(false);
+    expect(rowBadges.builtin).toBe(false);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Skill enabled' })).not.toHaveAttribute('title');
+    expect(edit).not.toHaveAttribute('data-disabled');
+    expect(uninstall).not.toHaveAttribute('data-disabled');
+
+    await userEvent.click(uninstall);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(`Remove skill "${skill.label}"?`);
+    expect(dialog).not.toHaveTextContent(REMOVE_NOTE);
+  });
+
+  /* Opens the Edit modal from the detail view's actions menu and returns it. */
+  async function openEdit(skill) {
+    const { edit } = await openActions(skill);
+    await userEvent.click(edit);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Edit Skill');
+    return dialog;
+  }
+
+  it("says in the Edit modal of the creator's own shared skill that changes reach everyone", async () => {
+    const dialog = await openEdit({ ...lockedSkill, shared: true, capabilities: OWNER_CAPABILITIES });
+
+    expect(within(dialog).getByRole('note')).toHaveTextContent(CHANGE_NOTE);
+  });
+
+  it('says nothing about sharing in the Edit modal of a plain skill the caller owns', async () => {
+    const dialog = await openEdit({ ...lockedSkill, capabilities: OWNER_CAPABILITIES });
+
+    expect(within(dialog).queryByRole('note')).not.toBeInTheDocument();
+  });
 });

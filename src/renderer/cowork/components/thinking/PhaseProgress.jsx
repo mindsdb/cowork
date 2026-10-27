@@ -95,7 +95,7 @@ function PhaseRow({
           !isDone && !isActive && 'border-[1.4px] border-line'
         )}
       >
-        {isDone && Ico.check(9)}
+        {isDone && Ico.check(12)}
         {isActive && (
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         )}

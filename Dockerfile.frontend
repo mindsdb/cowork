@@ -24,6 +24,9 @@ WORKDIR /build
 # Lockfile-only install first, so the dependency layer is cached when only
 # source changes.
 COPY package.json package-lock.json ./
+# vendor/ holds the tarballs package.json installs from file: paths, so npm ci
+# needs it before the full source copy.
+COPY vendor/ ./vendor/
 # --ignore-scripts skips native postinstall hooks; the web SPA has none.
 RUN npm ci --ignore-scripts
 
@@ -40,21 +43,30 @@ ARG VITE_MINDS_API_URL=
 ARG VITE_KEYCLOAK_URL=
 ARG VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=
 ARG VITE_APP_VERSION=
+ARG VITE_PLATFORM_UI=true
 ENV VITE_MINDS_API_URL=${VITE_MINDS_API_URL} \
     VITE_KEYCLOAK_URL=${VITE_KEYCLOAK_URL} \
     VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN} \
-    VITE_APP_VERSION=${VITE_APP_VERSION}
+    VITE_APP_VERSION=${VITE_APP_VERSION} \
+    VITE_PLATFORM_UI=${VITE_PLATFORM_UI}
 RUN npm run build:web
 # Output: /build/dist/renderer-web/ (shell index-web.html, relative asset base)
 
 # Stage 2: runtime. nginx serving the static SPA, non-root on 8080.
 # Pinned to the current stable line on Alpine 3.24. The older 1.27-alpine tag is
 # stuck on Alpine 3.21 with known CVEs. Bump this tag when a newer stable release
-# lands rather than patching packages in-image.
+# lands; apply targeted security updates while upstream image rebuilds lag.
 # -slim, not -alpine: the full tag adds xslt/geoip/image-filter/njs, which this
 # config never loads and which pull gd -> fontconfig -> expat. Keep it slim
 # unless a directive here needs a dynamic module.
 FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
+
+# SNYK-ALPINE324-ZLIB-20541555 is fixed in 1.3.2-r1. Enforce the patched
+# minimum even when the base image still contains 1.3.2-r0, then restore nginx's
+# unprivileged runtime user.
+USER root
+RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1'
+USER 101
 
 LABEL org.opencontainers.image.title="cowork-frontend"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
@@ -63,7 +75,15 @@ LABEL org.opencontainers.image.description="MindsHub Cowork SPA (static, nginx)"
 COPY scripts/nginx-frontend.conf /etc/nginx/conf.d/default.conf
 COPY --from=spa-builder /build/dist/renderer-web/ /usr/share/nginx/html/
 
+COPY scripts/nginx-logging.conf.template /etc/nginx/diagnostic-logging.conf.template
+COPY --chown=101 scripts/nginx-logging.conf.template /etc/nginx/conf.d/00-logging.conf
+COPY scripts/nginx-diagnostics.sh /nginx-diagnostics.sh
+ENV LOG_LEVEL=WARNING ACCESS_LOG_MODE=errors
+STOPSIGNAL SIGTERM
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+
+CMD ["/nginx-diagnostics.sh"]

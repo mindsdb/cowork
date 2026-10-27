@@ -7,11 +7,8 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Loose enough to equate "google_drive" with "Google Drive": cowork-server
-// defaults a fresh connection's user_label to the bare engine id whenever it
-// has no account name to use instead (persist.py's default_user_label()),
-// and that raw id should read as "the title, again" just as much as an
-// exact-cased repeat does.
+// A user_label can restate the title as the engine id (anton's connect_datasource
+// still defaults to it, as older cowork-server saves did) or as typed by hand.
 const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // user_label uniqueness is deliberately global — across every engine, not
@@ -36,11 +33,6 @@ export function connectionIdentity(connection) {
   const identity = c.display_name || c.displayName || null;
   const title = c.label || humanLabel(c.engine || 'unknown');
 
-  // Loose enough to equate "google_drive" with "Google Drive": cowork-server
-  // defaults a fresh connection's user_label to the bare engine id whenever it
-  // has no account name to use instead (persist.py's default_user_label()),
-  // and that raw id should read as "the title, again" just as much as an
-  // exact-cased repeat does.
   const isTitleAgain = (value) => normalize(stripDisambiguationCounter(value)) === normalize(title);
   const isIdentityAgain = (value) => (
     typeof identity === 'string' && !!identity

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePublish } from './usePublish';
+import { OWNED_BY_OTHER_USER_MESSAGE } from './publishErrors';
 
 function deferred() {
   let resolve;
@@ -217,5 +218,47 @@ describe('usePublish — a late refresh for another artifact (ENG-3070 review)',
     expect(result.current.accessEmails).toEqual(['bob@x.com']);
     expect(result.current.publishedUrl).toBe('https://share/b');
     expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ publishedUrl: 'https://share/a' }));
+  });
+});
+
+describe('usePublish — an artifact published by another owner', () => {
+  // What `req()` throws for cowork-server's 409: the server's sentence as the
+  // message and its code beside it.
+  const ownedElsewhere = () => Object.assign(
+    new Error('This artifact was published by another owner.'),
+    { status: 409, code: 'artifact_owned_by_other_user' },
+  );
+
+  it('publish() shows the owner message, not "Sharing failed"', async () => {
+    apiMock.publishArtifact.mockRejectedValue(ownedElsewhere());
+    const { result } = renderHook(() => usePublish({ path: '/p/a.html' }, { enabled: false }));
+
+    let ok;
+    await act(async () => { ok = await result.current.publish({ mode: 'public' }); });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toBe(OWNED_BY_OTHER_USER_MESSAGE);
+    expect(result.current.publishedUrl).toBe('');
+  });
+
+  it('update() shows the same message', async () => {
+    apiMock.updateArtifact.mockRejectedValue(ownedElsewhere());
+    const artifact = { path: '/p/a.html', publishedUrl: 'https://share/abc', accessMode: 'public' };
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+
+    await act(async () => { await result.current.update(); });
+
+    expect(result.current.error).toBe(OWNED_BY_OTHER_USER_MESSAGE);
+  });
+
+  it('keeps the existing wording for every other failure', async () => {
+    apiMock.publishArtifact.mockRejectedValue(
+      Object.assign(new Error('Conflict'), { status: 409, code: null }),
+    );
+    const { result } = renderHook(() => usePublish({ path: '/p/a.html' }, { enabled: false }));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(result.current.error).toBe('Sharing failed: Conflict');
   });
 });

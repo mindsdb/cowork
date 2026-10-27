@@ -121,6 +121,9 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 # Disable relocation so macOS always installs to /Applications, even on reinstall.
 /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
 
+# The postinstall reads this to hand the installed app to the console user.
+printf '%s.app\n' "$PRODUCT_NAME" > build/pkg-scripts/installed-app-name
+
 echo "==> Building component pkg (non-relocatable)"
 # --scripts (ENG-1241): runs build/pkg-scripts/postinstall as root right
 # after the payload lands, to stage the OAuth credentials CI writes to
@@ -222,6 +225,7 @@ fi
 
 # Clean up intermediate files so `release/*.pkg` glob matches only the final artifact.
 rm -f "$COMPONENT_PKG" "$COMPONENT_PLIST" "$DIST_XML"
+rm -f build/pkg-scripts/installed-app-name
 
 echo "==> Final artifact hash"
 shasum -a 256 "$PKG_PATH"

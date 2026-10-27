@@ -12,6 +12,12 @@ export function trackBootScreenResolved(target: string): Promise<void>;
 /** Shell auto-update milestone, once per app run. No-op off Electron. */
 export function trackShellUpdatePhase(snapshot: unknown): void;
 
+/** One journaled UI/server update outcome; true when PostHog took it. */
+export function trackUpdatePhase(entry: import('../../../shared/update-journal-types').UpdatePhaseEntry): Promise<boolean>;
+
+/** Report the outcomes main journaled, once per renderer. No-op off Electron. */
+export function drainUpdateJournal(): Promise<void>;
+
 /**
  * MindsHub declined to provision an LLM key (ENG-1533). `outcome` records what
  * the UI did about it — `byok_offered`, `billing_opened` or `unhandled` — since

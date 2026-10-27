@@ -1,0 +1,244 @@
+/*
+ * Closing the viewer resets the workspace, and the reset drops any draft that
+ * was never saved. With unsaved Edit text, the Close button and Esc ask first:
+ * "Keep editing" leaves the viewer open with the text, and "Discard changes"
+ * closes it and drops the text. With nothing unsaved, both close at once.
+ * While a save has not replied, the prompt says the text may be lost, since
+ * the save keeps it unless it fails.
+ *
+ * The header, the mode tabs, the body with its Markdown editor, the workspace
+ * hook, the modal and the confirm dialog are the real ones, so the Close button
+ * is the one people click, the draft lives where the app keeps it, and Esc goes
+ * through the dialog's own dismissal. Only the network, the host and the
+ * comment and publish controllers are stubbed. The artifact, its saved source
+ * and the typed text live in ArtifactViewer.unsavedEdit.test.yaml.
+ */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
+
+vi.mock('../../api', () => ({
+  allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  artifactServeUrl: () => '',
+  mountArtifactPreview: vi.fn(),
+  previewArtifact: vi.fn(),
+  unpublishArtifact: vi.fn(),
+}));
+vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
+vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn() }));
+vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  canUseArtifactWorkspace: () => true,
+  loadArtifactSource: vi.fn(),
+  saveArtifactSource: vi.fn(),
+  loadArtifactRevisions: vi.fn(async () => ({ revisions: [] })),
+  loadArtifactDraftText: vi.fn(),
+  loadArtifactDraftDocument: vi.fn(),
+}));
+vi.mock('../../../platform/host', () => ({
+  host: {
+    isElectron: true,
+    isWeb: false,
+    isMac: () => false,
+    isLocalApiOrigin: () => true,
+    getApiOrigin: () => 'http://127.0.0.1:26866',
+    openExternal: vi.fn(),
+    openPath: vi.fn(),
+  },
+}));
+vi.mock('./publish/usePublish', () => ({
+  usePublish: () => ({ publishedUrl: '', accessMode: 'public', artifactKey: '', busy: false }),
+}));
+vi.mock('./comments', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useArtifactComments: () => ({
+    threads: [], viewer: null, unreadCount: 0,
+    create: vi.fn(), reply: vi.fn(), setStatus: vi.fn(),
+    editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
+    deleteReply: vi.fn(), markRead: vi.fn(),
+  }),
+  useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
+}));
+import { ArtifactViewer } from './ArtifactViewer';
+import { previewArtifact } from '../../api';
+import { loadArtifactSource, saveArtifactSource } from '../../lib/artifactWorkspaceApi';
+
+const DATA = load(readFileSync(resolve(__dirname, 'ArtifactViewer.unsavedEdit.test.yaml'), 'utf8'));
+const SAVED_TEXT = DATA.savedText;
+const TYPED_TEXT = DATA.typedText;
+const EDITED_TEXT = `${SAVED_TEXT}${TYPED_TEXT}`;
+const ARTIFACT = DATA.artifact;
+const REVISION = DATA.source.revision;
+
+function savedSource() {
+  return { ...DATA.source, artifactId: ARTIFACT.id, content: SAVED_TEXT, revisions: [] };
+}
+
+/* Mirrors how hosts wire the viewer: `open` is their state, and onClose clears it. */
+function Host() {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>Reopen</button>
+      <ArtifactViewer open={open} artifact={ARTIFACT} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+let user;
+
+const editor = () => screen.queryByLabelText('Edit notes.md');
+const discardPrompt = () => screen.queryByRole('dialog', { name: 'Discard changes?' });
+
+async function openEditor() {
+  await user.click(await screen.findByRole('tab', { name: 'Edit' }));
+  return screen.findByLabelText('Edit notes.md');
+}
+
+/* Leaves focus in the editor, where a person's Esc starts. */
+async function typeUnsavedText() {
+  await user.type(await openEditor(), TYPED_TEXT);
+  expect(editor()).toHaveValue(EDITED_TEXT);
+  expect(editor()).toHaveFocus();
+}
+
+const clickClose = () => user.click(screen.getByRole('button', { name: 'Close' }));
+const pressEscape = () => user.keyboard('{Escape}');
+
+describe('ArtifactViewer with unsaved Edit text', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    user = userEvent.setup();
+    previewArtifact.mockResolvedValue({ content: SAVED_TEXT, truncated: false });
+    loadArtifactSource.mockImplementation(async () => savedSource());
+    saveArtifactSource.mockImplementation(async (_artifact, { content }) => ({
+      ...savedSource(),
+      content,
+      revision: DATA.savedRevision,
+    }));
+  });
+
+  describe.each([
+    ['the Close button', clickClose],
+    ['Esc', pressEscape],
+  ])('%s', (_name, close) => {
+    it('asks before closing', async () => {
+      render(<Host />);
+      await typeUnsavedText();
+
+      await close();
+
+      expect(await screen.findByRole('dialog', { name: 'Discard changes?' })).toBeInTheDocument();
+      expect(editor()).toHaveValue(EDITED_TEXT);
+    });
+
+    it('keeps the viewer open with the text when the prompt is cancelled', async () => {
+      render(<Host />);
+      await typeUnsavedText();
+      await close();
+
+      await user.click(await screen.findByRole('button', { name: 'Keep editing' }));
+
+      await waitFor(() => expect(discardPrompt()).toBeNull());
+      expect(editor()).toHaveValue(EDITED_TEXT);
+    });
+
+    it('closes and discards the text when the prompt is confirmed', async () => {
+      render(<Host />);
+      await typeUnsavedText();
+      await close();
+
+      await user.click(await screen.findByRole('button', { name: 'Discard changes' }));
+
+      await waitFor(() => expect(editor()).toBeNull());
+      expect(discardPrompt()).toBeNull();
+      expect(saveArtifactSource).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: 'Reopen' }));
+      expect(await openEditor()).toHaveValue(SAVED_TEXT);
+    });
+
+    it('closes at once when nothing is unsaved', async () => {
+      render(<Host />);
+      await openEditor();
+
+      await close();
+
+      await waitFor(() => expect(editor()).toBeNull());
+      expect(discardPrompt()).toBeNull();
+    });
+
+    it('closes at once after the text is saved', async () => {
+      render(<Host />);
+      await typeUnsavedText();
+      await user.click(screen.getByRole('button', { name: /Save/ }));
+      await screen.findByText('Saved');
+
+      await close();
+
+      await waitFor(() => expect(editor()).toBeNull());
+      expect(discardPrompt()).toBeNull();
+      expect(saveArtifactSource).toHaveBeenCalledWith(
+        ARTIFACT,
+        expect.objectContaining({ content: EDITED_TEXT, expectedRevisionId: REVISION.id }),
+      );
+    });
+
+    it('asks with the save-in-flight prompt before the save replies', async () => {
+      saveArtifactSource.mockImplementation(() => new Promise(() => {}));
+      render(<Host />);
+      await typeUnsavedText();
+      await user.click(screen.getByRole('button', { name: /Save/ }));
+      await screen.findByText('Saving…');
+
+      await close();
+
+      const prompt = await screen.findByRole('dialog', { name: 'Close while saving?' });
+      expect(prompt).toHaveTextContent('A save is still in progress. If you close now, your unsaved edits may be lost.');
+      expect(discardPrompt()).toBeNull();
+      expect(editor()).toHaveValue(EDITED_TEXT);
+      await user.click(within(prompt).getByRole('button', { name: 'Close anyway' }));
+      await waitFor(() => expect(editor()).toBeNull());
+    });
+  });
+
+  it('asks before a click outside the viewer closes it', async () => {
+    render(<Host />);
+    await typeUnsavedText();
+
+    /* The viewport that centers the viewer: a click on it lands outside the viewer. */
+    await user.click(screen.getByRole('dialog').parentElement);
+
+    expect(await screen.findByRole('dialog', { name: 'Discard changes?' })).toBeInTheDocument();
+    expect(editor()).toHaveValue(EDITED_TEXT);
+  });
+
+  it('keeps the text when Esc dismisses the prompt itself', async () => {
+    render(<Host />);
+    await typeUnsavedText();
+    await pressEscape();
+    await screen.findByRole('dialog', { name: 'Discard changes?' });
+
+    await pressEscape();
+
+    await waitFor(() => expect(discardPrompt()).toBeNull());
+    expect(editor()).toHaveValue(EDITED_TEXT);
+  });
+
+  it('does not bring back a prompt the host closed the viewer under', async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(<ArtifactViewer open artifact={ARTIFACT} onClose={onClose} />);
+    await typeUnsavedText();
+    await clickClose();
+    await screen.findByRole('dialog', { name: 'Discard changes?' });
+
+    rerender(<ArtifactViewer open={false} artifact={ARTIFACT} onClose={onClose} />);
+    rerender(<ArtifactViewer open artifact={ARTIFACT} onClose={onClose} />);
+
+    expect(await openEditor()).toHaveValue(SAVED_TEXT);
+    expect(discardPrompt()).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

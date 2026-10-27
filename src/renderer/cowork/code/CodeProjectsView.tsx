@@ -1,74 +1,112 @@
 import { useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
-import { PageHeader, FilterRow, SearchInput } from '../components/collection';
+import Menu from '../components/ui/Menu';
+import {
+  CardGrid, CollectionState, FilterRow, ItemCard, ListGroup, ListItem, PageHeader, SearchInput, SortPill, ViewToggle,
+  useCollectionView,
+} from '../components/collection';
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
+import { projectActions } from './projectActions';
 
+const SORT_OPTIONS = [
+  { id: 'updated', label: 'Recently updated' },
+  { id: 'name', label: 'Name' },
+];
 
 export function CodeProjectsView({
   projects,
-  selectedId,
   loading,
   error,
   onOpen,
   onCreate,
   onEdit,
+  onDelete,
 }: {
   projects: CodeProject[];
-  selectedId: string | null;
   loading: boolean;
   error: string;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('updated');
+  // Same layouts and default as Cowork's Projects page.
+  const { view, setView, effectiveView } = useCollectionView('anton:code-projects-view');
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return projects
       .filter((project) => !normalized || project.name.toLowerCase().includes(normalized) || projectResources(project).some((resource) => resource.name.toLowerCase().includes(normalized)))
-      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
-  }, [projects, query]);
+      .sort((left, right) => (sort === 'name'
+        ? left.name.localeCompare(right.name)
+        : Date.parse(right.updated_at) - Date.parse(left.updated_at)));
+  }, [projects, query, sort]);
+
+  // One set of slots for the card and the row.
+  const slots = (project: CodeProject) => {
+    const resources = projectResources(project);
+    return {
+      leading: Ico.folder(14),
+      title: project.name,
+      description: resources.map((resource) => resource.name).join(', ') || undefined,
+      onActivate: () => onOpen(project.id),
+      activateLabel: `View tasks in ${project.name}`,
+      meta: <>
+        <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
+        <time dateTime={project.updated_at}>{relativeTime(project.updated_at)}</time>
+      </>,
+      actions: <Menu
+        trigger={<Button icon variant="subtle" size="sm" aria-label={`${project.name} actions`}>{Ico.moreVert(14)}</Button>}
+        items={projectActions(project.id, onEdit, onDelete)}
+      />,
+    };
+  };
 
   return (
     <main className="code-projects-view">
       <PageHeader
         title="Projects"
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
-        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>}
+        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(14)} New project</Button>}
       />
-      <FilterRow search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />} />
+      <FilterRow
+        search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />}
+        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        view={<ViewToggle value={view} onValueChange={setView} />}
+      />
 
-      <div className="code-projects-table" aria-label="Code Projects">
-        <div className="code-projects-table__head" aria-hidden="true">
-          <span>Project</span>
-          <span>Resources</span>
-          <span>Updated</span>
-          <span />
-        </div>
-        {loading && <div className="code-projects-table__empty">Loading projects…</div>}
-        {!loading && error && <div className="code-projects-table__empty is-error">{error}</div>}
-        {!loading && !error && visible.map((project) => (
-          <div className={`code-project-row${selectedId === project.id ? ' is-current' : ''}`} key={project.id}>
-            <button type="button" className="code-project-row__main" onClick={() => onOpen(project.id)} aria-label={`View tasks in ${project.name}`}>
-              <span className="code-project-row__folder" aria-hidden="true">{Ico.folder(15)}</span>
-              <span className="code-project-row__name">
-                <strong>{project.name}</strong>
-                <small>{projectResources(project).map((resource) => resource.name).join(', ')}</small>
-              </span>
-            </button>
-            <span className="code-project-row__count">{projectResources(project).length}</span>
-            <span className="code-project-row__updated">{relativeTime(project.updated_at)}</span>
-            <Button icon variant="subtle" size="sm" aria-label={`Edit ${project.name}`} onClick={() => onEdit(project.id)}>{Ico.settings(13)}</Button>
-          </div>
-        ))}
-        {!loading && !error && !visible.length && (
-          <div className="code-projects-table__empty">
-            <span>{projects.length ? 'No projects match your search.' : 'Create a project to bring related repositories and folders together.'}</span>
-            {!projects.length && <Button variant="subtle" size="sm" onClick={onCreate}>Create project</Button>}
-          </div>
+      <div className="mx-8">
+        {error ? <Alert variant="danger">{error}</Alert> : (
+          <CollectionState
+            loading={loading}
+            skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
+            skeletonCount={4}
+            total={projects.length}
+            shown={visible.length}
+            query={query}
+            onClear={() => setQuery('')}
+            empty={{
+              icon: Ico.folder(20),
+              title: 'No projects yet',
+              description: 'Create a project to bring related repositories and folders together.',
+              action: <Button variant="subtle" onClick={onCreate}>Create project</Button>,
+            }}
+          >
+            {effectiveView === 'grid' ? (
+              <CardGrid>
+                {visible.map((project) => <ItemCard key={project.id} as="article" {...slots(project)} />)}
+              </CardGrid>
+            ) : (
+              <ListGroup aria-label="Code Projects">
+                {visible.map((project) => <ListItem key={project.id} as="article" {...slots(project)} />)}
+              </ListGroup>
+            )}
+          </CollectionState>
         )}
       </div>
     </main>

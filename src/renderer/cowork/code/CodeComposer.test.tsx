@@ -284,19 +284,23 @@ describe('CodeComposer', () => {
     expect(onPermissionChange).toHaveBeenCalledWith('full_access');
   });
 
-  it('locks task permissions while a turn is active', () => {
+  it('locks task permissions while a turn is active', async () => {
+    const user = userEvent.setup();
     const { rerenderSession } = renderComposer();
     const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
 
     expect(permissionPicker).toBeDisabled();
-    expect(permissionPicker).toHaveAttribute('title', 'Permissions can be changed after the current turn finishes');
+    // A disabled trigger takes no hover, so the reason hangs off its wrapper.
+    await user.hover(permissionPicker.parentElement!);
+    expect(await screen.findByText('Permissions can be changed after the current turn finishes')).toBeInTheDocument();
+    await user.unhover(permissionPicker.parentElement!);
 
     rerenderSession({ ...baseSession, status: 'awaiting_approval' });
-    expect(permissionPicker).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Coding permissions' })).toBeDisabled();
 
     rerenderSession({ ...baseSession, status: 'completed' });
-    expect(permissionPicker).toBeEnabled();
-    expect(permissionPicker).not.toHaveAttribute('title');
+    expect(screen.getByRole('combobox', { name: 'Coding permissions' })).toBeEnabled();
+    expect(screen.queryByText('Permissions can be changed after the current turn finishes')).not.toBeInTheDocument();
   });
 
   it('restores an immediate slash command when submission fails', async () => {

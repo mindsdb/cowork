@@ -8,6 +8,8 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { StepIcon } from './StepIcon';
+import { useTypedText } from './FirstTake';
+import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
 function TextDots() {
@@ -31,6 +33,11 @@ function formatStepDuration(startedAt, completedAt) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s}s`;
+}
+
+// The opening Note's stand-in phrase types out like streamed text would.
+function TypedStandIn({ text }) {
+  return useTypedText(text);
 }
 
 export function ThinkingStep({
@@ -68,18 +75,21 @@ export function ThinkingStep({
       <div
         className={clsx(
           'flex min-w-0 flex-1 items-center justify-between rounded-md py-1.5',
-          'transition-colors duration-150 group-hover:bg-surface-2/60'
+          'transition-colors duration-hover group-hover:bg-surface-2/60'
         )}
       >
         <div className="flex min-w-0 items-center gap-1.5 px-1">
           <span
             className={clsx(
-              'truncate text-[12.5px]',
+              // A Note is Anton's own sentence between steps (ENG-3554):
+              // show all of it rather than cutting it off mid-thought.
+              step.badge === 'Note' ? 'whitespace-pre-wrap break-words' : 'truncate',
+              'text-[12.5px]',
               isInProgress ? 'text-ink' : 'text-ink-3'
             )}
-            title={step.label}
+            title={stepDisplayLabel(step)}
           >
-            {step.label}
+            {step.standIn ? <TypedStandIn text={step.standIn} /> : step.label}
           </span>
           {isInProgress && <TextDots />}
         </div>

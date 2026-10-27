@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
 
 // Regression guard: each installer upload path holds its own GitHub
 // environment and assumes its own AWS role.
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'url';
 // and a push to main uploads a prod release. Each pipeline passes its build
 // kind through build-installers.yml, and upload-installer-to-s3.yml picks the
 // environment and the role from that kind. The environment sets the job's
-// OIDC subject. Each role's trust policy (in the mindsdb/terraform repo)
+// OIDC subject. Each role's trust policy (in our infrastructure code)
 // accepts only its own path's subject, so a path paired with another path's
 // environment or role fails when it assumes the role. A pull request runs only
 // the preview upload, and only with an installer label. So a wrong pair on the
@@ -20,8 +21,11 @@ import { fileURLToPath } from 'url';
 const WORKFLOWS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.github/workflows');
 const read = (file: string): string => readFileSync(path.join(WORKFLOWS_DIR, file), 'utf8');
 
-/** The installer roles live in the PROD account. */
-const ROLE_ARN_PREFIX = 'arn:aws:iam::065786718370:role/';
+/**
+ * The installer roles live in the PROD account, which an organization secret
+ * names so the account id stays out of this public repository.
+ */
+const ROLE_ARN_PREFIX = 'arn:aws:iam::${{ secrets.AWS_PROD_ACCOUNT_ID }}:role/';
 
 interface UploadPath {
   /** The per-event pipeline that starts this path. */
@@ -77,6 +81,17 @@ describe('each installer upload path holds its own environment and role', () => 
 
   // A literal here would send that platform's upload down another path,
   // whatever the pipeline asked for.
+  // A called workflow sees only the secrets its caller passes, and these calls
+  // pass no other, so the upload runs without the pipeline's other secrets.
+  it('build-installers.yml passes every upload the account secret and nothing else', () => {
+    const jobs = (yaml.load(read('build-installers.yml')) as { jobs: Record<string, { uses?: string; secrets?: unknown }> }).jobs;
+    const uploads = Object.values(jobs).filter((job) => job.uses === './.github/workflows/upload-installer-to-s3.yml');
+    expect(uploads).toHaveLength(4);
+    for (const upload of uploads) {
+      expect(upload.secrets).toEqual({ AWS_PROD_ACCOUNT_ID: '${{ secrets.AWS_PROD_ACCOUNT_ID }}' });
+    }
+  });
+
   it('build-installers.yml passes every call the build_kind it was given', () => {
     const kinds = valuesOf(read('build-installers.yml'), 'build_kind');
     expect(kinds.length).toBeGreaterThan(0);
@@ -87,7 +102,8 @@ describe('each installer upload path holds its own environment and role', () => 
     'a $buildKind upload holds environment $environment and assumes $role',
     ({ buildKind, environment, role }) => {
       expect(resolve(environments[0], buildKind)).toBe(environment);
-      expect(resolve(roles[0], buildKind)).toBe(`${ROLE_ARN_PREFIX}${role}`);
+      expect(roles[0].startsWith(ROLE_ARN_PREFIX)).toBe(true);
+      expect(resolve(roles[0].slice(ROLE_ARN_PREFIX.length), buildKind)).toBe(role);
     },
   );
 

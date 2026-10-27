@@ -24,7 +24,7 @@ export function CodeProjectPicker({
       value: project.id,
       label: project.name,
       tag: `${projectResources(project).length} resource${projectResources(project).length === 1 ? '' : 's'}`,
-      icon: Ico.folder(13),
+      icon: Ico.folder(14),
     })),
   ];
 
@@ -41,14 +41,14 @@ export function CodeProjectPicker({
           key: 'standalone',
           name: null,
           className: projects.length ? 'code-project-picker__standalone-group' : undefined,
-          items: [{ value: NO_PROJECT_VALUE, label: 'No project', tag: 'Local folder', icon: Ico.openFolder(13) }],
+          items: [{ value: NO_PROJECT_VALUE, label: 'No project', tag: 'Local folder', icon: Ico.openFolder(14) }],
         },
         { key: 'projects', name: projects.length ? 'Projects' : null, items },
         {
           key: 'create',
           name: null,
           className: 'code-project-picker__create-group',
-          items: [{ value: NEW_PROJECT_VALUE, label: 'New project', icon: Ico.plus(13) }],
+          items: [{ value: NEW_PROJECT_VALUE, label: 'New project', icon: Ico.plus(14) }],
         },
       ]}
       placeholder="No project"
@@ -63,7 +63,7 @@ export function CodeProjectPicker({
       renderValue={(selected: { value: string; label: string; tag?: string } | null) => (
         <>
           <span className="code-project-picker__icon" aria-hidden="true">
-            {selected?.value === NO_PROJECT_VALUE || !selected ? Ico.openFolder(13) : Ico.folder(13)}
+            {selected?.value === NO_PROJECT_VALUE || !selected ? Ico.openFolder(14) : Ico.folder(14)}
           </span>
           <span className="code-project-picker__copy">
             <span className="code-project-picker__label">{selected?.label || 'No project'}</span>

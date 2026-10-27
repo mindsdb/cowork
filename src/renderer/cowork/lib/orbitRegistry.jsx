@@ -12,6 +12,9 @@
 //   - scroll inside the conversation column (passed in via scrollRef)
 //   - a ResizeObserver on the active slot itself (handles content
 //     reflow as steps stream in)
+//   - a ResizeObserver on the scroll container's content, since content
+//     growing above the slot (the instant first take) moves it without
+//     resizing it
 
 import {
   createContext,
@@ -103,11 +106,9 @@ export function OrbitProvider({
     // Center the orb on the slot's bounding box centre.
     const cx = slotRect.left + slotRect.width / 2 - canvasRect.left;
     const cy = slotRect.top + slotRect.height / 2 - canvasRect.top;
-    setPos({
-      top: Math.round(cy - size / 2),
-      left: Math.round(cx - size / 2),
-      visible: true,
-    });
+    const top = Math.round(cy - size / 2);
+    const left = Math.round(cx - size / 2);
+    setPos((p) => (p.visible && p.top === top && p.left === left ? p : { top, left, visible: true }));
   }, [activeSlot, canvasRef, size]);
 
   // Recompute when the active slot id, the size, or any registered
@@ -128,6 +129,8 @@ export function OrbitProvider({
     if (target && typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => compute());
       ro.observe(target);
+      const content = scrollEl?.firstElementChild;
+      if (content) ro.observe(content);
     }
 
     return () => {
@@ -147,7 +150,7 @@ export function OrbitProvider({
   const orbNode = state ? (
     <div
       aria-hidden="true"
-      className="absolute pointer-events-none z-[6] [transition:opacity_220ms_ease,transform_220ms_ease]"
+      className="absolute pointer-events-none z-[6] [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
       style={{
         // Dynamic: measured position + prop size, plus the visibility fade/scale.
         top: pos.top, left: pos.left,

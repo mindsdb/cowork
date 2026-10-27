@@ -15,7 +15,9 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { Info } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { Alert, Select, Tooltip } from '../ui';
@@ -150,7 +152,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
           {connector.notice && (
             <Tooltip content={connector.notice}>
               <span className="shrink-0 inline-flex items-center text-ink-4">
-                <Info size={14} strokeWidth={1.5} />
+                <Icon of={Info} size={14} />
                 {/* Lucide marks the glyph aria-hidden, and the tooltip is
                     hover-only: the badge is deliberately not focusable (it
                     sits inside the tile's own <button>, where a second tab
@@ -171,9 +173,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
 });
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]';
-const SECTION_HEADING =
-  'font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] '
-  + 'uppercase text-ink-3 pt-1 px-0.5 pb-2';
+const SECTION_HEADING = 'section-label pt-1 px-0.5 pb-2';
 
 // One titled grid of tiles. `count` is rendered beside the title when given
 // (the Featured section deliberately omits it).
@@ -232,8 +232,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
     setSortBy('default');
     // Cloud: also pull what only the desktop app can run, so the directory
     // can list it under DESKTOP_ONLY_TITLE. Desktop already gets everything.
-    fetchConnectors({ includeUnavailable: orgMode })
-      .then((list) => setConnectors(Array.isArray(list) ? list : []))
+    fetchConnectors({ includeUnavailable: PLATFORM_UI && orgMode })
+      .then((list) => setConnectors(Array.isArray(list)
+        ? list.filter((connector) => PLATFORM_UI || connector.cloud_available !== false)
+        : []))
       .catch((e) => setError(e?.message || 'Failed to load connectors'))
       .finally(() => setLoading(false));
   }, [open, orgMode]);
@@ -374,7 +376,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             response to what auth's catalogue authorizes (currently Google
             Drive + Gmail) — this note just explains the short list rather
             than doing any filtering of its own. */}
-        {orgMode && (
+        {PLATFORM_UI && orgMode && (
           <div className="px-4 pb-3 bg-surface shrink-0">
             <Alert variant="info">
               The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
@@ -440,7 +442,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             // Featured. Show all of them as one block instead; the desktop
             // catalogue below is what gives the directory its body.
             <ConnectorSection
-              title={CLOUD_AVAILABLE_TITLE}
+              title={PLATFORM_UI ? CLOUD_AVAILABLE_TITLE : 'Available connectors'}
               connectors={available}
               onPick={onPick}
               className="mb-6"
@@ -469,12 +471,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               ))}
             </>
           )}
-          <ConnectorSection
+          {PLATFORM_UI && <ConnectorSection
             title={DESKTOP_ONLY_TITLE}
             count={desktopOnly.length}
             connectors={desktopOnly}
             onPick={onDesktopOnly}
-          />
+          />}
         </div>
     </Modal>
   );

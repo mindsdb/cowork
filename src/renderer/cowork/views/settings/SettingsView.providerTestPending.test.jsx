@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { useState } from 'react';
 
 // ENG-1113: a persisted failure must stay hidden until the mount-time provider
@@ -98,6 +98,25 @@ describe('SettingsView model picker — provider test in flight (ENG-1113)', () 
     await waitFor(() => expect(screen.queryByText(/Checking MindsHub connection/i)).toBeNull());
     expect(screen.getByLabelText('minds API key')).toBeInTheDocument();
     expect(screen.getAllByText(/failed its last test/i).length).toBeGreaterThan(0);
+  });
+
+  it('keeps later provider results visible while an API key draft is unsaved', async () => {
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providers: [
+        ...baseSettings().providers,
+        { type: 'openai', apiKey: '' },
+      ],
+    }} />);
+    await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText('openai API key'), { target: { value: 'draft-key' } });
+    deferred.resolve({
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+      providerStatusReasons: { 'minds-cloud': { code: 'wallet_empty' } },
+    });
+    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    expect(screen.getByLabelText('openai API key')).toHaveValue('draft-key');
   });
 
   it('holds back the "No credits available" banner too while the verify is pending', async () => {

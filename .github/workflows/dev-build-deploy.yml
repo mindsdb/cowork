@@ -80,6 +80,10 @@ jobs:
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
+  document-preview:
+    # Ungated for the same reason as the unit tests; it needs no secrets.
+    uses: ./.github/workflows/document-preview.yml
+
   workflow-lint:
     # actionlint, the caller/callee permission check, and a zizmor audit, shared
     # with every other service repo. Ungated for the same reason as the tests.
@@ -101,8 +105,8 @@ jobs:
       build-environment: development
     secrets: inherit
 
-  # mindsdb/deployer rolls the PR environment out, not this run. Every ten
-  # minutes its reconciler syncs each open same-repo pull request labelled
+  # A private deploy repository rolls the PR environment out, not this run.
+  # Every ten minutes its reconciler syncs each open same-repo pull request labelled
   # `deploy` whose `development-head-<head sha>` image exists. So this job asks
   # the environment itself, over its public host, until the host serves a build
   # of this pull request's head.
@@ -157,7 +161,7 @@ jobs:
             fi
             sleep 30
           done
-          echo "::error::${HOST} did not serve a build of ${HEAD_SHA} within 40 minutes. The mindsdb/deployer reconciler rolls PR environments out every 10 minutes, so its pr-envs runs say why."
+          echo "::error::${HOST} did not serve a build of ${HEAD_SHA} within 40 minutes. The deploy reconciler rolls PR environments out every 10 minutes, so its pr-envs runs say why."
           exit 1
 
   pr-env-comment:
@@ -185,14 +189,15 @@ jobs:
   # its public URL on the PR. So every platform opts in, linux included.
   build-installers:
     needs: [gate]
+    permissions:
+      contents: read
+      actions: read # reusable workflow permission ceiling; setup skips preview builds
+      id-token: write # the uploads assume the preview installer role
     if: >-
       ${{ needs.gate.outputs.run == 'true'
           && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
               || contains(github.event.pull_request.labels.*.name, 'signed-windows-ev')
               || contains(github.event.pull_request.labels.*.name, 'build-linux-deb')) }}
-    permissions:
-      contents: read
-      id-token: write # the uploads assume the preview installer role
     uses: ./.github/workflows/build-installers.yml
     with:
       build_kind: preview

@@ -6,6 +6,9 @@
 //
 // Header states:
 //   active + collapsed  →  [orb] <current step label>            (shimmer)
+//   active + collapsed, →  [orb] <current step label> · Waiting for the model (1m 0s)
+//   model call silent      (the suffix is muted; it is the server's model-wait
+//                          status, never the model's own reasoning text)
 //   active + expanded   →  [orb] Working for 6s                  (live timer;
 //                          the current step sits at the END of the list below)
 //   finished            →  Worked for 3m 9s  ⌄                   (chevron always visible)
@@ -23,6 +26,7 @@ import { Tooltip } from '../ui';
 import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
 import { truncateLabel } from '../../lib/responseStreamAdapter';
+import { useFold } from '../../hooks/useFold';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
@@ -58,6 +62,10 @@ export function ThinkingBlock({
   currentThought = null,
   slotId = null,
   onActivateStep,
+  // A turn that just finished live: its steps were open while it ran, so the
+  // finished block starts open and folds shut, instead of the list vanishing
+  // in one frame when the live turn is swapped for the finished message.
+  collapseOnMount = false,
 }) {
   const hasSteps = steps.length > 0;
   // ToolProgress rows count: the block that appears below an answered
@@ -67,10 +75,21 @@ export function ThinkingBlock({
     [steps]
   );
   const hasLiveThought = isActive && Boolean(currentThought?.text);
+  const modelWaitText = currentThought?.kind === 'model_wait' ? currentThought.text : '';
 
   const [isExpanded, setIsExpanded] = useState(
-    () => isActive && (hasInspectableSteps || Boolean(currentThought?.text))
+    () => (isActive && (hasInspectableSteps || Boolean(currentThought?.text)))
+      || (collapseOnMount && hasInspectableSteps)
   );
+
+  // Fold a just-finished turn's steps shut once it has painted open.
+  useEffect(() => {
+    if (!collapseOnMount || isActive) return undefined;
+    const raf = requestAnimationFrame(() => setIsExpanded(false));
+    return () => cancelAnimationFrame(raf);
+  }, [collapseOnMount, isActive]);
+
+  const { mounted: stepsMounted, folded: stepsFolded } = useFold(isExpanded);
   const hasAutoExpanded = useRef(false);
 
   // Auto-expand the first time inspectable work appears — including a
@@ -130,7 +149,12 @@ export function ThinkingBlock({
               label={
                 isExpanded
                   ? <WorkingLabel startedAt={startedAt} />
-                  : (currentLabel || 'Thinking…')
+                  : (
+                    <>
+                      {currentLabel || 'Thinking…'}
+                      {modelWaitText && <span className="text-ink-4"> · {modelWaitText}</span>}
+                    </>
+                  )
               }
             />
           ) : (
@@ -143,7 +167,7 @@ export function ThinkingBlock({
               <span
                 className={clsx(
                   'inline-flex flex-none items-center self-center text-ink-4',
-                  'transition-transform duration-200',
+                  'transition-transform duration-layout',
                   isExpanded && 'rotate-180'
                 )}
               >
@@ -163,7 +187,9 @@ export function ThinkingBlock({
         </button>
       </Tooltip>
 
-      {isExpanded && (hasSteps || (isActive && currentThought?.text)) && (
+      {stepsMounted && (hasSteps || (isActive && currentThought?.text)) && (
+        <div className={clsx('fold', stepsFolded && 'is-folded')}>
+        <div className="fold__inner">
         <div className="ml-0 mt-1">
           {steps.map((step, index) => (
             <ThinkingStep
@@ -202,6 +228,8 @@ export function ThinkingBlock({
               </div>
             </div>
           )}
+        </div>
+        </div>
         </div>
       )}
     </div>

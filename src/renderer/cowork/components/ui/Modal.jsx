@@ -23,6 +23,7 @@
 // All three slots are optional — pure-content modals can drop the
 // header/footer and put their own chrome inside <ModalBody>.
 
+import { useEffect, useRef } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
 
@@ -39,8 +40,8 @@ import Ico from '../Icons';
 // `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
 // utilities) so the easing keyword is the literal CSS `ease-out`, not
 // Tailwind's differently-curved `ease-out` utility value.
-const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
-const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_BACKDROP = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_POPUP     = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
 const FONT_BODY    = 'var(--font-body)';
 
@@ -59,11 +60,14 @@ const SIZES = {
 //
 //   60   sidepanels, inline overlays inside main UI
 //   80   default content modals (picker, schedule, artifact viewer)
+//   500  palette — Cmd+K search; above the sidebar drawer (101) and chat
+//        overlays (200) it can be opened over, below the title bar
 //   1000 title bar
 //   1100 legal / onboarding overlays
 //   1200 system modals — How-to, anything that must sit on top
 const LAYERS = {
   default: 80,
+  palette: 500,
   system:  1200,
 };
 
@@ -96,6 +100,7 @@ export function Modal({
   // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
   // and Esc dismissal a hand-rolled full-screen <div> would drop.
   fullBleed = false,
+  // 'center' | 'left' (pinned near leftOffset) | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
   children,
@@ -115,8 +120,24 @@ export function Modal({
     onClose?.();
   };
 
+  // Base UI never unmounts a dialog that is closed by an effect of the commit
+  // that opened it. The closed popup stays mounted and inert, and its backdrop
+  // swallows every click. Close is instant here (no exit animation), so a
+  // popup still connected well after close is stranded: finish the unmount
+  // Base UI skipped. Reopening clears the timer.
+  const actionsRef = useRef(null);
+  const popupRef = useRef(null);
+  useEffect(() => {
+    if (open) return undefined;
+    const timer = setTimeout(() => {
+      if (popupRef.current?.isConnected) actionsRef.current?.unmount();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [open]);
+
   return (
     <Dialog.Root
+      actionsRef={actionsRef}
       open={open}
       onOpenChange={handleOpenChange}
       modal={lockBodyScroll ? true : 'trap-focus'}
@@ -137,7 +158,9 @@ export function Modal({
         <Dialog.Viewport
           style={{
             position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            display: 'flex', alignItems: placement === 'top' ? 'flex-start' : 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            // `top`: command-palette anchoring, so the box grows downward as results arrive.
+            ...(placement === 'top' ? { paddingTop: 'min(14vh, 120px)' } : {}),
             ...(placement === 'left' ? {
               paddingLeft: `max(8px, min(${leftOffset}px, calc(100vw - ${typeof width === 'number' ? `${width}px` : width || sz.width} - 8px)))`,
             } : {}),
@@ -145,6 +168,7 @@ export function Modal({
           }}
         >
           <Dialog.Popup
+            ref={popupRef}
             className={FADE_POPUP}
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
@@ -231,7 +255,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             width: 28, height: 28, borderRadius: 6,
             display: 'inline-grid', placeItems: 'center',
             flexShrink: 0,
-            transition: 'color 120ms ease, background 120ms ease',
+            transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease',
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.color = 'var(--ink)';
@@ -242,7 +266,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             e.currentTarget.style.background = 'transparent';
           }}
         >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
+          {Ico.close ? Ico.close(14) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
         </button>
       )}
     </div>
@@ -254,12 +278,15 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 //
 // Scroll region. `minHeight: 0` is the flexbox gotcha — without it,
 // `overflowY: auto` doesn't actually scroll inside a flex column.
+// The popup is portaled outside the app root, so bare text would fall back
+// to the browser's 16px; pin it to the body size.
 
 export function ModalBody({ children, padding = '16px 18px', background, style }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto',
       padding,
+      fontSize: 'var(--text-base)',
       background: background || 'var(--surface)',
       ...style,
     }}>

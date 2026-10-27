@@ -224,3 +224,17 @@ describe('usePublish on desktop is unchanged', () => {
     expect(result.current.supportsPublishRoutes).toBe(true);
   });
 });
+
+describe('usePublish on Cloud — an artifact published by another owner', () => {
+  it('shows the owner message when the workspace route answers 409', async () => {
+    wsMock.setArtifactAccess.mockRejectedValue(Object.assign(
+      new Error('This artifact was published by another owner.'),
+      { status: 409, code: 'artifact_owned_by_other_user' },
+    ));
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(result.current.error).toBe('This artifact was published by another owner.');
+  });
+});

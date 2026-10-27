@@ -1,10 +1,12 @@
-import { createLogger, defineConfig } from 'vite';
+import { createLogger, defineConfig, loadEnv } from 'vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
+import { platformUiEnabled } from '../shared/ui-capabilities';
+import { withDeploymentBrand } from '../shared/deployment-brand';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -46,6 +48,7 @@ try {
 // Default behavior is unchanged when BUILD_TARGET is unset, so existing
 // `npm run build` and `npm run dev` paths are byte-identical to before.
 const IS_WEB = process.env.BUILD_TARGET === 'web';
+const WEB_ENTRY = 'index-web.html';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 
@@ -70,13 +73,35 @@ const webSpaFallback = {
   name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
     server.middlewares.use((req: any, _res: any, next: any) => {
-      if (isSpaNavigation(req)) req.url = '/index-web.html';
+      if (isSpaNavigation(req)) req.url = `/${WEB_ENTRY}`;
       next();
     });
   },
 };
 
-export default defineConfig({
+// A web build with the platform UI off loads a deployment brand at run time
+// (shared/deployment-brand.ts). The tags go in at build time, so hosted web
+// and desktop pages stay byte-identical and never request the brand. Only the
+// web entry has the brand's anchors; the dev server also serves other pages.
+const deploymentBrand = {
+  name: 'cowork-deployment-brand',
+  transformIndexHtml: {
+    order: 'post' as const,
+    handler: (html: string, ctx: { filename: string }) =>
+      path.basename(ctx.filename) === WEB_ENTRY ? withDeploymentBrand(html) : html,
+  },
+};
+
+// The build's platform switch: on for desktop, and for web only when
+// VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
+function platformUiFor(mode: string): boolean {
+  return platformUiEnabled(
+    process.env.BUILD_TARGET,
+    loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_PLATFORM_UI,
+  );
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
     // React Compiler (React 19) — auto-memoizes components and handlers at
     // build time, cutting cascade re-renders (e.g. one Sidebar state change
@@ -87,9 +112,11 @@ export default defineConfig({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback] : []),
+    ...(platformUiFor(mode) ? [] : [deploymentBrand]),
   ],
   customLogger: logger,
   define: {
+    __PLATFORM_UI__: JSON.stringify(platformUiFor(mode)),
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_HASH__: JSON.stringify(gitHash),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
@@ -108,7 +135,7 @@ export default defineConfig({
     ),
     emptyOutDir: true,
     rollupOptions: IS_WEB
-      ? { input: path.resolve(__dirname, 'index-web.html') }
+      ? { input: path.resolve(__dirname, WEB_ENTRY) }
       : undefined,
   },
   server: {
@@ -123,4 +150,4 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared'),
     },
   },
-});
+}));
