@@ -41,6 +41,7 @@ import { projectLabel } from './lib/projectLabel';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
+import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -719,6 +720,7 @@ function AppCore() {
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
+  const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -2950,6 +2952,12 @@ function AppCore() {
   const handleConnectorPicked = async (connector, { existingName } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
+    // SharePoint saves only through its own routes, which check the key with
+    // Microsoft first, so it opens its own form instead of a connect chat.
+    if (connector.id === SHAREPOINT_ENGINE) {
+      setSharePointSetupOpen(true);
+      return;
+    }
     // Snapshot the origin now, before we switch into the connect task below.
     const originRoute = route;
     const originTaskId = activeTaskId;
@@ -6348,6 +6356,17 @@ function AppCore() {
         onSearch={searchCowork}
         onSelect={handleSearchSelect}
         recents={searchOpen ? searchRecents(tasks, projects) : undefined}
+      />
+
+      <SharePointSetupModal
+        open={sharePointSetupOpen}
+        onClose={() => setSharePointSetupOpen(false)}
+        onSaved={() => {
+          setSharePointSetupOpen(false);
+          fetchDatasources()
+            .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+            .catch(() => setConnectors([]));
+        }}
       />
 
       <ConnectorPicker
