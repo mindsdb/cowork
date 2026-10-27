@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
 import type { IconSize } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
@@ -732,7 +732,19 @@ export const EventTimeline = memo(function EventTimeline({
     return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
   };
   const stick = useStickToBottom();
-  const { follow } = stick;
+  const { follow, anchorLastTurn } = stick;
+  // A message the user just sent moves to the top of the view, with room for
+  // the answer below it. The first render of a task only goes to its end.
+  const latestUserSeq = useMemo(
+    () => events.reduce((seq, event) => (event.type === 'user_message' ? event.seq : seq), 0),
+    [events],
+  );
+  const seenUserSeq = useRef<number | null>(null);
+  useEffect(() => {
+    const previous = seenUserSeq.current;
+    seenUserSeq.current = latestUserSeq;
+    if (previous != null && latestUserSeq > previous) anchorLastTurn();
+  }, [latestUserSeq, anchorLastTurn]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
     <ChatScroller
