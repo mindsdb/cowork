@@ -94,7 +94,7 @@ describe('letterTile — the letter', () => {
 
 /* The tile's own comment claims a contrast ratio, and a claim in a comment is
    the kind that rots. These recompute it from what ships: the mixed strings
-   `tileStyle` produces, against the real theme tokens read out of globals.css.
+   `tileStyle` produces, against the real theme tokens read out of tokens.css.
    At the original 70% glyph mix three hues failed this in light mode. */
 describe('letterTile — the glyph stays legible in both themes', () => {
   /* Read from disk rather than imported: vitest stubs CSS imports, so both a
@@ -102,7 +102,7 @@ describe('letterTile — the glyph stays legible in both themes', () => {
      would pass on nothing. Vitest pins the cwd to the config root, and a wrong
      path throws here instead of quietly matching zero tokens. */
   const css = readFileSync(
-    resolve(process.cwd(), 'src/renderer/cowork/styles/globals.css'),
+    resolve(process.cwd(), 'src/renderer/cowork/styles/tokens.css'),
     'utf8'
   );
 
@@ -113,7 +113,7 @@ describe('letterTile — the glyph stays legible in both themes', () => {
     const body = block.slice(0, block.indexOf('}'));
     const read = (name) => {
       const found = [...body.matchAll(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`, 'g'))];
-      if (!found.length) throw new Error(`globals.css: no --${name} under ${selector}`);
+      if (!found.length) throw new Error(`tokens.css: no --${name} under ${selector}`);
       return found.at(-1)[1];
     };
     return { surface: read('surface'), ink: read('ink') };
