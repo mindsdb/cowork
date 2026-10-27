@@ -16,21 +16,32 @@
 const ORG_MODE_ALWAYS = new Set(['preview', 'delete']);
 const ORG_MODE_NEEDS_URL = new Set(['open', 'copy-url']);
 const ORG_MODE_NEEDS_DRAFT = new Set(['download']);
-// These reach the local filesystem through the Electron bridge. `download` is
-// here for DESKTOP: there it streams the local serve URL, which the web build
-// against a local server also has — org mode answers it from the draft above.
-const NEEDS_BRIDGE = new Set(['reveal', 'download']);
+// Reveal reaches the local filesystem through the Electron bridge.
+const NEEDS_BRIDGE = new Set(['reveal']);
+/*
+ * Download streams the file from its serve or draft URL. Desktop always offers
+ * it; the web build against a local server offers it when the card carries one
+ * of those URLs (`canDownload`, from canDownloadArtifact).
+ */
+const NEEDS_BRIDGE_OR_FILE_URL = new Set(['download']);
 
-export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, hasDraft } = {}) {
+/** What a click shows once a file with no preview has downloaded. */
+export const NO_PREVIEW_DOWNLOADED_NOTE = 'No preview for this file type; downloaded instead.';
+
+export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, hasDraft, canDownload } = {}) {
   if (orgMode) {
     if (ORG_MODE_ALWAYS.has(id)) return true;
     if (ORG_MODE_NEEDS_URL.has(id)) return Boolean(published);
     if (ORG_MODE_NEEDS_DRAFT.has(id)) return Boolean(hasDraft);
     return false;
   }
-  // Second, independent gate: if /health was unreachable at boot then orgMode is a
-  // guess, and these two need a real filesystem either way.
+  /*
+   * Second, independent gate: if /health was unreachable at boot then orgMode
+   * is a guess. Reveal needs a real filesystem either way, and a download needs
+   * the bridge or a URL that carries the bytes.
+   */
   if (NEEDS_BRIDGE.has(id)) return Boolean(hasBridge);
+  if (NEEDS_BRIDGE_OR_FILE_URL.has(id)) return Boolean(hasBridge || canDownload);
   return true;
 }
 
@@ -58,12 +69,19 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, h
  * with "no shared link yet" (ENG-2044). Only when there is no primary file at
  * all is there genuinely nowhere to go.
  *
+ * Locally, a file the viewer cannot render goes to the desktop shell when there
+ * is one. The web build against a local server has no shell, so it saves the
+ * file from its serve or draft URL (`canDownload`) instead of leaving the click
+ * dead. Either way a `'download'` from a click shows NO_PREVIEW_DOWNLOADED_NOTE
+ * once the download succeeds.
+ *
  * `canPreviewInline` and `canPreviewDraft` stay the caller's to compute: the
  * extension rules differ slightly per surface and are not what this decides.
- * `canPreviewOrgDraft` in `artifactKinds.js` is the shared org-mode answer.
+ * `canPreviewOrgDraft` in `artifactKinds.js` is the shared org-mode answer, and
+ * every surface adds `canPreviewDocument` from `preview/kinds.js` to both.
  */
 export function artifactOpenTarget({
-  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge, hasDraft,
+  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge, hasDraft, canDownload,
 } = {}) {
   if (orgMode) {
     if (canPreviewDraft) return 'preview';
@@ -71,7 +89,8 @@ export function artifactOpenTarget({
     return hasDraft ? 'download' : null;
   }
   if (canPreviewInline) return 'preview';
-  return hasBridge ? 'os' : null;
+  if (hasBridge) return 'os';
+  return canDownload ? 'download' : null;
 }
 
 /**

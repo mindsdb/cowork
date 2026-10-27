@@ -73,6 +73,18 @@ export function effortOptions(levels: EffortLevels, projectDefault?: string | nu
 }
 
 
+/**
+ * Composer pill options under an operator's picker (lib/modelPicker): "Default" first, which sends no
+ * effort, so a user who never picks runs as the operator set it, then each level the operator allows.
+ */
+export function operatorEffortOptions(levels: string[]) {
+  return [
+    { value: MODEL_DEFAULT_VALUE, label: 'Default', triggerLabel: 'Default effort' },
+    ...levels.map((level) => ({ value: level, label: effortLabel(level), triggerLabel: `${effortLabel(level)} effort` })),
+  ];
+}
+
+
 /** Project settings options: "Model default" first, then the model's levels. */
 export function projectEffortOptions(levels: EffortLevels) {
   return [

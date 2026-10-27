@@ -23,8 +23,10 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
+import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
+import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
@@ -39,7 +41,8 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
@@ -50,7 +53,7 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget } from '../lib/artifactActions';
+import { artifactOpenTarget, NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
@@ -378,7 +381,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
         {attachments?.map((a) => {
           // Image attachments preview inline as a thumbnail (fetched as a
           // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image via the OS/browser. We can only build the
+          // opens the full image in a browser tab on web and saves it on
+          // desktop (openAuthenticatedResource). We can only build the
           // raw URL when the conversation is project-scoped; without it,
           // fall back to the icon+name chip.
           const isImage = a.mime && String(a.mime).startsWith('image/');
@@ -660,7 +664,14 @@ const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) 
   );
 });
 
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '' }) {
+/** A message that finished live a moment ago (ENG-3554): its steps fold
+ *  shut on screen. Past that, it renders folded like any older turn. */
+const JUST_FINISHED_MS = 2000;
+function justFinished(message) {
+  return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
+}
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, conversationLive, reopenable, reply }),
     [steps, startedAt, conversationLive, reopenable, reply],
@@ -738,7 +749,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, reop
           isActive={live.isActive}
           slotId={live.slotId}
           currentThought={live.currentThought}
-          currentLabel={pendingQuestion ? pendingQuestion.label : (active?.label || live.placeholderLabel || null)}
+          currentLabel={pendingQuestion ? pendingQuestion.label : ((active && stepDisplayLabel(active)) || live.placeholderLabel || null)}
           onActivateStep={onActivateStep}
         />,
       );
@@ -753,6 +764,8 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, reop
         startedAt={seg.startedAt}
         isActive={false}
         onActivateStep={onActivateStep}
+        // Only the last block was open on screen while the turn ran.
+        collapseOnMount={collapseOnMount && idx === segments.length - 1}
       />,
     );
     prevWasCard = false;
@@ -803,6 +816,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
   const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
+  // `note` reads like `ok` but stays as long as an error, since it is a sentence.
   const showStatus = (kind, text) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     setStatus({ kind, text });
@@ -821,49 +835,60 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
    * iframe, text via inline markdown / table / preformatted render, images
    * from the serve URL. Anything else falls through to the OS handler via the
-   * Electron bridge. In org mode the same question is answered from the
-   * authenticated draft URL instead, which rules images and fullstack apps out.
+   * Electron bridge, or on web to a download. In org mode the same question is
+   * answered from the authenticated draft URL instead, which rules images and
+   * fullstack apps out. The document types (.xlsx, .docx, .pptx, .pdf) join
+   * both answers wherever the shared document gate allows them.
    */
   const isImage = isImageArtifact(artifact);
-  const canPreviewInline = canPreviewLocally(artifact);
-  const canPreviewDraft = canPreviewOrgDraft(artifact);
+  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const canPreviewInline = canPreviewLocally(artifact) || canPreviewDoc;
+  const canPreviewDraft = canPreviewOrgDraft(artifact) || canPreviewDoc;
   // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
   // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
+  const hasBridge = host.isElectron || !host.isWeb;
+  const canDownload = canDownloadArtifact(artifact);
   const openTarget = artifactOpenTarget({
     orgMode,
     published,
     canPreviewInline,
     canPreviewDraft,
-    hasBridge: host.isElectron || !host.isWeb,
+    hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
+    canDownload,
   });
   /*
-   * Org-mode destinations are addressed by the server card, through the draft
-   * URL or the shared URL, so a path this client could not canonicalize does
-   * not disable them. Desktop still needs the local path it hands to the OS.
+   * Org-mode destinations, a download and a document preview are addressed by
+   * the server card, through the draft, serve or shared URL, so a path this
+   * client could not canonicalize does not disable them. The local preview and
+   * the desktop OS handoff still need the local path.
    *
    * `deleted` stays in both branches. It is the one term of `canAct` that says
    * nothing about addressing: a deleted artifact has a perfectly good draft URL
    * and still cannot be opened, so dropping it here would leave a tombstoned
    * card looking live and hand the whole guard to handleOpen alone.
    */
-  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
+  const needsLocalPath = !orgMode && openTarget !== 'download' && !canPreviewDoc;
+  const canActivate = !!openTarget && (needsLocalPath ? canAct : !deleted);
   const activateLabel = openTarget === 'published'
     ? 'Open shared artifact'
     : openTarget === 'download'
       ? 'Download'
       : openTarget === 'os' ? 'Open' : 'Open preview';
   /*
-   * What the card says when it has nowhere to go. Org mode has no local file to
-   * blame, and blaming one is actively wrong there: the card prints its own
-   * server path two lines down. Desktop keeps the path reason it can act on.
+   * What the card says when it has nowhere to go. Neither org mode nor web has
+   * a local file to blame, and blaming one is actively wrong there: the card
+   * prints its own server path two lines down. Desktop keeps the path reason it
+   * can act on.
    */
-  const noDestinationReason = orgMode && !openTarget
-    ? 'This artifact cannot be previewed and has no shared link yet.'
+  const noDestinationReason = !openTarget
+    ? (orgMode
+      ? 'This artifact cannot be previewed and has no shared link yet.'
+      : 'This artifact has no downloadable file yet.')
     : (disabledReason || 'No file path');
   /*
    * The shared URL stays reachable beside the preview: it is the address a
@@ -901,19 +926,20 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     if (openTarget === 'download') {
       /*
-       * Org mode, an artifact the draft cannot render and nobody shared: the
-       * authenticated draft URL still streams the file, so the click saves it
-       * instead of dead-ending on "no shared link yet" (ENG-2044).
+       * Nothing here can render the file and nothing shared it: the draft or
+       * serve URL still streams it, so the click saves it instead of
+       * dead-ending, and says why once the save went through.
        */
-      handleDownload();
+      await downloadFile('note', NO_PREVIEW_DOWNLOADED_NOTE);
       return;
     }
     if (openTarget === null) {
-      showStatus('error', orgMode
-        ? noDestinationReason
-        : (disabledReason || 'No artifact file path is available.'));
+      showStatus('error', noDestinationReason);
       return;
     }
+    await openInDefaultApp();
+  };
+  const openInDefaultApp = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
       return;
@@ -957,24 +983,24 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
-  const handleDownload = async () => {
-    /*
-     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
-     * the file by its draft URL and never has such a path, so gating on it
-     * there would refuse the one action that works. `deleted` still applies.
-     */
-    if (orgMode ? deleted : !canAct) {
-      showStatus('error', orgMode
-        ? 'This artifact was deleted.'
-        : (disabledReason || 'No artifact file path is available.'));
+  /*
+   * `canAct` is a desktop notion: a canonical local path. A download is
+   * addressed by the draft or serve URL and only names the saved file after
+   * the path, so gating on it would refuse the one action that works. `deleted`
+   * still applies.
+   */
+  const downloadFile = async (doneKind, doneText) => {
+    if (deleted) {
+      showStatus('error', 'This artifact was deleted.');
       return;
     }
     if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
       showStatus('error', 'This artifact has no downloadable file yet.');
       return;
     }
-    showStatus('ok', 'Downloading…');
+    showStatus(doneKind, doneText);
   };
+  const handleDownload = () => downloadFile('ok', 'Downloading…');
   /*
    * One primary action button instead of an Open/Show-in-Finder pair: what it
    * does follows what the artifact actually supports — Preview for anything the
@@ -983,6 +1009,8 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * file) — never both, and never a generic "Open" that hides which of the
    * two it's about to do. Org mode reads the same rule off the draft URL, and
    * an artifact it cannot render keeps the shared page as its one destination.
+   * A Download that stands in for a preview runs the click itself, so it says
+   * why it downloaded once the save went through.
    */
   const primaryAction = orgMode
     ? (openTarget === 'preview'
@@ -990,17 +1018,19 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       : openTarget === 'published'
         ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
         : openTarget === 'download'
-          ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+          ? { label: 'Download', onClick: handleOpen, tooltip: 'Save this artifact\'s file' }
           : null)
-    : canPreviewInline
+    : openTarget === 'preview'
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
-      : host.isWeb
-        ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
+      : openTarget === 'download'
+        ? { label: 'Download', onClick: handleOpen, tooltip: canAct ? `Download ${path}` : '' }
         // handleReveal already falls back from the Electron bridge to the
         // server-side reveal endpoint and surfaces its own error, so this
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
-        : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
+        : openTarget === 'os'
+          ? { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' }
+          : null;
   /*
    * Only when the primary button is the preview: otherwise "Open" already is
    * the shared page and a second button would point at the same place.
@@ -1012,14 +1042,22 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * primary action (ENG-2044). The shared link, when there is one, is the
    * visible secondary and Download moves behind "…"; otherwise Download is
    * the secondary.
+   *
+   * A document preview keeps the file one click away beside it: Download on
+   * web, and on desktop Open, which hands the file to the default app.
    */
   const sharedLinkAction = !deleted && showSharedLink
     ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
     : null;
-  const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
+  const downloadAction = !deleted && openTarget !== 'download'
+    && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
     ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
     : null;
-  const primaryDisabled = !orgMode && !canAct;
+  const openInAppAction = !deleted && !orgMode && hasBridge && canPreviewDoc && openTarget === 'preview'
+    ? { label: 'Open', onClick: openInDefaultApp, tooltip: 'Open in the default app' }
+    : null;
+  const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
@@ -1116,7 +1154,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           <span className="min-w-0 truncate">{previewText}</span>
         </span>
       )}
-      {(sharedLinkAction || downloadAction) && (
+      {secondaryAction && (
         <div
           className="card__rail chat-artifact-card__tools"
           onClick={(e) => e.stopPropagation()}
@@ -1124,7 +1162,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
         >
           <ActionBar
             size="xs"
-            secondary={sharedLinkAction || downloadAction}
+            secondary={secondaryAction}
             overflow={[sharedLinkAction && downloadAction]}
           />
         </div>
@@ -1851,6 +1889,10 @@ export function redirectForTask(redirects, taskId) {
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
+  // The last /health snapshot, for the diagnostics a user copies off a failed
+  // turn. Read from App rather than re-fetched at click time: the turn may
+  // have failed because the server is the thing that went away.
+  health,
   onSend,
   onSwitchToAirAndResend,
   onBack,
@@ -3075,8 +3117,16 @@ export default function ChatView({
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
-                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Reference: {m.requestId}
+                        <div
+                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <span>Reference: {m.requestId}</span>
+                          <CopyDiagnosticsButton
+                            requestId={m.requestId}
+                            code={m.code}
+                            health={health}
+                          />
                         </div>
                       )}
                     </Alert>
@@ -3119,6 +3169,7 @@ export default function ChatView({
                   {/* Above the text: a question is asked, then answered, then
                       (at most) the turn's closing text streams — so every
                       card and block precedes the text that came after. */}
+                  {justFinished(m) && m._leavingTake && <FirstTake take={null} leavingText={m._leavingTake} />}
                   <TurnSegments
                     steps={m.steps}
                     startedAt={m.startedAt}
@@ -3140,6 +3191,9 @@ export default function ChatView({
                     onAnswerAsMessage={(text) => onSend?.(text, [])}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     idPrefix={messageKey(m, i)}
+                    // Only right after it finished live: reopening the task
+                    // later shows the steps already folded.
+                    collapseOnMount={justFinished(m)}
                   />
                   <TextBlock
                     text={m.content}

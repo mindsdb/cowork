@@ -46,6 +46,13 @@ export const isWeb: boolean = !isElectron;
 export const codeModeAvailable: boolean =
   isElectron && bridge.codeModeAvailable === true;
 
+/* Whether this shell may mount the sandboxed document preview frame. Web
+   always may. A desktop shell may only when its preload reports exactly true,
+   so an older shell, or one whose bridge omits the flag, keeps opening those
+   files in the default app. */
+export const supportsDocumentPreview: boolean =
+  isWeb || bridge.supportsDocumentPreview === true;
+
 // ---- Platform identity --------------------------------------------------
 
 export type PlatformId = 'darwin' | 'win32' | 'linux' | 'web';
@@ -514,6 +521,8 @@ export async function checkConfigured(): Promise<{
   provider: string;
   // Electron is desktop by definition, so the bridge path leaves this false.
   orgMode?: boolean;
+  // Only a server that runs live apps reports them; the bridge path never does.
+  liveApps?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -526,11 +535,13 @@ export async function checkConfigured(): Promise<{
     config_ready?: boolean;
     provider?: string;
     org_mode?: boolean;
+    live_apps?: boolean;
   };
   return {
     configured: Boolean(h.config_ready),
     provider: h.provider ?? '',
     orgMode: Boolean(h.org_mode),
+    liveApps: h.live_apps === true,
   };
 }
 
@@ -1681,6 +1692,7 @@ export const host = {
   isWeb,
   isElectron,
   codeModeAvailable,
+  supportsDocumentPreview,
   getPlatform,
   isMac,
   getApiOrigin,
