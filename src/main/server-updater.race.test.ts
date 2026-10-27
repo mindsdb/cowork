@@ -35,6 +35,9 @@ vi.mock('./server-process', async () => {
 });
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('./server-release-install', () => ({
+  lockedServerInstallArgs: vi.fn((_uv: string, args: string[]) => args),
+}));
 
 import { startServer } from './server-process';
 import { repairServerInstall } from './server-updater';

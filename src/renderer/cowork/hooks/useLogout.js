@@ -60,7 +60,7 @@ export const LOGOUT_WAIT_NOTE = 'Still signing you out. You can close this — i
  * `locked` is "the dialog refuses to close" and is the half with a deadline.
  * Splitting them is what lets the work continue while the person walks away.
  */
-let state = { settling: false, locked: false };
+let state = { settling: false, locked: false, error: '' };
 const listeners = new Set();
 let inFlight = null;
 let lockTimer = null;
@@ -92,7 +92,7 @@ async function runLogout() {
   // Guard against double-fire (Enter / re-click), and against the second
   // entry point firing while the first is still in flight.
   if (inFlight) return inFlight;
-  publish({ settling: true, locked: true });
+  publish({ settling: true, locked: true, error: '' });
   lockTimer = setTimeout(() => {
     lockTimer = null;
     publish({ locked: false });
@@ -103,10 +103,8 @@ async function runLogout() {
     try {
       await host.logout();
     } catch {
-      // logout() rejected. The main handler clears the refresh token + the
-      // server-DB credentials early, before anything that can throw, so the
-      // user IS signed out — main just threw before it could drive its own
-      // reload. Fall through and reload from here (see below).
+      // Desktop clears credentials before its reload. Web can reject before
+      // ending the session when preview revocation fails, so it needs retry.
       ok = false;
     } finally {
       // Whatever happened, the dialog stops being the app's only exit. There
@@ -127,8 +125,12 @@ async function runLogout() {
     // redirects to the end-session endpoint. A renderer reload here would race
     // and win — cancelling the web redirect (SSO cookie survives → silent
     // re-auth) or double-reloading Electron into a stuck modal. So we reload
-    // immediately only on REJECTION, where the platform threw before its own
-    // navigation and nothing else will. (ENG-1206)
+    // immediately only on a desktop rejection. Web leaves the dialog open
+    // with a retry message when it cannot confirm sign-out.
+    if (!ok && host.isWeb) {
+      publish({ error: 'Could not finish signing out. Please try again.' });
+      return;
+    }
     if (!ok) {
       window.location.reload();
       return;
@@ -148,12 +150,12 @@ async function runLogout() {
 }
 
 export function useLogout() {
-  const { settling, locked } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const { settling, locked, error } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   return {
     loggingOut: settling,
     locked,
-    waitNote: settling && !locked ? LOGOUT_WAIT_NOTE : '',
+    waitNote: error || (settling && !locked ? LOGOUT_WAIT_NOTE : ''),
     logout: runLogout,
   };
 }

@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
-  host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn() },
+  host: {
+    isWeb: true,
+    isElectron: false,
+    isMac: () => false,
+    openExternal: vi.fn(),
+    getApiOrigin: () => 'https://cowork.example',
+  },
 }));
 vi.mock('./publish/PublishMenu', () => ({
   PublishMenu: () => <button type="button">Share</button>,

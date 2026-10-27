@@ -157,6 +157,36 @@ export async function loadArtifactDraftDocument(draftUrl) {
   };
 }
 
+/*
+ * A card's draft URL, `/api/v1/artifacts/drafts/{project_ref}/{artifact_id}/{path}`,
+ * names the project and the artifact the export route takes. Reading both from
+ * the URL addresses exactly the artifact whose file the card links to.
+ */
+const DRAFT_PATH_RE = /^\/api\/v1\/artifacts\/drafts\/([^/]+)\/([^/]+)\/[^/]/;
+
+function draftArtifactRef(draftUrl) {
+  const match = DRAFT_PATH_RE.exec(new URL(resolveSameOriginDraftUrl(draftUrl)).pathname);
+  if (!match) throw new Error('Artifact draft URL names no artifact');
+  return { projectRef: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]) };
+}
+
+/**
+ * Exports the artifact's primary file to `format`, written beside it. The body
+ * names the format and nothing else: the route always exports the primary
+ * file, and answers 422 to any other field.
+ *
+ * @param {string} draftUrl
+ * @param {import('../components/artifact').ArtifactExportFormat} format
+ * @returns {Promise<import('../components/artifact').ArtifactExportResult>}
+ */
+export async function requestArtifactExport(draftUrl, format) {
+  const { projectRef, artifactId } = draftArtifactRef(draftUrl);
+  return request(
+    `/artifacts/workspace/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/export`,
+    { method: 'POST', body: JSON.stringify({ format }) },
+  );
+}
+
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

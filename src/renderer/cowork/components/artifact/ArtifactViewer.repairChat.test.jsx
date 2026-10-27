@@ -10,6 +10,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 const NEW_CHAT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const ORIGIN_CHAT = '3f6a1c8e-6b1d-4a2f-9a1e-2c7d5b0e4a11';
 const HOST_CHAT = '9c2b7d10-4e5f-4a11-8b22-6d3e1f0a7c55';
+const NOT_STARTED = "The agent couldn't start on this comment. Check that an agent provider is connected and that you can run tasks in this project, then try again.";
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -84,10 +85,13 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 // Stands in for the comment inbox: one button that addresses a thread.
 vi.mock('./ArtifactViewerBody', () => ({
-  ArtifactViewerBody: ({ review }) => (
-    <button onClick={() => review.onAddressWithAgent({ id: 'thread-1', replies: [] })}>
-      Address with agent
-    </button>
+  ArtifactViewerBody: ({ review, preview }) => (
+    <div>
+      <button onClick={() => review.onAddressWithAgent({ id: 'thread-1', replies: [] })}>
+        Address with agent
+      </button>
+      <div data-testid="viewer-error">{preview.error}</div>
+    </div>
   ),
 }));
 
@@ -207,5 +211,18 @@ describe('the chat an artifact repair is addressed to', () => {
     fireEvent.click(screen.getByText('Address with agent'));
 
     await waitFor(() => expect(workspaceMock.cancelRepair).toHaveBeenCalledWith('repair-1'));
+    // Refusal has several causes (no provider, a project the user can't run,
+    // a chat deleted meanwhile), so the message names none of them.
+    await waitFor(() => expect(screen.getByTestId('viewer-error')).toHaveTextContent(NOT_STARTED));
+  });
+
+  it('cancels the repair the same way when the chat hosting the viewer refuses the turn', async () => {
+    addressWithAgent({
+      conversationId: HOST_CHAT,
+      onAddressWithAgent: vi.fn(async () => false),
+    });
+
+    await waitFor(() => expect(workspaceMock.cancelRepair).toHaveBeenCalledWith('repair-1'));
+    await waitFor(() => expect(screen.getByTestId('viewer-error')).toHaveTextContent(NOT_STARTED));
   });
 });

@@ -1,0 +1,128 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  isPreviewToken,
+  MAX_ERROR_DETAIL_LENGTH,
+  newPreviewToken,
+  readFrameReady,
+  readFrameToParent,
+  readParentPort,
+  readParentToFrame,
+} from './protocol';
+import { documentPreviewData } from '../../../../../tests/helpers/documentPreviewData';
+
+const data = documentPreviewData();
+const TOKEN = newPreviewToken();
+const OTHER = newPreviewToken();
+
+describe('preview tokens', () => {
+  it('are 128 bits of lowercase hex, new each time', () => {
+    expect(TOKEN).toMatch(/^[0-9a-f]{32}$/);
+    expect(isPreviewToken(TOKEN)).toBe(true);
+    expect(OTHER).not.toBe(TOKEN);
+  });
+
+  it.each(data.malformedTokens)('rejects a token that is $label', ({ token }) => {
+    expect(isPreviewToken(token)).toBe(false);
+  });
+
+  /* Values that aren't text at all. YAML has no undefined, so these stay here. */
+  it.each([undefined, null, 42])('rejects %s', (value) => {
+    expect(isPreviewToken(value)).toBe(false);
+  });
+});
+
+/* Each reader returns the typed message for this frame's token and null for
+   anything else, so a side drops a message with a wrong or missing token. */
+describe('message readers drop a wrong or missing token', () => {
+  const summary = { type: 'xlsx', units: 2, truncated: false };
+  const cases: Array<[string, (data: unknown, token: string) => unknown, Record<string, unknown>]> = [
+    ['FrameReady', readFrameReady, { source: 'cowork-document-preview', type: 'ready' }],
+    ['ParentPort', readParentPort, { type: 'port' }],
+    ['document', readParentToFrame, { type: 'document', previewType: 'xlsx', bytes: new ArrayBuffer(1) }],
+    ['asset reply', readParentToFrame, { type: 'asset', requestId: 1, name: 'a', bytes: null }],
+    ['progress', readFrameToParent, { type: 'progress', done: 1, total: 2 }],
+    ['rendered', readFrameToParent, { type: 'rendered', summary }],
+    ['asset request', readFrameToParent, { type: 'asset-request', requestId: 1, name: 'a' }],
+    ['draw', readFrameToParent, { type: 'draw', id: 3, state: 'start' }],
+    ['error', readFrameToParent, { type: 'error', code: 'parse-failed' }],
+  ];
+
+  it.each(cases)('%s', (_label, read, message) => {
+    expect(read({ ...message, token: TOKEN }, TOKEN)).toMatchObject(message);
+    expect(read({ ...message, token: OTHER }, TOKEN)).toBeNull();
+    expect(read(message, TOKEN)).toBeNull();
+    expect(read({ ...message, token: '' }, TOKEN)).toBeNull();
+  });
+});
+
+describe('message shapes', () => {
+  it('drops a summary with a type outside the four, or units that are not a count', () => {
+    for (const summary of [
+      { type: 'html', units: 1, truncated: false },
+      { type: 'toString', units: 1, truncated: false },
+      { type: 'pdf', units: -1, truncated: false },
+      { type: 'pdf', units: 1.5, truncated: false },
+      { type: 'pdf', units: 1, truncated: 'no' },
+    ]) {
+      expect(readFrameToParent({ token: TOKEN, type: 'rendered', summary }, TOKEN)).toBeNull();
+    }
+  });
+
+  it('drops an error code outside the contract, and caps the detail', () => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code: 'oops' }, TOKEN)).toBeNull();
+    const message = readFrameToParent({ token: TOKEN, type: 'error', code: 'internal', detail: 'x'.repeat(5000) }, TOKEN);
+    expect(message).toMatchObject({ code: 'internal' });
+    expect(message?.type === 'error' && message.detail?.length).toBe(MAX_ERROR_DETAIL_LENGTH);
+  });
+
+  /* timeout belongs to the parent, and so does too-large that names no
+     limit, so the frame never sends them. */
+  it.each(['too-large', 'timeout'])('drops a frame error with the parent-owned code %s', (code) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code }, TOKEN)).toBeNull();
+  });
+
+  it.each([
+    { code: 'too-large', limit: 'maxDocxNodes' },
+    { code: 'zip-limit', limit: 'maxZipEntries' },
+    { code: 'zip-limit', limit: 'maxInflatedBytes' },
+    { code: 'zip-limit', limit: 'maxZipEntryInflatedBytes' },
+  ])('keeps $code naming the frame-owned limit $limit', ({ code, limit }) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code, limit }, TOKEN)).toEqual({ token: TOKEN, type: 'error', code, limit });
+  });
+
+  it.each([
+    { code: 'too-large', limit: 'maxBytes' },
+    { code: 'too-large', limit: 'readyTimeoutMs' },
+    { code: 'timeout', limit: 'progressTimeoutMs' },
+    { code: 'too-large', limit: 'maxSheets' },
+    { code: 'too-large', limit: 'toString' },
+    { code: 'parse-failed', limit: 'maxDocxNodes' },
+    { code: 'unsupported', limit: 'maxZipEntries' },
+  ])('drops $code naming $limit, which the frame may not report together', ({ code, limit }) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code, limit }, TOKEN)).toBeNull();
+  });
+
+  it('drops a draw whose id is not a whole count or whose state is neither start nor end', () => {
+    for (const draw of [
+      { id: -1, state: 'start' },
+      { id: 1.5, state: 'end' },
+      { id: '1', state: 'start' },
+      { id: 1, state: 'done' },
+      { id: 1 },
+    ]) {
+      expect(readFrameToParent({ token: TOKEN, type: 'draw', ...draw }, TOKEN)).toBeNull();
+    }
+    expect(readFrameToParent({ token: TOKEN, type: 'draw', id: 0, state: 'end', extra: 1 }, TOKEN))
+      .toEqual({ token: TOKEN, type: 'draw', id: 0, state: 'end' });
+  });
+
+  it('drops a document whose bytes are not an ArrayBuffer', () => {
+    expect(readParentToFrame({ token: TOKEN, type: 'document', previewType: 'pdf', bytes: 'abc' }, TOKEN)).toBeNull();
+  });
+
+  it('keeps only the fields it knows', () => {
+    expect(readFrameReady({ source: 'cowork-document-preview', type: 'ready', token: TOKEN, extra: 1 }, TOKEN))
+      .toEqual({ source: 'cowork-document-preview', type: 'ready', token: TOKEN });
+  });
+});
