@@ -65,15 +65,11 @@ describe('scrubLog', () => {
     }
   });
 
-  it('redacts the credential in a quoted Authorization header, as a dict of headers prints it', () => {
-    for (const line of [
-      "{'Authorization': 'Basic dXNlcjpodW50ZXIyc2VjcmV0'}",
-      '{"Authorization": "Basic dXNlcjpodW50ZXIyc2VjcmV0", "Accept": "*/*"}',
-    ]) {
-      const out = scrubLog(line);
-      expect(out).not.toMatch(/dXNlcjpodW50ZXIyc2VjcmV0/);
-      expect(out).toMatch(/Authorization["']: ["']Basic \[redacted\]["']/);
-    }
+  it('redacts a quoted Authorization header to the end of its line, as a dict of headers prints it', () => {
+    expect(scrubLog("{'Authorization': 'Basic dXNlcjpodW50ZXIyc2VjcmV0'}"))
+      .toBe("{'Authorization': 'Basic [redacted]");
+    expect(scrubLog('{"Authorization": "Basic dXNlcjpodW50ZXIyc2VjcmV0", "Accept": "*/*"}'))
+      .toBe('{"Authorization": "Basic [redacted]');
   });
 
   it('redacts a quoted value that contains spaces', () => {
@@ -82,25 +78,40 @@ describe('scrubLog', () => {
     expect(scrubLog('{"api_key": "AIza abc def"}')).not.toMatch(/AIza abc def/);
   });
 
-  it('redacts a quoted value through the other quote and escaped quotes', () => {
-    expect(scrubLog(`password="it's a secret"`)).toBe('password="[redacted]"');
-    expect(scrubLog('{"password":"abc\\"SUPERSECRET"}')).toBe('{"password":"[redacted]"}');
-    expect(scrubLog("{'password': 'it\\'s hidden'}")).toBe("{'password': '[redacted]'}");
+  it('redacts a quoted value to the end of its line, whatever quotes it contains', () => {
+    expect(scrubLog(`password="it's a secret"`)).toBe('password="[redacted]');
+    expect(scrubLog('{"password":"abc\\"SUPERSECRET"}')).toBe('{"password":"[redacted]');
+    expect(scrubLog("{'password': 'it\\'s hidden'}")).toBe("{'password': '[redacted]");
+    expect(scrubLog('password="a" token="b" x=1')).toBe('password="[redacted]');
   });
 
-  it('redacts secrets in JSON that is itself stored as a JSON string', () => {
-    expect(scrubLog('{"body": "{\\"password\\": \\"hunter2\\"}"}'))
-      .toBe('{"body": "{\\"password\\": \\"[redacted]\\"}"}');
+  it('redacts secrets in JSON nested inside JSON strings at any depth', () => {
+    // A quote inside the secret is escaped once more than the value's own
+    // quotes; counting escapes to find the end is what used to leak the suffix.
+    const nested = (depth, inner) => {
+      let text = JSON.stringify(inner);
+      for (let i = 1; i < depth; i += 1) text = JSON.stringify({ body: text });
+      return text;
+    };
+    for (const depth of [1, 2, 3]) {
+      for (const inner of [
+        { password: 'abc"SUPERSECRET' },
+        { Authorization: 'Basic abc"SUPERSECRET' },
+      ]) {
+        expect(scrubLog(nested(depth, inner))).not.toMatch(/SUPERSECRET|abc/);
+      }
+    }
     expect(scrubLog('{"headers": "{\\"Authorization\\": \\"Basic dXNlcjpodW50ZXIy\\"}"}'))
-      .toBe('{"headers": "{\\"Authorization\\": \\"Basic [redacted]\\"}"}');
+      .toBe('{"headers": "{\\"Authorization\\": \\"Basic [redacted]');
   });
 
   it('keeps a known scheme word and redacts everything after it', () => {
     expect(scrubLog('Authorization: ApiKey hunter2secret')).toBe('Authorization: ApiKey [redacted]');
     expect(scrubLog('{"Authorization": "SSWS hunter2secret", "Accept": "*/*"}'))
-      .toBe('{"Authorization": "SSWS [redacted]", "Accept": "*/*"}');
+      .toBe('{"Authorization": "SSWS [redacted]');
     expect(scrubLog('Authorization: Digest username="bob", response="6629fae4"'))
       .toBe('Authorization: Digest [redacted]');
+    expect(scrubLog("'authorization': 'Bearer abc\\'def123456'")).toBe("'authorization': 'Bearer [redacted]");
   });
 
   it('redacts the whole value when its first word is not a known scheme', () => {
@@ -110,15 +121,10 @@ describe('scrubLog', () => {
     expect(scrubLog('Authorization:\nnext line stays')).toBe('Authorization:\nnext line stays');
   });
 
-  it('reads a quoted Authorization value through an escaped quote', () => {
-    expect(scrubLog("'authorization': 'Bearer abc\\'def123456'")).toBe("'authorization': 'Bearer [redacted]'");
-  });
-
-  it('redacts a quoted value whose closing quote never arrives, to the end of its line only', () => {
+  it('stops at the end of the line a quoted value starts on', () => {
     expect(scrubLog('password="abc def ghi\nnext line')).toBe('password="[redacted]\nnext line');
     expect(scrubLog("{'password': 'cut off mid val")).toBe("{'password': '[redacted]");
     expect(scrubLog('token="ends in backslash\\')).toBe('token="[redacted]');
-    expect(scrubLog('password="a" token="b" x=1')).toBe('password="[redacted]" token="[redacted]" x=1');
   });
 
   it('redacts a Google API key that appears on its own', () => {
