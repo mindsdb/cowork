@@ -179,11 +179,19 @@ function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promis
   return withServerMaintenance(
     () =>
       new Promise((resolve) => {
+        let commandArgs: string[];
+        try {
+          commandArgs = lockedServerInstallArgs(uv, args);
+        } catch (error) {
+          // No installer has started, so the caller can restart the prior server.
+          resolve({ ok: false, stderr: error instanceof Error ? error.message : String(error), unchanged: true });
+          return;
+        }
         // The install replaces the server whose answer is recorded.
         forgetServerCapability();
         execFile(
           uv,
-          lockedServerInstallArgs(uv, args),
+          commandArgs,
           { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed', ...extraEnv }, timeout: 180000 },
           (err, _stdout, stderr) => resolve({
             ok: !err, stderr: stderr || err?.message || '',

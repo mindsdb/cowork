@@ -1,0 +1,87 @@
+name: Document preview
+
+# The document preview suite (playwright.document-preview.config.ts):
+#   web       Chromium against the preview harness, one spec per document type.
+#   electron  The desktop isolation spec against the built app, under xvfb.
+#
+# Each job allows zero specs only until the code its specs cover exists (the
+# preview runtime for web, the preload flag for electron). After that, a run
+# that finds no specs fails.
+#
+# `workflow_call` only, like tests-unit.yml: the pull-request, staging and prod
+# pipelines each call it, so every event lands in one run tree. Concurrency
+# belongs to the callers.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      # --with-deps also installs fonts-wqy-zenhei and fonts-ipafont-gothic, the CJK fallback faces the Word and PDF fixtures draw with.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build web
+        run: npm run build:web
+      - name: Run the web project
+        run: |
+          if [ -d src/renderer/cowork/preview/runtime ] || [ -e e2e/document-preview/vite.config.ts ]; then
+            allow_no_tests=
+          else
+            allow_no_tests=--pass-with-no-tests
+          fi
+          npx playwright test --config playwright.document-preview.config.ts --project web $allow_no_tests
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: document-preview-web-traces
+          path: test-results/
+          retention-days: 7
+
+  electron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - name: Build main + renderer
+        run: npm run build
+      - name: Install Electron Linux runtime deps
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-0
+      - name: Run the electron project (headless via xvfb)
+        run: |
+          if grep -q supportsDocumentPreview src/main/preload.ts; then
+            allow_no_tests=
+          else
+            allow_no_tests=--pass-with-no-tests
+          fi
+          xvfb-run --auto-servernum -- npx playwright test --config playwright.document-preview.config.ts --project electron $allow_no_tests
+        env:
+          # Surface the Electron main process stdout/stderr in the CI log; a
+          # main-process crash otherwise reads as a bare firstWindow timeout.
+          DEBUG: pw:browser*
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: document-preview-electron-traces
+          path: test-results/
+          retention-days: 7

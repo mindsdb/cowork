@@ -1,0 +1,17 @@
+# The artifact, its saved source and the text ArtifactViewer.unsavedEdit.test.jsx
+# types into the editor.
+savedText: Saved line
+typedText: ' and an unsaved edit'
+artifact:
+  id: aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa
+  title: Notes
+  type: document
+  ext: .md
+  path: /artifacts/notes/notes.md
+  canonicalPath: /artifacts/notes/notes.md
+# What the source route answers before any save, and the revision a save makes.
+source:
+  path: notes.md
+  revision: { id: rev-1, number: 1 }
+  capabilities: { role: owner, canPreview: true, canComment: true, canEdit: true }
+savedRevision: { id: rev-2, number: 2 }
