@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -122,14 +122,16 @@ describe('SharePointImportModal', () => {
     renderModal();
 
     await within(tree()).findByText('f100.txt');
-    // fireEvent, not userEvent: the pick logic is the subject, not pointer events.
-    for (let n = 0; n < 100; n += 1) {
-      fireEvent.click(screen.getByRole('checkbox', { name: `Pick f${n}.txt` }));
-    }
+    // One act around the clicks keeps a hundred picks of a 101-row tree well
+    // inside the timeout on a loaded machine (21 s without it, under load).
+    const boxes = Array.from({ length: 100 }, (_, n) => screen.getByRole('checkbox', { name: `Pick f${n}.txt` }));
+    act(() => {
+      for (const box of boxes) fireEvent.click(box);
+    });
 
     expect(screen.getByText(/100 of 100 picked/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Pick f100.txt' })).toHaveAttribute('data-disabled');
-  }, 20_000); // A hundred re-renders of a 101-row tree take about 3 s on an idle machine.
+  });
 
   it('imports the picks in one request, shows the result and announces the new files', async () => {
     const user = userEvent.setup();
