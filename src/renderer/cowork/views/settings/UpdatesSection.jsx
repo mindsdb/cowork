@@ -5,7 +5,12 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
-import { MIN_SUPPORTED_SHELL, SUPPORTED_SHELL_WINDOW_DAYS } from '../../../../shared/shell-support';
+import {
+  deriveShellOsCappedNotice,
+  MIN_MACOS_FOR_LATEST_SHELL,
+  MIN_SUPPORTED_SHELL,
+  SUPPORTED_SHELL_WINDOW_DAYS,
+} from '../../../../shared/shell-support';
 import { shellAutoOwnsBanner, debInstallStep, abortedInstallHint } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 import { STOCK_PRODUCT_NAME } from '../../../../shared/product-name';
@@ -204,6 +209,7 @@ export default function UpdatesSection({
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
             const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
             const shellTooOld = shellSupport?.status === 'too-old';
+            const osCappedNotice = deriveShellOsCappedNotice(shellSupport);
             // Off web the backend rows always say something: a version, or why
             // there is none yet. On web the sidecar is the host, so a missing
             // version there keeps the plain dash.
@@ -211,7 +217,9 @@ export default function UpdatesSection({
               ? (BACKEND_VERSION_PLACEHOLDER[backendVersions.state] || '—')
               : '—';
             const rows = [
-              ['App shell', shellTooOld ? `${shellVer} (too old)` : (shellVer || '—')],
+              ['App shell', shellTooOld
+                ? `${shellVer} (too old)`
+                : osCappedNotice ? `${shellVer} (no updates on macOS ${shellSupport.macosMajor})` : (shellVer || '—')],
               ...(buildLabel ? [['Build', buildLabel]] : []),
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
               ['Server', serverVersion || backendPlaceholder],
@@ -247,12 +255,25 @@ export default function UpdatesSection({
                         ⚠ too old
                       </span>
                     )}
+                    {osCappedNotice && (
+                      <span
+                        title={`The newest app needs macOS ${MIN_MACOS_FOR_LATEST_SHELL} or later, so this app no longer updates.`}
+                        className="text-warning text-[11.5px] font-semibold font-[family-name:var(--font-sans)]"
+                      >
+                        ⚠ no updates on macOS {shellSupport.macosMajor}
+                      </span>
+                    )}
                   </span>
                 )}
                 {shellTooOld && (
                   <Alert variant="warning" icon={Ico.warning ? Ico.warning(16) : undefined} data-testid="shell-too-old">
                     This app is too old for this version of Cowork. Some features are hidden until the
                     app updates to {shellSupport.latestShellVersion}. Use Software updates below.
+                  </Alert>
+                )}
+                {osCappedNotice && (
+                  <Alert variant="warning" icon={Ico.warning ? Ico.warning(16) : undefined} data-testid="shell-os-capped">
+                    <strong>{osCappedNotice.title}.</strong> {osCappedNotice.body}
                   </Alert>
                 )}
                 <button
