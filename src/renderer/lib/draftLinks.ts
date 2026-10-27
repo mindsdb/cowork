@@ -11,8 +11,13 @@
  * platform UI and from resolveBootTarget (bootTarget.ts) on platform builds,
  * and again on Try again. Until then, and whenever /health can't be read, it
  * reads false.
+ *
+ * Only a build whose page lets a frame load the draft hosts can use links:
+ * vite.config.ts adds them to the CSP of the web build with the platform UI.
+ * useDraftLinks reads false in any other build, whatever /health says.
  */
 import { useSyncExternalStore } from 'react';
+import { PLATFORM_UI } from './deployment';
 
 let draftLinks = false;
 const listeners = new Set<() => void>();
@@ -35,5 +40,6 @@ export function subscribeDraftLinks(fn: () => void): () => void {
 }
 
 export function useDraftLinks(): boolean {
-  return useSyncExternalStore(subscribeDraftLinks, getDraftLinks, getDraftLinks);
+  const value = useSyncExternalStore(subscribeDraftLinks, getDraftLinks, getDraftLinks);
+  return PLATFORM_UI && value;
 }

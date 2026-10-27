@@ -14,13 +14,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
-import { setDraftLinks } from '../../../lib/draftLinks';
+import { getDraftLinks, setDraftLinks } from '../../../lib/draftLinks';
 
 const LOOPBACK = 'http://127.0.0.1:26866';
 const WEB_ORIGIN = 'https://cowork.example';
 
 const openExternal = vi.hoisted(() => vi.fn(async () => {}));
 const createDraftLink = vi.hoisted(() => vi.fn());
+const checkConfigured = vi.hoisted(() => vi.fn());
 const openPath = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const publishState = vi.hoisted(() => ({ publishedUrl: '' }));
 const headerProps = vi.hoisted(() => ({ current: null }));
@@ -76,7 +77,7 @@ vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   })),
   createDraftLink,
 }));
-vi.mock('../../../platform/host', () => ({
+vi.mock('../../../platform/host', async (importOriginal) => ({
   host: {
     get isElectron() { return shell.electron; },
     get isWeb() { return !shell.electron; },
@@ -88,6 +89,9 @@ vi.mock('../../../platform/host', () => ({
     getApiOrigin: () => (shell.electron ? LOOPBACK : WEB_ORIGIN),
     openExternal,
     openPath,
+    // The real tab opener: these tests watch window.open and the tab itself.
+    openPendingTab: (await importOriginal()).openPendingTab,
+    checkConfigured,
   },
 }));
 vi.mock('./publish/usePublish', () => ({
@@ -255,6 +259,8 @@ describe('open in a browser tab — web / org, signed draft links', () => {
   beforeEach(() => {
     shell.electron = false;
     setDraftLinks(true);
+    checkConfigured.mockReset();
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: true });
     tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
     openSpy = vi.spyOn(window, 'open').mockReturnValue(tab);
   });
@@ -318,6 +324,24 @@ describe('open in a browser tab — web / org, signed draft links', () => {
     expect(tab.location.replace).not.toHaveBeenCalled();
     expect(await screen.findByRole('alert')).toHaveTextContent('Draft links are not available (HTTP 404)');
     expect(bodyProps.current?.preview?.error).toBe('');
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  // Rolled back while the page was open: this click fails, and later opens and
+  // previews stop asking for links.
+  it('turns links off when /health says they are off after a 404', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: FRAME_LINK, expiresAt: 1 })
+      .mockRejectedValueOnce(Object.assign(new Error('Draft links are not available'), { status: 404 }));
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: false });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await waitFor(() => expect(createDraftLink).toHaveBeenCalledTimes(1));
+    await headerProps.current.actions.onOpenInBrowserTab();
+
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(false);
   });
 
   it('closes the tab when the link is not on a draft host', async () => {
@@ -331,6 +355,7 @@ describe('open in a browser tab — web / org, signed draft links', () => {
 
     expect(tab.close).toHaveBeenCalled();
     expect(tab.location.replace).not.toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(false);
   });
 
   it('clears the last tab error on the next click', async () => {

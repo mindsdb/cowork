@@ -35,7 +35,7 @@ import {
   loadArtifactDraftDocument,
 } from '../../lib/artifactWorkspaceApi';
 import { DRAFT_LINK_ORIGINS } from '../../../../shared/draft-link-origins';
-import { useDraftLinks } from '../../../lib/draftLinks';
+import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -81,10 +81,12 @@ import {
 // fall back to a monospace block.
 
 
+class RefusedDraftLink extends Error {}
+
 // The frame's `src` and the new tab's address for a link from
 // `createDraftLink`: an https URL on one of DRAFT_LINK_ORIGINS whose path
 // starts at /_t/, rebuilt from that origin so nothing else in the server's
-// string reaches a frame or a tab. Anything else is an error.
+// string reaches a frame or a tab. Anything else is refused.
 function draftLinkUrl(link) {
   const raw = typeof link?.url === 'string' ? link.url : '';
   let parsed = null;
@@ -93,9 +95,24 @@ function draftLinkUrl(link) {
     ? DRAFT_LINK_ORIGINS.find((allowed) => allowed === parsed.origin)
     : undefined;
   if (!origin || !parsed.pathname.startsWith('/_t/')) {
-    throw new Error('The server returned no draft link.');
+    throw new RefusedDraftLink('The server returned no draft link.');
   }
   return `${origin}${parsed.pathname}${parsed.search}`;
+}
+
+// Whether a failed link request means this page should stop asking for links
+// and preview drafts through srcdoc, which the same server still serves. True
+// for a link this page cannot frame, and for a 404 once /health says links are
+// off (rolled back while the page was open). A 404 alone is not enough: a
+// deleted artifact answers it too.
+async function draftLinksWithdrawn(error) {
+  if (error instanceof RefusedDraftLink) return true;
+  if (error?.status !== 404) return false;
+  try {
+    return (await host.checkConfigured()).draftLinks !== true;
+  } catch {
+    return false;
+  }
 }
 
 // Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
@@ -636,7 +653,13 @@ export function ArtifactViewer({
               ? withArtifactCommentFlag(withArtifactVersion(linked, cacheVersion))
               : withArtifactVersion(linked, cacheVersion));
           })
-          .catch((e) => {
+          .catch(async (e) => {
+            if (cancelled) return;
+            // Links off reruns this effect, which then takes the srcdoc path.
+            if (await draftLinksWithdrawn(e)) {
+              setDraftLinks(false);
+              return;
+            }
             if (cancelled) return;
             setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
           })
@@ -918,30 +941,24 @@ export function ArtifactViewer({
     : `${host.getApiOrigin()}${browserTabTarget}`;
 
   // Org web, unpublished: the authenticated draft URL cannot open in a tab (the
-  // tab carries no bearer), so open a fresh signed link instead. The tab is
-  // opened inside the click, where popup blockers allow it, and its opener is
-  // cut before anything is awaited. `noopener` would make window.open return
-  // null and leave no tab to point at the link. A failure is shown next to the
-  // preview, never in its place, and only while the same artifact is open.
+  // tab carries no bearer), so open a fresh signed link instead, in a tab
+  // opened inside the click (host.openPendingTab), where popup blockers allow
+  // it. A failure is shown next to the preview, never in its place, and only
+  // while the same artifact is open.
   const openDraftLinkInTab = async (ref) => {
     const clicked = artifact;
     setTabError('');
-    let tab = null;
-    try { tab = window.open('', '_blank'); } catch { tab = null; }
+    const tab = host.openPendingTab();
     if (!tab) {
       setTabError('The browser blocked the new tab. Allow pop-ups for this site and try again.');
       return;
     }
-    tab.opener = null;
     try {
       const url = draftLinkUrl(await createDraftLink(ref.projectRef, ref.artifactId));
-      // The tab is pointed at a URL only after draftLinkUrl has pinned it to a
-      // draft host, so this call may navigate a tab directly. Agent-written
-      // URLs (an artifact's publishedUrl) reach a tab only through
-      // host.openExternal, which checks the scheme.
-      tab.location.replace(url);
+      if (!tab.navigate(url)) throw new RefusedDraftLink('The server returned no draft link.');
     } catch (e) {
-      try { tab.close(); } catch { /* the tab is already gone */ }
+      tab.close();
+      if (await draftLinksWithdrawn(e)) setDraftLinks(false);
       if (openRef.current && isSameArtifact(artifactRef.current, clicked)) {
         setTabError(draftPreviewErrorMessage(e, 'Could not open this artifact in a browser.'));
       }

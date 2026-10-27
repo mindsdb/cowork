@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
-import { setDraftLinks } from '../../../lib/draftLinks';
+import { getDraftLinks, setDraftLinks } from '../../../lib/draftLinks';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -52,7 +52,8 @@ vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   loadArtifactDraftDocument,
   createDraftLink,
 }));
-vi.mock('../../../platform/host', () => ({
+const checkConfigured = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/host', async (importOriginal) => ({
   host: {
     isElectron: false,
     isWeb: true,
@@ -60,6 +61,8 @@ vi.mock('../../../platform/host', () => ({
     getApiOrigin: () => 'https://cowork.example',
     openExternal: vi.fn(),
     openPath: vi.fn(),
+    openPendingTab: (await importOriginal()).openPendingTab,
+    checkConfigured,
   },
 }));
 vi.mock('./publish/usePublish', () => ({
@@ -426,6 +429,8 @@ describe('ArtifactViewer draft preview through a signed link', () => {
   beforeEach(() => {
     loadArtifactDraftDocument.mockReset();
     createDraftLink.mockReset();
+    checkConfigured.mockReset();
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: true });
     headerProps.current = null;
     setDraftLinks(true);
     // The frames here point at a live draft host: keep happy-dom from loading them.
@@ -522,6 +527,7 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     expect(createDraftLink).not.toHaveBeenCalled();
   });
 
+  // A 404 with links still on is about this artifact: links stay on.
   it('shows the server error instead of an empty frame when no link is issued', async () => {
     createDraftLink.mockRejectedValue(Object.assign(new Error('Artifact not found'), { status: 404 }));
 
@@ -529,8 +535,51 @@ describe('ArtifactViewer draft preview through a signed link', () => {
 
     expect(await screen.findByText('Artifact not found (HTTP 404)')).toBeInTheDocument();
     expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
+    expect(checkConfigured).toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(true);
   });
 
+  // Rolled back while the page was open: the server serves no links, and the
+  // same server still serves the draft for srcdoc.
+  it('falls back to srcdoc when /health says links are off after a 404', async () => {
+    createDraftLink.mockRejectedValue(
+      Object.assign(new Error('Draft links are not available'), { status: 404 }),
+    );
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: false });
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTitle('Launch brief')).toHaveAttribute('srcdoc'));
+    expect(screen.queryByText(/Draft links are not available/)).not.toBeInTheDocument();
+    expect(getDraftLinks()).toBe(false);
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps links on and shows the error when /health cannot be read', async () => {
+    createDraftLink.mockRejectedValue(
+      Object.assign(new Error('Draft links are not available'), { status: 404 }),
+    );
+    checkConfigured.mockRejectedValue(new Error('offline'));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Draft links are not available (HTTP 404)')).toBeInTheDocument();
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  it('asks /health nothing for an error other than a 404', async () => {
+    createDraftLink.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('You do not have access to this draft.')).toBeInTheDocument();
+    expect(checkConfigured).not.toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  // The link never reaches the frame, and this page's CSP could not frame
+  // another host anyway: links go off and the preview falls back to srcdoc.
   it.each([
     ['another host', 'https://evil.example/_t/v1.a.b/index.html'],
     ['a path that names another host', 'https://draft-staging.mindshub.co//evil.example/x'],
@@ -538,13 +587,18 @@ describe('ArtifactViewer draft preview through a signed link', () => {
     ['a path outside /_t/', 'https://draft-staging.mindshub.co/index.html'],
     ['plain http', 'http://draft-staging.mindshub.co/_t/v1.a.b/index.html'],
     ['not a URL', 'javascript:alert(1)'],
-  ])('refuses a link outside the draft hosts: %s', async (_label, url) => {
+  ])('refuses a link outside the draft hosts and falls back to srcdoc: %s', async (_label, url) => {
     createDraftLink.mockResolvedValue({ url, expiresAt: 1 });
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
 
     render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
 
-    expect(await screen.findByText('The server returned no draft link.')).toBeInTheDocument();
-    expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTitle('Launch brief')).toHaveAttribute('srcdoc'));
+    const frame = screen.getByTitle('Launch brief');
+    expect(frame.getAttribute('src') || '').not.toContain(url);
+    expect(frame.getAttribute('srcdoc')).not.toContain(url);
+    expect(getDraftLinks()).toBe(false);
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a card without a full identity on srcdoc', async () => {
