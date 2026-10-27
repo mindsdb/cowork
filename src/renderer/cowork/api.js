@@ -2076,12 +2076,17 @@ async function sharePointReq(path, options) {
   }
 }
 
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
 function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
   const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
   if (userLabel) body.user_label = userLabel;
   return body;
 }
 
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
 export function createSharePointConnection({ name, ...key }) {
   return sharePointReq('/connectors/sharepoint/connections', {
     method: 'POST',
@@ -2089,7 +2094,7 @@ export function createSharePointConnection({ name, ...key }) {
   });
 }
 
-/* `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored secret. */
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
 export function editSharePointConnection(name, key) {
   return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
     method: 'PUT',
@@ -2097,18 +2102,20 @@ export function editSharePointConnection(name, key) {
   });
 }
 
+/** The document libraries of one site the connection names. */
 export function listSharePointLibraries(name, site) {
   const query = new URLSearchParams({ site });
   return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/drives?${query}`);
 }
 
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
 export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
   const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
   if (cursor) query.set('cursor', cursor);
   return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
 }
 
-/* One request for the whole import; it can run for minutes, so no timeout. */
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
 export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
   return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
     method: 'POST',

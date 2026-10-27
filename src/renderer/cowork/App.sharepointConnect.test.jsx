@@ -73,6 +73,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
+import { setOrgMode } from '../lib/orgMode';
 import { setForm } from './components/datavault/formStore';
 
 beforeEach(() => {
@@ -81,6 +82,7 @@ beforeEach(() => {
     id: 'sharepoint', label: 'SharePoint', form: { methods: [{ id: 'app-key', label: 'App key', fields: [] }] },
   });
   window.history.replaceState(null, '', '/connect');
+  setOrgMode(false);
 });
 
 describe('Picking SharePoint', () => {
@@ -93,5 +95,17 @@ describe('Picking SharePoint', () => {
     expect(await screen.findByRole('dialog', { name: 'Connect SharePoint' })).toBeInTheDocument();
     expect(screen.getByLabelText(/client secret/i)).toBeInTheDocument();
     expect(vi.mocked(setForm).mock.calls.filter(([id]) => String(id).startsWith('tmp-connect-'))).toEqual([]);
+  });
+
+  it('in org mode offers the desktop app instead of a key form', async () => {
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Pick SharePoint' }));
+
+    expect(await screen.findByText(/SharePoint isn.t available on Cloud/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Connect SharePoint' })).toBeNull();
+    expect(screen.queryByLabelText(/client secret/i)).toBeNull();
   });
 });

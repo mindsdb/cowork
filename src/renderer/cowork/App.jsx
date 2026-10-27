@@ -2956,7 +2956,9 @@ function AppCore() {
     // SharePoint saves only through its own routes, which check the key with
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
-      setSharePointSetupOpen(true);
+      // The SharePoint routes are refused in org mode; offer the desktop app.
+      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      else setSharePointSetupOpen(true);
       return;
     }
     // Snapshot the origin now, before we switch into the connect task below.

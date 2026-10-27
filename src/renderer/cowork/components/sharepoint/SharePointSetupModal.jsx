@@ -59,6 +59,10 @@ export default function SharePointSetupModal({ open, name = null, onClose, onSav
   );
 }
 
+/**
+ * The key form itself, mounted only while the modal is open so its state,
+ * the typed client secret included, goes away with it.
+ */
 function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
   const editing = Boolean(name);
   const [values, setValues] = useState(EMPTY);
@@ -155,7 +159,7 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
               <Input value={values.name} onChange={set('name')} disabled={busy} autoComplete="off" />
             </Field>
           )}
-          <Field label="Label" optional>
+          <Field label="Label" optional help={editing ? "A saved label can be changed here but not removed." : undefined}>
             <Input value={values.userLabel} onChange={set('userLabel')} disabled={busy || loading} autoComplete="off" />
           </Field>
           <Field label="Directory (tenant) ID" required>
