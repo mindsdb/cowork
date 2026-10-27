@@ -1240,11 +1240,12 @@ async function waitForServerReady(timeoutMs = 8000) {
 // is the filled action, the next is the quiet secondary, any further ones go
 // behind "…").
 // buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
-// the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
+// the row (e.g. reconnect's "done" state). `state` and `receipt` are the
+// shell's state vocabulary; any other prop (a role) lands on the shell.
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false, ...shell }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)} {...shell}>
         {body}
       </ChatCardShell>
     </AnswerTurn>
@@ -3142,9 +3143,10 @@ export default function ChatView({
                   );
                 }
                 // `anton_error` and anything unmapped: a deliberately generic
-                // bucket with no known next step, so no card — but still a
-                // failure, rendered as a danger alert so it never reads as a
-                // finished answer. Richer treatment is ENG-1093's review.
+                // bucket with no known next step, so a card with no action —
+                // but still a failure, drawn in the failed state so it never
+                // reads as a finished answer. Richer treatment is ENG-1093's
+                // review.
                 // `requestId` is the one thing this bucket can still offer —
                 // the turn's own server-side correlation id, so a report of
                 // this generic message can be pinned to actual logs.
@@ -3158,25 +3160,26 @@ export default function ChatView({
                 /* A second question refused with a 409 (`turn_in_progress`)
                    lands here too: the server's sentence tells the user to wait
                    for the running answer, and nothing resends it for them. */
+                /* role="alert" keeps what the old danger Alert told a screen
+                   reader. */
                 return (
-                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
-                    <Alert variant="danger">
-                      <div>{m.content}</div>
-                      {m.requestId && (
-                        <div
-                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
-                          style={{ color: 'var(--text-muted)' }}
-                        >
-                          <span>Reference: {m.requestId}</span>
-                          <CopyDiagnosticsButton
-                            requestId={m.requestId}
-                            code={m.code}
-                            health={health}
-                          />
-                        </div>
-                      )}
-                    </Alert>
-                  </AnswerTurn>
+                  <ActionCard
+                    key={messageKey(m, i)}
+                    deleting={deletingThisTurn}
+                    time={formatMetaTime(m.createdAt)}
+                    agentLabel={agentLabel}
+                    role="alert"
+                    state="failed"
+                    kind="Error"
+                    title="Something went wrong"
+                    body={m.content}
+                    receipt={m.requestId ? (
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span>Reference: {m.requestId}</span>
+                        <CopyDiagnosticsButton requestId={m.requestId} code={m.code} health={health} />
+                      </span>
+                    ) : undefined}
+                  />
                 );
               }
               if (m.role === 'provider_required') {
