@@ -1,0 +1,338 @@
+# Data the document preview tests read (loaded with js-yaml).
+
+# One artifact per document type, as a chat card carries it.
+documentArtifacts:
+  - type: xlsx
+    id: "11111111111141118111111111111111"
+    title: Quarterly report
+    path: /artifacts/report/report.xlsx
+    draftUrl: /api/v1/artifacts/drafts/local/11111111111141118111111111111111/report.xlsx
+  - type: docx
+    id: "22222222222242228222222222222222"
+    title: Project brief
+    path: /artifacts/brief/brief.docx
+    draftUrl: /api/v1/artifacts/drafts/local/22222222222242228222222222222222/brief.docx
+  - type: pptx
+    id: "33333333333343338333333333333333"
+    title: Launch deck
+    path: /artifacts/deck/deck.pptx
+    draftUrl: /api/v1/artifacts/drafts/local/33333333333343338333333333333333/deck.pptx
+  - type: pdf
+    id: "44444444444444448444444444444444"
+    title: Field guide
+    path: /artifacts/guide/guide.pdf
+    draftUrl: /api/v1/artifacts/drafts/local/44444444444444448444444444444444/guide.pdf
+
+# Sandbox keywords the preview frame must never carry.
+forbiddenSandboxKeywords:
+  - allow-same-origin
+  - allow-popups
+  - allow-popups-to-escape-sandbox
+  - allow-forms
+  - allow-modals
+  - allow-downloads
+  - allow-top-navigation
+  - allow-top-navigation-by-user-activation
+  - allow-top-navigation-to-custom-protocols
+
+# Script text the bundle generator refuses, each with the label its error names.
+forbiddenScriptText:
+  - { label: "</script", text: "a='</script>'" }
+  - { label: "<script", text: "a='<SCRIPT src=x>'" }
+  - { label: a NUL character, text: "a='\0'" }
+  - { label: a leftover process., text: "a=process.env.HOME" }
+  - { label: "import(", text: "a=import ('./other.js')" }
+  - { label: import.meta, text: "a=import.meta.url" }
+  - { label: "a leftover require(", text: "a=require(b)" }
+  - label: Vite's development stand-in for a Node module
+    text: "console.warn('Module \"stream\" has been externalized for browser compatibility.')"
+
+# Script text the bundle generator keeps: look-alikes of the forbidden text.
+allowedScriptText:
+  - "a=typeof process"
+  - "a={important:1}"
+  - "a='<style>'"
+  - "a=typeof require"
+  - "a.require(b)"
+  - "a=$require(b)"
+  - "a=_require(b)"
+
+# The NODE_ENV of each process that runs the bundle generator: the dev server
+# sets development and Vitest sets test. The npm hooks leave it unset, which
+# Vite takes as production. A frame bundle is the same text under each.
+bundleNodeEnvs: [development, test, production]
+
+# build.config.mjs files the bundle generator refuses, with the error each gives.
+refusedBuildConfigs:
+  - label: an unknown key
+    source: "export default { plugins: [], define: {} };\n"
+    error: "has an unknown key: define"
+  - label: a notice that does not resolve
+    source: "export default { plugins: [], notices: ['no-such-package/LICENSE'] };\n"
+    error: "names a notice that doesn't resolve"
+  - label: no plugins array
+    source: "export default { notices: [] };\n"
+    error: must export a plugins array
+
+# Token text that neither buildPreviewSrcdoc nor the message readers accept: a
+# token is 32 lowercase hex characters.
+malformedTokens:
+  - { label: empty, token: "" }
+  - { label: too short, token: abc }
+  - { label: upper case, token: 0123456789ABCDEF0123456789ABCDEF }
+  - { label: quoted, token: '0123456789abcdef0123456789abcde"' }
+  - { label: one character too long, token: 0123456789abcdef0123456789abcdef0 }
+
+# Script text buildPreviewSrcdoc refuses: it would end the inline script early,
+# or the HTML parser would change it so it no longer matches its hash.
+unsafeSrcdocScriptText:
+  - { label: a closing script tag, text: 'a="</script><img src=x>"' }
+  - { label: an opening script tag, text: 'a="<script>"' }
+  - { label: a NUL character, text: "a=\"\0\"" }
+  - { label: a carriage return, text: "a=1;\r\nb=2;" }
+
+# Error codes whose reason the failure note names, one sentence each.
+reasonCodes: [too-large, zip-limit, parse-failed, unsupported, timeout, internal]
+
+# Limits whose breach ends a preview, with the code that names each and the
+# value the failure note must name, as limits.json sets it.
+failureLimits:
+  - { limit: maxBytes, code: too-large, names: 32 MiB }
+  - { limit: maxDocxNodes, code: too-large, names: '2,097,152 elements' }
+  - { limit: maxInflatedBytes, code: zip-limit, names: 256 MiB }
+  - { limit: maxZipEntryInflatedBytes, code: zip-limit, names: 64 MiB }
+  - { limit: maxZipEntries, code: zip-limit, names: '10,000 parts' }
+  - { limit: readyTimeoutMs, code: timeout, names: 10 seconds }
+  - { limit: progressTimeoutMs, code: timeout, names: 20 seconds }
+
+# Ways a component could read the window's size; the preview reads none.
+windowSizeReads: [innerWidth, innerHeight, outerWidth, outerHeight, matchMedia, screen.]
+
+# Archives for the archive guard, built at test time by tests/helpers/zipBytes.ts.
+# Each entry holds `size` zero bytes and takes the other zipBytes entry options
+# it lists. `archive` holds zipBytes archive options, with `lead` and `prefix`
+# as text.
+archiveGuard:
+  # Shapes zip writers make, which the guard lets through. `names` are the
+  # entries the checked archive lists.
+  accepted:
+    - case: directory entries that hold no data
+      entries:
+        - { name: xl/, size: 0, store: true }
+        - { name: docProps/, size: 0 }
+        - { name: media, size: 0, store: true, externalAttributes: 16 }
+        - { name: xl/workbook.xml, size: 1024 }
+      names: [xl/workbook.xml]
+    - case: an entry whose sizes follow its data in a data descriptor
+      entries:
+        - { name: xl/workbook.xml, size: 1024, dataDescriptor: true }
+      names: [xl/workbook.xml]
+    # Info-ZIP writes this local header when its output is a pipe.
+    - case: a deflated entry with a data descriptor whose local header keeps its uncompressed size
+      entries:
+        - { name: xl/workbook.xml, size: 1024, dataDescriptor: true, localSizes: { uncompressed: 1024 } }
+      names: [xl/workbook.xml]
+    - case: a %PDF lead the offsets count
+      entries:
+        - { name: xl/workbook.xml, size: 1024 }
+      archive: { lead: "%PDF-1.4\n" }
+      names: [xl/workbook.xml]
+    - case: Unicode Path fields that name the entry's own name
+      entries:
+        - { name: xl/workbook.xml, size: 1024, unicodePath: xl/workbook.xml, localUnicodePath: xl/workbook.xml }
+      names: [xl/workbook.xml]
+    - case: a name with dots inside a segment, which JSZip keeps as it is
+      entries:
+        - { name: xl/my..book.xml, size: 1024 }
+        - { name: .rels/file., size: 1024 }
+      names: [xl/my..book.xml, .rels/file.]
+    - case: a UTF-8 name outside ASCII
+      entries:
+        - { name: xl/média.xml, size: 1024 }
+      names: [xl/média.xml]
+  # Shapes two zip readers read differently: SheetJS's own zip reader inflates
+  # data that JSZip drops, cuts short or never finds. The guard refuses each
+  # with parse-failed before a renderer reads it.
+  refused:
+    - case: a directory entry, by its DOS attribute, that holds data
+      entries:
+        - { name: xl/bomb.xml, size: 1024, externalAttributes: 16 }
+    - case: a directory entry, by its trailing slash, that holds data
+      entries:
+        - { name: xl/bomb.xml/, size: 1024 }
+    - case: an entry that states it inflates to 0 bytes and holds data
+      entries:
+        - { name: xl/bomb.xml, size: 1024, centralSizes: { uncompressed: 0 } }
+    - case: an entry whose directory record states 0 for both sizes and whose data descriptor holds them
+      entries:
+        - { name: xl/bomb.xml, size: 1024, dataDescriptor: true, centralSizes: { compressed: 0, uncompressed: 0 } }
+    - case: a deflate stream that runs past the entry's stated compressed size
+      # JSZip inflates the first 200 bytes of the stream to 180,224 bytes.
+      entries:
+        - { name: xl/bomb.xml, size: 1048576, dataDescriptor: true, centralSizes: { compressed: 200, uncompressed: 180224 } }
+    - case: a local header that states another method
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localMethod: 0 }
+    - case: a local header that states other sizes
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { uncompressed: 104857600 } }
+    - case: a larger local compressed size on a stored entry with a data descriptor
+      entries:
+        - { name: xl/bomb.xml, size: 1024, store: true, dataDescriptor: true, localSizes: { compressed: 2048 } }
+    - case: a kept local uncompressed size on a stored entry with a data descriptor
+      entries:
+        - { name: xl/bomb.xml, size: 1024, store: true, dataDescriptor: true, localSizes: { uncompressed: 1024 } }
+    - case: a deflated entry with a data descriptor whose local header states a larger uncompressed size
+      entries:
+        - { name: xl/bomb.xml, size: 1024, dataDescriptor: true, localSizes: { uncompressed: 2048 } }
+    - case: a local header that states 0 for both sizes without the data descriptor flag
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { compressed: 0, uncompressed: 0 } }
+    - case: a deflated entry whose local header states 0 for its compressed size without the data descriptor flag
+      entries:
+        - { name: xl/bomb.xml, size: 1024, localSizes: { compressed: 0 } }
+    - case: a local header that states another name
+      entries:
+        - { name: xl/workbook.xml, size: 1024, localName: xl/bomb.xml }
+    - case: a ZIP64 extra field in the local header
+      entries:
+        - { name: xl/bomb.xml, size: 1024, zip64Extra: local }
+    - case: a ZIP64 extra field in the directory record
+      entries:
+        - { name: xl/bomb.xml, size: 1024, zip64Extra: central }
+    - case: a Unicode Path field in the directory record that names another entry
+      entries:
+        - { name: xl/workbook.xml, size: 1024, unicodePath: xl/bomb.xml }
+    - case: a Unicode Path field in the local header that names another entry
+      entries:
+        - { name: xl/workbook.xml, size: 1024, localUnicodePath: xl/bomb.xml }
+    # JSZip lists each of these under another name than the one SheetJS reads.
+    - case: a name with a .. segment
+      entries:
+        - { name: x/../xl/workbook.xml, size: 1024 }
+    - case: a name with a . segment
+      entries:
+        - { name: ./xl/workbook.xml, size: 1024 }
+    - case: a name with an empty segment inside it
+      entries:
+        - { name: xl//workbook.xml, size: 1024 }
+    # Names that aren't UTF-8. With no Buffer, as in the frame, JSZip reads
+    # each as another: C0 AE as '.', C0 AF as '/', and C0 before a '/' as one
+    # '/'. Vitest has a Buffer, so these rows check the guard, not JSZip.
+    - case: a name with an overlong .. segment
+      entries:
+        - { name: "x/\xC0\xAE\xC0\xAE/word/document.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name with an overlong . segment
+      entries:
+        - { name: "\xC0\xAE/xl/workbook.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name with a broken sequence before a /, which reads as one /
+      entries:
+        - { name: "xl/\xC0/workbook.xml", nameEncoding: latin1, size: 1024 }
+    - case: a name holding data that ends in an overlong /, which reads as a directory
+      entries:
+        - { name: "word/document.xml\xC0\xAF", nameEncoding: latin1, size: 1024 }
+    - case: a file that starts with PK but not PK\x03\x04 and ends in a cut-short end record
+      entries:
+        - { name: xl/bomb.xml, size: 1024 }
+      archive: { lead: "PK\x07\x08", endRecordCopy: 20 }
+    # Not a shape the readers read differently: both read the same bytes. No
+    # zip writer makes it, and the guard refuses it itself instead of relying
+    # on JSZip failing to read past the end of the file.
+    - case: stored data that runs into the central directory
+      entries:
+        - { name: xl/workbook.xml, size: 4, store: true, centralSizes: { compressed: 14, uncompressed: 14 } }
+  # Archive options for a directory of one more record than maxZipEntries, each
+  # an empty stored entry. JSZip reads central records for as long as their
+  # signature follows, whatever the end record counts, and shifts its start
+  # when the offsets don't count the bytes before the archive. The two %PDF
+  # files' end records state 5 entries. The guard ends each in zip-limit before
+  # JSZip reads the directory.
+  pastEntryCap:
+    - case: a file that starts with PK
+      archive: {}
+    - case: a %PDF lead the offsets count
+      archive: { lead: "%PDF-1.4\n", statedEntries: 5 }
+    - case: a %PDF prefix the offsets skip
+      archive: { prefix: "%PDF-1.4\n", statedEntries: 5 }
+  # Archives that real zip writers make at test time, which the guard lets
+  # through. `workbook` lists each sheet's rows for SheetJS's XLSX.write, which
+  # writes it once with each `workbookCompression`. `files` lists the entries
+  # for a JSZip archive, which JSZip writes once with each of `jszipOptions`;
+  # streamFiles puts each entry's sizes in a data descriptor. A file without
+  # `text` is a folder.
+  written:
+    workbook:
+      - { sheet: Summary, rows: [[Region, Units], [North, 1204], [South, 980]] }
+      - { sheet: Detail, rows: [[Item, Count], [Bolts, 40]] }
+    workbookCompression: [false, true]
+    files:
+      - { name: "[Content_Types].xml", text: "<Types/>" }
+      - { name: word/ }
+      - { name: word/document.xml, text: "<w:document><w:body><w:p/></w:body></w:document>" }
+      - { name: word/media/ }
+      - { name: word/media/notes.txt, text: "Quarterly notes" }
+    jszipOptions:
+      - { compression: DEFLATE, streamFiles: true }
+      - { compression: DEFLATE, streamFiles: false }
+      - { compression: STORE, streamFiles: true }
+
+# The document preview harness's own rules, from e2e/document-preview/harness.ts.
+harness:
+  # Requests checked by strayRequests for one navigation fixture, with what each
+  # rule set says of it. `<root>` stands for the checkout's real path. For a
+  # clean fixture only another origin breaks the rules.
+  origin: http://127.0.0.1:5210
+  set: navigation
+  file: hostile-docs-google.html
+  requests:
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-docs-google.html", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/main.tsx", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@vite/client", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@react-refresh", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@id/__x00__virtual:navigation-preview-bundle", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>/node_modules/.vite/deps/react-dom_client.js?v=1a2b3c4d", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>/src/renderer/cowork/preview/limits.ts", hostile: allowed, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs<root>-copy/src/main.ts", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/@fs/etc/hosts", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-drive-google.html", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/fixtures/navigation/hostile-docs-google.html?again=1", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/main.tsx?import", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/api/v1/artifacts/drafts/local/x/report.xlsx", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/files/notes.js", hostile: stray, clean: allowed }
+    - { url: "http://127.0.0.1:5210/assets/x/@vite/client", hostile: stray, clean: allowed }
+    - { url: "http://localhost:5210/", hostile: stray, clean: stray }
+    - { url: "http://127.0.0.1:26866/api/v1/artifacts/", hostile: stray, clean: stray }
+    - { url: "https://127.0.0.1:5210/", hostile: stray, clean: stray }
+    - { url: "https://docs.google.com/document/d/x/edit", hostile: stray, clean: stray }
+    - { url: "https://drive.google.com/drive/folders/x", hostile: stray, clean: stray }
+    - { url: "data:text/plain,notes", hostile: ignored, clean: ignored }
+    - { url: "blob:http://127.0.0.1:5210/0b6c4a3e-0000-4000-8000-000000000000", hostile: ignored, clean: ignored }
+    - { url: "about:srcdoc", hostile: ignored, clean: ignored }
+  # Markup a renderer could leave in the frame, with the elements
+  # strayFrameDirectives reports for it, as outer HTML. The frame document's
+  # own head comes first, as buildPreviewSrcdoc writes it.
+  directives:
+    - case: a fragment link
+      body: '<p><a href="#totals">Jump to the totals</a></p>'
+      stray: []
+    - case: a meta refresh in the body
+      body: '<div><meta http-equiv="refresh" content="30;url=https://docs.google.com/"></div>'
+      stray: ['<meta http-equiv="refresh" content="30;url=https://docs.google.com/">']
+    - case: a base element in the body
+      body: '<base href="https://docs.google.com/"><a href="x">x</a>'
+      stray: ['<base href="https://docs.google.com/">']
+    - case: a meta refresh added to the head
+      head: '<meta http-equiv="Refresh" content="30">'
+      stray: ['<meta http-equiv="Refresh" content="30">']
+    - case: a second policy meta in the body
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src *">'
+      stray: ['<meta http-equiv="Content-Security-Policy" content="default-src *">']
+    - case: a meta with a name, not http-equiv
+      body: '<meta name="viewport" content="width=device-width">'
+      stray: []
+    # The navigation set keeps this file unlisted, because its refresh leaves
+    # the frame with no click.
+    - case: the navigation set's meta refresh file
+      bodyFile: hostile-meta-refresh.html
+      stray: ['<meta http-equiv="refresh" content="0;url=https://docs.google.com/document/d/x/edit?refresh=1">']

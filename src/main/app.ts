@@ -78,6 +78,10 @@ import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
+import { guardDocumentPreviewFrames } from './document-preview-guard';
+import { mainWindowWebPreferences } from './main-window-preferences';
+import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
+import { serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -412,24 +416,13 @@ function createWindow() {
     trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 24 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // ENG-439: hand the resolved (per-OS-user) server port to the renderer
-      // synchronously, so getApiOrigin() addresses our own sidecar instead of
-      // a hardcoded 26866 that could belong to another OS user.
-      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false,
-      // Disable Chromium's same-origin/mixed-content checks so the renderer
-      // (loaded from file://) can fetch http://127.0.0.1:<antonPort>/v1/*.
-      // Safe in this context: app is local, network calls only target the
-      // loopback python server we spawn ourselves. CSP in index.html still
-      // allowlists the exact origins for defense in depth.
-      // codeql[js/electron-disable-websecurity]
-      webSecurity: false,
-    },
+    webPreferences: mainWindowWebPreferences(getServerPort()),
   });
+
+  // Marks the document preview frame, cancels navigations it starts, and
+  // holds srcdoc subframes in place. Registered before the window loads
+  // anything, so no frame is created unseen.
+  const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
   // Inject the server's bearer token into every request the renderer makes to
   // the loopback API — including browser-initiated loads (images, iframes and
@@ -441,31 +434,16 @@ function createWindow() {
   // so it can't leak elsewhere. No-op when the server runs without auth.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
-    (details, callback) => {
-      const forward = () => {
-        const token = getServerAuthToken();
-        if (token) {
-          try {
-            const url = new URL(details.url);
-            const isDirectServerCall = url.port === String(getServerPort());
-            // Dev mode (DEV_MODE=live / VITE_DEV=1) loads the renderer from Vite,
-            // so API calls resolve same-origin to Vite's own port and get proxied
-            // to the real sidecar server-side — this hook never sees the final
-            // 127.0.0.1:<serverPort> request to attach the header to. Scoped to
-            // /api/ so static asset/module requests through Vite aren't touched.
-            const isViteProxiedApiCall =
-              viteDevPort !== null && url.port === viteDevPort && url.pathname.startsWith('/api/');
-            if (isDirectServerCall || isViteProxiedApiCall) {
-              details.requestHeaders['Authorization'] = `Bearer ${token}`;
-            }
-          } catch {
-            // Malformed URL — leave the headers untouched.
-          }
-        }
-        callback({ requestHeaders: details.requestHeaders });
-      };
-
-      const gated = gateMindsResponseCreationRequest(
+    // The document preview frame, any frame inside it and a request with no
+    // frame get no token (server-token-listener.ts, document-preview-guard.ts).
+    // The Minds gate holds response-creation requests until the resumed
+    // credential is ready, and cancels them when it never is.
+    serverTokenListener({
+      guard: previewGuard,
+      serverPort: getServerPort,
+      token: getServerAuthToken,
+      viteDevPort,
+      gate: (details, settle) => gateMindsResponseCreationRequest(
         details,
         getServerPort(),
         isMindsResumeCredentialGateActive(),
@@ -474,14 +452,11 @@ function createWindow() {
         (ready) => {
           if (!ready) {
             diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
-            callback({ cancel: true });
-            return;
           }
-          forward();
+          settle(ready);
         },
-      );
-      if (!gated) forward();
-    },
+      ),
+    }),
   );
 
   // Renderer loading priority:
@@ -1751,7 +1726,7 @@ app.whenReady().then(async () => {
           ],
         } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
-    { role: 'editMenu' },
+    { role: 'editMenu', id: EDIT_MENU_ID },
     {
       label: 'View',
       submenu: [
@@ -1795,7 +1770,9 @@ app.whenReady().then(async () => {
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const appMenu = Menu.buildFromTemplate(template);
+  addRedoOnCmdY(appMenu);
+  Menu.setApplicationMenu(appMenu);
 
   ensureDefaultProject();
   setupIPC();

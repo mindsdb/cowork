@@ -13,13 +13,15 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
+  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
 } from '../lib/modelCatalog';
-import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import Select from './ui/Select.jsx';
-import { effortLevelsFor, effortOptions, resolveEffort } from '../code/reasoning';
+import {
+  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions, resolveEffort,
+} from '../code/reasoning';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -28,9 +30,11 @@ import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { connectionMuteKey } from '../lib/connectionMutes';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -411,13 +415,25 @@ export default function Composer({
     ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
     : '';
 
+  // With platform UI off, the operator's picker (lib/modelPicker) also sets
+  // which efforts users may pick: on the picked model, or with "Operator
+  // default" on both role models. The pill leads with "Default", which
+  // sends no effort, so it never names a level the question won't run at.
+  const operatorPicker = modelPickerMode() !== 'off';
+  const operatorLevels = useMemo(
+    () => (operatorPicker ? operatorEffortLevels(model?.id && model.id !== MODEL_ROUTER_ID ? model.id : null) : []),
+    [operatorPicker, model?.id],
+  );
+
   // Drop a pick the current model does not offer, so the pill never names a
   // level the request will not send (Code mode does the same in
   // useNewTaskDraft). Only a known entry can veto a pick: a model missing
   // from the map may mean the catalog has not loaded, or that the MindsHub
   // bucket failed and the server sent only the direct-provider entries, and
-  // neither is a reason to throw away a saved choice.
-  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
+  // neither is a reason to throw away a saved choice. The operator's list
+  // is in the page from the start, so there a model missing from it offers
+  // no level.
+  const knownLevels = operatorPicker ? operatorLevels : modelMeta?.modelEfforts?.[model?.id]?.efforts;
   useEffect(() => {
     if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
   }, [effort, knownLevels, onEffortChange]);
@@ -428,12 +444,34 @@ export default function Composer({
   // so this only applies to the Anton-routed picker.
   const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
 
+  // With platform UI off, the operator's picker (lib/modelPicker) shows only
+  // the models the operator offers. With none offered it shows nothing at
+  // all, never the Settings shortcut, which that build hides.
+  const operatorModels = useMemo(
+    () => (operatorPicker ? offeredModels(models, modelMeta?.modelEnabled) : []),
+    [operatorPicker, models, modelMeta?.modelEnabled],
+  );
+  const showModelControl = PLATFORM_UI || operatorModels.length > 0;
+
   // Flat options for <ModelSelect> — the same searchable, bounded-height,
   // provider-grouped picker the Settings model rows use (ui/Combobox).
   // ModelSelect groups internally (lib/modelCatalog), so this only builds the
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
+    if (operatorPicker && !isClaudeCode) {
+      // The operator's own model leads, pinned above every section: no
+      // MindsHub group and no settings gear, since this build has neither.
+      return [
+        {
+          value: MODEL_ROUTER_ID,
+          label: OPERATOR_DEFAULT_LABEL,
+          title: 'Runs on the model your operator set',
+          pin: 'top',
+        },
+        ...buildModelPickerOptions(operatorModels, modelMeta),
+      ];
+    }
     const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
@@ -474,7 +512,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels]);
 
   // True once the picked model isn't valid for Claude Code — nothing
   // picked yet, or still Model Router (hidden from the picker once this
@@ -897,13 +935,9 @@ export default function Composer({
     handleAttachFiles(renameClipboardImages(files));
   };
 
-  function pairKey(engine, name) {
-    return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
-  }
-
   function isConnectionDisabled(connector) {
-    const k = pairKey(connector.engine, connector.name);
-    return (disabledConnections || []).some((d) => pairKey(d.engine, d.name) === k);
+    const k = connectionMuteKey(connector.engine, connector.name);
+    return (disabledConnections || []).some((d) => connectionMuteKey(d.engine, d.name) === k);
   }
 
   const canMuteConnectors = typeof onUpdateConnectorMute === 'function';
@@ -1387,7 +1421,7 @@ export default function Composer({
                 lives in one place. `modelReadOnly` (defaults to
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
-            {PLATFORM_UI && (modelReadOnly ? (
+            {showModelControl && (modelReadOnly ? (
               <span className="meta-pill" title="Model is fixed for this task">
                 <span>{model?.name ?? 'Model'}</span>
               </span>
@@ -1424,8 +1458,12 @@ export default function Composer({
                 // Falls back to unselected (rather than a synthesized
                 // "model-router" row) if the current pick isn't a valid
                 // option right now — e.g. Model Router was picked, then the
-                // harness pill switched to Claude Code, which hides it.
-                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                // harness pill switched to Claude Code, which hides it. Under
+                // the operator's picker, a model it no longer offers shows as
+                // the operator's own, which is what App then sends.
+                value={modelPickerOptions.some((o) => o.value === model?.id)
+                  ? model.id
+                  : (operatorPicker ? MODEL_ROUTER_ID : '')}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });
@@ -1449,6 +1487,17 @@ export default function Composer({
                 value={resolvedEffort}
                 onValueChange={onEffortChange}
                 options={effortOptions(effortLevels)}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Reasoning effort"
+                menuLabel="Reasoning effort"
+              />
+            )}
+            {operatorPicker && !modelReadOnly && operatorLevels.length > 0 && (
+              <Select
+                value={operatorLevels.includes(effort) ? effort : MODEL_DEFAULT_VALUE}
+                onValueChange={(value) => onEffortChange?.(value === MODEL_DEFAULT_VALUE ? '' : value)}
+                options={operatorEffortOptions(operatorLevels)}
                 variant="unstyled"
                 className="meta-pill"
                 ariaLabel="Reasoning effort"

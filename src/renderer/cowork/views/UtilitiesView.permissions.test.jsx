@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   fetchMemory: vi.fn(),
+  fetchMemoryCapabilities: vi.fn(),
+  resetMemory: vi.fn(),
   saveMemory: vi.fn(),
   deleteMemory: vi.fn(),
 }));
@@ -12,6 +14,7 @@ vi.mock('../api', () => ({
   deleteMemory: (...args) => api.deleteMemory(...args),
   fetchDatasources: vi.fn(async () => ({})),
   fetchMemory: (...args) => api.fetchMemory(...args),
+  fetchMemoryCapabilities: (...args) => api.fetchMemoryCapabilities(...args),
   fetchPublishable: vi.fn(async () => ({})),
   findMemoryEntry: (sections, path) => (
     (sections || []).flatMap((section) => section.files || [])
@@ -21,6 +24,7 @@ vi.mock('../api', () => ({
     String(category || '').replace(/^./, (letter) => letter.toUpperCase())
   ),
   publishArtifact: vi.fn(),
+  resetMemory: (...args) => api.resetMemory(...args),
   saveDatasource: vi.fn(),
   saveMemory: (...args) => api.saveMemory(...args),
   validateDatasource: vi.fn(),
@@ -70,6 +74,8 @@ beforeEach(() => {
   api.fetchMemory.mockResolvedValue(memoryWith(entry, otherMemberEntry));
   api.saveMemory.mockResolvedValue({ ...entry, content: 'Updated rules.' });
   api.deleteMemory.mockResolvedValue({ status: 'deleted' });
+  api.fetchMemoryCapabilities.mockResolvedValue({ canReset: false });
+  api.resetMemory.mockResolvedValue({ removed: true });
 });
 
 afterEach(() => {
@@ -254,5 +260,107 @@ describe('UtilitiesView unnamed project memory labels', () => {
       content: 'Answer in crates.',
       projectId: 'project-2',
     }));
+  });
+});
+
+describe('UtilitiesView own memory on a deployment that saves it on its own', () => {
+  const own = {
+    path: 'Global:global:profile',
+    scope: 'Global',
+    projectId: null,
+    projectName: null,
+    category: 'profile',
+    content: 'Favorite part P-1111.',
+    capabilities: { canEdit: false, canDelete: true },
+  };
+  const deploymentRule = {
+    path: 'Deployment:global:rules',
+    scope: 'Deployment',
+    projectId: null,
+    projectName: null,
+    category: 'rules',
+    content: 'List package names only.',
+    capabilities: { canEdit: false, canDelete: false },
+  };
+  const ownMemory = () => ({
+    sections: [
+      { scope: 'Global', projectName: null, projectId: null, files: [own] },
+      { scope: 'Deployment', projectName: null, projectId: null, files: [deploymentRule] },
+    ],
+  });
+
+  beforeEach(() => {
+    api.fetchMemory.mockResolvedValue(ownMemory());
+  });
+
+  it('says the memory is the person\'s own, keeps Edit closed and lets them delete it', async () => {
+    Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) });
+    render(<UtilitiesView kind="memory" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Profile/ }));
+
+    expect(screen.getByRole('note')).toHaveTextContent('Yours alone. Cowork saves this on its own');
+    expect(screen.getByRole('note')).not.toHaveTextContent('organization admin');
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('title', expect.not.stringContaining('shared'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
+      scope: 'Global',
+      category: 'profile',
+      projectId: null,
+    }));
+  });
+
+  it('shows the deployment\'s rules read only, with no Edit or Delete', async () => {
+    render(<UtilitiesView kind="memory" />);
+
+    expect(await screen.findByText('Deployment')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Rules/ }));
+
+    expect(screen.getByRole('note')).toHaveTextContent('Your operator sets these rules for everyone');
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('resets the whole memory only after the person confirms', async () => {
+    api.fetchMemoryCapabilities.mockResolvedValue({ canReset: true });
+    render(<UtilitiesView kind="memory" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset my memory' }));
+    expect(await screen.findByText('Reset your memory?')).toBeInTheDocument();
+    expect(api.resetMemory).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset my memory' }));
+
+    await waitFor(() => expect(api.resetMemory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.fetchMemory).toHaveBeenCalledWith(undefined, { forceFresh: true }));
+    expect(await screen.findByText('Your memory is reset. Nothing learned is left.')).toBeInTheDocument();
+  });
+
+  it('leaves the memory alone when the person cancels the reset', async () => {
+    api.fetchMemoryCapabilities.mockResolvedValue({ canReset: true });
+    render(<UtilitiesView kind="memory" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset my memory' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(api.resetMemory).not.toHaveBeenCalled();
+  });
+
+  it('offers no reset where the server carries none out, or the check fails', async () => {
+    const { unmount } = render(<UtilitiesView kind="memory" />);
+    await screen.findByRole('button', { name: /Profile/ });
+    await waitFor(() => expect(api.fetchMemoryCapabilities).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Reset my memory' })).toBeNull();
+    unmount();
+
+    api.fetchMemoryCapabilities.mockRejectedValue(new Error('API /memory/capabilities returned 500'));
+    render(<UtilitiesView kind="memory" />);
+    await screen.findByRole('button', { name: /Profile/ });
+    await waitFor(() => expect(api.fetchMemoryCapabilities).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: 'Reset my memory' })).toBeNull();
+    expect(screen.queryByText(/returned 500/)).toBeNull();
   });
 });

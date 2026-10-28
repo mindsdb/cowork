@@ -17,6 +17,9 @@ import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
+import { isEmailShaped } from '../../../lib/emailAddress';
+import { PLATFORM_UI } from '../../../../lib/deployment';
+import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -27,6 +30,14 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
+// The draft a first share starts from. With the platform UI on it starts on
+// Public, as it always has. With it off nothing is picked, so the person
+// chooses who can open the link first: `isAccessDraftValid` refuses a draft
+// with no mode, which keeps Share disabled until then.
+export function newAccessDraft() {
+  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false };
+}
+
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
 // `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
@@ -35,6 +46,9 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // "Only you" and "Specific people" as two visibly different choices instead of
 // one option whose meaning depends on whether a textarea happens to be empty.
 export function accessDraftFromArtifact(artifact) {
+  // Nothing is live on an unpublished artifact, so with the platform UI off it
+  // starts from a new draft, whatever access an earlier publish left on it.
+  if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
   const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
     ? 'ownerOnly'
@@ -57,7 +71,6 @@ export function isOwnerOnlySelection(artifact) {
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
 // semicolons; trims, lowercases, de-dupes; partitions valid vs invalid.
-const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function parseEmailList(raw) {
   const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
   const seen = new Set();
@@ -66,7 +79,7 @@ export function parseEmailList(raw) {
   for (const p of parts) {
     if (seen.has(p)) continue;
     seen.add(p);
-    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
+    (isEmailShaped(p) ? valid : invalid).push(p);
   }
   return { valid, invalid };
 }
@@ -122,9 +135,24 @@ export function buildAccessPayload(draft) {
 // Single source of truth for the access option copy. PublishMenu imports this
 // for its summary card, so the wording can't drift between the picker and the
 // "currently published as" view.
+// A deployment that publishes with one shared token (`hasSharedPublishToken`)
+// sends links to its own publisher, which may put a sign-in in front of them,
+// so Public and Password say only what a visitor needs. Every other build
+// publishes to MindsHub with the person's own key, where links reach the
+// internet.
+const SHARED_TOKEN_PUBLISH = !PLATFORM_UI && hasSharedPublishToken();
+
 export const ACCESS_LABELS = {
-  public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
-  password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
+  public: {
+    icon: Ico.globe,
+    title: 'Public',
+    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL' : 'Anyone on the internet with the URL',
+  },
+  password: {
+    icon: Ico.lock,
+    title: 'Password protected',
+    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
+  },
   restricted: {
     icon: Ico.people,
     title: 'Specific people',
@@ -169,14 +197,22 @@ function OptionCard({ value, active, icon, title, desc }) {
   );
 }
 
+// Order runs private → public, so the least exposing choice is the one the
+// eye lands on first. A shared-token deployment offers no "Only you": a
+// publisher reached with one shared publish token (cowork-server's
+// COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
+// upload with a 400.
+const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
+  ? ['restricted', 'password', 'public']
+  : ['ownerOnly', 'restricted', 'password', 'public'];
+
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
-// defaults to all three. `value`/`onChange` are the controlled draft.
+// defaults to every mode this build offers. `value`/`onChange` are the
+// controlled draft.
 export function AccessChooser({
   value,
   onChange,
-  // Order runs private → public, so the least exposing choice is the one the
-  // eye lands on first.
-  modes = ['ownerOnly', 'restricted', 'password', 'public'],
+  modes = DEFAULT_MODES,
   onSubmit,
 }) {
   const draft = value;
@@ -256,7 +292,7 @@ export function AccessChooser({
               : (parsedEmails.length === 0 && !draft.orgAllowed
                 // Not "only you will have access": that is now a choice of its
                 // own, so arriving here means the selection is simply unfinished.
-                ? 'Add someone, or choose “Only you”'
+                ? (modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone')
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>

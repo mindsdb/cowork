@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react';
 
+export type ArtifactExportFormat = 'html' | 'docx' | 'pdf';
+
 export interface ArtifactCapabilities {
   role?: 'owner' | 'editor' | 'reviewer' | 'viewer';
   canPreview?: boolean;
@@ -7,6 +9,16 @@ export interface ArtifactCapabilities {
   canEdit?: boolean;
   canAddressWithAgent?: boolean;
   canResolveComments?: boolean;
+  /**
+   * The formats the export route accepts for this caller and this artifact,
+   * each once, in the order html, docx, pdf. Missing or empty hides Export.
+   */
+  exportFormats?: ArtifactExportFormat[];
+}
+
+/** The export route's 200 answer. `draftUrl` is the new file's download link. */
+export interface ArtifactExportResult {
+  filename: string; draftUrl: string; serveUrl: string; omittedCount: number; scriptsDropped: boolean;
 }
 
 export interface ArtifactViewerArtifact {

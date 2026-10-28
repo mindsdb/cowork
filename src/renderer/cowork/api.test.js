@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, SHORT_REQUEST_TIMEOUT_MS } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -87,6 +87,40 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('memory reset', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads whether the server offers a reset', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ canReset: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchMemoryCapabilities()).resolves.toEqual({ canReset: true });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/memory/capabilities');
+  });
+
+  it('takes a server without the route as offering no reset', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ detail: 'Not Found' }, false, 404)));
+
+    await expect(fetchMemoryCapabilities()).resolves.toEqual({ canReset: false });
+  });
+
+  it('lets any other failure reach the caller', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ detail: 'boom' }, false, 500)));
+
+    await expect(fetchMemoryCapabilities()).rejects.toMatchObject({ status: 500 });
+  });
+
+  it('removes the whole memory with one DELETE', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ removed: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(resetMemory()).resolves.toEqual({ removed: true });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/memory/all');
+    expect(init.method).toBe('DELETE');
   });
 });
 
@@ -1308,6 +1342,35 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
     expect(res.status).toBe('ok');
     expect(res.task.messages).toEqual([]);
   });
+
+  it('leaves disabledConnections undefined when the server sends none', async () => {
+    // The server does not store a chat's mutes; an empty list here would
+    // overwrite the ones the chat's last send recorded locally.
+    stub({ body: meta }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toBeUndefined();
+  });
+
+  it('normalizes disabled_connections when the server sends them', async () => {
+    stub({ body: { ...meta, disabled_connections: [{ engine: ' gmail ', name: 'mail ' }, { engine: 1 }] } }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.task.disabledConnections).toEqual([{ engine: 'gmail', name: 'mail' }]);
+  });
+
+  it('reads a timed-out request as unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, {}));
+      const { fetchSessionResult } = await import('./api');
+      const resultPromise = fetchSessionResult('c1', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+      expect(await resultPromise).toEqual({ status: 'unavailable', code: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ENG-1919: Stop must never silently report success when the cancel request
@@ -1742,5 +1805,23 @@ describe('updateSettings committed result', () => {
     const result = await updateSettings({ greeting: 'Submitted greeting' });
     expect(result.status).toBe('ok');
     expect(result.settings.greeting).toBe('Canonical greeting');
+  });
+});
+
+/* The shared-project view rechecks access with this list, one request at a time.
+   A request that never settles would hold every later recheck, so files whose
+   access was revoked would stay on screen. */
+describe('listSharedProjectFiles gives up on a server that does not answer', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('rejects after SHORT_REQUEST_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(10 * 60_000, { files: [] }));
+
+    let outcome = 'pending';
+    listSharedProjectFiles('project-id').then(() => { outcome = 'resolved'; }, () => { outcome = 'rejected'; });
+    await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+    expect(outcome).toBe('rejected');
   });
 });

@@ -243,12 +243,11 @@ describe('a failed hand-off', () => {
     openExternal.mockRejectedValueOnce(new Error('bridge gone'));
     const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
-      render(<ArtifactViewer open artifact={{ ...baseArtifact, serveUrl: SERVE_PATH }} onClose={vi.fn()} />);
-      await headerProps.current.actions.onOpenInBrowser();
+      await clickBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
 
       expect(openExternal).toHaveBeenCalledTimes(1);
       expect(opened).not.toHaveBeenCalled();
-      await waitFor(() => expect(bodyProps.current?.preview?.error).toBe('bridge gone'));
+      await waitFor(() => expect(bodyProps.current?.preview?.error).toBe('Could not open this artifact in a browser.'));
     } finally {
       opened.mockRestore();
     }
