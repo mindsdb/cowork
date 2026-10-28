@@ -29,6 +29,7 @@ import {
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -103,6 +104,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   // after-connect setting, so this is its own small piece of state rather
   // than reusing pickerState's shape.
   const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
+  // 'reconnect' | 'remove' while its confirm dialog is open. In-app dialogs,
+  // not window.confirm: on Windows the native dialog leaves the page without
+  // keyboard focus, so no text field takes typing afterwards.
+  const [confirming, setConfirming] = useState(null);
   // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
   // a pick attempt's own continuation can tell whether it's still the
   // active one — a single shared boolean "was cancel ever clicked" flag
@@ -153,6 +158,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const managed = connection.managed === true || saved?.managed === true;
   /* With `managed` false, the caller's own connection that others use. */
   const shared = connection.shared === true || saved?.shared === true;
+  const reconnectLabel = spec?.label || connection.engine;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -459,14 +465,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {spec && (
                 <Button
                   variant="primary"
-                  onClick={() => {
-                    const label = spec.label || connection.engine;
-                    if (!window.confirm(shared
-                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
-                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
-                    )) return;
-                    onReconnect?.(connection, spec, { shared });
-                  }}
+                  onClick={() => setConfirming('reconnect')}
                   className="w-full justify-center"
                 >
                   Reconnect
@@ -475,19 +474,38 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               <Button
                 variant="danger"
                 block
-                onClick={() => {
-                  if (!window.confirm(disconnectPrompt({
-                    engine: connection.engine,
-                    name: connection.name,
-                    shared,
-                  }))) return;
-                  onDisconnect?.(connection, saved);
-                  onClose();
-                }}
+                onClick={() => setConfirming('remove')}
               >
                 {Ico.trash(14)}
                 Remove
               </Button>
+              {spec && (
+                <ConfirmModal
+                  open={confirming === 'reconnect'}
+                  title={`Reconnect ${reconnectLabel}?`}
+                  message={shared
+                    ? `You'll connect ${reconnectLabel} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
+                    : `The existing ${reconnectLabel} connection will be removed and you'll connect it again from scratch.`}
+                  confirmLabel="Reconnect"
+                  onConfirm={() => {
+                    setConfirming(null);
+                    onReconnect?.(connection, spec, { shared });
+                  }}
+                  onClose={() => setConfirming(null)}
+                />
+              )}
+              <ConfirmModal
+                open={confirming === 'remove'}
+                {...disconnectPrompt({ engine: connection.engine, name: connection.name, shared })}
+                confirmLabel="Remove"
+                destructive
+                onConfirm={() => {
+                  setConfirming(null);
+                  onDisconnect?.(connection, saved);
+                  onClose();
+                }}
+                onClose={() => setConfirming(null)}
+              />
             </>
           )}
         </div>
