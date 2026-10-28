@@ -182,7 +182,10 @@ describe('CustomizeView Reconnect', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
     await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${READ_ONLY_NOTE}`));
+    const error = await screen.findByRole('dialog', { name: 'Could not disconnect' });
+    expect(error).toHaveTextContent(READ_ONLY_NOTE);
+    expect(window.alert).not.toHaveBeenCalled();
+    await userEvent.click(within(error).getByRole('button', { name: 'OK' }));
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
     expect(onReconnect).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();

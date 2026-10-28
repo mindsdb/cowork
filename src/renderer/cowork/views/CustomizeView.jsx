@@ -30,6 +30,7 @@ import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -530,6 +531,9 @@ export default function CustomizeView({
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  // Shown in an in-app dialog rather than alert(), for the same Windows focus
+  // reason as the confirm dialogs.
+  const [deleteError, setDeleteError] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -650,7 +654,7 @@ export default function CustomizeView({
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      setDeleteError(String(e?.message || e));
       return false;
     }
     await syncAfterDelete();
@@ -740,6 +744,22 @@ export default function CustomizeView({
           </ListGroup>
         )}
       </CollectionState>
+
+      <Modal
+        open={deleteError != null}
+        onClose={() => setDeleteError(null)}
+        size="sm"
+        width="min(420px, 92vw)"
+        labelledBy="disconnect-error-title"
+      >
+        <ModalHeader id="disconnect-error-title" title="Could not disconnect" />
+        <ModalBody>
+          <div className="s-body">{deleteError}</div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setDeleteError(null)} autoFocus>OK</Button>
+        </ModalFooter>
+      </Modal>
 
       {selectedConn && (
         <ConnectionDetailPanel

@@ -140,7 +140,10 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     const card = screen.getAllByRole('article')[0];
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Disconnect'}));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Could not disconnect: Connection is unavailable'));
+    const error = await screen.findByRole('dialog', {name:'Could not disconnect'});
+    expect(error).toHaveTextContent('Connection is unavailable');
+    expect(window.alert).not.toHaveBeenCalled();
+    await userEvent.click(within(error).getByRole('button', {name:'OK'}));
     expect(screen.getAllByRole('article')).toHaveLength(6);
     expect(within(card).getByRole('button', {name:'Disconnect'})).toBeEnabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
