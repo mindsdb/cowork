@@ -227,6 +227,7 @@ export default function HomeView({
   onSend, project, onProjectChange, model, onModelChange, effort, onEffortChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   disabledConnections = [],
   onUpdateConnectorMute,
   onNavigateToConnectors,
@@ -583,6 +584,7 @@ export default function HomeView({
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
               onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+              onAddNotionPages={onAddNotionPages}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
