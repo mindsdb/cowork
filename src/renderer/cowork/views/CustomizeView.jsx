@@ -11,7 +11,21 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { Alert, Button, Select } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
+import {
+  CONNECTIONS_VAULT_KEEP,
+  deleteDatasource,
+  deleteDatasourceConnection,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  listDatasourceConnections,
+  patchConnectionAccessMode,
+  retryDatasourceValidation,
+} from '../api';
+import { useOrgMode } from '../../lib/orgMode';
+import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import { usePendingDatasourceRefresh } from '../hooks/usePendingDatasourceRefresh';
+import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -28,7 +42,8 @@ import {
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow, SHARED_DISCONNECT_NOTE } from '../components/connector/ConnectionCard';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -95,6 +110,11 @@ function MetaRow({ label, value }) {
 }
 
 function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+  //: 'reconnect' | 'disconnect' | null. One dialog serves both, because only
+  //: one of the two buttons can be answered at a time.
+  const [confirming, setConfirming] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -459,14 +479,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {spec && (
                 <Button
                   variant="primary"
-                  onClick={() => {
-                    const label = spec.label || connection.engine;
-                    if (!window.confirm(shared
-                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
-                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
-                    )) return;
-                    onReconnect?.(connection, spec, { shared });
-                  }}
+                  onClick={() => setConfirming('reconnect')}
                   className="w-full justify-center"
                 >
                   Reconnect
@@ -475,15 +488,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               <Button
                 variant="danger"
                 block
-                onClick={() => {
-                  if (!window.confirm(disconnectPrompt({
-                    engine: connection.engine,
-                    name: connection.name,
-                    shared,
-                  }))) return;
-                  onDisconnect?.(connection, saved);
-                  onClose();
-                }}
+                onClick={() => setConfirming('disconnect')}
               >
                 {Ico.trash(14)}
                 Remove
@@ -492,6 +497,41 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={confirming !== null}
+        title={confirming === 'disconnect' ? `Disconnect ${connection.name}?` : 'Connect this again from scratch?'}
+        message={confirming === 'disconnect'
+          ? `The saved ${connection.engine} connection is removed. ${shared ? SHARED_DISCONNECT_NOTE : 'You can connect it again later.'}`
+          : shared
+            ? `You'll connect ${spec?.label || connection.engine} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
+            : `The existing ${spec?.label || connection.engine} connection is removed first, then you connect it again.`}
+        confirmLabel={confirming === 'disconnect' ? 'Disconnect' : 'Reconnect'}
+        busyLabel={confirming === 'disconnect' ? 'Disconnecting…' : 'Reconnecting…'}
+        destructive={confirming === 'disconnect'}
+        busy={confirmBusy}
+        error={confirmError}
+        onConfirm={async () => {
+          setConfirmBusy(true);
+          setConfirmError('');
+          try {
+            // Both remove the connection first, so both wait for it: closing
+            // before the delete answers leaves a failure unhandled and the
+            // connection on screen with nothing said about it.
+            if (confirming === 'disconnect') {
+              await onDisconnect?.(connection, saved);
+              onClose();
+              return;
+            }
+            await onReconnect?.(connection, spec, { shared });
+            setConfirming(null);
+          } catch (e) {
+            setConfirmError(e?.message || 'That connection could not be removed.');
+          } finally {
+            setConfirmBusy(false);
+          }
+        }}
+        onClose={() => { setConfirming(null); setConfirmError(''); }}
+      />
     </>
   );
 }
@@ -502,16 +542,24 @@ export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  /** Opens the cloud connect form against an existing database connection. */
+  onEditDatasource,
   onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
   agentLabel = 'the agent',
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
+  // Cloud database connections, kept apart from `list`. That array is the
+  // OAuth one and every refresh of it replaces the whole thing, so merging
+  // these into it would drop them the next time an OAuth sync ran.
+  const [datasources, setDatasources] = useState([]);
+  const orgMode = useOrgMode();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  const [selectedDatasource, setSelectedDatasource] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -527,6 +575,26 @@ export default function CustomizeView({
       })
       .catch(() => {});
   }, []);
+
+  // Cloud only: the relay's routes answer 404 anywhere else by design.
+  const refreshDatasources = useRef(() => {});
+  refreshDatasources.current = () => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasources(toDatasourceRows(rows)))
+      .catch(() => {});
+  };
+  useEffect(() => { refreshDatasources.current(); }, [orgMode]);
+  // Connecting, editing or removing a database happens in the chat panel too,
+  // and this page can be open while it does.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasources.current(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, []);
+  // A row captured moments ago is still being checked, and this page is where
+  // its result is meant to appear.
+  usePendingDatasourceRefresh(datasources, () => refreshDatasources.current(), orgMode);
 
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
@@ -579,6 +647,11 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  const handleRetryValidation = async (connection) => {
+    await retryDatasourceValidation(connection.datasourceId);
+    await refreshDatasources.current();
+  };
+
   /* Re-reads the list after a delete. Best effort: the connection is already
      gone, so a failed refresh must never turn the delete into a failure. */
   const syncAfterDelete = async () => {
@@ -597,14 +670,23 @@ export default function CustomizeView({
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
   };
 
-  /* Resolves true once the connection is gone and false when the delete
-     failed, after telling the person why; a caller that goes on to reconnect
-     must stop on false. A 404 from the delete counts as gone. On desktop, an
-     OAuth or MCP connection resolves true once main's keychain:revoke handler
-     (src/main/app.ts) ran: that handler always answers ok and doesn't report
-     whether its vault delete succeeded. */
+  /* Resolves once the connection is gone and rejects when the delete failed,
+     so the confirm dialog that asked can say why; a caller that goes on to
+     reconnect must stop on a rejection. A 404 from the vault delete counts as
+     gone; the relay delete of a database connection still rejects on one. On
+     desktop, an OAuth or MCP connection resolves once main's keychain:revoke
+     handler (src/main/app.ts) ran: that handler always answers ok and doesn't
+     report whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
+      // A database connection lives behind the relay, not the OAuth vault:
+      // the OAuth delete route would not find it.
+      if (isDatasourceRow(connection)) {
+        await deleteDatasourceConnection(connection.datasourceId);
+        await refreshDatasources.current();
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        return;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -619,7 +701,7 @@ export default function CustomizeView({
         if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
           await syncAfterDelete();
-          return true;
+          return;
         }
       }
       try {
@@ -632,16 +714,20 @@ export default function CustomizeView({
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
-      return false;
+      // Rethrown, not alerted: the confirmation dialog is still open and
+      // answers there, where the person is looking.
+      throw e;
     }
     await syncAfterDelete();
-    return true;
   };
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = (list || []).map((connection) => ({ connection, identity: connectionIdentity(connection) }));
+    // One grid: the OAuth connections this page has always shown, plus the
+    // cloud database ones. They are separate state (see above) and joined only
+    // for display, search and sort.
+    const all = [...(list || []), ...datasources];
+    let out = all.map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
       out = out.filter(({ connection, identity }) =>
         [connection.name, connection.engine, identity.title, identity.subtitle]
@@ -662,9 +748,9 @@ export default function CustomizeView({
       }
     });
     return out.map(({ connection }) => connection);
-  }, [list, search, sort]);
+  }, [list, datasources, search, sort]);
 
-  const total = list.length;
+  const total = list.length + datasources.length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -711,17 +797,40 @@ export default function CustomizeView({
         {effectiveView === 'grid' ? (
           <CardGrid className="px-8 pb-[60px]">
             {visible.map((c) => (
-              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
             ))}
           </CardGrid>
         ) : (
           <ListGroup className="mx-8 mb-[60px]">
             {visible.map((c) => (
-              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
             ))}
           </ListGroup>
         )}
       </CollectionState>
+
+      {selectedDatasource && (
+        <DatasourceDetailPanel
+          connection={selectedDatasource}
+          onClose={() => setSelectedDatasource(null)}
+          onRetry={async (connection) => {
+            await handleRetryValidation(connection);
+            setSelectedDatasource(null);
+          }}
+          onRemove={async (connection) => {
+            await handleDelete(connection);
+            setSelectedDatasource(null);
+          }}
+          onEdit={(connection) => {
+            setSelectedDatasource(null);
+            // The relay requires the password on every edit and nothing here
+            // can pre-fill it, so an edit re-opens the connect form — carrying
+            // the connection, so the form patches that one instead of creating
+            // a second connection under a new name.
+            onEditDatasource?.(connection);
+          }}
+        />
+      )}
 
       {selectedConn && (
         <ConnectionDetailPanel
@@ -740,10 +849,10 @@ export default function CustomizeView({
                account again updates it in place, so its name rides along: a
                connector with no identity field would otherwise derive a fresh
                random slug and save a second, private connection. Otherwise a
-               failed delete leaves the old connection in place, so don't start
-               a new connect flow for it; the panel stays open. A connection
-               that is already gone counts as deleted. */
-            if (!shared && !await handleDelete(conn)) return;
+               failed delete rejects before a new connect flow starts, and the
+               panel's dialog says why. A connection that is already gone
+               counts as deleted. */
+            if (!shared) await handleDelete(conn);
             setSelectedConn(null);
             onReconnect?.(spec, shared ? { existingName: conn.name } : {});
           }}

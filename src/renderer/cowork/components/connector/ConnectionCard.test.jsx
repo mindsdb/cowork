@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConnectionCard, { ConnectionRow } from './ConnectionCard';
 
@@ -89,28 +89,57 @@ describe('ConnectionCard', () => {
   });
 
   it('disconnects only the selected connection, without opening its details', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     let resolve;
     const onDelete = vi.fn(() => new Promise(r => { resolve = r; }));
     const onModify = vi.fn();
     render(<ConnectionCard connection={connection} onModify={onModify} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-    expect(window.confirm).toHaveBeenCalledWith('Disconnect github/ianu82?');
+
+    // The card's own button only asks; nothing is deleted until the dialog is
+    // answered.
+    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
+    expect(onDelete).not.toHaveBeenCalled();
+    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
+
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(connection);
     expect(onModify).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', {name:'Removing…'})).toBeDisabled();
-    expect(screen.getByRole('button', {name:'Manage GitHub: ianu82'})).toBeDisabled();
+    // The dialog owns the in-flight state now: it says what is happening and
+    // its disabled button is what stops a second delete.
+    expect(within(confirm).getByRole('button', {name:'Disconnecting…'})).toBeDisabled();
     resolve();
     await waitFor(() => expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled());
   });
 
   it('leaves the connection untouched when the user cancels', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const onDelete = vi.fn();
     render(<ConnectionCard connection={connection} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
+
+    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
+    await userEvent.click(within(confirm).getByRole('button', {name:'Cancel'}));
+
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
+  });
+
+  it('answers a failed disconnect in the dialog rather than silently', async () => {
+    const onDelete = vi.fn(() => Promise.reject(new Error('the relay refused')));
+    render(<ConnectionCard connection={connection} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
+
+    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
+    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
+
+    expect(await within(confirm).findByText('the relay refused')).toBeInTheDocument();
+  });
+
+  it('names a database connection by what removing it costs', async () => {
+    const datasource = { ...connection, __datasource__: true, engine: 'postgres', name: 'Analytics' };
+    render(<ConnectionCard connection={datasource} onDelete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
+
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(/stored credentials deleted/i)).toBeInTheDocument();
   });
 
   it.each([
@@ -138,13 +167,14 @@ describe('ConnectionCard', () => {
     ['row', ConnectionRow, { ...connection, shared: true }],
     ['card with managed false', ConnectionCard, { ...connection, shared: true, managed: false }],
   ])("shows the creator's own shared connection as a %s with a Shared badge and Disconnect", async (_, Item, shared) => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     const onDelete = vi.fn();
     render(<Item connection={shared} onModify={vi.fn()} onDelete={onDelete} />);
     expect(screen.getByText('Shared')).toBeInTheDocument();
     expect(screen.queryByText('Managed')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage GitHub: ianu82' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    const confirm = await screen.findByRole('dialog');
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Disconnect' }));
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(shared);
   });
 
@@ -152,13 +182,14 @@ describe('ConnectionCard', () => {
     ['card', ConnectionCard],
     ['row', ConnectionRow],
   ])("says before a %s disconnects the creator's own shared connection that everyone loses it and its name stays taken", async (_, Item) => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const onDelete = vi.fn();
     render(<Item connection={{ ...connection, shared: true }} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "Disconnect github/ianu82?\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
-    );
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(
+      /It's shared, so everyone it's shared with loses it too\. A new connection can't use its name until your operator stops sharing it\./,
+    )).toBeInTheDocument();
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
     expect(onDelete).not.toHaveBeenCalled();
   });
 
@@ -166,10 +197,10 @@ describe('ConnectionCard', () => {
     ['with shared false', { ...connection, shared: false }],
     ['with a non-boolean shared value', { ...connection, shared: 'true' }],
   ])('asks only the plain question before disconnecting a connection %s', async (_, conn) => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect github/ianu82?');
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).queryByText(/It's shared/)).not.toBeInTheDocument();
   });
 
   it.each([

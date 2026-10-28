@@ -2053,6 +2053,61 @@ export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)

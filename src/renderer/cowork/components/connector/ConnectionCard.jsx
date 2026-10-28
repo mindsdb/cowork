@@ -4,8 +4,10 @@
 
 import { useState } from 'react';
 import { Badge, Button } from '../ui';
+import { ConfirmModal } from '../ConfirmModal';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
+import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 
 function ConnectionLogo({ engine, label }) {
   const [failed, setFailed] = useState(null);
@@ -21,20 +23,17 @@ function ConnectionLogo({ engine, label }) {
   );
 }
 
-/* The confirm text before a delete. `shared` is the caller's own connection
-   that others use: they read it live from its creator's vault (cowork-server's
-   LayeredDataVault), so deleting it removes it for them too. The operator's
-   share stays listed under its name, and cowork-server refuses a new
-   connection under that name until the operator stops sharing it. */
-export function disconnectPrompt({ engine, name, shared }) {
-  const question = `Disconnect ${engine}/${name}?`;
-  return shared
-    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
-    : question;
-}
+/* Said before deleting the caller's own connection that others use: they read
+   it live from its creator's vault (cowork-server's LayeredDataVault), so
+   deleting it removes it for them too. The operator's share stays listed under
+   its name, and cowork-server refuses a new connection under that name until
+   the operator stops sharing it. */
+export const SHARED_DISCONNECT_NOTE = "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.";
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState('');
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
@@ -56,10 +55,15 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
     setBusy(true);
+    setError('');
     try {
       await onDelete?.(connection);
+      setConfirming(false);
+    } catch (e) {
+      // Shown in the dialog rather than swallowed: a disconnect that failed
+      // silently leaves the card on screen and reads as a no-op.
+      setError(e?.message || 'That connection could not be disconnected.');
     } finally {
       setBusy(false);
     }
@@ -83,20 +87,48 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
             opens the details. */}
         {!managed && (
           <ItemActions className="ml-auto">
-            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+            <Button variant="subtle" size="sm" onClick={() => { setError(''); setConfirming(true); }} disabled={busy}>
               {busy ? 'Removing…' : 'Disconnect'}
             </Button>
           </ItemActions>
         )}
       </>
     ),
+    confirm: (
+      <ConfirmModal
+        open={confirming}
+        title={`Disconnect ${title}?`}
+        message={`${isDatasourceRow(connection)
+          ? `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.`
+          : `${subtitle} will be disconnected.${shared ? '' : ' You can connect it again later.'}`}${shared ? ` ${SHARED_DISCONNECT_NOTE}` : ''}`}
+        confirmLabel="Disconnect"
+        busyLabel="Disconnecting…"
+        destructive
+        busy={busy}
+        error={error}
+        onConfirm={handleRemove}
+        onClose={() => { setConfirming(false); setError(''); }}
+      />
+    ),
   };
 }
 
 export default function ConnectionCard(props) {
-  return <ItemCard as="article" {...useConnectionSlots(props)} />;
+  const { confirm, ...slots } = useConnectionSlots(props);
+  return (
+    <>
+      <ItemCard as="article" {...slots} />
+      {confirm}
+    </>
+  );
 }
 
 export function ConnectionRow(props) {
-  return <ListItem as="article" {...useConnectionSlots(props)} />;
+  const { confirm, ...slots } = useConnectionSlots(props);
+  return (
+    <>
+      <ListItem as="article" {...slots} />
+      {confirm}
+    </>
+  );
 }
