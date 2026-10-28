@@ -443,6 +443,7 @@ const INCOMPLETE_REASON_TEXT = {
   handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
   handback_stuck: 'Stopped early: the agent judged the task stuck.',
   retry_exhausted: 'Stopped early: the task kept failing.',
+  question_unanswered: 'Stopped early: a question went unanswered.',
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
