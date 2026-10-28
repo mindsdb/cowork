@@ -64,6 +64,9 @@ function markAutoOpened(repairId) {
 
 const NO_WORKSPACE = 'This artifact was created before editing was available';
 const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
+// Why the owner's comments are off: comments-access answered 503, and the
+// review service may come back.
+const COMMENTS_DOWN = "Comments aren't available right now. Reopen the artifact to try again.";
 export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
 
 /*
@@ -84,6 +87,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   const [revisions, setRevisions] = useState([]);
   const [capabilities, setCapabilities] = useState(null);
   const [commentsReady, setCommentsReady] = useState(false);
+  const [commentsOffReason, setCommentsOffReason] = useState('');
   const [unsupportedReason, setUnsupportedReason] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
@@ -132,6 +136,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setError('');
     setConflict(null);
     setUnsupportedReason('');
+    setCommentsOffReason('');
     let nextCapabilities = null;
     // Source authorization is enforced by the workspace endpoint itself, so
     // owners can load it in parallel with the separate comments-access check.
@@ -187,7 +192,8 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
         } catch (accessError) {
           if (!isCurrent()) return;
           setCommentsReady(false);
-          if (accessError?.status !== 503) setError(accessError.message);
+          if (accessError?.status === 503) setCommentsOffReason(COMMENTS_DOWN);
+          else setError(accessError.message);
         }
       } else {
         // The GET having succeeded IS the grant — the owner minted the auth
@@ -550,6 +556,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     capabilities,
     capabilitiesFromServer,
     commentsReady,
+    commentsOffReason,
     status,
     unsupportedReason,
     error,
@@ -571,6 +578,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     releaseRepairsForComment,
   }), [
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
+    commentsOffReason,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
     mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, revisions, save, source, status,

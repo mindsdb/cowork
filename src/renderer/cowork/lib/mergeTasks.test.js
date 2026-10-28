@@ -160,3 +160,21 @@ describe('mergeTasksFromServer keeps the local pagination state', () => {
     expect(merged.messagesStatus).toBe('loading');
   });
 });
+
+describe('mergeTasksFromServer keeps the local mutes', () => {
+  // The server never returns a chat's mutes; composer toggles live only on
+  // the local record, possibly before the chat has any message.
+  const muted = [{ engine: 'gmail', name: 'mail' }];
+
+  it('when the local task has no live messages', () => {
+    const local = [serverTask({ disabledConnections: muted })];
+    const [merged] = mergeTasksFromServer([serverTask()], local);
+    expect(merged.disabledConnections).toEqual(muted);
+  });
+
+  it('when local wins the conversation surface', () => {
+    const local = [serverTask({ disabledConnections: muted, messages: [{ role: 'user', content: 'x' }] })];
+    const [merged] = mergeTasksFromServer([serverTask()], local);
+    expect(merged.disabledConnections).toEqual(muted);
+  });
+});

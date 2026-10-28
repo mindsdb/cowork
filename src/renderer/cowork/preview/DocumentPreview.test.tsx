@@ -45,6 +45,7 @@ import {
   PREVIEW_FAILED_DOWNLOADED_NOTE,
   PREVIEW_FAILED_NOTE,
   PREVIEW_FAILURE_REASONS,
+  PREVIEW_LIMIT_REASONS,
   truncationLine,
   type DocumentPreviewProps,
   type DocumentPreviewSource,
@@ -122,7 +123,7 @@ describe('loading a file', () => {
     expect(props.download).not.toHaveBeenCalled();
   });
 
-  it('stops a file over 32 MiB at the cap with the too-large reason', async () => {
+  it('stops a file over 32 MiB at the cap and names the byte limit', async () => {
     let pulled = 0;
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -131,7 +132,7 @@ describe('loading a file', () => {
       },
     }, { highWaterMark: 0 });
     mount({ fetchFile: vi.fn(async () => new Response(body)) });
-    expect(await screen.findByText(PREVIEW_FAILURE_REASONS['too-large'])).toBeInTheDocument();
+    expect(await screen.findByText(PREVIEW_LIMIT_REASONS.maxBytes)).toBeInTheDocument();
     expect(pulled).toBe(33);
     expect(frameStub.mounts).toHaveLength(0);
   });
@@ -193,18 +194,39 @@ describe('a truncated render', () => {
     mount({ source: { ...SOURCE, previewType: type } });
     const frame = await mountedFrame();
     act(() => frame.onRendered({ type, units: 2, truncated: true }));
-    expect(screen.getByRole('note')).toHaveTextContent(truncationLine(type, true));
+    expect(screen.getByRole('note')).toHaveTextContent(truncationLine(type, 2, true));
+  });
+
+  it('says how many slides a truncated deck drew, whichever cap ended it', async () => {
+    expect(truncationLine('pptx', 300, true)).toBe('Showing the first 300 slides. Download has the full deck.');
+    expect(truncationLine('pptx', 33, false)).toBe('Showing the first 33 slides. Open has the full deck.');
+    expect(truncationLine('pptx', 1, true)).toBe('Showing the first slide. Download has the full deck.');
+    mount({ source: { ...SOURCE, previewType: 'pptx' } });
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'pptx', units: 33, truncated: true }));
+    expect(screen.getByRole('note')).toHaveTextContent('Showing the first 33 slides. Download has the full deck.');
   });
 
   it('says Download has the full sheet on web and Open on desktop', async () => {
-    expect(truncationLine('xlsx', true)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Download has the full sheet.');
-    expect(truncationLine('xlsx', false)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Open has the full sheet.');
+    expect(truncationLine('xlsx', 1, true)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Download has the full sheet.');
+    expect(truncationLine('xlsx', 1, false)).toBe('Showing up to 2,000 rows and 200 columns of each sheet. Open has the full sheet.');
     platform.isWeb = false;
     const { props } = mount();
     const frame = await mountedFrame();
     act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('says Download has the full sheet on desktop for a file that downloads there, and downloads from the bar', async () => {
+    platform.isWeb = false;
+    const { props } = mount({ fileAction: 'download' });
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: true }));
+    expect(screen.getByRole('note')).toHaveTextContent(truncationLine('xlsx', 1, true));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(props.download).toHaveBeenCalledTimes(1);
+    expect(props.openInDefaultApp).not.toHaveBeenCalled();
   });
 
   async function truncatedOnWeb(download: DocumentPreviewProps['download']) {
@@ -260,7 +282,7 @@ describe('a failed preview', () => {
   async function failWith(code: (typeof data.reasonCodes)[number], overrides: Partial<DocumentPreviewProps> = {}) {
     const view = mount(overrides);
     const frame = await mountedFrame();
-    act(() => frame.onError(code));
+    act(() => frame.onError({ code }));
     return view;
   }
 
@@ -274,6 +296,32 @@ describe('a failed preview', () => {
     await failWith(code);
     expect(screen.getByRole('status')).toHaveTextContent(PREVIEW_FAILURE_REASONS[code]);
     expect(screen.queryByTitle('Preview of report.xlsx')).toBeNull();
+  });
+
+  it('names a different reason for each limit', () => {
+    const reasons = data.failureLimits.map(({ limit }) => PREVIEW_LIMIT_REASONS[limit]);
+    expect(new Set(reasons).size).toBe(reasons.length);
+    expect(data.failureLimits.map(({ limit }) => limit).sort()).toEqual(Object.keys(PREVIEW_LIMIT_REASONS).sort());
+  });
+
+  it.each(data.failureLimits)('names $limit and its value, $names, in place of the $code reason', async ({ limit, code, names }) => {
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onError({ code, limit }));
+    const note = screen.getByRole('status');
+    expect(note).toHaveTextContent(PREVIEW_LIMIT_REASONS[limit]);
+    expect(note).toHaveTextContent(names);
+    expect(note).not.toHaveTextContent(PREVIEW_FAILURE_REASONS[code]);
+    await waitFor(() => expect(props.download).toHaveBeenCalledTimes(1));
+  });
+
+  it('says too large to preview for a renderer past the Word element cap, never unsupported', async () => {
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onError({ code: 'too-large', limit: 'maxDocxNodes' }));
+    expect(screen.getByRole('status')).toHaveTextContent(/^Couldn't preview this file.*Too large to preview: /);
+    expect(screen.getByRole('status')).not.toHaveTextContent(PREVIEW_FAILURE_REASONS.unsupported);
+    await waitFor(() => expect(props.download).toHaveBeenCalledTimes(1));
   });
 
   it('on web downloads the file once and claims it only after the download succeeded', async () => {
@@ -311,6 +359,46 @@ describe('a failed preview', () => {
     expect(screen.getByRole('status')).toHaveTextContent(`${PREVIEW_FAILED_NOTE}${PREVIEW_FAILURE_REASONS.unsupported}`);
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+  });
+
+  /* A desktop download can ask where to save, so a failed preview never
+     opens that dialog on its own. */
+  it('on desktop, for a file that downloads there, offers Download and downloads only on a click', async () => {
+    platform.isWeb = false;
+    const { props } = await failWith('unsupported', { fileAction: 'download' });
+    expect(props.download).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByText(PREVIEW_FAILED_NOTE)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })); });
+    expect(props.download).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+    expect(props.openInDefaultApp).not.toHaveBeenCalled();
+  });
+
+  /* The frame's draw watchdog reports timeout after rendered, naming
+     progressTimeoutMs, when a page draw never ends. */
+  it('replaces a rendered preview with the timeout note when the frame times out later, and downloads on web', async () => {
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: false }));
+    expect(screen.getByTitle('Preview of report.xlsx')).toBeInTheDocument();
+    act(() => frame.onError({ code: 'timeout', limit: 'progressTimeoutMs' }));
+    expect(screen.getByRole('status')).toHaveTextContent(PREVIEW_LIMIT_REASONS.progressTimeoutMs);
+    expect(screen.queryByTitle('Preview of report.xlsx')).toBeNull();
+    await waitFor(() => expect(props.download).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(PREVIEW_FAILED_DOWNLOADED_NOTE)).toBeInTheDocument();
+  });
+
+  it('on desktop replaces a rendered preview with the timeout note and Open when the frame times out later', async () => {
+    platform.isWeb = false;
+    const { props } = mount();
+    const frame = await mountedFrame();
+    act(() => frame.onRendered({ type: 'xlsx', units: 1, truncated: false }));
+    act(() => frame.onError({ code: 'timeout', limit: 'progressTimeoutMs' }));
+    expect(screen.getByRole('status')).toHaveTextContent(`${PREVIEW_FAILED_NOTE}${PREVIEW_LIMIT_REASONS.progressTimeoutMs}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(props.openInDefaultApp).toHaveBeenCalledTimes(1);
+    expect(props.download).not.toHaveBeenCalled();
   });
 
   it('shows the failure note, not a blank viewer, when the preview crashes', async () => {

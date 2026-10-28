@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 META_NAME = "cowork-provider-tests-enabled"
 PICKER_META_NAME = "cowork-model-picker"
 EFFORTS_META_NAME = "cowork-model-efforts"
+TOKEN_META_NAME = "cowork-shared-publish-token"
 
 
 class SpaWrapperTests(unittest.TestCase):
@@ -63,7 +64,7 @@ class SpaWrapperTests(unittest.TestCase):
             spec.loader.exec_module(module)
         return TestClient(server.app, follow_redirects=False)
 
-    def assert_shell(self, response, expected):
+    def assert_shell(self, response, expected, shared_token="false"):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8")
         self.assertEqual(response.headers["cache-control"], "no-store")
@@ -72,10 +73,13 @@ class SpaWrapperTests(unittest.TestCase):
         self.assertNotIn("etag", response.headers)
         self.assertNotIn("last-modified", response.headers)
         meta = f'<meta name="{META_NAME}" content="{expected}">'
+        token_meta = f'<meta name="{TOKEN_META_NAME}" content="{shared_token}">'
         self.assertEqual(response.text.count(META_NAME), 1)
+        self.assertEqual(response.text.count(TOKEN_META_NAME), 1)
         self.assertIn(meta, response.text)
         self.assertLess(response.text.index(meta), response.text.index("<script"))
-        self.assertEqual(response.text.replace(f"\n    {meta}", "", 1), self.html)
+        self.assertLess(response.text.index(token_meta), response.text.index("<script"))
+        self.assertEqual(response.text.replace(f"\n    {meta}\n    {token_meta}", "", 1), self.html)
 
     def test_every_shell_url_receives_the_default_or_explicit_setting(self):
         for value, expected in ((None, "true"), ("true", "true"), ("false", "false")):
@@ -157,6 +161,28 @@ class SpaWrapperTests(unittest.TestCase):
                     str(error.exception), "The SPA shell needs one <head> and no provider-testing metadata."
                 )
 
+    def test_the_shell_says_whether_a_shared_publish_token_is_set_and_never_carries_it(self):
+        token = "publish-token-value-7f3a"
+        for environment, expected in (
+            ({}, "false"),
+            ({"COWORK_PUBLISH_TOKEN": ""}, "false"),
+            ({"COWORK_PUBLISH_TOKEN": "  "}, "false"),
+            ({"COWORK_PUBLISH_TOKEN": token}, "true"),
+        ):
+            with self.client("false", **environment) as client:
+                for path in ("/", "/c/conversation-id", "/index-web.html"):
+                    with self.subTest(environment=environment, path=path):
+                        response = client.get(path)
+                        self.assert_shell(response, "false", shared_token=expected)
+                        self.assertNotIn(token, response.text)
+
+    def test_a_template_that_already_names_the_shared_publish_token_is_refused(self):
+        html = self.html.replace("<head>", f"<head><meta name='{TOKEN_META_NAME}' content='false'>")
+        (self.spa / "index-web.html").write_text(html, encoding="utf-8")
+        with self.client("false", COWORK_PUBLISH_TOKEN="a-token") as client, self.assertRaises(ValueError) as error:
+            client.get("/")
+        self.assertEqual(str(error.exception), "The SPA shell needs no publish-token metadata.")
+
     def test_model_picker_off_or_unset_leaves_the_shell_as_today(self):
         for model_picker in (None, "off"):
             with self.subTest(model_picker=model_picker), self.client("false", model_picker) as client:
@@ -171,11 +197,13 @@ class SpaWrapperTests(unittest.TestCase):
                     with self.subTest(model_picker=model_picker, path=path):
                         response = client.get(path)
                         tests_meta = f'<meta name="{META_NAME}" content="false">'
+                        token_meta = f'<meta name="{TOKEN_META_NAME}" content="false">'
                         picker_meta = f'<meta name="{PICKER_META_NAME}" content="{model_picker}">'
                         self.assertEqual(response.text.count(PICKER_META_NAME), 1)
                         self.assertLess(response.text.index(picker_meta), response.text.index("<script"))
                         self.assertEqual(
-                            response.text.replace(f"\n    {tests_meta}\n    {picker_meta}", "", 1), self.html
+                            response.text.replace(f"\n    {tests_meta}\n    {token_meta}\n    {picker_meta}", "", 1),
+                            self.html,
                         )
 
     def test_malformed_model_picker_values_fail_without_echoing_them(self):

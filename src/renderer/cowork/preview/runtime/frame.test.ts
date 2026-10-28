@@ -215,6 +215,22 @@ describe('render outcomes', () => {
     expect(message).toMatchObject({ type: 'error', code: 'internal' });
   });
 
+  it('reports too-large from a renderer with the frame-owned limit it names', async () => {
+    const { message, token } = await outcomeOf(async () => {
+      throw previewError('too-large', 'This document is too large to preview.', { limit: 'maxDocxNodes' });
+    });
+    expect(message).toEqual({ token, type: 'error', code: 'too-large', limit: 'maxDocxNodes', detail: 'This document is too large to preview.' });
+  });
+
+  it.each([
+    { label: 'no limit', limit: undefined },
+    { label: "the parent's byte cap", limit: 'maxBytes' as const },
+  ])('reports too-large from a renderer that names $label as internal', async ({ limit }) => {
+    const { message } = await outcomeOf(async () => { throw previewError('too-large', 'too large', { limit }); });
+    expect(message).toMatchObject({ type: 'error', code: 'internal' });
+    expect(message).not.toHaveProperty('limit');
+  });
+
   it('reports a summary for another type as internal', async () => {
     const { message } = await outcomeOf(async () => ({ type: 'pdf', units: 1, truncated: false }));
     expect(message).toMatchObject({ type: 'error', code: 'internal' });
@@ -231,7 +247,7 @@ describe('archive guard before render', () => {
 
     sendDocument(session, token, zipBytes([{ name: 'word/document.xml', data: new Uint8Array(1) }], { statedEntries: 20_000 }));
 
-    expect(await session.next()).toMatchObject({ type: 'error', code: 'zip-limit' });
+    expect(await session.next()).toMatchObject({ type: 'error', code: 'zip-limit', limit: 'maxZipEntries' });
     expect(docx.render).not.toHaveBeenCalled();
   });
 
@@ -282,6 +298,38 @@ describe('asset requests', () => {
 
     expect(await session.next()).toMatchObject({ type: 'rendered' });
     expect(asset).toEqual(new Uint8Array([1, 2]));
+  });
+});
+
+describe('draws', () => {
+  it('reports each draw to the parent once as it starts and once as it ends, after rendered too', async () => {
+    const token = newPreviewToken();
+    const { win } = frameWindow(token);
+    let context: RendererContext | null = null;
+    startPreviewFrame(renderer(async (_bytes, ctx) => {
+      context = ctx;
+      ctx.beginDraw()();
+      return SUMMARY;
+    }), win);
+    const session = sendPort(win, token);
+    sendDocument(session, token, new ArrayBuffer(1));
+
+    expect(await session.next()).toEqual({ token, type: 'draw', id: 0, state: 'start' });
+    expect(await session.next()).toEqual({ token, type: 'draw', id: 0, state: 'end' });
+    expect(await session.next()).toMatchObject({ type: 'rendered' });
+
+    const endFirst = context!.beginDraw();
+    const endSecond = context!.beginDraw();
+    endSecond();
+    endFirst();
+    endFirst();
+    await flush();
+    expect(session.received).toEqual([
+      { token, type: 'draw', id: 1, state: 'start' },
+      { token, type: 'draw', id: 2, state: 'start' },
+      { token, type: 'draw', id: 2, state: 'end' },
+      { token, type: 'draw', id: 1, state: 'end' },
+    ]);
   });
 });
 

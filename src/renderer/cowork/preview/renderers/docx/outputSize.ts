@@ -7,7 +7,6 @@
  * and a 1,000-paragraph header asks for about 8 million elements, and no
  * archive cap sees it, because the XML stays small.
  */
-import type { PreviewLimits } from '../../contract';
 
 /* One element of docx-preview's parsed tree, by the fields renderDocument
    reads to lay out pages and notes and to decide how many nodes an element
@@ -54,24 +53,17 @@ export interface ParsedWordDocument {
 }
 
 /*
- * The most nodes a Word preview may build. It comes from a cap the preview
- * already has, maxInflatedBytes, until a limits policy gives Word a
- * PreviewLimits field of its own. 256 MiB / 128 is 2,097,152 nodes, measured
+ * The most nodes a Word preview may build is ctx.limits.maxDocxNodes,
+ * 2,097,152, which render() checks this file's count against. It was measured
  * against docx-preview in Chrome: a 3,000-page document of 25 paragraphs a
  * page, each of four runs, with a header and a footer, counts about 735,000,
  * and docx-preview's 411,000 elements for it took 1.5 GB. With eight runs a
  * paragraph it counts about 1,335,000, for 711,000 elements and 2.6 GB. A
  * 196 KB file of 1.97 million one-line paragraphs, which passes every archive
  * cap, counts about 5.9 million, and docx-preview's 3.9 million elements for
- * it took 7 to 8 GB. Scaled from these, a document right at the budget takes
- * about 4 GB, and touch devices get the same budget, since maxInflatedBytes
- * is the same on every device.
+ * it took 7 to 8 GB. Scaled from these, a document right at the cap takes
+ * about 4 GB, and touch devices get the same cap.
  */
-const INFLATED_BYTES_PER_NODE = 128;
-
-export function outputNodeBudget(limits: PreviewLimits): number {
-  return Math.floor(limits.maxInflatedBytes / INFLATED_BYTES_PER_NODE);
-}
 
 /*
  * The nodes docx-preview's HtmlRenderer builds for one element, its children

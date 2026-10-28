@@ -186,6 +186,7 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(true);
+    expect(result.current.commentsOffReason).toBe('');
     expect(api.enableDraftComments).toHaveBeenCalledWith(artifact);
   });
 
@@ -297,6 +298,9 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(false);
+    expect(result.current.commentsOffReason).toBe(
+      "Comments aren't available right now. Reopen the artifact to try again.",
+    );
     expect(result.current.error).toBe('');
     expect(result.current.source).toEqual(source);
   });

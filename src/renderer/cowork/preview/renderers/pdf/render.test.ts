@@ -48,7 +48,15 @@ function fixtureBytes(name: string): ArrayBuffer {
 function context(limits: PreviewLimits = previewLimits({ touch: false }), signal = new AbortController().signal): RendererContext {
   const root = document.createElement('div');
   document.body.append(root);
-  return { root, limits, signal, progress: vi.fn(), openZip: vi.fn(), requestAsset: vi.fn(async () => null) };
+  return {
+    root,
+    limits,
+    signal,
+    progress: vi.fn(),
+    openZip: vi.fn(),
+    requestAsset: vi.fn(async () => null),
+    beginDraw: vi.fn(() => () => undefined),
+  };
 }
 
 function pageSlots(root: HTMLElement): HTMLElement[] {
@@ -88,7 +96,7 @@ describe('pdfDocumentParams', () => {
     const limits = previewLimits({ touch });
     const params = pdfDocumentParams(new ArrayBuffer(0), context(limits));
     expect(params.canvasMaxAreaInBytes).toBe(limits.maxPdfCanvasPixels * 4);
-    expect(params.maxImageSize).toBe(limits.maxInflatedBytes / 4);
+    expect(params.maxImageSize).toBe(limits.maxPicturePixels);
   });
 });
 
@@ -101,8 +109,8 @@ describe('the image cap in pdf.js\'s fake worker', () => {
 
   it.each(CASES.images)('keeps the image in $file at the cap and drops it one pixel over', async ({ file, pixels }) => {
     const limits = previewLimits({ touch: false });
-    await expect(imagePaintsOnPageOne(file, { ...limits, maxInflatedBytes: pixels * 4 })).resolves.toBe(1);
-    await expect(imagePaintsOnPageOne(file, { ...limits, maxInflatedBytes: (pixels - 1) * 4 })).resolves.toBe(0);
+    await expect(imagePaintsOnPageOne(file, { ...limits, maxPicturePixels: pixels })).resolves.toBe(1);
+    await expect(imagePaintsOnPageOne(file, { ...limits, maxPicturePixels: pixels - 1 })).resolves.toBe(0);
   });
 });
 
@@ -140,7 +148,7 @@ describe('the pdf renderer', () => {
       capAtOpen = Reflect.get(globalThis, IMAGE_CAP_GLOBAL);
       return actual.getDocument(params);
     });
-    await renderer.render(fixtureBytes('three-pages.pdf'), context({ ...previewLimits({ touch: false }), maxInflatedBytes: 4 * 1000 }));
+    await renderer.render(fixtureBytes('three-pages.pdf'), context({ ...previewLimits({ touch: false }), maxPicturePixels: 1000 }));
     expect(capAtOpen).toBe(1000);
   });
 

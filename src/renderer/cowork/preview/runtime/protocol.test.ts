@@ -44,6 +44,7 @@ describe('message readers drop a wrong or missing token', () => {
     ['progress', readFrameToParent, { type: 'progress', done: 1, total: 2 }],
     ['rendered', readFrameToParent, { type: 'rendered', summary }],
     ['asset request', readFrameToParent, { type: 'asset-request', requestId: 1, name: 'a' }],
+    ['draw', readFrameToParent, { type: 'draw', id: 3, state: 'start' }],
     ['error', readFrameToParent, { type: 'error', code: 'parse-failed' }],
   ];
 
@@ -75,9 +76,45 @@ describe('message shapes', () => {
     expect(message?.type === 'error' && message.detail?.length).toBe(MAX_ERROR_DETAIL_LENGTH);
   });
 
-  /* too-large and timeout belong to the parent, so the frame never sends them. */
+  /* timeout belongs to the parent, and so does too-large that names no
+     limit, so the frame never sends them. */
   it.each(['too-large', 'timeout'])('drops a frame error with the parent-owned code %s', (code) => {
     expect(readFrameToParent({ token: TOKEN, type: 'error', code }, TOKEN)).toBeNull();
+  });
+
+  it.each([
+    { code: 'too-large', limit: 'maxDocxNodes' },
+    { code: 'zip-limit', limit: 'maxZipEntries' },
+    { code: 'zip-limit', limit: 'maxInflatedBytes' },
+    { code: 'zip-limit', limit: 'maxZipEntryInflatedBytes' },
+  ])('keeps $code naming the frame-owned limit $limit', ({ code, limit }) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code, limit }, TOKEN)).toEqual({ token: TOKEN, type: 'error', code, limit });
+  });
+
+  it.each([
+    { code: 'too-large', limit: 'maxBytes' },
+    { code: 'too-large', limit: 'readyTimeoutMs' },
+    { code: 'timeout', limit: 'progressTimeoutMs' },
+    { code: 'too-large', limit: 'maxSheets' },
+    { code: 'too-large', limit: 'toString' },
+    { code: 'parse-failed', limit: 'maxDocxNodes' },
+    { code: 'unsupported', limit: 'maxZipEntries' },
+  ])('drops $code naming $limit, which the frame may not report together', ({ code, limit }) => {
+    expect(readFrameToParent({ token: TOKEN, type: 'error', code, limit }, TOKEN)).toBeNull();
+  });
+
+  it('drops a draw whose id is not a whole count or whose state is neither start nor end', () => {
+    for (const draw of [
+      { id: -1, state: 'start' },
+      { id: 1.5, state: 'end' },
+      { id: '1', state: 'start' },
+      { id: 1, state: 'done' },
+      { id: 1 },
+    ]) {
+      expect(readFrameToParent({ token: TOKEN, type: 'draw', ...draw }, TOKEN)).toBeNull();
+    }
+    expect(readFrameToParent({ token: TOKEN, type: 'draw', id: 0, state: 'end', extra: 1 }, TOKEN))
+      .toEqual({ token: TOKEN, type: 'draw', id: 0, state: 'end' });
   });
 
   it('drops a document whose bytes are not an ArrayBuffer', () => {

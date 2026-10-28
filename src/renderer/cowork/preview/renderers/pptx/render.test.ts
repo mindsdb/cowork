@@ -71,6 +71,7 @@ interface CaseExpectation {
   units?: number;
   truncated?: boolean;
   text?: string[];
+  textExcludes?: string[];
   slides?: string[];
   lastSlide?: string;
   placeholders?: PlaceholderKind[];
@@ -216,6 +217,7 @@ async function startRender(source: Source, options: RunOptions = {}): Promise<Ru
         return zip.zip;
       }),
     requestAsset: async () => null,
+    beginDraw: () => () => undefined,
   };
   return { root, opened, progress, rendered: renderer.render(bytes, ctx) };
 }
@@ -290,6 +292,7 @@ function expectSlides(root: HTMLElement, summary: RenderSummary, want: CaseExpec
   for (const [i, text] of (want.slides ?? []).entries()) expect(slides[i]?.textContent).toContain(text);
   if (want.lastSlide !== undefined) expect(slides.at(-1)?.textContent).toContain(want.lastSlide);
   for (const text of want.text ?? []) expect(root.textContent).toContain(text);
+  for (const text of want.textExcludes ?? []) expect(root.textContent).not.toContain(text);
 }
 
 function expectDrawn(root: HTMLElement, want: CaseExpectation): void {
@@ -418,6 +421,12 @@ describe('progress and stopping', () => {
     const run = await startRender(THREE_SLIDES);
     await run.rendered;
     expect(run.progress).toEqual([[0, 3], [1, 3], [2, 3], [3, 3]]);
+  });
+
+  it('reports progress after each slide it draws and none past the element cap', async () => {
+    const run = await startRender({ deck: { numberedSlides: 3 } }, { limits: { maxSlideElements: 32 } });
+    await expect(run.rendered).resolves.toEqual({ type: 'pptx', units: 2, truncated: true });
+    expect(run.progress).toEqual([[0, 3], [1, 3], [2, 3]]);
   });
 
   it('opens nothing when the signal has already aborted', async () => {

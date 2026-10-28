@@ -111,26 +111,26 @@ describe('guardArchive', () => {
   it.each(ARCHIVES.pastEntryCap)(`ends in zip-limit past ${LIMITS.maxZipEntries} entries for $case, before JSZip reads the directory`, async ({ case: name, archive }) => {
     const load = vi.spyOn(JSZip, 'loadAsync');
     const entries = Array.from({ length: LIMITS.maxZipEntries + 1 }, (_, index) => ({ name: `f${index}`, size: 0, store: true }));
-    expect(await failure(guard(archiveFrom({ case: name, entries, archive })))).toMatchObject({ code: 'zip-limit' });
+    expect(await failure(guard(archiveFrom({ case: name, entries, archive })))).toMatchObject({ code: 'zip-limit', limit: 'maxZipEntries' });
     expect(load).not.toHaveBeenCalled();
   });
 
   it('ends in zip-limit when the end record states more entries than the cap', async () => {
     const bytes = zipBytes([{ name: 'a', data: text('a') }], { statedEntries: 0xffff });
-    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit' });
+    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', limit: 'maxZipEntries' });
   });
 
   it(`ends in zip-limit when one entry inflates past ${LIMITS.maxZipEntryInflatedBytes / MIB} MiB`, async () => {
     const bytes = zipBytes([{ name: 'big.xml', data: zeros(LIMITS.maxZipEntryInflatedBytes + 1) }]);
     expect(bytes.byteLength).toBeLessThan(MIB);
-    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('An entry') });
+    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', limit: 'maxZipEntryInflatedBytes', message: expect.stringContaining('An entry') });
   }, INFLATE_CASE_TIMEOUT_MS);
 
   it(`ends in zip-limit when the archive inflates past ${LIMITS.maxInflatedBytes / MIB} MiB in total`, async () => {
     const entry = zeros(60 * MIB);
     const bytes = zipBytes(Array.from({ length: 5 }, (_, index) => ({ name: `part${index}.xml`, data: entry })));
     expect(bytes.byteLength).toBeLessThan(2 * MIB);
-    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('The archive') });
+    expect(await failure(guard(bytes))).toMatchObject({ code: 'zip-limit', limit: 'maxInflatedBytes', message: expect.stringContaining('The archive') });
   }, INFLATE_CASE_TIMEOUT_MS);
 
   it('lets an archive exactly at each cap through', async () => {
@@ -142,9 +142,9 @@ describe('guardArchive', () => {
   it('ends in zip-limit when a stored entry passes a cap', async () => {
     const limits = { maxInflatedBytes: 10, maxZipEntryInflatedBytes: 6, maxZipEntries: 3 };
     const pastTotal = zipBytes([{ name: 'a', data: zeros(6) }, { name: 'b', data: zeros(5), store: true }]);
-    expect(await failure(guard(pastTotal, limits))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('The archive') });
+    expect(await failure(guard(pastTotal, limits))).toMatchObject({ code: 'zip-limit', limit: 'maxInflatedBytes', message: expect.stringContaining('The archive') });
     const pastEntry = zipBytes([{ name: 'a', data: zeros(7), store: true }]);
-    expect(await failure(guard(pastEntry, limits))).toMatchObject({ code: 'zip-limit', message: expect.stringContaining('An entry') });
+    expect(await failure(guard(pastEntry, limits))).toMatchObject({ code: 'zip-limit', limit: 'maxZipEntryInflatedBytes', message: expect.stringContaining('An entry') });
   });
 
   it('ends in parse-failed for a file that starts like an archive and does not open', async () => {

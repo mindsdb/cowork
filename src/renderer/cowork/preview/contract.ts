@@ -1,5 +1,7 @@
 export type DocumentPreviewType = 'xlsx' | 'docx' | 'pptx' | 'pdf';
 
+/* Every cap a document preview enforces. limits.json holds their values, so
+   documentation that publishes them reads that one file. */
 export interface PreviewLimits {
   maxBytes: number;                 // 32 MiB, counted while streaming
   maxInflatedBytes: number;         // 256 MiB
@@ -7,27 +9,57 @@ export interface PreviewLimits {
   maxZipEntries: number;            // 10,000
   maxSheetRows: number;             // 2,000
   maxSheetColumns: number;          // 200
+  maxSheets: number;                // 256 sheets get a tab; past it the summary says truncated: true
+  maxSheetCellCharacters: number;   // 1,000 characters a cell shows, then an ellipsis
+  maxNumberFormatLength: number;    // 255, Excel's own cap; a cell with a longer format shows its General text
+  maxDocxNodes: number;             // 2,097,152 nodes a Word preview may build; past it the preview ends in too-large
+  maxDocxFontUrlCharacters: number; // 16,777,216 characters of embedded fonts' data: URLs; fonts past it show in a fallback font
+  maxPicturePixels: number;         // 67,108,864 decoded pixels in one picture, in Word, slides and PDF; a larger one isn't drawn
   maxPdfPages: number;              // 500; past it the summary says truncated: true
   maxPdfCanvasPixels: number;       // 16,777,216 per page canvas; 4,194,304 on touch devices
+  maxPdfCanvasSide: number;         // 16,384 pixels on either side of a page canvas
   maxPdfCanvasesAlive: number;      // 6 page canvases drawn at once
   maxSlides: number;                // 300
+  maxSlideElements: number;         // 100,000 read across the deck; past it the summary says truncated: true
   readyTimeoutMs: number;           // 10,000
   progressTimeoutMs: number;        // 20,000
 }
 
+/* The caps whose breach ends a preview, rather than cutting it short or
+   leaving a part out. A failure past one names it, so the note can say which
+   limit the file passed. */
+export type PreviewFailureLimit =
+  | 'maxBytes'
+  | 'readyTimeoutMs'
+  | 'progressTimeoutMs'
+  | 'maxInflatedBytes'
+  | 'maxZipEntryInflatedBytes'
+  | 'maxZipEntries'
+  | 'maxDocxNodes';
+
 /* What `units` counts for each type:
    - xlsx: the sheets shown as tabs.
    - pptx: the slides drawn, at most maxSlides. A larger deck draws the first
-     maxSlides slides and reports truncated: true.
+     maxSlides slides and reports truncated: true. Across the deck the
+     renderer reads at most maxSlideElements elements of the slides' shape
+     trees, tables and text, counting the master's and the layout's again on
+     each slide and counting the ones it doesn't draw. A deck past that ends
+     on the slide where the cap ran out, drawn up to the cap, and reports
+     truncated: true.
    - pdf: the pages laid out, min(numPages, maxPdfPages). Pages draw as they
      scroll into view, with at most maxPdfCanvasesAlive canvases alive, so
-     units never counts pages drawn.
+     units never counts pages drawn. Each page draw runs under the parent's
+     draw watchdog (RendererContext.beginDraw).
    - docx: always 1, the one rendered document. */
 export interface RenderSummary { type: DocumentPreviewType; units: number; truncated: boolean }
 
-/* Who raises each code:
-   - too-large: the parent, when the streamed fetch passes maxBytes.
+/* Who raises each code, and the limit it names:
+   - too-large: the parent, when the streamed fetch passes maxBytes; and a
+     renderer, past a cap on what it would build, maxDocxNodes.
    - timeout: the parent, when the frame misses readyTimeoutMs or
+     progressTimeoutMs, naming the one it missed, or when a draw the frame
+     reported stays open for progressTimeoutMs of the page being visible with
+     no draw ending in that time, before or after rendered, naming
      progressTimeoutMs.
    - zip-limit: the runtime's archive guard, past maxInflatedBytes,
      maxZipEntryInflatedBytes or maxZipEntries.
@@ -42,9 +74,14 @@ export type PreviewErrorCode = 'too-large' | 'zip-limit' | 'parse-failed' | 'uns
 /* render() fails with a code by rejecting with a PreviewError. errors.ts, the
    one shared helper for preview errors, builds one with previewError and
    recognizes one with isPreviewError. The runtime reports any other rejection
-   as internal. A PreviewError whose code the frame doesn't own (too-large,
-   timeout) is reported as internal too. */
-export interface PreviewError extends Error { code: PreviewErrorCode }
+   as internal. A PreviewError the frame may not raise is reported as internal
+   too: timeout, and too-large without a limit the frame owns (runtime/
+   errors.ts). `limit` names the cap it passed, for the codes above that name
+   one. */
+export interface PreviewError extends Error { code: PreviewErrorCode; limit?: PreviewFailureLimit }
+
+/* How a preview ended when it didn't render, as the parent shows it. */
+export interface PreviewFailure { code: PreviewErrorCode; limit?: PreviewFailureLimit; detail?: string }
 
 export interface GuardedZip {
   names(): readonly string[];
@@ -59,6 +96,13 @@ export interface RendererContext {
   progress(done: number, total: number | null): void;
   openZip(bytes: ArrayBuffer): Promise<GuardedZip>;
   requestAsset(name: string): Promise<Uint8Array | null>;
+  /* Starts the parent's watchdog on one draw the renderer runs on its own,
+     such as a PDF page that scrolls into view, before or after render()
+     resolves. A draw open for progressTimeoutMs of the page being visible,
+     with no draw ending in that time, removes the frame with timeout. The
+     renderer calls the returned function once the draw finished, was
+     cancelled or failed; later calls do nothing. */
+  beginDraw(): () => void;
 }
 
 /* Before render(), the runtime runs its archive guard on every file that
@@ -101,4 +145,5 @@ export type FrameToParent =
   | { token: string; type: 'progress'; done: number; total: number | null }
   | { token: string; type: 'rendered'; summary: RenderSummary }
   | { token: string; type: 'asset-request'; requestId: number; name: string }
-  | { token: string; type: 'error'; code: PreviewErrorCode; detail?: string };
+  | { token: string; type: 'draw'; id: number; state: 'start' | 'end' }
+  | { token: string; type: 'error'; code: PreviewErrorCode; detail?: string; limit?: PreviewFailureLimit };

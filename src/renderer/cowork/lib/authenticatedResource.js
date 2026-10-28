@@ -75,13 +75,14 @@ export async function downloadAuthenticatedResource(url, filename) {
  * Open a private web resource from a boundary-checked Blob. The blank popup is
  * created before the fetch awaits so browser click activation is not lost.
  * Active same-origin Blob document types download instead of executing.
+ *
+ * Desktop saves the file instead, as downloadAuthenticatedResource does: the
+ * OS browser a URL would go to carries no token for the local server, so it
+ * gets a 401.
  */
 export async function openAuthenticatedResource(url, { filename } = {}) {
   if (!url) return false;
-  if (!host.isWeb) {
-    await host.openExternal(url);
-    return true;
-  }
+  if (!host.isWeb) return downloadAuthenticatedResource(url, filename);
 
   const popup = window.open('about:blank', '_blank');
   try {

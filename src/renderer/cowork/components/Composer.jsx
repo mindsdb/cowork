@@ -34,6 +34,7 @@ import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { connectionMuteKey } from '../lib/connectionMutes';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -934,13 +935,9 @@ export default function Composer({
     handleAttachFiles(renameClipboardImages(files));
   };
 
-  function pairKey(engine, name) {
-    return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
-  }
-
   function isConnectionDisabled(connector) {
-    const k = pairKey(connector.engine, connector.name);
-    return (disabledConnections || []).some((d) => pairKey(d.engine, d.name) === k);
+    const k = connectionMuteKey(connector.engine, connector.name);
+    return (disabledConnections || []).some((d) => connectionMuteKey(d.engine, d.name) === k);
   }
 
   const canMuteConnectors = typeof onUpdateConnectorMute === 'function';

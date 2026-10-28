@@ -156,12 +156,31 @@ describe('authenticated private file resources', () => {
     expect(mocks.host.openExternal).not.toHaveBeenCalled();
   });
 
-  it('preserves Electron main-process authentication without fetching in the renderer', async () => {
+  it('opens on desktop by saving a Blob, and never hands the URL to the OS browser', async () => {
+    /* The OS browser carries no token for the local server, so it got a 401. */
     mocks.host.isWeb = false;
+    const blob = new Blob(['image'], { type: 'image/png' });
+    mocks.authFetch.mockResolvedValue({ ok: true, status: 200, blob: async () => blob });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const open = vi.spyOn(window, 'open');
 
-    await expect(openAuthenticatedResource('/api/v1/private/raw')).resolves.toBe(true);
+    await expect(openAuthenticatedResource('http://127.0.0.1:26866/api/v1/attachments/p/t/a/raw', { filename: 'chart.png' }))
+      .resolves.toBe(true);
 
-    expect(mocks.host.openExternal).toHaveBeenCalledWith('/api/v1/private/raw');
-    expect(mocks.authFetch).not.toHaveBeenCalled();
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'chart.png' });
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('rejects on desktop when the file is gone, and saves nothing', async () => {
+    mocks.host.isWeb = false;
+    mocks.authFetch.mockResolvedValue({ ok: false, status: 404 });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await expect(openAuthenticatedResource('/api/v1/private/raw', { filename: 'f.bin' })).rejects.toMatchObject({ status: 404 });
+
+    expect(click).not.toHaveBeenCalled();
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
   });
 });

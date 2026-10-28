@@ -40,6 +40,7 @@ vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
 import { WorkingFolderBox } from './WorkingFolderBox';
 import { SharedLiveApps } from './SharedLiveApps';
 import { duplicateLiveApp, fetchArtifacts, fetchMyLiveApps, fetchSharedLiveApps, shareLiveApp } from '../../api';
+import { host } from '../../../platform/host';
 import { liveAppStatesFrom } from '../../lib/liveAppState';
 import { noteArtifactCreated } from '../../lib/artifactsStore';
 import { setLiveApps } from '../../../lib/liveApps';
@@ -76,6 +77,10 @@ const shared = {
 // A stop earlier today, so the line carries no date whatever day the suite runs.
 const todayAt = (hhmm) => `${new Date().toISOString().slice(0, 10)}T${hhmm}:00Z`;
 const refusal = (message, status) => Object.assign(new Error(message), { status });
+// The serve route's copy of a page, which "Open in new tab" opens for anything but a live app.
+const SERVE_PATH = '/api/v1/artifacts/serve/demo/table-counts/static/index.html';
+const SERVE = `https://cowork.example${SERVE_PATH}`;
+const OPEN_TAB = 'Open in new tab';
 
 const renderRail = async (artifacts, { project = PROJECT, isStreaming = false } = {}) => {
   fetchArtifacts.mockResolvedValue(artifacts);
@@ -109,6 +114,12 @@ describe('with live apps off', () => {
     expect(screen.queryByText(/Received from/)).toBeNull();
     expect(fetchSharedLiveApps).not.toHaveBeenCalled();
     expect(fetchMyLiveApps).not.toHaveBeenCalled();
+  });
+
+  it('opens a full-stack app\'s serve URL from "Open in new tab", as before', async () => {
+    await renderRail([app({ serveUrl: SERVE_PATH })]);
+    fireEvent.click(within(await menuOf(0)).getByRole('menuitem', { name: OPEN_TAB }));
+    await waitFor(() => expect(host.openExternal).toHaveBeenCalledWith(SERVE));
   });
 });
 
@@ -169,6 +180,43 @@ describe('with live apps on', () => {
     expect(await screen.findByText('Live at app1.view.localhost:8080')).toBeInTheDocument();
     expect(screen.getByText('Stopped 12:04 UTC, no requests for 2 h. Ask your agent to relaunch it.')).toBeInTheDocument();
     expect(screen.getByText('Duplicated from ana@example.com')).toBeInTheDocument();
+  });
+
+  it('opens a running app at its own address from "Open in new tab"', async () => {
+    fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([
+      { projectId: 'proj-1', slug: 'table-counts', slot: 1, state: 'running', address: 'http://app1.view.localhost:8080/' },
+    ]));
+    await renderRail([app({ serveUrl: SERVE_PATH })]);
+    await screen.findByText('Live at app1.view.localhost:8080');
+    fireEvent.click(within(await menuOf(0)).getByRole('menuitem', { name: OPEN_TAB }));
+
+    await waitFor(() => expect(host.openExternal).toHaveBeenCalledTimes(1));
+    expect(host.openExternal).toHaveBeenCalledWith('http://app1.view.localhost:8080/');
+  });
+
+  it('offers no "Open in new tab" on a stopped app', async () => {
+    fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([
+      {
+        projectId: 'proj-1', slug: 'table-counts', slot: 1, state: 'stopped', address: 'http://app1.view.localhost:8080/',
+        stoppedAt: todayAt('12:04'), stopReasonText: 'no requests for 2 h',
+      },
+    ]));
+    await renderRail([app({ serveUrl: SERVE_PATH })]);
+    await screen.findByText(/^Stopped/);
+    expect(within(await menuOf(0)).queryByRole('menuitem', { name: OPEN_TAB })).toBeNull();
+  });
+
+  it('offers no "Open in new tab" on an app with no launch on record', async () => {
+    await renderRail([app({ serveUrl: SERVE_PATH })]);
+    await waitFor(() => expect(fetchMyLiveApps).toHaveBeenCalled());
+    expect(within(await menuOf(0)).queryByRole('menuitem', { name: OPEN_TAB })).toBeNull();
+  });
+
+  it('opens a static page\'s serve URL from "Open in new tab", as before', async () => {
+    const pagePath = '/api/v1/artifacts/serve/demo/weekly/index.html';
+    await renderRail([{ ...page, serveUrl: pagePath }]);
+    fireEvent.click(within(await menuOf(0)).getByRole('menuitem', { name: OPEN_TAB }));
+    await waitFor(() => expect(host.openExternal).toHaveBeenCalledWith(`https://cowork.example${pagePath}`));
   });
 
   it('marks a copy with whom it came from', async () => {

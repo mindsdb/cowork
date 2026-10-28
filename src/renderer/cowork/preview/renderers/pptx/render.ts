@@ -1,13 +1,15 @@
 /*
  * The .pptx preview: slides stacked in sldIdLst order, drawn by Cowork's own
  * renderer from the checked archive ctx.openZip returns. It draws at most
- * ctx.limits.maxSlides slides and reports truncated: true past that. Text,
- * pictures and tables come out in an approximate layout, so the preview opens
- * with "Preview may differ from PowerPoint".
+ * ctx.limits.maxSlides slides, and reads at most ctx.limits.maxSlideElements
+ * elements across them (budget.ts); past either it stops and reports
+ * truncated: true. Text, pictures and tables come out in an approximate
+ * layout, so the preview opens with "Preview may differ from PowerPoint".
  */
 import type { GuardedZip, RenderSummary, RendererContext } from '../../contract';
 import { isPreviewError, previewError } from '../../errors';
 import type { RendererModule } from '../../hooks';
+import { elementBudget } from './budget';
 import { documentRoot, partReader, presentationPartName, relationshipPart, type PartReader } from './package';
 import { drawSlide, type DeckContext, type SlideSize } from './slide';
 import { NO_SLIDES_NOTE, PPTX_STYLES, PREVIEW_LABEL } from './styles';
@@ -30,9 +32,6 @@ const MAX_SIDE = 51_206_400;
 /* The first bytes of an OLE compound file, which is what a password-protected
    .pptx and an old binary .ppt both are. */
 const COMPOUND_FILE_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-/* An RGBA pixel takes 4 bytes. One picture may decode to at most the inflate
-   budget's worth of them, the cap the PDF preview puts on each image. */
-const BYTES_PER_PIXEL = 4;
 
 function isCompoundFile(bytes: ArrayBuffer): boolean {
   const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, COMPOUND_FILE_SIGNATURE.length));
@@ -111,19 +110,31 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
     signal: ctx.signal,
     size: presentation.size,
     defaultTextStyle: presentation.defaultTextStyle,
-    maxImagePixels: Math.floor(ctx.limits.maxInflatedBytes / BYTES_PER_PIXEL),
+    /* One picture may decode to at most maxPicturePixels, the cap the PDF
+       preview puts on each image. */
+    maxImagePixels: ctx.limits.maxPicturePixels,
+    budget: elementBudget(ctx.limits.maxSlideElements),
     images: new Map(),
     themes: new Map(),
     placeholders: new Map(),
   };
   ctx.progress(0, shown.length);
+  let drawn = 0;
   for (const [index, slidePart] of shown.entries()) {
+    /* With the budget spent a slide would draw no shape, so the deck ends on
+       the slide that spent it. */
+    if (deck.budget.left === 0) break;
     const slide = await drawSlide(deck, slidePart, index);
     ctx.signal.throwIfAborted();
     deckEl.append(slide);
-    ctx.progress(index + 1, shown.length);
+    drawn = index + 1;
+    ctx.progress(drawn, shown.length);
   }
-  return { type: 'pptx', units: shown.length, truncated: presentation.slideParts.length > shown.length };
+  return {
+    type: 'pptx',
+    units: drawn,
+    truncated: presentation.slideParts.length > drawn || deck.budget.exhausted,
+  };
 }
 
 export default { type: 'pptx', render } satisfies RendererModule;

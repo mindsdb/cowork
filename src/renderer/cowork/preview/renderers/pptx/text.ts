@@ -11,9 +11,10 @@
  * the inherited ones, as PowerPoint applies it. A bullet takes the color of the
  * paragraph's first run unless an a:buClr gives it its own.
  */
+import { walk, type ElementBudget } from './budget';
 import { cssColor, type ColorScheme } from './color';
 import { resolveTypeface, type ThemeFonts } from './theme';
-import { boolAttr, child, children, intAttr } from './xml';
+import { boolAttr, child, intAttr } from './xml';
 
 export interface TextOptions {
   doc: Document;
@@ -29,6 +30,9 @@ export interface TextOptions {
   cqw(emu: number): number;
   /* normAutofit's font scale, 1 for none. */
   fontScale: number;
+  /* The deck's element budget, which each text body's and paragraph's
+     children draw from. */
+  budget: ElementBudget;
 }
 
 const EMU_PER_POINT = 12_700;
@@ -80,7 +84,11 @@ function defRPrs(chain: readonly Element[]): Element[] {
 
 export function drawParagraphs(txBody: Element | null, options: TextOptions): HTMLElement[] {
   const counters: Array<number | null> = [];
-  return children(txBody, 'p').map((p) => drawParagraph(p, options, counters));
+  const paragraphs: HTMLElement[] = [];
+  for (const node of walk(options.budget, txBody)) {
+    if (node.localName === 'p') paragraphs.push(drawParagraph(node, options, counters));
+  }
+  return paragraphs;
 }
 
 function drawParagraph(p: Element, options: TextOptions, counters: Array<number | null>): HTMLElement {
@@ -135,7 +143,7 @@ function drawParagraph(p: Element, options: TextOptions, counters: Array<number 
 
 function drawRuns(p: Element, style: ParagraphStyle, options: TextOptions): Array<HTMLElement> {
   const nodes: HTMLElement[] = [];
-  for (const node of Array.from(p.children)) {
+  for (const node of walk(options.budget, p)) {
     if (node.localName === 'br') {
       nodes.push(options.doc.createElement('br'));
     } else if (node.localName === 'r' || node.localName === 'fld') {

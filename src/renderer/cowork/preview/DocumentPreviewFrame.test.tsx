@@ -6,7 +6,7 @@ import { documentPreviewData } from '../../../../tests/helpers/documentPreviewDa
 import { scriptSha256 } from '../../../../scripts/preview-bundles.mjs';
 import { PREVIEW_FRAME_NAME } from '../../../shared/document-preview';
 import type { PreviewAssetProvider, RenderSummary } from './contract';
-import { DocumentPreviewFrame, type DocumentPreviewFrameProps } from './DocumentPreviewFrame';
+import { DocumentPreviewFrame, MAX_OPEN_DRAWS, type DocumentPreviewFrameProps } from './DocumentPreviewFrame';
 import { previewFramePolicy } from './frameDocument';
 import { PREVIEW_PARENT_LIMITS } from './limits';
 import type { LoadedPreviewBundle } from './runtime/bundle';
@@ -175,8 +175,30 @@ describe('the handshake', () => {
     const { port } = handshake(iframe);
     port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'parse-failed', detail: 'bad sheet' });
     await tick();
-    expect(props.onError).toHaveBeenCalledWith('parse-failed', 'bad sheet');
+    expect(props.onError).toHaveBeenCalledWith({ code: 'parse-failed', detail: 'bad sheet' });
     expect(frames(container)).toHaveLength(1);
+  });
+
+  it('reports too-large from the frame with the renderer limit it names', async () => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit: 'maxDocxNodes' });
+    await tick();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'too-large', limit: 'maxDocxNodes' });
+  });
+
+  it.each([
+    { label: 'no limit', limit: undefined },
+    { label: "the parent's byte cap", limit: 'maxBytes' },
+    { label: 'a name that is no limit', limit: 'toString' },
+  ])('drops a too-large from the frame that names $label', async ({ limit }) => {
+    const { container, props } = mount();
+    const [iframe] = frames(container);
+    const { port } = handshake(iframe);
+    port.postMessage({ token: tokenOf(iframe), type: 'error', code: 'too-large', limit });
+    await tick();
+    expect(props.onError).not.toHaveBeenCalled();
   });
 });
 
@@ -187,7 +209,7 @@ describe('the watchdogs', () => {
     act(() => { vi.advanceTimersByTime(PREVIEW_PARENT_LIMITS.readyTimeoutMs - 1); });
     expect(props.onError).not.toHaveBeenCalled();
     act(() => { vi.advanceTimersByTime(1); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'readyTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -206,9 +228,158 @@ describe('the watchdogs', () => {
     expect(props.onError).not.toHaveBeenCalled();
 
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(props.onError).toHaveBeenCalledWith('timeout', undefined);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
     expect(frames(container)).toHaveLength(0);
     expect(srcdoc.startsWith(`<meta http-equiv="Content-Security-Policy" content="${previewFramePolicy(HASH)}">`)).toBe(true);
+  });
+});
+
+describe('the draw watchdog', () => {
+  const { progressTimeoutMs } = PREVIEW_PARENT_LIMITS;
+
+  /* Mounts a frame, hands it its port, and returns a function that posts a
+     message from the frame and lets the parent read it. */
+  function mountedFrame() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const view = mount();
+    const [iframe] = frames(view.container);
+    const { port } = handshake(iframe);
+    const token = tokenOf(iframe);
+    const send = async (message: Record<string, unknown>) => {
+      port.postMessage({ token, ...message });
+      await act(() => new Promise((resolve) => { setImmediate(resolve); }));
+      await act(() => new Promise((resolve) => { setImmediate(resolve); }));
+    };
+    const wait = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    return { ...view, send, wait };
+  }
+
+  /* Sets document.hidden, as a hidden tab or a minimized desktop window
+     does, and fires visibilitychange. */
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'hidden');
+  });
+
+  it(`keeps timing a draw after rendered, and removes the frame with timeout, naming progressTimeoutMs, when it hasn't ended within ${progressTimeoutMs} ms`, async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onRendered).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('times a draw that starts before rendered across the rendered message', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs / 2);
+    await send({ type: 'rendered', summary: SUMMARY });
+    wait(progressTimeoutMs / 2);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('never times out the frame while draws keep ending, and times out an open draw once none has ended', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    for (let id = 0; id < 10; id += 1) {
+      await send({ type: 'draw', id, state: 'start' });
+      await send({ type: 'draw', id: id + 100, state: 'start' });
+      wait(progressTimeoutMs / 2);
+      await send({ type: 'draw', id, state: 'end' });
+      await send({ type: 'draw', id: id + 100, state: 'end' });
+    }
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    expect(frames(container)).toHaveLength(1);
+
+    await send({ type: 'draw', id: 10, state: 'start' });
+    await send({ type: 'draw', id: 11, state: 'start' });
+    await send({ type: 'draw', id: 10, state: 'end' });
+    wait(progressTimeoutMs);
+    expect(props.onError).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
+  });
+
+  it('restarts the clock of every open draw when a draw ends, since draws share the frame\'s thread', async () => {
+    const { props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    await send({ type: 'draw', id: 1, state: 'start' });
+    wait(progressTimeoutMs - 1_000);
+    await send({ type: 'draw', id: 0, state: 'end' });
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
+  });
+
+  it('stops a draw\'s clock while the page is hidden, and gives it a fresh progressTimeoutMs once it shows', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs - 1);
+    setHidden(true);
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    setHidden(false);
+    wait(progressTimeoutMs - 1);
+    expect(props.onError).not.toHaveBeenCalled();
+    wait(1);
+    expect(props.onError).toHaveBeenCalledWith({ code: 'timeout', limit: 'progressTimeoutMs' });
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('starts no clock for a draw that starts while the page is hidden until it shows', async () => {
+    const { props, send, wait } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    setHidden(true);
+    await send({ type: 'draw', id: 0, state: 'start' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+    setHidden(false);
+    await send({ type: 'draw', id: 0, state: 'end' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
+  });
+
+  it('stops watching draws once the frame reported an error', async () => {
+    const { container, props, send, wait } = mountedFrame();
+    await send({ type: 'draw', id: 0, state: 'start' });
+    await send({ type: 'error', code: 'parse-failed' });
+    await send({ type: 'draw', id: 1, state: 'start' });
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).toHaveBeenCalledOnce();
+    expect(props.onError).toHaveBeenCalledWith({ code: 'parse-failed' });
+    expect(frames(container)).toHaveLength(1);
+  });
+
+  it(`removes a frame with internal when it reports more than ${MAX_OPEN_DRAWS} open draws`, async () => {
+    const { container, props, send } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    for (let id = 0; id < MAX_OPEN_DRAWS; id += 1) await send({ type: 'draw', id, state: 'start' });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    expect(props.onError).not.toHaveBeenCalled();
+    await send({ type: 'draw', id: MAX_OPEN_DRAWS, state: 'start' });
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
+    expect(frames(container)).toHaveLength(0);
+  });
+
+  it('stops every draw timer when the frame unmounts', async () => {
+    const { props, send, wait, unmount } = mountedFrame();
+    await send({ type: 'rendered', summary: SUMMARY });
+    await send({ type: 'draw', id: 0, state: 'start' });
+    unmount();
+    wait(progressTimeoutMs * 2);
+    expect(props.onError).not.toHaveBeenCalled();
   });
 });
 
@@ -227,7 +398,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
     expect(frames(container)).toHaveLength(0);
   });
 
@@ -253,7 +424,7 @@ describe('a frame that loads again', () => {
 
     act(() => { rebuilt.dispatchEvent(new Event('load')); });
     expect(frames(container)).toHaveLength(0);
-    expect(props.onError).toHaveBeenCalledWith('internal', expect.any(String));
+    expect(props.onError).toHaveBeenCalledWith({ code: 'internal', detail: expect.any(String) });
   });
 
   it('drops the old token after the rebuild', () => {

@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import yaml from 'js-yaml';
 
-import type { DocumentPreviewType, PreviewErrorCode } from '../../src/renderer/cowork/preview/contract';
+import type { DocumentPreviewType, PreviewErrorCode, PreviewFailureLimit } from '../../src/renderer/cowork/preview/contract';
 import type { ZipEntryInput, ZipOptions, ZipSizes } from './zipBytes';
 
 export interface DocumentArtifactData {
@@ -111,6 +111,14 @@ export interface HarnessData {
   directives: HarnessDirectiveData[];
 }
 
+/* A limit whose breach ends a preview, the code that names it, and the text
+   of its value the failure note must hold. */
+export interface FailureLimitData {
+  limit: PreviewFailureLimit;
+  code: PreviewErrorCode;
+  names: string;
+}
+
 export interface DocumentPreviewData {
   documentArtifacts: DocumentArtifactData[];
   forbiddenSandboxKeywords: string[];
@@ -121,6 +129,7 @@ export interface DocumentPreviewData {
   malformedTokens: MalformedToken[];
   unsafeSrcdocScriptText: ForbiddenScriptText[];
   reasonCodes: PreviewErrorCode[];
+  failureLimits: FailureLimitData[];
   windowSizeReads: string[];
   archiveGuard: {
     accepted: AcceptedArchiveData[];

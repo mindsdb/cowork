@@ -130,7 +130,8 @@
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: too-large
+    errorLimit: maxDocxNodes
 
 # 2.3 KB: one footnote of 1,000 paragraphs referenced 4,000 times.
 # docx-preview renders the footnote again for every reference, so the preview
@@ -140,7 +141,8 @@
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: too-large
+    errorLimit: maxDocxNodes
 
 # 2.4 KB: 4,000 page breaks and a default header holding a table whose grid
 # has 2,000 columns. docx-preview draws a <col> for each column, and the
@@ -151,7 +153,8 @@
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: too-large
+    errorLimit: maxDocxNodes
 
 # 2.6 KB: a footnote that refers to an endnote of 1,000 paragraphs,
 # referenced 4,000 times. docx-preview lists the endnote again each time the
@@ -161,7 +164,8 @@
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: too-large
+    errorLimit: maxDocxNodes
 
 # 1.9 KB: 22 superscript runs, each holding a VML text box that holds the
 # next, around one reference to a footnote of 1,000 paragraphs. docx-preview
@@ -172,7 +176,8 @@
   kind: hostile
   expect:
     outcome: error
-    errorCode: unsupported
+    errorCode: too-large
+    errorLimit: maxDocxNodes
 
 # A top-level VML shape whose v:imagedata names a PNG the file holds, as Word
 # writes a picture watermark or a legacy picture.

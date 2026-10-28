@@ -18,21 +18,29 @@ export function channels(value) {
   return selected;
 }
 
+// The Windows setup smoke reads the same manifests and verdict, so the published
+// installer's folder and extension are the only per-platform facts here.
+const PACKAGES = Object.freeze({
+  mac: { label: 'macOS package', extension: 'pkg' },
+  windows: { label: 'Windows installer', extension: 'exe' },
+});
+
 /** Validate public download provenance before executing a package. */
-export function packageIdentity(url, channel) {
+export function packageIdentity(url, channel, platform = 'mac') {
+  const { label, extension } = PACKAGES[platform];
   const parsed = new URL(url);
-  const prefix = channel === 'stable' ? '/mindshub-cowork/mac/snapshots/' : '/mindshub-cowork/mac/';
+  const prefix = channel === 'stable' ? `/mindshub-cowork/${platform}/snapshots/` : `/mindshub-cowork/${platform}/`;
   if (!['prod', 'stable'].includes(channel) || parsed.origin !== 'https://downloads.mindshub.ai' || parsed.search || parsed.hash || parsed.username || parsed.password || !parsed.pathname.startsWith(prefix)) {
-    throw new Error('Expected this channel\'s public macOS package URL.');
+    throw new Error(`Expected this channel's public ${label} URL.`);
   }
   const file = parsed.pathname.slice(prefix.length);
-  if (!/^mindshub-cowork-[a-zA-Z0-9.-]+\.pkg$/.test(file)) throw new Error('Invalid macOS package filename.');
+  if (!new RegExp(`^mindshub-cowork-[a-zA-Z0-9.-]+\\.${extension}$`).test(file)) throw new Error(`Invalid ${label} filename.`);
   return installerVersionFromFileName(file, channel);
 }
 
-export function validateManifest(value, channel, expectedUrl = '', expectedVersion = '') {
+export function validateManifest(value, channel, expectedUrl = '', expectedVersion = '', platform = 'mac') {
   if (!value || typeof value !== 'object') throw new Error('Download manifest is not an object.');
-  const version = packageIdentity(value.url, channel);
+  const version = packageIdentity(value.url, channel, platform);
   if (value.version !== version || value.key !== new URL(value.url).pathname.slice(1)
       || !Number.isSafeInteger(value.size_bytes) || value.size_bytes <= 0
       || !/^[a-f0-9]{64}$/.test(value.sha256 ?? '')) {

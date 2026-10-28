@@ -28,8 +28,8 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useLiveApps } from '../../../lib/liveApps';
 import { NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { SHARE_LIVE_APP_LABEL, canShareLiveApp } from '../../lib/liveAppSharing';
-import { liveAppLines } from '../../lib/liveAppState';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../../lib/liveAppSharing';
+import { liveAppLines, liveAppOpenAddress } from '../../lib/liveAppState';
 import { useLiveAppStates } from '../../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
@@ -288,10 +288,14 @@ export function WorkingFolderLive({
      * On web a tab shows only what canShowInBrowserTab allows; on any other
      * file it saves without a word, so those files get Download and no tab. An
      * unshared fullstack app with nothing to save keeps the tab item, which
-     * says why it cannot open rather than promise a download.
+     * says why it cannot open rather than promise a download. A live app opens
+     * only where it runs, so it offers the tab only while it runs: the serve
+     * URL's copy of its page has no backend.
      */
-    const canOpenTab = !canOpenLocalFile && (!host.isWeb || canShowInBrowserTab(a))
-      && (canOpenRemote || !canDownload);
+    const liveAppAddress = liveAppOpenAddress(a, { liveApps, states: liveAppStates });
+    const canOpenTab = !canOpenLocalFile && (isLiveAppCard(a, liveApps)
+      ? Boolean(liveAppAddress)
+      : (!host.isWeb || canShowInBrowserTab(a)) && (canOpenRemote || !canDownload));
     const busy = busyPath === a.path;
     return [
       // The document types preview first wherever the shared gate allows them.
@@ -315,7 +319,7 @@ export function WorkingFolderLive({
         label: 'Open in new tab',
         icon: (Ico.externalLink || Ico.upload)(13),
         disabled: busy,
-        onClick: () => openArtifactExternal(a),
+        onClick: () => (liveAppAddress ? openLiveApp(liveAppAddress) : openArtifactExternal(a)),
       },
       canDownload && {
         label: 'Download',
@@ -342,6 +346,10 @@ export function WorkingFolderLive({
         onClick: () => setPendingDeleteArtifact(a),
       },
     ].filter(Boolean);
+  };
+  const openLiveApp = async (address) => {
+    setRowNote('');
+    try { await host.openExternal(address); } catch {}
   };
   const openArtifactExternal = async (a) => {
     /* An earlier click's note says nothing about this action, so it never

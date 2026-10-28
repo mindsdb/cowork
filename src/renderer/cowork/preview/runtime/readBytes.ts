@@ -21,7 +21,7 @@ export async function readPreviewBytes(response: Response, maxBytes: number, sig
       signal.throwIfAborted();
       if (done) break;
       total += value.byteLength;
-      if (total > maxBytes) throw previewError('too-large', `The file is larger than ${maxBytes} bytes.`);
+      if (total > maxBytes) throw previewError('too-large', `The file is larger than ${maxBytes} bytes.`, { limit: 'maxBytes' });
       chunks.push(value);
     }
     const bytes = new Uint8Array(total);

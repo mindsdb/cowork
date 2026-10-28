@@ -29,7 +29,9 @@ import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { useLiveApps } from '../../lib/liveApps';
 import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
-import { LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines } from '../lib/liveAppState';
+import {
+  LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines, liveAppOpenAddress,
+} from '../lib/liveAppState';
 import { useLiveAppStates } from '../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
 import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSection';
@@ -229,10 +231,10 @@ async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (note) toastManager.add({ title: note });
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
-  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
+  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -388,8 +390,9 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
-// How a row or a grid card opens.
-function useArtifactOpen(artifact, onOpenViewer) {
+// How a row or a grid card opens. `liveAppAddress` is where an unpublished
+// live app runs (liveAppOpenAddress), '' while it isn't running.
+function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
   const published = !!artifact.publishedUrl;
@@ -430,8 +433,13 @@ function useArtifactOpen(artifact, onOpenViewer) {
   };
   /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
      Org mode has no serve URL and no local file, so there ↗ opens only the
-     shared page. */
+     shared page. A live app opens only where it runs: the serve URL's copy of
+     its page has no backend. */
   const openOutside = async () => {
+    if (liveAppCard) {
+      if (liveAppAddress) await openUrl(liveAppAddress);
+      return;
+    }
     const url = published ? artifact.publishedUrl : privateUrl;
     if (url) await openUrl(url);
     else if (!orgMode) openArtifactFile(artifact);
@@ -439,9 +447,12 @@ function useArtifactOpen(artifact, onOpenViewer) {
   /* Org mode offers ↗ only once a shared link exists, the same rule as its
      "Open shared link" menu item; an unshared file saves from the menu's
      Download. On web a tab shows only what canShowInBrowserTab allows and
-     saves anything else without a word, so ↗ is offered for those alone. */
-  const canOpenOutside = isArtifactActionAvailable('open', { orgMode, published })
-    && (!host.isWeb || canShowInBrowserTab(artifact));
+     saves anything else without a word, so ↗ is offered for those alone. A
+     live app offers ↗ only while it runs, as its viewer does. */
+  const canOpenOutside = liveAppCard
+    ? Boolean(liveAppAddress)
+    : isArtifactActionAvailable('open', { orgMode, published })
+      && (!host.isWeb || canShowInBrowserTab(artifact));
   return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 
@@ -645,8 +656,8 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false }) {
-  const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer);
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+  const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
     artifact,
@@ -721,6 +732,7 @@ export default function ArtifactsView({
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
   const linesOf = (a) => liveAppLines(a, { liveApps, states: liveAppStates });
+  const liveAddressOf = (a) => liveAppOpenAddress(a, { liveApps, states: liveAppStates });
   // Launch asks the agent in a chat of the app's project, behind the usual card.
   const launchLiveApp = onAddressWithAgent
     ? (a) => onAddressWithAgent({ artifact: a, prompt: launchLiveAppPrompt(a) })
@@ -1069,6 +1081,7 @@ export default function ArtifactsView({
                 onOpenProject={onOpenProject}
                 liveLines={linesOf(a)}
                 liveAppCard={isLiveAppCard(a, liveApps)}
+                liveAppAddress={liveAddressOf(a)}
               />
             ))}
           </div>
@@ -1092,6 +1105,7 @@ export default function ArtifactsView({
                 isMacPlatform={isMacPlatform}
                 liveLines={linesOf(a)}
                 liveAppCard={isLiveAppCard(a, liveApps)}
+                liveAppAddress={liveAddressOf(a)}
               />
             ))}
           </ListGroup>

@@ -17,7 +17,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { previewLimits } from '../../limits';
-import { MAX_CANVAS_SIDE, pageCanvasSize, PageWindow, PdfPages } from './pages';
+import { pageCanvasSize, PageWindow, PdfPages } from './pages';
 
 /* A shown page width in CSS pixels and a screen pixel ratio. */
 interface PageView { cssWidth: number; ratio: number }
@@ -28,33 +28,42 @@ const CASES = load(readFileSync(join(__dirname, 'pages.test.yaml'), 'utf8')) as 
 /* The largest page a PDF allows, in points. */
 const LARGEST_PAGE = 14_400;
 
+const CANVAS = previewLimits({ touch: false });
+const canvas = (maxPdfCanvasPixels: number) => ({ maxPdfCanvasPixels, maxPdfCanvasSide: CANVAS.maxPdfCanvasSide });
+
 describe('pageCanvasSize', () => {
   it('draws a small page at its shown width and the screen pixel ratio', () => {
-    expect(pageCanvasSize({ width: 612, height: 792 }, 816, 2, 16_777_216)).toEqual({ width: 1632, height: 2112, scale: 1632 / 612 });
+    expect(pageCanvasSize({ width: 612, height: 792 }, 816, 2, canvas(16_777_216))).toEqual({ width: 1632, height: 2112, scale: 1632 / 612 });
   });
 
   it.each([false, true])('keeps the largest page within maxPdfCanvasPixels at every view (touch: %s)', (touch) => {
-    const maxPixels = previewLimits({ touch }).maxPdfCanvasPixels;
+    const limits = previewLimits({ touch });
+    const maxPixels = limits.maxPdfCanvasPixels;
     for (const { cssWidth, ratio } of CASES.views) {
-      const size = pageCanvasSize({ width: LARGEST_PAGE, height: LARGEST_PAGE }, cssWidth, ratio, maxPixels);
+      const size = pageCanvasSize({ width: LARGEST_PAGE, height: LARGEST_PAGE }, cssWidth, ratio, limits);
       expect(size.width * size.height).toBeLessThanOrEqual(maxPixels);
       expect(size.width).toBeGreaterThan(0);
     }
   });
 
-  it('keeps a very long, thin page within the cap, at least 1 pixel wide and within MAX_CANVAS_SIDE', () => {
-    const size = pageCanvasSize({ width: 3, height: LARGEST_PAGE }, 800, 4, 4_194_304);
+  it('keeps a very long, thin page within the cap, at least 1 pixel wide and within maxPdfCanvasSide', () => {
+    const size = pageCanvasSize({ width: 3, height: LARGEST_PAGE }, 800, 4, canvas(4_194_304));
     expect(size.width * size.height).toBeLessThanOrEqual(4_194_304);
     expect(size.width).toBeGreaterThanOrEqual(1);
-    expect(size.height).toBeLessThanOrEqual(MAX_CANVAS_SIDE);
+    expect(size.height).toBeLessThanOrEqual(CANVAS.maxPdfCanvasSide);
   });
 
-  it('keeps a page thinner than one pixel within the cap and within MAX_CANVAS_SIDE on both sides', () => {
+  it('keeps a page thinner than one pixel within the cap and within maxPdfCanvasSide on both sides', () => {
     /* pdf.js accepts a MediaBox of [0 0 0.0001 14400]. */
-    const size = pageCanvasSize({ width: 0.0001, height: LARGEST_PAGE }, 800, 2, 16_777_216);
+    const size = pageCanvasSize({ width: 0.0001, height: LARGEST_PAGE }, 800, 2, canvas(16_777_216));
     expect(size.width * size.height).toBeLessThanOrEqual(16_777_216);
-    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(MAX_CANVAS_SIDE);
+    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(CANVAS.maxPdfCanvasSide);
     expect(size.width).toBe(1);
+  });
+
+  it('reads the side cap from limits.maxPdfCanvasSide', () => {
+    const size = pageCanvasSize({ width: 500, height: 1000 }, 816, 2, { maxPdfCanvasPixels: 16_777_216, maxPdfCanvasSide: 500 });
+    expect(size).toEqual({ width: 250, height: 500, scale: 0.5 });
   });
 });
 
@@ -193,6 +202,22 @@ function squarePageDocument(count: number, side = LARGEST_PAGE, { finish = false
   return { pdf, draws, cancel, cleanup };
 }
 
+/* A beginDraw that keeps the draws it started and hasn't seen end, as the
+   parent's draw watchdog does. */
+function drawWatch() {
+  const open = new Set<number>();
+  let started = 0;
+  const beginDraw = vi.fn(() => {
+    const id = started;
+    started += 1;
+    open.add(id);
+    return () => {
+      open.delete(id);
+    };
+  });
+  return { beginDraw, open };
+}
+
 function canvasesIn(root: HTMLElement): HTMLCanvasElement[] {
   return Array.from(root.querySelectorAll('canvas'));
 }
@@ -235,7 +260,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, draws } = squarePageDocument(40);
-    const pages = new PdfPages(pdf, root, limits);
+    const pages = new PdfPages(pdf, root, limits, drawWatch().beginDraw);
     await pages.layOut(40, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
 
@@ -252,7 +277,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, cancel } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1], true);
@@ -266,7 +291,7 @@ describe('PdfPages', () => {
   it('lays out one placeholder per page, reports each, and stops when the preview stops', async () => {
     const root = document.createElement('div');
     const { pdf } = squarePageDocument(10);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     const controller = new AbortController();
     const progress = vi.fn((done: number) => {
       if (done === 4) controller.abort();
@@ -281,7 +306,7 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1, 2], true);
@@ -294,13 +319,52 @@ describe('PdfPages', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const { pdf, cleanup } = squarePageDocument(3);
-    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
     await pages.layOut(3, new AbortController().signal, () => undefined);
     const view = ViewStandIn.current!;
     view.show([1], true);
     view.show([1], false);
     await settleDraws();
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it('runs every draw under the draw watchdog and ends it when the draw is cancelled or the preview closes', async () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    const { pdf } = squarePageDocument(3);
+    const watch = drawWatch();
+    const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), watch.beginDraw);
+    await pages.layOut(3, new AbortController().signal, () => undefined);
+    const view = ViewStandIn.current!;
+    view.show([1, 2], true);
+    expect(watch.beginDraw).toHaveBeenCalledTimes(2);
+    view.show([1], false);
+    await settleDraws();
+    expect(watch.open.size).toBe(1);
+    pages.close();
+    await settleDraws();
+    expect(watch.open.size).toBe(0);
+  });
+
+  it('ends the draw watchdog when a draw finishes, and keeps it running while a draw never ends', async () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    const finished = squarePageDocument(1, 612, { finish: true });
+    const finishedWatch = drawWatch();
+    const finishedPages = new PdfPages(finished.pdf, root, previewLimits({ touch: false }), finishedWatch.beginDraw);
+    await finishedPages.layOut(1, new AbortController().signal, () => undefined);
+    ViewStandIn.current!.show([1], true);
+    await settleDraws();
+    expect(finishedWatch.beginDraw).toHaveBeenCalledOnce();
+    expect(finishedWatch.open.size).toBe(0);
+
+    const stuck = squarePageDocument(1, 612);
+    const stuckWatch = drawWatch();
+    const stuckPages = new PdfPages(stuck.pdf, root, previewLimits({ touch: false }), stuckWatch.beginDraw);
+    await stuckPages.layOut(1, new AbortController().signal, () => undefined);
+    ViewStandIn.current!.show([1], true);
+    await settleDraws();
+    expect(stuckWatch.open.size).toBe(1);
   });
 
   describe('after the column resizes or the pixel ratio changes', () => {
@@ -312,7 +376,7 @@ describe('PdfPages', () => {
       const root = document.createElement('div');
       document.body.append(root);
       const { pdf, draws, cancel, cleanup } = squarePageDocument(count, PAGE_SIDE, { finish });
-      const pages = new PdfPages(pdf, root, previewLimits({ touch: false }));
+      const pages = new PdfPages(pdf, root, previewLimits({ touch: false }), drawWatch().beginDraw);
       await pages.layOut(count, new AbortController().signal, () => undefined);
       showPagesAt(root, cssWidth);
       ViewStandIn.current!.show(Array.from({ length: count }, (_, index) => index + 1), true);
