@@ -7,6 +7,8 @@ import {
   type SidecarProbe,
 } from './boot-configured';
 
+const SIGNED_IN = { ANTON_MINDS_ENABLED: 'true' };
+
 const READY: ServerAnswer = { configured: true, provider: 'minds_cloud', mindsRuntimeCredentialRequired: true };
 
 function probe(overrides: Partial<SidecarProbe> = {}): SidecarProbe {
@@ -20,11 +22,12 @@ function probe(overrides: Partial<SidecarProbe> = {}): SidecarProbe {
   };
 }
 
-function inputs(env: Record<string, string>, server: ServerReadiness, signOut = false) {
+function inputs(env: Record<string, string>, server: ServerReadiness, signOut = false, credential = false) {
   return {
     env: { ANTON_TERMS_CONSENT: 'true', ...env },
     signOutRoutingActive: () => signOut,
     readServer: vi.fn(async () => server),
+    hasMindsCredential: vi.fn(async () => credential),
   };
 }
 
@@ -101,6 +104,43 @@ describe('decideConfigured', () => {
   it('falls back to an .env key when the sidecar is on another account', async () => {
     expect(await decideConfigured(inputs({ ANTON_OPENAI_API_KEY: 'k' }, { kind: 'other-account' })))
       .toEqual({ configured: true, provider: 'openai' });
+  });
+
+  it('keeps a signed-in MindsHub user in the app when the sidecar is unreachable', async () => {
+    expect(await decideConfigured(inputs(SIGNED_IN, { kind: 'unreachable' }, false, true)))
+      .toEqual({ configured: true, provider: 'minds_cloud' });
+  });
+
+  it('sends a sign-in that never committed back to sign-in, even with a token', async () => {
+    const i = inputs({}, { kind: 'unreachable' }, false, true);
+    expect(await decideConfigured(i)).toEqual({ configured: false, provider: '' });
+    expect(i.hasMindsCredential).not.toHaveBeenCalled();
+  });
+
+  it('does not route into the app on a credential when the sidecar is on another account', async () => {
+    const i = inputs(SIGNED_IN, { kind: 'other-account' }, false, true);
+    expect(await decideConfigured(i)).toEqual({ configured: false, provider: '' });
+    expect(i.hasMindsCredential).not.toHaveBeenCalled();
+  });
+
+  it('is not configured when the sidecar is unreachable and no credential or .env key exists', async () => {
+    expect(await decideConfigured(inputs(SIGNED_IN, { kind: 'unreachable' })))
+      .toEqual({ configured: false, provider: '' });
+  });
+
+  it('looks up the credential only when the sidecar is unreachable', async () => {
+    const i = inputs(SIGNED_IN, { kind: 'answered', answer: READY }, false, true);
+    await decideConfigured(i);
+    expect(i.hasMindsCredential).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing consent', { ...SIGNED_IN, ANTON_TERMS_CONSENT: '' }, false],
+    ['an active sign-out', SIGNED_IN, true],
+  ])('is not configured on %s, even with a credential', async (_label, env, signOut) => {
+    const i = inputs(env, { kind: 'unreachable' }, signOut, true);
+    expect(await decideConfigured(i)).toEqual({ configured: false, provider: '' });
+    expect(i.hasMindsCredential).not.toHaveBeenCalled();
   });
 
   it('is not configured with no server answer and no .env key', async () => {

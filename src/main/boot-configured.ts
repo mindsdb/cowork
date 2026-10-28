@@ -64,13 +64,16 @@ export interface ConfiguredInputs {
   env: Record<string, string | undefined>;
   signOutRoutingActive: () => boolean;
   readServer: () => Promise<ServerReadiness>;
+  /** Whether a MindsHub credential exists to hand the sidecar. */
+  hasMindsCredential: () => Promise<boolean>;
 }
 
 /**
  * Decide whether boot routing may enter the app.
  *
- * Inputs: the `.env` vars, the sign-out latch, and a server read that runs only
- * when consent and the latch allow it. Output: `{ configured, provider }`.
+ * Inputs: the `.env` vars, the sign-out latch, a server read that runs only
+ * when consent and the latch allow it, and a credential lookup that runs only
+ * when the sidecar is unreachable. Output: `{ configured, provider }`.
  */
 export async function decideConfigured(inputs: ConfiguredInputs): Promise<ConfiguredAnswer> {
   const { env } = inputs;
@@ -89,10 +92,25 @@ export async function decideConfigured(inputs: ConfiguredInputs): Promise<Config
   // was false, stranding the user on "Connect a provider" with no recovery.)
   const server = await inputs.readServer();
   if (server.kind === 'answered') return server.answer;
-  // Server genuinely unreachable: fall back to the .env heuristic so a
-  // configured user isn't needlessly bounced to onboarding. Provider strings
-  // mirror the server's config_status vocabulary so the IPC value isn't
-  // path-dependent.
+  /*
+   * The MindsHub credential never reaches .env, so the key check below cannot
+   * see a signed-in user. Three conditions, each load-bearing:
+   * - unreachable, not another account's sidecar, which may still serve the
+   *   previous account's data;
+   * - ANTON_MINDS_ENABLED, written only once a sign-in is committed, because
+   *   the token is saved before the organization is picked and a sign-in that
+   *   stops there must go back to sign-in;
+   * - a credential to hand the sidecar once it starts.
+   */
+  if (
+    server.kind === 'unreachable'
+    && env.ANTON_MINDS_ENABLED === 'true'
+    && await inputs.hasMindsCredential()
+  ) {
+    return { configured: true, provider: 'minds_cloud' };
+  }
+  // No server answer: fall back to the .env keys. Provider strings mirror the
+  // server's config_status vocabulary so the IPC value isn't path-dependent.
   if (env.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
   if (env.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (env.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };

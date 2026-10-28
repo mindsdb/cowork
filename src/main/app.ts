@@ -30,7 +30,7 @@ import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } fr
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
-import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, resolveMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
   gateMindsResponseCreationRequest,
@@ -235,6 +235,7 @@ function checkConfigured(): Promise<ConfiguredAnswer> {
     env: readEnvFile(),
     signOutRoutingActive: isSignOutRoutingActive,
     readServer: serverConfigured,
+    hasMindsCredential: async () => Boolean(await resolveMindsCredential()),
   });
 }
 
