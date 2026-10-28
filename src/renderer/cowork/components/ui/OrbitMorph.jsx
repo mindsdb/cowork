@@ -7,9 +7,11 @@ import { useEffect, useRef } from 'react';
 // → cube while Anton is thinking, then resolves to a futurist "A" when
 // the work is done. Idle shows a slow orbit around a faded ring.
 //
-// Single rAF loop per instance, SVG content is rebuilt each frame from
-// (angle, phase). Theme follows body[data-theme] live; size is set via
-// the --om-size CSS variable so it scales cleanly.
+// Thinking runs a rAF loop that rebuilds the SVG each frame from
+// (angle, phase). Idle and done draw once; the idle satellite sits in its
+// own layer that CSS rotates, so a resting page runs no script per frame.
+// Theme follows body[data-theme] live; size is set via the --om-size CSS
+// variable so it scales cleanly.
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -41,18 +43,24 @@ export default function OrbitMorph({
   // satellites stay synchronized across cross-fades. Default is the
   // state-derived value (1400 thinking, 4500 idle/done).
   orbitPeriodMs,
+  // Stops the animation while a caller keeps this instance invisible.
+  paused = false,
 }) {
   const hostRef = useRef(null);
   const stateRef = useRef(state);
   const themeRef = useRef(theme || readBodyTheme());
   const orbitPeriodRef = useRef(orbitPeriodMs);
+  const pausedRef = useRef(paused);
+  const syncRef = useRef(null);
 
-  // Keep refs in sync so the rAF loop reads fresh values without restarting.
-  useEffect(() => { stateRef.current = state; }, [state]);
-  useEffect(() => { orbitPeriodRef.current = orbitPeriodMs; }, [orbitPeriodMs]);
+  // Keep refs in sync so the drawing reads fresh values without remounting.
   useEffect(() => {
+    stateRef.current = state;
+    pausedRef.current = paused;
+    orbitPeriodRef.current = orbitPeriodMs;
     if (theme) themeRef.current = theme;
-  }, [theme]);
+    syncRef.current?.();
+  }, [state, paused, orbitPeriodMs, theme]);
 
   // If no theme prop is given, follow body[data-theme] live.
   useEffect(() => {
@@ -61,6 +69,7 @@ export default function OrbitMorph({
     if (typeof document === 'undefined') return;
     const obs = new MutationObserver(() => {
       themeRef.current = readBodyTheme();
+      syncRef.current?.();
     });
     obs.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
     return () => obs.disconnect();
@@ -76,15 +85,31 @@ export default function OrbitMorph({
     svg.style.height = 'var(--om-size, 18px)';
     host.appendChild(svg);
 
+    const orbitR = 8.5;
+    // An HTML wrapper, not the svg, carries the rotation: Chrome runs a
+    // transform animation on an HTML box off the main thread, not on svg.
+    const satLayer = document.createElement('span');
+    Object.assign(satLayer.style, {
+      position: 'absolute', inset: '0', transformOrigin: '50% 50%', willChange: 'transform',
+    });
+    const satSvg = svgEl('svg', { viewBox: '0 0 24 24', width: '100%', height: '100%' });
+    satSvg.style.display = 'block';
+    const sat = svgEl('circle', { cx: 12 + orbitR, cy: 12, r: 1.0 });
+    satSvg.appendChild(sat);
+    satLayer.appendChild(satSvg);
+    host.appendChild(satLayer);
+
     const t0 = performance.now();
     let raf = 0;
+    // Period of the running idle satellite animation; 0 while it is hidden.
+    let satOrbitDur = 0;
+    const orbitDurFor = (s) => orbitPeriodRef.current ?? (s === 'thinking' ? 1400 : 4500);
 
-    function tick() {
-      const s = stateRef.current;
+    function drawFrame(s) {
       const p = PALETTE[themeRef.current] || PALETTE.light;
 
       const t = performance.now() - t0;
-      const orbitDur = orbitPeriodRef.current ?? (s === 'thinking' ? 1400 : 4500);
+      const orbitDur = orbitDurFor(s);
       const morphDur = s === 'thinking' ? 4800 : 12000;
       const angle = ((t / orbitDur) * 360) % 360;
       const phase = (t / morphDur) % 1;
@@ -103,7 +128,6 @@ export default function OrbitMorph({
       }
       if (s === 'done') shape = 'A';
 
-      const orbitR = 8.5;
       const a = (angle * Math.PI) / 180;
       const sx = 12 + Math.cos(a) * orbitR;
       const sy = 12 + Math.sin(a) * orbitR;
@@ -118,12 +142,10 @@ export default function OrbitMorph({
         stroke: p.faded, 'stroke-opacity': 0.18, 'stroke-width': 0.6,
       }));
 
-      // Satellite (idle + thinking)
-      if (s !== 'done') {
+      // Satellite while thinking; the idle one lives in satLayer.
+      if (s === 'thinking') {
         svg.appendChild(svgEl('circle', {
-          cx: sx.toFixed(2), cy: sy.toFixed(2),
-          r: s === 'idle' ? 1.0 : 1.4,
-          fill: p.accent,
+          cx: sx.toFixed(2), cy: sy.toFixed(2), r: 1.4, fill: p.accent,
         }));
       }
 
@@ -224,15 +246,59 @@ export default function OrbitMorph({
           stroke: p.accent, 'stroke-width': 1, 'stroke-opacity': 0.35,
         }));
       }
+    }
 
+    function tick() {
+      drawFrame('thinking');
       raf = requestAnimationFrame(tick);
     }
 
-    raf = requestAnimationFrame(tick);
+    function showIdleSatellite(visible) {
+      satLayer.style.display = visible ? 'block' : 'none';
+      if (!visible) {
+        satLayer.style.animation = '';
+        satOrbitDur = 0;
+        return;
+      }
+      sat.setAttribute('fill', (PALETTE[themeRef.current] || PALETTE.light).accent);
+      const orbitDur = orbitDurFor('idle');
+      // Chrome keeps a running animation's start time when only its timing
+      // changes, so a rewrite shifts the satellite. Restart it from scratch,
+      // and only when it appears or its period changes.
+      if (orbitDur !== satOrbitDur) {
+        if (satOrbitDur) {
+          satLayer.style.animation = 'none';
+          void satLayer.offsetWidth;
+        }
+        satOrbitDur = orbitDur;
+        // A negative delay starts the CSS orbit at the angle drawFrame would use.
+        const elapsed = (performance.now() - t0) % orbitDur;
+        satLayer.style.animation = `spin ${orbitDur}ms linear -${elapsed.toFixed(0)}ms infinite`;
+      }
+      // After the shorthand, which resets the play state to running.
+      satLayer.style.animationPlayState = pausedRef.current ? 'paused' : 'running';
+    }
+
+    function sync() {
+      const s = stateRef.current;
+      showIdleSatellite(s === 'idle');
+      if (s === 'thinking' && !pausedRef.current) {
+        if (!raf) raf = requestAnimationFrame(tick);
+        return;
+      }
+      cancelAnimationFrame(raf);
+      raf = 0;
+      drawFrame(s);
+    }
+
+    syncRef.current = sync;
+    sync();
 
     return () => {
+      syncRef.current = null;
       cancelAnimationFrame(raf);
       if (svg.parentNode) svg.parentNode.removeChild(svg);
+      if (satLayer.parentNode) satLayer.parentNode.removeChild(satLayer);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -246,6 +312,7 @@ export default function OrbitMorph({
       aria-hidden="true"
       style={{
         display: 'inline-block',
+        position: 'relative',
         ['--om-size']: typeof size === 'number' ? `${size}px` : size,
         ...style,
       }}
