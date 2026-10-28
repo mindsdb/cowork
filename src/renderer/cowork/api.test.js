@@ -1906,7 +1906,7 @@ describe('SharePoint routes', () => {
     await listSharePointChildren('corp', { site: 'https://contoso.sharepoint.com/sites/team', driveId: 'b!Lib' });
 
     const [libraries, page, root] = fetch.mock.calls.map(([url]) => new URL(String(url)));
-    expect(libraries.pathname).toBe('/api/v1/connectors/sharepoint/connections/corp/drives');
+    expect(libraries.pathname).toBe('/api/v1/connectors/sharepoint/connections/corp/libraries');
     expect(libraries.searchParams.get('site')).toBe('https://contoso.sharepoint.com/sites/a&b');
     expect(page.pathname).toBe('/api/v1/connectors/sharepoint/connections/corp/children');
     expect(Object.fromEntries(page.searchParams)).toEqual({

@@ -2105,7 +2105,7 @@ export function editSharePointConnection(name, key) {
 /** The document libraries of one site the connection names. */
 export function listSharePointLibraries(name, site) {
   const query = new URLSearchParams({ site });
-  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/drives?${query}`);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
 }
 
 /** One page of a folder's items; pass the previous page's `cursor` for the next one. */
