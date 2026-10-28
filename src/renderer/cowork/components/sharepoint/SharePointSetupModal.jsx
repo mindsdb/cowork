@@ -142,7 +142,9 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
   }
 
   return (
-    <form onSubmit={save}>
+    // The modal is a flex column capped in height; the form must be one too, or
+    // ModalBody can't shrink to scroll and the footer is clipped.
+    <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
       <ModalBody>
         <div className="flex flex-col gap-3">
           {error && <Alert variant="danger">{error}</Alert>}

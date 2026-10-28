@@ -74,6 +74,15 @@ describe('SharePointSetupModal', () => {
     window.removeEventListener('anton:connections-changed', changed);
   });
 
+  it('lays the form out as a shrinkable flex column so the body scrolls and the footer stays visible', async () => {
+    render(<Harness />);
+
+    // happy-dom does no layout; the modal popup is a height-capped flex column,
+    // so the form between it and ModalBody must be a flex column that can shrink.
+    const form = (await screen.findByRole('button', { name: 'Save' })).closest('form');
+    expect(form).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0');
+  });
+
   it('cannot save without a secret on a new connection', async () => {
     const user = userEvent.setup();
     render(<Harness />);
