@@ -90,7 +90,9 @@ export default function OrbitMorph({
     // transform animation on an HTML box off the main thread, not on svg.
     const satLayer = document.createElement('span');
     Object.assign(satLayer.style, {
-      position: 'absolute', inset: '0', transformOrigin: '50% 50%', willChange: 'transform',
+      position: 'absolute', top: '0', left: '0',
+      width: svg.style.width, height: svg.style.height,
+      transformOrigin: '50% 50%', willChange: 'transform',
     });
     const satSvg = svgEl('svg', { viewBox: '0 0 24 24', width: '100%', height: '100%' });
     satSvg.style.display = 'block';

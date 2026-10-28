@@ -35,6 +35,14 @@ describe('OrbitMorph frame loop', () => {
     expect(satLayer.style.animationPlayState).toBe('running');
   });
 
+  it('sizes the idle satellite to the ring, not to the host box', () => {
+    const { svg, satLayer } = renderOrb({ state: 'idle', style: { display: 'block', width: 300 } });
+    expect(satLayer.style.width).toBe(svg.style.width);
+    expect(satLayer.style.height).toBe(svg.style.height);
+    expect(satLayer.style.top).toBe('0px');
+    expect(satLayer.style.left).toBe('0px');
+  });
+
   it('draws done once and hides the idle satellite', () => {
     const { svg, satLayer } = renderOrb({ state: 'done' });
     expect(rafSpy).not.toHaveBeenCalled();
