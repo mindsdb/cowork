@@ -4,6 +4,8 @@ interface AntonTronAPI {
   serverPort?: number | null;
   codeControlPlaneOrigin?: string | null;
   codeModeAvailable?: boolean;
+  /** True on shells whose main process guards the document preview frame. */
+  supportsDocumentPreview?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -48,7 +50,7 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
-    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | 'credential-clear' | null;
     portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
@@ -149,6 +151,8 @@ declare global {
   const __BUILD_TIME__: string;
   interface Window {
     antontron: AntonTronAPI;
+    /** A deployment brand's config, set by /brand/brand.js on web builds with the platform UI off. */
+    COWORK_DEPLOYMENT_BRAND?: unknown;
   }
 
   namespace React {

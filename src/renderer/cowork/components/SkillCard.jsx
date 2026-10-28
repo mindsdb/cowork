@@ -18,7 +18,7 @@ import Ico from './Icons';
 import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
-import { Tooltip } from './ui';
+import { Select, Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
 import { downloadBlob } from '../lib/browserDownload';
@@ -27,6 +27,12 @@ import {
   canUseSharedResource,
   isReservedProjectName,
 } from '../lib/sharedResourceAccess';
+import {
+  SKILL_SHARING_LABEL,
+  SKILL_SHARING_OPTIONS,
+  SKILL_SHARING_PRIVATE,
+  sharedFromValue,
+} from '../lib/skillSharing';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
 // The event payload already carries the full SKILL.md, so download works
@@ -36,6 +42,10 @@ import {
 function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
   downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
+
+const SAVED_TEXT = 'Saved to your skills';
+const SHARED_TEXT = 'Saved and shared with everyone';
+const SHARING_KEPT_TEXT = "Saved over the existing skill. Who can use it didn't change: set it on the skill's page.";
 
 function SkillModal({ skill, open, onClose }) {
   const body = skill.instructions || skill.skill_md || '_No content._';
@@ -62,7 +72,8 @@ export default function SkillCard({ skill, projectName }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [status, setStatus] = useState(null); // { kind: 'ok'|'error', text }
-  const { skills, catalogueStatus, reload } = useSkills();
+  const [sharing, setSharing] = useState(SKILL_SHARING_PRIVATE);
+  const { skills, catalogueStatus, reload, canShare } = useSkills();
 
   const name = skill.name || skill.slug || 'Skill';
   const slug = skill.slug || skill.label;
@@ -85,6 +96,13 @@ export default function SkillCard({ skill, projectName }) {
   const canSave = knownSkill
     ? canUseSharedResource(knownSkill, 'canEdit')
     : true;
+  /* Saving a new skill asks who can use it, where the server lets this person
+     share. An update never changes sharing, so neither a known skill's PUT nor
+     the create-collision fallback below sends the choice. The remembered entry
+     withholds the question, as it withholds the save: a refresh elsewhere
+     must not ask on an update, since the collision fallback would drop the
+     answer. */
+  const asksSharing = canShare && !knownSkill && !saved;
   // "Saved" only when THIS revision is in the store — compare instructions, not
   // just slug existence: editing an existing skill seeds the draft from the
   // stored version, so slug-existence alone would falsely show "Saved" before
@@ -126,13 +144,23 @@ export default function SkillCard({ skill, projectName }) {
     // the API replaces the whole list, so sending just the current project would
     // wipe the skill's other project associations.
     const isReserved = isReservedProjectName(projectName);
-    const createPayload = (projectName && !isReserved)
+    const scopedPayload = (projectName && !isReserved)
       ? { ...payload, projects: [projectName] }
       : payload;
+    const sharedOnCreate = asksSharing && sharedFromValue(sharing);
+    /* A skill shared with everyone is created unscoped. The card never shows
+       the chat's project, so the person never chose it, and a reader applies
+       the creator's scope (shared_turn_skills in cowork/services/skills.py), so
+       a silent scope would keep the skill out of every other person's turns.
+       The creator's own copy then applies in all of their projects. */
+    const createBase = sharedOnCreate ? payload : scopedPayload;
+    const createPayload = asksSharing
+      ? { ...createBase, shared: sharedOnCreate }
+      : scopedPayload;
 
-    const markSaved = () => {
+    const markSaved = (text) => {
       setSaved(true);
-      setStatus({ kind: 'ok', text: 'Saved to your skills' });
+      setStatus({ kind: 'ok', text });
       // Sweep the on-disk draft now it lives in the store; fire-and-forget (the
       // server is idempotent, and a lingering draft must never fail the save UI).
       if (projectName && slug) deleteSkillDraft(projectName, slug).catch(() => {});
@@ -140,7 +168,7 @@ export default function SkillCard({ skill, projectName }) {
 
     try {
       await saveSkillAndSync(exists ? payload : createPayload, exists);
-      markSaved();
+      markSaved(sharedOnCreate ? SHARED_TEXT : SAVED_TEXT);
     } catch (err) {
       // A stale list can race another create. Refresh before considering an
       // update so hosted Cowork never turns a 409 into a PUT without a fresh
@@ -161,7 +189,9 @@ export default function SkillCard({ skill, projectName }) {
             return;
           }
           await saveSkillAndSync(payload, true);
-          markSaved();
+          /* The update keeps the existing skill's sharing, so a person who
+             answered the question learns their answer did not apply. */
+          markSaved(asksSharing ? SHARING_KEPT_TEXT : SAVED_TEXT);
         } catch (err2) {
           setStatus({ kind: 'error', text: err2?.message || 'Could not save skill.' });
         }
@@ -222,6 +252,28 @@ export default function SkillCard({ skill, projectName }) {
                 {Ico.download(16)}
               </Button>
             </Tooltip>
+            {asksSharing && (
+              /* The card body opens the SKILL.md, so a click or key on the
+                 choice (its options render in a portal, whose events still
+                 bubble through React) must not reach it. */
+              <span
+                className="inline-flex"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <Select
+                  size="sm"
+                  ariaLabel={SKILL_SHARING_LABEL}
+                  title={SKILL_SHARING_LABEL}
+                  options={SKILL_SHARING_OPTIONS}
+                  value={sharing}
+                  onValueChange={setSharing}
+                  disabled={saving}
+                  width={176}
+                  menuMinWidth={300}
+                />
+              </span>
+            )}
             <Button
               size="sm"
               variant={saved ? 'subtle' : 'primary'}

@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
@@ -10,7 +11,7 @@ import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
 import { stampUserMessageId } from './lib/stampUserMessageId';
-import { displayToggleMode, nextToggledSkin } from './lib/displayToggle';
+import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -48,8 +49,11 @@ import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
-import { canUseSharedResource } from './lib/sharedResourceAccess';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
+import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
+import {
+  selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids,
+  runsAwaitingTheirStart, runStartProbeOutcome, RUN_START_PROBE_DELAYS_MS,
+} from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
@@ -86,7 +90,8 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
-import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
+import { rebaseFigureSources } from './lib/figureSources';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -108,6 +113,8 @@ import { recommendedModelOptions, providerValueToType,
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
+import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
+import { modelPickerMode } from '../lib/modelPicker';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -118,7 +125,9 @@ import {
   markOptimisticConversation,
   clearOptimisticConversation,
   setKnownRowIdsProvider,
+  loadConversation,
 } from './CoworkRouter';
+import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -147,16 +156,16 @@ const CONNECT_FOLLOWUPS = [
   const ui = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?';
   const hash = typeof __GIT_HASH__ !== 'undefined' && __GIT_HASH__ ? __GIT_HASH__ : '';
   const built = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
-  console.log(
+  diagnostic("renderer.cowork.App", "INFO", "c_cowork_c_build_info",
     '%c Cowork %c Build Info ',
     'background:#7CC4B6;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px 0 0 3px',
     'background:#334;color:#eee;padding:2px 6px;border-radius:0 3px 3px 0',
   );
-  console.log(`  UI (cowork):  ${ui}${hash ? ` (${hash})` : ''}${built ? `  built ${built}` : ''}`);
+  diagnostic("renderer.cowork.App", "INFO", "ui_cowork", `  UI (cowork):  ${ui}${hash ? ` (${hash})` : ''}${built ? `  built ${built}` : ''}`);
   fetchHealth().then((h) => {
     if (!h || h.status === 'offline') return;
-    console.log(`  Server (cowork-server):  ${h.server_version || '?'}`);
-    console.log(`  Agent (anton-agent):     ${h.anton_version || '?'}`);
+    diagnostic("renderer.cowork.App", "INFO", "server_cowork_server", `  Server (cowork-server):  ${h.server_version || '?'}`);
+    diagnostic("renderer.cowork.App", "INFO", "agent_anton_agent", `  Agent (anton-agent):     ${h.anton_version || '?'}`);
   }).catch(() => {});
 }
 
@@ -442,16 +451,6 @@ function describeGoogleDriveReferenceFiles(reference) {
   ].join('\n');
 }
 
-function normalizeComposerDisabledConnections(list) {
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((d) => ({
-      engine: String(d.engine || '').trim(),
-      name: String(d.name || '').trim(),
-    }))
-    .filter((d) => d.engine && d.name);
-}
-
 const ACCENT_VARS = {
   aqua:  {},
   ocean: { '--primary-700': '#276F86', '--primary-600': '#3796B3', '--primary-500': '#53AECA', '--primary-400': '#48BEE3', '--primary-300': '#71CDE9', '--primary-50': '#E2F5FD' },
@@ -578,7 +577,7 @@ function searchRecents(tasks, projects) {
   return [
     ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
       .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
-    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.name, title: projectLabel(project) })),
+    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
 }
 
@@ -632,6 +631,7 @@ function AppCore() {
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
+  const runnableProjects = useMemo(() => projects.filter(canRunProject), [projects]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   // False until the first artifacts fetch settles, so Live Artifacts shows
@@ -884,7 +884,6 @@ function AppCore() {
     liveStreamsRef.current.has(cid) || stoppingRef.current.has(cid) || deletingRef.current.has(cid)
       || recoveringRef.current.has(cid)
   ), []);
-  const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
   // Per-task queue of user messages waiting for the current turn to
@@ -958,6 +957,9 @@ function AppCore() {
   const [inFlightSet, setInFlightSet] = useState(() => new Set());
   const inFlightSetRef = useRef(inFlightSet);
   useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
+  // Runs this window started with "Run now" that the server hasn't listed yet,
+  // by conversation id, with when each was started (see runsAwaitingTheirStart).
+  const runsAwaitingStartRef = useRef(new Map());
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
@@ -1022,12 +1024,20 @@ function AppCore() {
     // fires (see hasPendingReservationMiss); a release resets the tally to 0.
     setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
 
+    // A run started here that the server hasn't listed yet hasn't finished:
+    // keep it in flight through the grace period, and stop waiting once it's listed.
+    const awaitingStart = runsAwaitingTheirStart(runsAwaitingStartRef.current, ids, Date.now());
+    for (const cid of runsAwaitingStartRef.current.keys()) {
+      if (!awaitingStart.includes(cid)) runsAwaitingStartRef.current.delete(cid);
+    }
+    const inFlightIds = [...ids, ...awaitingStart];
+
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
       // stream just finished from elsewhere — that's the signal to
       // refetch that conversation's messages so the UI catches up.
-      const next = new Set(ids);
-      const finished = finishedCids(prev, ids, activeStreamingTaskIdRef.current);
+      const next = new Set(inFlightIds);
+      const finished = finishedCids(prev, inFlightIds, activeStreamingTaskIdRef.current);
       if (finished.length > 0) {
         // Defer the refetch so we don't synchronously trigger a
         // re-render storm.
@@ -1042,7 +1052,13 @@ function AppCore() {
                 // Only the most recent page — merge against what the task
                 // already has. The server never saved refused questions, so
                 // any the merge dropped go back after it.
-                const merged = mergeMessagePage(t.messages, reconciled, knownIds);
+                // With no stream of ours on it, a placeholder or live stub
+                // here is left over from opening the run while the server
+                // still listed it; the merge would carry it past the answer.
+                const local = hasLiveTurnHere(cid)
+                  ? t.messages
+                  : removeThinkingPlaceholder(stripStreaming(t.messages));
+                const merged = mergeMessagePage(local, reconciled, knownIds);
                 const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
                 return {
                   ...t,
@@ -1061,7 +1077,7 @@ function AppCore() {
       }
       return next;
     });
-  }, [abortStream]);
+  }, [abortStream, hasLiveTurnHere]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -1608,10 +1624,12 @@ function AppCore() {
       // The adjacent error trailer identifies this assistant row as partial.
       const msgs = markActivityDone(removeThinkingPlaceholder(t.messages.flatMap((m) => {
         if (m.role !== '_streaming') return [m];
-        if (!m.content && !m.steps?.length) return [];
+        // Text still being written when the stream broke is its partial answer.
+        const row = settleStreamingRow(m);
+        if (!row.content && !row.steps?.length) return [];
         // A server-declared failure names the row it persisted; without that
         // id neither row of this turn would offer Delete.
-        return [{ ...m, id: m.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
+        return [{ ...row, id: row.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
@@ -1665,6 +1683,15 @@ function AppCore() {
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }));
   }, [mindsModels, settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // The operator's picker (lib/modelPicker), read once: the page keeps the
+  // mode it loaded with. Under it, a question sends only a model the picker
+  // offers; any other, such as a reopened conversation's saved model the
+  // operator has since removed, runs on the operator's model instead of being
+  // refused. Without it this is the identity, and api.js sends no model.
+  const [pickerMode] = useState(modelPickerMode);
+  const sendableModelId = useCallback((id) => (
+    pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
+  ), [pickerMode, models, settings.modelEnabled]);
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -1981,6 +2008,7 @@ function AppCore() {
   // (selectedProject is resolved from its id by the project route, so null here.)
   const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  const runnableSelectedProject = canRunProject(selectedProject) ? selectedProject : null;
   // The project-detail id currently being resolved from the fetched list, or
   // null once settled. Distinct from `selectedProject` (which the whole app
   // reads and the URL bridge mirrors): while this differs from the selection we
@@ -2210,6 +2238,7 @@ function AppCore() {
   const bootIntroDone = useBootDecisions({
     serverOnline,
     health,
+    route,
     projects,
     selectedProject,
     setServerHelpOpen,
@@ -2279,9 +2308,9 @@ function AppCore() {
     projectDetailPending != null &&
     !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
-  const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
+  const currentTaskProject = resolveTaskProject(currentTask, runnableProjects) || runnableSelectedProject;
   const currentTaskModel = currentTask?.model
-    ? (currentTask.model === MODEL_ROUTER_ID
+    ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
@@ -2314,20 +2343,9 @@ function AppCore() {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
     if (prev === 'task' && (route === 'home' || route === 'projects')) {
-      composerMuteLastTaskIdRef.current = null;
       setComposerDisabledConnections([]);
     }
   }, [route]);
-
-  useEffect(() => {
-    if (route !== 'task' || !currentTask?.id) return;
-    const tid = currentTask.id;
-    if (composerMuteLastTaskIdRef.current === tid) return;
-    composerMuteLastTaskIdRef.current = tid;
-    setComposerDisabledConnections(
-      normalizeComposerDisabledConnections(currentTask.disabledConnections),
-    );
-  }, [route, currentTask?.id]);
 
   // Phase 2 reconnect — when the user opens a conversation whose
   // turn is still running server-side (closed-tab-and-came-back, or
@@ -2342,13 +2360,12 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already tailing locally — second-mount of the same task should
-    // not double up. Deliberately still the shared refs and not the registry:
-    // a record also covers a live send, and re-attaching over one would abort
-    // it in favour of a tail that immediately 404s.
-    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
-      return true;
-    }
+    // A tail or send registered here, or a send holding the slot while it
+    // uploads. A second stream would abort it, whoever holds the shared slot.
+    const alreadyStreamingHere = () => (
+      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+    );
+    if (alreadyStreamingHere()) return true;
     let status;
     try {
       status = await fetchInFlightStatus(taskId);
@@ -2356,6 +2373,8 @@ function AppCore() {
       return false;
     }
     if (!status || !status.in_flight) return false;
+    // A send or queued drain may have started here while the probe was out.
+    if (alreadyStreamingHere()) return true;
 
     // Cache sync: the probe just confirmed the producer is alive.
     // Mark it now so any concurrent reconcile (e.g. switching to a
@@ -2370,9 +2389,11 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, status: 'active', messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2406,13 +2427,19 @@ function AppCore() {
         releaseSlotClaim(taskId);
         markInFlightDone(taskId);
         releaseLiveSteps([taskId]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -2423,6 +2450,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -2431,10 +2461,16 @@ function AppCore() {
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -2675,12 +2711,12 @@ function AppCore() {
     const [full, savedRaw] = await Promise.all([
       fetchConnector(connection.engine).catch((e) => {
         // eslint-disable-next-line no-console
-        console.warn('[connectors] failed to load full spec for modify', e);
+        diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_full_spec_for_modify", '[connectors] failed to load full spec for modify', e);
         return null;
       }),
       fetchSavedConnection(connection.engine, connection.name).catch((e) => {
         // eslint-disable-next-line no-console
-        console.warn('[connectors] failed to load saved connection for modify', e);
+        diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_saved_connection_for_modify", '[connectors] failed to load saved connection for modify', e);
         return null;
       }),
     ]);
@@ -2729,8 +2765,8 @@ function AppCore() {
               _client_only: true,
             },
           ],
-      projectName: selectedProject?.name || 'general',
-      projectPath: selectedProject?.path || null,
+      projectName: runnableSelectedProject?.name || 'general',
+      projectPath: runnableSelectedProject?.path || null,
       model: selectedModel?.id || null,
       reasoningEffort: selectedEffort || null,
       attachments: [],
@@ -2901,7 +2937,7 @@ function AppCore() {
       await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[connectors] disconnect failed', e);
+      diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
       // Answered in the dialog, which stays open: the connection is still
       // there and the next thing the person does is try again or give up.
       setDisconnectError(e?.message || String(e));
@@ -2965,7 +3001,7 @@ function AppCore() {
     }
   };
 
-  const handleConnectorPicked = async (connector, editingConnection = null) => {
+  const handleConnectorPicked = async (connector, { existingName, editingConnection = null } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
     // Snapshot the origin now, before we switch into the connect task below.
@@ -2977,7 +3013,7 @@ function AppCore() {
       full = await fetchConnector(connector.id);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[connectors] failed to load full spec, falling back to chat', e);
+      diagnostic("renderer.cowork.App", "WARNING", "connectors_failed_to_load_full_spec_falling_back_to_chat", '[connectors] failed to load full spec, falling back to chat', e);
     }
 
     const label = full?.label || connector.label || connector.id;
@@ -3016,8 +3052,8 @@ function AppCore() {
               _client_only: true,
             },
           ],
-      projectName: selectedProject?.name || 'general',
-      projectPath: selectedProject?.path || null,
+      projectName: runnableSelectedProject?.name || 'general',
+      projectPath: runnableSelectedProject?.path || null,
       model: selectedModel?.id || null,
       reasoningEffort: selectedEffort || null,
       attachments: [],
@@ -3048,6 +3084,10 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        /* Reconnecting a shared connection carries its name so the submit
+           (DataVaultFormPanel reads spec._existing_name) updates that entry in
+           place instead of saving a second one under a fresh random slug. */
+        ...(existingName ? { _existing_name: existingName } : {}),
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
@@ -3087,7 +3127,7 @@ function AppCore() {
     fetchGoogleDriveReferenceFiles,
     removeGoogleDriveFileReference,
   } = useGoogleDrivePicker({
-    selectedProject,
+    selectedProject: runnableSelectedProject,
     currentTask,
     setComposerAttachments,
     setActiveTaskId,
@@ -3324,8 +3364,8 @@ function AppCore() {
     refreshSchedules().catch(() => {});
   }, [refreshSchedules]);
 
-  const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
-  const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
+  const attachmentProjectPath = currentTask?.projectPath || runnableSelectedProject?.path || null;
+  const attachmentProjectName = currentTask?.projectName || runnableSelectedProject?.name || null;
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
@@ -3340,24 +3380,22 @@ function AppCore() {
     setComposerAttachments((prev) => [...prev, ...list]);
   };
 
+  // Mutes for a chat that does not exist yet (Home, Projects).
   const handleComposerConnectorMute = useCallback((connector, useInChat) => {
-    const engine = String(connector?.engine || '').trim();
-    const name = String(connector?.name || '').trim();
-    if (!engine || !name) return;
-    const pk = (x) => `${x.engine.toLowerCase()}\t${x.name}`;
-    const ckey = pk({ engine, name });
-    setComposerDisabledConnections((prev) => {
-      const cur = normalizeComposerDisabledConnections(prev);
-      let next;
-      if (useInChat) {
-        next = cur.filter((x) => pk(x) !== ckey);
-      } else {
-        if (cur.some((x) => pk(x) === ckey)) return cur;
-        next = [...cur, { engine, name }];
-      }
-      const sig = (arr) => [...arr.map(pk)].sort().join('|');
-      if (sig(cur) === sig(next)) return cur;
-      return next;
+    setComposerDisabledConnections((prev) => toggleConnectionMute(prev, connector, useInChat));
+  }, []);
+
+  // A chat's mutes live only on its record: its composer shows them, and every
+  // send to it (typed, queued, from Live Artifacts) reads them from there.
+  const handleTaskConnectorMute = useCallback((taskId, connector, useInChat) => {
+    setTasks((prev) => {
+      const i = prev.findIndex((t) => t.id === taskId);
+      if (i === -1) return prev;
+      const next = toggleConnectionMute(prev[i].disabledConnections, connector, useInChat);
+      if (next === prev[i].disabledConnections) return prev;
+      const copy = prev.slice();
+      copy[i] = { ...prev[i], disabledConnections: next };
+      return copy;
     });
   }, []);
 
@@ -3408,8 +3446,9 @@ function AppCore() {
   // errors here surface through the composer's existing inline error UI
   // (same as any other send failure) — no separate toast plumbing needed.
   const launchCodingModeTask = async (text, meta) => {
-    let generalProject = projects.find((p) => p.name === 'general');
-    const effectiveProject = selectedProject || generalProject;
+    let generalProject = runnableProjects.find((p) => p.name === 'general');
+    const effectiveProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null) || generalProject;
+    if (!canRunProject(effectiveProject)) throw new Error('Only the owner can run tasks in this shared project.');
     if (!effectiveProject?.path) {
       throw new Error('Pick a project with a folder before launching Claude Code.');
     }
@@ -3458,7 +3497,7 @@ function AppCore() {
   // place. Returns null rather than throwing so a caller can surface an
   // actionable error instead of sending against a project that isn't there.
   const ensureGeneralProject = async () => {
-    const existing = projects.find((p) => p.name === 'general');
+    const existing = runnableProjects.find((p) => p.name === 'general');
     if (existing) return existing;
     try {
       await createProject('general');
@@ -3466,25 +3505,32 @@ function AppCore() {
       if (Array.isArray(fresh)) setProjects(fresh);
       // createProject resolved, so `general` exists even if this refetch came
       // back stale — fall back to a name-only record so the caller adopts it.
-      return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
+      return (fresh || []).find((p) => canRunProject(p) && p.name === 'general') || { name: 'general' };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[ensureGeneralProject] could not bootstrap general project', e);
+      diagnostic("renderer.cowork.App", "WARNING", "ensuregeneralproject_could_not_bootstrap_general_project", '[ensureGeneralProject] could not bootstrap general project', e);
       return null;
     }
   };
 
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text, meta) => {
+    if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
+      throw new Error('Only the owner can run tasks in this shared project.');
+    }
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
     }
+    // Every new conversation starts here, so in the operator picker's default
+    // mode the next one starts on the operator's model again. This send still
+    // reads the pick it rendered with.
+    if (pickerMode === 'default') setSelectedModel(MODEL_ROUTER);
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
-      const generalFallback = projects.find((p) => p.name === 'general');
-      const requestedProject = meta?.project || selectedProject;
+      const generalFallback = runnableProjects.find((p) => p.name === 'general');
+      const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
       const effectiveProjectName = requestedProject?.name || 'general';
       const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
       const effectiveProjectPath = requestedProject?.path
@@ -3519,8 +3565,8 @@ function AppCore() {
     // task into "general" (server provisions it on startup). If for
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
-    let generalProject = projects.find((p) => p.name === 'general');
-    const requestedProject = meta?.project || selectedProject;
+    let generalProject = runnableProjects.find((p) => p.name === 'general');
+    const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
     if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
@@ -3528,9 +3574,13 @@ function AppCore() {
     const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
-    const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
+    // A caller that is not the composer (the artifact viewer) passes its own
+    // mutes and attachments; the composer is still cleared, as the new chat opens.
+    const disabledForSend = normalizeComposerDisabledConnections(
+      meta?.disabledConnections ?? composerDisabledConnections,
+    );
 
-    const rawComposer = composerAttachments;
+    const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     const taskId = suppliedConversationId
@@ -3628,9 +3678,11 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3678,7 +3730,7 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
-      model: selectedModel?.id,
+      model: sendableModelId(selectedModel?.id),
       reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
@@ -3725,13 +3777,19 @@ function AppCore() {
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         // Anton sometimes wraps auth failures into a 200 stream that
         // emits the error as plain assistant text. Detect that case
         // and replace the assistant turn with the provider_required
@@ -3746,6 +3804,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -3754,14 +3815,22 @@ function AppCore() {
             ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
-        setActiveTaskId(finalId);
+        // Follow the rename only if this conversation is still on screen; the
+        // person may have moved to another one while the answer ran.
+        setActiveTaskId((curr) => (curr === resolvedId || curr === taskId ? finalId : curr));
         // Persist all step data (scratchpad cells, artifacts, timing)
         // so reopening the conversation restores the Thinking block,
         // inline artifact cards, and scratchpad tabs. Anton's own
@@ -3817,7 +3886,13 @@ function AppCore() {
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
     if (!targetTask) return false;
+    const targetProject = projects.find((project) => project.id === targetTask.projectId);
+    if (targetProject && !canRunProject(targetProject)) return false;
     const id = targetTask.id;
+    // The freshest record holds the chat's mutes (handleTaskConnectorMute),
+    // whether the chat is on screen or not.
+    const mutesForSend = opts.disabledConnections
+      ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -3846,12 +3921,16 @@ function AppCore() {
     // A pending question owns the composer: typed text is the answer, not a
     // new message. Queuing it instead would deadlock — the queue drains on
     // turn completion, and the turn cannot complete until this is answered.
-    const answerOutcome = await resolvePendingAnswer({
-      steps: liveStepsRef.current[id],
-      conversationId: id,
-      text,
-      submit: submitAnswer,
-    });
+    // A prompt that is not the user's reply (a repair from the artifact viewer)
+    // must not become the answer; it queues behind the asking turn below.
+    const answerOutcome = opts.skipPendingAnswer
+      ? { action: 'send' }
+      : await resolvePendingAnswer({
+        steps: liveStepsRef.current[id],
+        conversationId: id,
+        text,
+        submit: submitAnswer,
+      });
     if (answerOutcome.action === 'consumed') {
       // The text became the answer — but `submitAnswer` sends `{text}` only, so
       // no file travelled with it. Clearing the staged attachments here would
@@ -3940,7 +4019,7 @@ function AppCore() {
         id,
         text,
         queuedAttachments ?? composerAttachments,
-        opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+        mutesForSend,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
@@ -3957,9 +4036,7 @@ function AppCore() {
     // never has to lie when another tab opens this conversation.
     markInFlight(id);
 
-    const disabledForSend = normalizeComposerDisabledConnections(
-      opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
-    );
+    const disabledForSend = normalizeComposerDisabledConnections(mutesForSend);
 
     // A drained item's target task may not be the one on screen, so resolve
     // its project independently rather than reusing the current view's
@@ -3968,7 +4045,7 @@ function AppCore() {
     // resolves the same project a live send to it would (parity — otherwise
     // even the on-screen task's own follow-up loses the fallback on drain).
     const taskProject = opts.targetTask
-      ? (resolveTaskProject(targetTask, projects) || selectedProject)
+      ? (resolveTaskProject(targetTask, runnableProjects) || runnableSelectedProject)
       : currentTaskProject;
     let taskProjectName = targetTask.projectName
       || (taskProject?.name)
@@ -4006,10 +4083,10 @@ function AppCore() {
     // picker, so only a live send to the task on screen may inherit it; a
     // drained off-screen task must not pick up whatever model the current
     // view happens to show — it falls through to the server default instead.
-    const taskModel = opts.modelOverride
+    const taskModel = sendableModelId(opts.modelOverride
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
-      || null;
+      || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
     // override, else the task's own saved pick, else — only for a live
     // send to the task on screen — the home composer's current pick.
@@ -4050,7 +4127,6 @@ function AppCore() {
       t.id === id
         ? {
             ...t,
-            disabledConnections: disabledForSend,
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
@@ -4119,9 +4195,11 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4178,13 +4256,19 @@ function AppCore() {
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -4195,6 +4279,9 @@ function AppCore() {
         }));
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -4203,10 +4290,16 @@ function AppCore() {
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -4227,6 +4320,8 @@ function AppCore() {
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
+        // Same as onDone: a later visit must hydrate from the server.
+        clearOptimisticConversation(resolvedId);
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
@@ -4296,12 +4391,17 @@ function AppCore() {
   const artifactRepairTargetRef = useRef(null);
 
   const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    let fetched = null;
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
-      fetchConversation: fetchSessionResult,
+      // Kept so the send hydrates the chat from this fetch instead of repeating it.
+      fetchConversation: async (id) => {
+        fetched = await loadConversation(id);
+        return fetched;
+      },
     });
-    artifactRepairTargetRef.current = target.id ? target : null;
+    artifactRepairTargetRef.current = target.id ? { ...target, loaded: fetched } : null;
     // Adopt the record now: an origin chat older than the capped recents fetch
     // is unknown to `tasks`, and the send below appends the turn through it.
     if (target.id) {
@@ -4322,20 +4422,48 @@ function AppCore() {
     // Only resume a chat the repair was actually minted against; anything else
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
-      return handleSendFromHome(prompt, { project, conversationId });
+      // A new chat owes nothing to the composer of the chat that was open last.
+      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
-    // Preflight before touching the chat: returning false makes the viewer
-    // cancel the repair, which beats leaving a handoff queued against a turn
-    // that never starts.
-    if (!(await ensureProviderReady())) return false;
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
-    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
-    // while the turn is in flight; the flag drops when the turn completes.
+    // Every refusal is settled while the viewer is still open to report it:
+    // switching to the chat first would unmount the viewer and drop its message.
+    // Returning false makes the viewer cancel the repair.
+    const targetProject = projects.find((item) => item.id === targetTask.projectId);
+    if (targetProject && !canRunProject(targetProject)) return false;
+    // The optimistic flag set below keeps the `/c/:id` loader from hydrating
+    // the chat, so load it here, alongside the provider check, unless the
+    // resolver just fetched it (an origin chat missing from recents).
+    const [ready, loaded] = await Promise.all([
+      ensureProviderReady(),
+      target.loaded || loadConversation(target.id, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }).catch(() => null),
+    ]);
+    if (!ready) return false;
+    // Deleted since the resolver saw it: there is no chat left to resume. Drop
+    // the local record (list refreshes keep local-only rows), so the next try
+    // resolves to a new chat.
+    if (loaded?.status === 'not_found') {
+      deletedTaskIdsRef.current.add(target.id);
+      setTasks((prev) => prev.filter((t) => String(t.id || '') !== target.id));
+      return false;
+    }
+    // The loader must not re-hydrate over the turn while it runs. The flag drops
+    // when the turn ends, or below when no turn starts.
     markOptimisticConversation(target.id);
+    // A failed load still sends: the repair is already bound to this chat.
+    if (loaded?.status === 'ok') {
+      openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
+    }
     selectTask(target.id);
-    // handleSendInTask queues the prompt itself if that chat is already busy.
-    await handleSendInTask(prompt, [], { targetTask });
-    return true;
+    let started = false;
+    try {
+      // Queued when the chat is busy, including a turn waiting on the agent's
+      // question: the repair prompt is not the user's answer to it.
+      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+    } finally {
+      if (!started) clearOptimisticConversation(target.id);
+    }
+    return started;
   };
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
@@ -4404,9 +4532,11 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText,
+          content: answerBody(streamState),
+          _roundText: roundText(streamState),
           steps: streamState.steps,
           currentThought: streamState.currentThought,
+          firstTake: visibleFirstTake(streamState.firstTake),
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -4507,25 +4637,40 @@ function AppCore() {
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
         clearOptimisticConversation(resolvedId);
-        const finalContent = streamState.bodyText;
+        // Text still being written when the stream ended is the answer.
+        streamState = settleRound(streamState);
+        const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        /* The figures' offsets index the answer the server saved, which keeps
+           narration this message dropped before a tool call. */
+        const finalFigureSources = rebaseFigureSources(streamState.figureSources, streamState.answerText, finalContent, streamState.bodyTextMap);
         // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
         const finalAssistantMessageId = streamState.assistantMessageId;
+        const finalIncompleteReason = streamState.incompleteReason;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
+          // A first take still on screen as the turn ends folds away on the
+          // finished message instead of vanishing with the live row (ENG-3554).
+          const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
+                // Client-only: lets its steps fold shut instead of vanishing
+                // when the live turn is swapped for this message (ENG-3554).
+                _justFinishedAt: Date.now(),
+                ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
+                ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -4641,13 +4786,13 @@ function AppCore() {
   // dialog matches the rest of the UX.
   const handleDeleteTask = (taskId) => {
     // eslint-disable-next-line no-console
-    console.log('[handleDeleteTask] open confirm for', taskId);
+    diagnostic("renderer.cowork.App", "INFO", "handledeletetask_open_confirm_for", '[handleDeleteTask] open confirm for', taskId);
     setPendingDeleteTaskId(taskId);
   };
   const performDeleteTask = async (taskId) => {
     if (!taskId) return;
     // eslint-disable-next-line no-console
-    console.log('[performDeleteTask] confirmed', taskId);
+    diagnostic("renderer.cowork.App", "INFO", "performdeletetask_confirmed", '[performDeleteTask] confirmed', taskId);
     const task = tasks.find((t) => t.id === taskId);
     // Fire-and-forget: stop the PTY (if still running) and remove its git
     // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
@@ -4675,20 +4820,20 @@ function AppCore() {
     // wearing a tmp- id from before the first stream chunk arrived).
     if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
       // eslint-disable-next-line no-console
-      console.log('[performDeleteTask] tempId — local-only delete');
+      diagnostic("renderer.cowork.App", "INFO", "performdeletetask_tempid_local_only_delete", '[performDeleteTask] tempId — local-only delete');
       return;
     }
     try {
       await deleteConversation(taskId);
       // eslint-disable-next-line no-console
-      console.log('[performDeleteTask] server delete ok');
+      diagnostic("renderer.cowork.App", "INFO", "performdeletetask_server_delete_ok", '[performDeleteTask] server delete ok');
       // Unpin only once the delete has really happened. Run in parallel, a
       // refused delete still committed the unpin server-side, and the
       // restored row came back silently unpinned across reloads.
       await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[performDeleteTask] server delete failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "performdeletetask_server_delete_failed", '[performDeleteTask] server delete failed', e);
       /*
         The chat is still on the server, so put the row back rather than leave
         the sidebar claiming it is gone. Console-only used to mean the user saw
@@ -4780,7 +4925,7 @@ function AppCore() {
       const res = await fetchSessionResult(taskId);
       if (res?.status !== 'ok' || !Array.isArray(res.task?.messages)) {
         // eslint-disable-next-line no-console
-        console.error('[resyncConversationAfterDelete] no transcript returned', res?.status);
+        diagnostic("renderer.cowork.App", "ERROR", "resyncconversationafterdelete_no_transcript_returned", '[resyncConversationAfterDelete] no transcript returned', res?.status);
         return null;
       }
       const fresh = res.task;
@@ -4805,7 +4950,7 @@ function AppCore() {
       return { committed, pageIds: fresh.messages.map((m) => m?.id).filter(Boolean) };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[resyncConversationAfterDelete] refetch failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "resyncconversationafterdelete_refetch_failed", '[resyncConversationAfterDelete] refetch failed', e);
       return null;
     }
   };
@@ -5104,7 +5249,7 @@ function AppCore() {
           }
         } catch (e) {
           // eslint-disable-next-line no-console -- the delete goes ahead with the local anchor
-          console.error('[performDeleteTurn] anchor re-read failed', e);
+          diagnostic("renderer.cowork.App", "ERROR", "performdeleteturn_anchor_re_read_failed", '[performDeleteTurn] anchor re-read failed', e);
         }
       }
       let failure = null;
@@ -5113,7 +5258,7 @@ function AppCore() {
         result = await deleteConversationTurn(taskId, serverAnchorId);
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error('[performDeleteTurn] server delete failed', e);
+        diagnostic("renderer.cowork.App", "ERROR", "performdeleteturn_server_delete_failed", '[performDeleteTurn] server delete failed', e);
         failure = e;
       }
       // A 404 arrives as {status:'gone'} rather than throwing, and means the
@@ -5213,7 +5358,7 @@ function AppCore() {
       await deleteProject(project);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[performDeleteProject] failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "performdeleteproject_failed", '[performDeleteProject] failed', e);
       toastManager.add({
         type: 'danger',
         timeout: 0,
@@ -5301,7 +5446,7 @@ function AppCore() {
       await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[move task] failed', e);
+      diagnostic("renderer.cowork.App", "ERROR", "move_task_failed", '[move task] failed', e);
     } finally {
       setMoveModalTask(null);
     }
@@ -5373,12 +5518,40 @@ function AppCore() {
     // a spurious "got interrupted" prompt before the 5s poll catches up,
     // then navigate straight to the new run so the user sees it stream.
     if (result?.conversation_id) {
-      markInFlight(result.conversation_id);
-      setActiveTaskId(result.conversation_id);
+      const cid = result.conversation_id;
+      runsAwaitingStartRef.current.set(cid, Date.now());
+      markInFlight(cid);
+      setActiveTaskId(cid);
       setRoute('task');
+      attachWhenRunStarts(cid);
     }
     await refreshSchedules();
     refreshData();
+  };
+
+  // The server starts the run only after run-now answers, so the probe the
+  // open makes usually finds nothing to attach to. Ask again while the run is
+  // counted in flight: attach once it runs, if it's on screen, and if it ended
+  // between asks, end its start grace so the poll loads the answer now.
+  const attachWhenRunStarts = async (cid) => {
+    for (const delay of RUN_START_PROBE_DELAYS_MS) {
+      await new Promise((resolve) => { setTimeout(resolve, delay); });
+      if (!inFlightSetRef.current.has(cid)) return;
+      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (outcome === 'ended') {
+        runsAwaitingStartRef.current.delete(cid);
+        refreshInFlightSet();
+        return;
+      }
+      if (outcome === 'running') {
+        // It has started, so a poll that leaves it out from here means it
+        // finished; keeping the grace would hide a short run's answer.
+        runsAwaitingStartRef.current.delete(cid);
+        // Off screen, the poll follows the run from here.
+        if (activeTaskIdRef.current !== cid) return;
+        if (await reconnectInFlight(cid).catch(() => false)) return;
+      }
+    }
   };
 
   const handleSearchSelect = (result) => {
@@ -5386,7 +5559,7 @@ function AppCore() {
     if (result.type === 'task' || (result.type === 'pin' && result.route === 'task')) {
       selectTask(result.id);
     } else if (result.type === 'project') {
-      const project = projects.find((p) => p.name === result.id || p.path === result.id);
+      const project = projects.find((p) => p.id === result.id || p.name === result.id || p.path === result.id);
       if (project) setSelectedProject(project);
       setRoute('projects');
     } else if (result.type === 'attachment' && result.sessionId) {
@@ -5479,11 +5652,13 @@ function AppCore() {
     // hunting for a second spot.
     theme,
     showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    /* Opens Display settings only when the corner button would; otherwise it
+       flips the theme. */
     onToggleTheme: () => {
-      if (appearanceSettings.show8bitToggle === false) {
-        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-      } else {
+      if (displayToggleMode(appearanceSettings) === 'menu') {
         setThemeModalOpen(true);
+      } else {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
   };
@@ -5506,7 +5681,7 @@ function AppCore() {
         };
       case 'style':
         return {
-          label: skin === '8bit' ? 'Switch to Normal style' : 'Switch to 8-Bit style',
+          label: styleToggleLabel(skin),
           icon: Ico.gamepad(14),
           onClick: () => setSkin(nextToggledSkin(skin)),
         };
@@ -5645,7 +5820,7 @@ function AppCore() {
           onRenameTask={handleRenameTask}
           onDeleteTask={handleDeleteTask}
           onMoveTaskToProject={handleOpenMoveModal}
-          projects={projects}
+          projects={runnableProjects}
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
@@ -5733,13 +5908,13 @@ function AppCore() {
             onSelectTask={selectTask}
             onClearActive={clearActive}
             onSend={handleSendFromHome}
-            project={selectedProject}
+            project={canRunProject(selectedProject) ? selectedProject : null}
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
             effort={selectedEffort}
             onEffortChange={setSelectedEffort}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
@@ -5775,12 +5950,14 @@ function AppCore() {
         {route === 'task' && currentTask && !showConversationError && !showConversationLoading && (
           <ChatView
             task={currentTask}
+            health={health}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -5814,9 +5991,9 @@ function AppCore() {
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
-            disabledConnections={composerDisabledConnections}
+            disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
-            onUpdateConnectorMute={handleComposerConnectorMute}
+            onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
@@ -5843,7 +6020,7 @@ function AppCore() {
               setSelectedProject(null);
               setRoute('projects');
             }}
-            projects={projects}
+            projects={runnableProjects}
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
@@ -5924,7 +6101,7 @@ function AppCore() {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              handleSendFromHome(text, meta);
+              return handleSendFromHome(text, meta);
             }}
             codingModeEnabled={false}
             onSelectTask={selectTask}
@@ -5960,9 +6137,9 @@ function AppCore() {
         {route === 'scheduled' && (
           <ScheduledView
             scheduled={scheduled}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
-            selectedProject={selectedProject}
+            selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
             onUpdate={handleUpdateSchedule}
@@ -5985,7 +6162,7 @@ function AppCore() {
         {route === 'schedule-detail' && (
           <ScheduleDetailView
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
-            projects={projects}
+            projects={runnableProjects}
             models={modelOptions}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
@@ -6025,8 +6202,9 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
+            onRefreshArtifacts={reloadArtifacts}
             loading={!artifactsLoaded}
-            projects={projects}
+            projects={runnableProjects}
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
@@ -6043,7 +6221,7 @@ function AppCore() {
         {route === 'tasks' && (
           <TasksView
             tasks={tasks}
-            projects={projects}
+            projects={runnableProjects}
             schedules={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
@@ -6065,12 +6243,12 @@ function AppCore() {
           <CustomizeView
             connectors={connectors}
             onEditDatasource={(connection) =>
-              handleConnectorPicked({ id: connection.engine, label: connection.engine }, connection)}
+              handleConnectorPicked({ id: connection.engine, label: connection.engine }, { editingConnection: connection })}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}
             onConnectNew={handleStartConnectChat}
-            onReconnect={(spec) => handleConnectorPicked(spec)}
+            onReconnect={(spec, opts) => handleConnectorPicked(spec, opts)}
             agentLabel={agentLabel}
           />
         )}
@@ -6078,9 +6256,9 @@ function AppCore() {
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
-            projects={projects}
+            projects={runnableProjects}
             kind={route}
-            project={selectedProject}
+            project={canRunProject(selectedProject) ? selectedProject : null}
             onRefreshArtifacts={reloadArtifacts}
             agentLabel={agentLabel}
           />
@@ -6340,7 +6518,7 @@ function AppCore() {
       <MoveToProjectModal
         open={!!moveModalTask}
         task={moveModalTask}
-        projects={projects}
+        projects={runnableProjects}
         onClose={() => setMoveModalTask(null)}
         onConfirm={handleConfirmMove}
       />

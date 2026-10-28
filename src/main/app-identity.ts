@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Per-channel Electron app identity, IMPORTED FOR ITS SIDE EFFECT. Must be the
 // FIRST local import in src/main/app.ts: it calls app.setName() to pick the
 // userData dir, and modules like token-store.ts read app.getPath('userData') at
@@ -22,7 +23,7 @@ import { startCrashReporter } from './crash-reporter';
 const kind = buildKind();
 if (kind !== 'prod') {
   app.setName(CHANNELS[kind].appName);
-  console.log(`[app-identity] build kind "${kind}" → app name "${app.getName()}" (userData isolated)`);
+  diagnostic("main.app-identity", "INFO", "app_identity_build_kind_app_name_userdata_isolated", `[app-identity] build kind "${kind}" → app name "${app.getName()}" (userData isolated)`);
 }
 
 startCrashReporter();

@@ -264,6 +264,12 @@ describe('web mode (no bridge)', () => {
     expect(host.codeModeAvailable).toBe(false);
   });
 
+  it('supportsDocumentPreview is true on web, where no bridge decides it', async () => {
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -369,6 +375,29 @@ describe('electron mode (bridge present)', () => {
     host = await importHost();
     expect(host.codeModeAvailable).toBe(false);
   });
+
+  it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: true };
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
+  it('supportsDocumentPreview is false on a shell whose bridge omits the flag', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(false);
+    expect(host.host.supportsDocumentPreview).toBe(false);
+  });
+
+  it.each([false, 'true', 1, {}])(
+    'supportsDocumentPreview is false when the bridge reports %j',
+    async (value) => {
+      (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: value };
+      const host = await importHost();
+      expect(host.supportsDocumentPreview).toBe(false);
+    },
+  );
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
     (window as unknown as Record<string, unknown>).antontron = { serverPort: 12345 };
@@ -932,6 +961,34 @@ describe('electron mode (bridge present)', () => {
     };
     host = await importHost();
     await expect(host.getVersionInfo()).resolves.toMatchObject({ buildKind: null });
+  });
+});
+
+describe('checkConfigured() on web reads the deployment flags from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => body }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  it('reports live apps only when /health says true', async () => {
+    const fetch = stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: false, live_apps: true });
+    const host = await importHost();
+
+    await expect(host.checkConfigured()).resolves.toEqual({
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true,
+    });
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { live_apps: false }],
+    ['a string', { live_apps: 'true' }],
+  ])('reports no live apps when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ liveApps: false });
   });
 });
 

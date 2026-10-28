@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Which data root the sidecar is given for the signed-in account.
 //
 // One machine and one OS user can host several MindsHub accounts, and every
@@ -198,7 +199,7 @@ export function observePreExistingData(home: string, incumbentAccountId: string 
       mode: 0o600,
     });
   } catch (err) {
-    console.warn('[account-data] could not record whether this install had data', err);
+    diagnostic("main.account-data", "WARNING", "account_data_could_not_record_whether_this_install_had_data", '[account-data] could not record whether this install had data', err);
   }
 }
 
@@ -570,7 +571,7 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
   const root = accountDataHome(home, active);
   if (root === home) return {};
   if (root.includes(QUARANTINE_PREFIX)) {
-    console.warn(
+    diagnostic("main.account-data", "WARNING", "account_data_cannot_vouch_for_this_machine_s_data_for_the_current_session_starting_on_an_empty_root_",
       '[account-data] cannot vouch for this machine\'s data for the current session — '
       + 'starting on an empty root. Signing in rewrites the account record.',
     );
@@ -836,7 +837,7 @@ export function claimForRecordedIncumbent(home: string): string | null {
   if (claim.kind === 'unreadable') return null;
   const settled = adoptDefaultRootAsIncumbent(home, incumbent);
   if (settled.kind !== 'claimed') {
-    console.warn('[account-data] could not give the default root to its incumbent');
+    diagnostic("main.account-data", "WARNING", "account_data_could_not_give_the_default_root_to_its_incumbent", '[account-data] could not give the default root to its incumbent');
     return null;
   }
   return settled.accountId;
@@ -867,7 +868,7 @@ export function settleOwnership(home: string): void {
     fs.writeFileSync(settledPath(home), '', { encoding: 'utf-8', mode: 0o600 });
   } catch (err) {
     // Worst case the question is asked once more; nothing is lost either way.
-    console.warn('[account-data] could not record the ownership choice', err);
+    diagnostic("main.account-data", "WARNING", "account_data_could_not_record_the_ownership_choice", '[account-data] could not record the ownership choice', err);
   }
 }
 
@@ -879,13 +880,13 @@ export function settleOwnership(home: string): void {
 function reapQuarantineRoot(root: string, name: string): void {
   if (!name.startsWith(QUARANTINE_PREFIX) || name === QUARANTINE_ACCOUNT) return;
   if (rootHoldsUserData(root)) {
-    console.warn('[account-data] a quarantined session left data behind at %s', root);
+    diagnostic("main.account-data", "WARNING", "account_data_a_quarantined_session_left_data_behind_at_s", '[account-data] a quarantined session left data behind at %s', root);
     return;
   }
   try {
     fs.rmSync(root, { recursive: true, force: true });
   } catch (err) {
-    console.warn('[account-data] could not remove a stale quarantine root', err);
+    diagnostic("main.account-data", "WARNING", "account_data_could_not_remove_a_stale_quarantine_root", '[account-data] could not remove a stale quarantine root', err);
   }
 }
 

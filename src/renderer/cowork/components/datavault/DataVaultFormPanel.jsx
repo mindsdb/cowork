@@ -27,6 +27,7 @@ import {
 import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
 import { submitDataVaultForm } from '../../api';
@@ -397,7 +398,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       if (host.isWeb) {
         const connectorId = spec._connector_id || null;
         if (!connectorId) {
-          setError('This connector cannot be authorized in the browser (no connector id). Use the desktop app.');
+          setError(PLATFORM_UI
+            ? 'This connector cannot be authorized in the browser (no connector id). Use the desktop app.'
+            : 'This connector cannot be authorized in this web UI.');
           return;
         }
         setBusy(true);

@@ -1,18 +1,27 @@
 import { useSyncExternalStore } from 'react';
 import { host } from '../../platform/host';
 import { resetDeviceIdentity } from '../lib/analytics';
+import { PLATFORM_UI } from '../../lib/deployment';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_SHORT_NAME } from '../../../shared/product-name';
 
-// Confirm-dialog copy for signing out — shared by every sign-out entry point
-// (settings Account section, sidebar user menu) so the wording can't drift
-// between them. The message is platform-aware: Electron clears stored
-// credentials on the device, while web only ends the Keycloak browser session
-// (keys live in MindsHub, not on the machine), so the desktop warning about
-// cleared API keys would be false there.
+// Sign-out copy, shared by every sign-out entry point (settings Account
+// section, sidebar user menu) so the pane and the dialog can't disagree. The
+// desktop wording names exactly what sign-out removes and what it keeps: an
+// organization that isn't open has its keys cleared before it is next used,
+// not at once. Web only ends the Keycloak browser session, so it says no more.
+// A web build without the platform UI signs in through its own deployment,
+// not MindsHub.
 export const LOGOUT_CONFIRM_COPY = {
-  title: 'Sign out of Cowork?',
+  title: `Sign out of ${productName(STOCK_SHORT_NAME)}?`,
   message: host.isWeb
-    ? "This signs you out of Cowork. You'll need to sign in again with MindsHub to keep using it."
-    : "This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork.",
+    ? PLATFORM_UI
+      ? "This signs you out of Cowork. You'll need to sign in again with MindsHub to keep using it."
+      : `This signs you out of ${productName(STOCK_SHORT_NAME)}. You'll need to sign in again to keep using it.`
+    : "This ends your MindsHub session and removes the AI provider API keys saved in Cowork for this account, each organization before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay here. You'll need to sign in again to keep using Cowork.",
+  paneSubtitle:
+    "End your MindsHub session and remove the AI provider API keys saved in Cowork for this account. An organization that isn't open is cleared before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay on this device.",
+  tooltip: 'Sign out and remove saved API keys',
   confirmLabel: 'Sign out',
 };
 
@@ -51,7 +60,7 @@ export const LOGOUT_WAIT_NOTE = 'Still signing you out. You can close this — i
  * `locked` is "the dialog refuses to close" and is the half with a deadline.
  * Splitting them is what lets the work continue while the person walks away.
  */
-let state = { settling: false, locked: false };
+let state = { settling: false, locked: false, error: '' };
 const listeners = new Set();
 let inFlight = null;
 let lockTimer = null;
@@ -83,7 +92,7 @@ async function runLogout() {
   // Guard against double-fire (Enter / re-click), and against the second
   // entry point firing while the first is still in flight.
   if (inFlight) return inFlight;
-  publish({ settling: true, locked: true });
+  publish({ settling: true, locked: true, error: '' });
   lockTimer = setTimeout(() => {
     lockTimer = null;
     publish({ locked: false });
@@ -94,10 +103,8 @@ async function runLogout() {
     try {
       await host.logout();
     } catch {
-      // logout() rejected. The main handler clears the refresh token + the
-      // server-DB credentials early, before anything that can throw, so the
-      // user IS signed out — main just threw before it could drive its own
-      // reload. Fall through and reload from here (see below).
+      // Desktop clears credentials before its reload. Web can reject before
+      // ending the session when preview revocation fails, so it needs retry.
       ok = false;
     } finally {
       // Whatever happened, the dialog stops being the app's only exit. There
@@ -118,8 +125,12 @@ async function runLogout() {
     // redirects to the end-session endpoint. A renderer reload here would race
     // and win — cancelling the web redirect (SSO cookie survives → silent
     // re-auth) or double-reloading Electron into a stuck modal. So we reload
-    // immediately only on REJECTION, where the platform threw before its own
-    // navigation and nothing else will. (ENG-1206)
+    // immediately only on a desktop rejection. Web leaves the dialog open
+    // with a retry message when it cannot confirm sign-out.
+    if (!ok && host.isWeb) {
+      publish({ error: 'Could not finish signing out. Please try again.' });
+      return;
+    }
     if (!ok) {
       window.location.reload();
       return;
@@ -139,12 +150,12 @@ async function runLogout() {
 }
 
 export function useLogout() {
-  const { settling, locked } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const { settling, locked, error } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   return {
     loggingOut: settling,
     locked,
-    waitNote: settling && !locked ? LOGOUT_WAIT_NOTE : '',
+    waitNote: error || (settling && !locked ? LOGOUT_WAIT_NOTE : ''),
     logout: runLogout,
   };
 }

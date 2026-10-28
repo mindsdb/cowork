@@ -127,3 +127,31 @@ export function canPreviewOrgDraft(a) {
 export function canDownloadOrgDraft(a) {
   return !!a?.draftUrl && !isBackendArtifact(a);
 }
+
+/**
+ * Whether any deployment can hand the user this artifact's primary file:
+ * through the serve URL (desktop and local web) or the authenticated draft URL
+ * (every card with a primary file). Fullstack apps are left out for the reason
+ * `canDownloadOrgDraft` gives: their primary is a shell index.html, not the app.
+ */
+export function canDownloadArtifact(a) {
+  return (!!a?.serveUrl || !!a?.draftUrl) && !isBackendArtifact(a);
+}
+
+/*
+ * Besides HTML and images, what a browser tab renders from the serve URL. The
+ * serve route types a .csv as text/csv, which Chrome saves rather than shows,
+ * so it is not here even though the viewer previews it.
+ */
+const BROWSER_TAB_EXTS = new Set(['.md', '.txt', '.pdf']);
+
+/**
+ * What a browser tab shows rather than saves: HTML, images, Markdown, plain
+ * text and PDF. A tab opened on any other file's URL saves the file without a
+ * word, so on web a surface offers "open in a tab" only for these.
+ */
+export function canShowInBrowserTab(a) {
+  if (!a) return false;
+  return isHtmlArtifact(a) || isImageArtifact(a)
+    || BROWSER_TAB_EXTS.has(_ext(a)) || [...BROWSER_TAB_EXTS].some((e) => _path(a).endsWith(e));
+}

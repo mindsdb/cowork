@@ -56,11 +56,31 @@ export interface ConnectorConnection {
   status?: string | null;
   updated_at?: string | null;
   updatedAt?: string | null;
+  /**
+   * True for a connection the caller can't change: one the operator provides,
+   * or one someone else shares with the caller. The page shows it read-only,
+   * with no Reconnect or Remove. With `shared` false, only the operator can
+   * change it. Absent means false.
+   */
+  managed?: boolean;
+  /**
+   * True for a connection in the shared-connection registry, and also for
+   * another person's connection in a deployment-wide vault (connections left
+   * off COWORK_PERSONAL_RESOURCES). With `managed` true it is shared with the
+   * caller, who can't change it. With `managed` false it is the caller's own
+   * shared connection: the page shows a Shared badge and keeps every action.
+   * Absent means false.
+   */
+  shared?: boolean;
 }
 
 export interface SavedConnectorConnection {
   method?: string | null;
   fields?: Record<string, unknown>;
+  /** Same meaning as ConnectorConnection.managed. */
+  managed?: boolean;
+  /** Same meaning as ConnectorConnection.shared. */
+  shared?: boolean;
 }
 
 export interface ConnectorFieldSpec {
@@ -106,3 +126,9 @@ export function validateAndSaveConnector(
   connectorId: string,
   payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
 ): Promise<SavedConnectorResult>;
+
+export interface LiveAppPreviewLease { id: string; intent: string }
+export function createLiveAppPreview(launchId: string): Promise<LiveAppPreviewLease>;
+export function keepLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreviews(): Promise<void>;

@@ -55,6 +55,7 @@ vi.mock('../components/artifact', () => ({
 
 import ArtifactsView from './ArtifactsView';
 import * as api from '../api';
+import { NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 import { host } from '../../platform/host';
 import { setOrgMode } from '../../lib/orgMode';
 
@@ -77,11 +78,11 @@ const cloudDraft = {
  * (autopublish is HTML/MD-only), no serve URL — the draft URL is the one route
  * to the bytes. Grid and List must both reach it; List missed it in pass 1.
  */
-const cloudXlsx = {
+const cloudZip = {
   id: '55555555555555555555555555555555',
-  path: '/proj/.anton/artifacts/model/model.xlsx',
-  title: 'Quarterly Model', type: 'file', ext: '.xlsx', mtime: 2000,
-  draftUrl: '/api/v1/artifacts/drafts/project/id5/model.xlsx',
+  path: '/proj/.anton/artifacts/model/model.zip',
+  title: 'Quarterly Model', type: 'file', ext: '.zip', mtime: 2000,
+  draftUrl: '/api/v1/artifacts/drafts/project/id5/model.zip',
   publishedUrl: '',
   capabilities: { role: 'owner', canEdit: true },
 };
@@ -310,11 +311,10 @@ describe.each([
 describe('grid view shared link when the bridge rejects', () => {
   /*
    * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
-   * is async, so the item has to await it for its catch to fire — unawaited,
-   * this fallback was dead code. The list row routes through `openUrl`, which
-   * already awaits.
+   * is what restricts the agent-writable URL to safe schemes, so a rejection
+   * must not hand the raw URL to window.open.
    */
-  it('falls back to window.open', async () => {
+  it('does not fall back to window.open', async () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(true);
     host.openExternal.mockClear();
@@ -326,9 +326,38 @@ describe('grid view shared link when the bridge rejects', () => {
 
       fireEvent.click(screen.getByText('Open shared link'));
 
-      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
-        'https://view.mindshub.ai/r/md1', '_blank', 'noopener,noreferrer',
-      ));
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/md1'));
+      expect(opened).not.toHaveBeenCalled();
+    } finally {
+      opened.mockRestore();
+    }
+  });
+});
+
+describe('grid card open when the bridge rejects', () => {
+  /*
+   * The card body and its ↗ button reach the published URL through the card's
+   * own openBest, not the HoverMenu item above, so they need their own check.
+   */
+  const unsafe = { ...published, publishedUrl: 'javascript:alert(1)' };
+
+  it.each([
+    ['the card body', () => fireEvent.click(screen.getByText('Weather Dashboard'))],
+    ['the ↗ Open button', () => fireEvent.click(screen.getByLabelText('Open'))],
+  ])('%s does not fall back to window.open', async (_label, click) => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    host.openExternal.mockClear();
+    host.openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ArtifactsView artifacts={[unsafe]} />);
+      click();
+
+      await vi.waitFor(() => expect(host.openExternal).toHaveBeenCalledWith('javascript:alert(1)'));
+      // Let the rejection reach the handler's catch before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }
@@ -531,30 +560,63 @@ describe.each([
   /*
    * Review pass 2 on #764: the grid card got the download fallback and the
    * list row — 250 lines below in the same file — did not, so the identical
-   * .xlsx downloaded in Grid and silently did nothing in List. Same fixture,
+   * file downloaded in Grid and silently did nothing in List. Same fixture,
    * both view modes, so they cannot drift again.
    */
+  /* An org deployment is always a web host, so these run on one and hand the
+     file-wide desktop host back afterwards. */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
+    host.isWeb = true;
+    host.isElectron = false;
     downloadAuthenticatedResource.mockClear();
     downloadAuthenticatedResource.mockImplementation(async () => true);
     toastAdd.mockClear();
   });
-
-  it('body click downloads instead of doing nothing', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
-    fireEvent.click(screen.getByText('Quarterly Model'));
-    await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
-    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.xlsx');
-    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('download=1');
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  afterEach(() => {
+    host.isWeb = false;
+    host.isElectron = true;
   });
 
-  it('the ↗ Open button downloads too', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
-    fireEvent.click(screen.getByLabelText('Open'));
+  it('body click downloads instead of doing nothing, then says why', async () => {
+    render(<ArtifactsView artifacts={[cloudZip]} />);
+    fireEvent.click(screen.getByText('Quarterly Model'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.zip');
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('download=1');
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE }));
+  });
+
+  it('body click shows the error toast and no note when the fetch fails', async () => {
+    downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
+    render(<ArtifactsView artifacts={[cloudZip]} />);
+    fireEvent.click(screen.getByText('Quarterly Model'));
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Could not download this artifact.', type: 'danger' }),
+    ));
+    expect(toastAdd).not.toHaveBeenCalledWith({ title: NO_PREVIEW_DOWNLOADED_NOTE });
+  });
+
+  /* ↗ opens only the shared page in org mode, so an unshared file shows none,
+     even a .pdf, which keeps ↗ on web once shared. The menu's Download saves
+     it instead. */
+  it('shows no ↗ before anything is shared, and the menu Download saves the file', async () => {
+    const cloudPdf = {
+      ...cloudZip,
+      path: '/proj/.anton/artifacts/model/model.pdf',
+      ext: '.pdf',
+      draftUrl: '/api/v1/artifacts/drafts/project/id5/model.pdf',
+    };
+    render(<ArtifactsView artifacts={[cloudPdf]} />);
+    expect(screen.queryByLabelText('Open')).toBeNull();
+
+    openKebab();
+    fireEvent.click(screen.getByText('Download'));
+
+    await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.pdf');
   });
 
   it('the kebab Download item reports through a toast when the fetch fails', async () => {
@@ -564,7 +626,7 @@ describe.each([
      * that left the click with no feedback of any kind (review pass 2).
      */
     downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     openKebab();
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
@@ -573,7 +635,7 @@ describe.each([
   });
 
   it('stays quiet when the download succeeds (mutation guard for the toast)', async () => {
-    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    render(<ArtifactsView artifacts={[cloudZip]} />);
     openKebab();
     fireEvent.click(screen.getByText('Download'));
     await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
