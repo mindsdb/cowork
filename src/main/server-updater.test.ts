@@ -32,7 +32,7 @@ vi.mock('./server-release-install', () => ({
 vi.mock('http');
 vi.mock('https');
 
-import { forgetServerCapability, startServer, isServerRunning } from './server-process';
+import { forgetServerCapability, startServer, stopServer, isServerRunning } from './server-process';
 import { buildKind } from './cowork-home';
 import { lockedServerInstallArgs } from './server-release-install';
 import {
@@ -124,6 +124,49 @@ describe('maybeUpdateServer (orchestration)', () => {
     // A machine whose uv lives outside the probed dirs gets NO updates — that
     // must be loud in the logs, not an info-level shrug.
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+
+  it.each([
+    { channel: 'pypi', wasRunning: true },
+    { channel: 'pypi', wasRunning: false },
+    { channel: 'git', wasRunning: true },
+    { channel: 'git', wasRunning: false },
+  ])('preserves the prior running state after CA export fails ($channel, running: $wasRunning)', async ({ channel, wasRunning }) => {
+    const previousCommit = 'a'.repeat(40);
+    const nextCommit = 'b'.repeat(40);
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(buildKind).mockReturnValue('prod' as never);
+    vi.mocked(fs.existsSync).mockImplementation(((p: string) => channel === 'git' || !String(p).endsWith('direct_url.json')) as never);
+    vi.mocked(fs.readdirSync).mockReturnValue(['cowork_server-1.0.0.dist-info'] as never);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ vcs_info: { commit_id: previousCommit, requested_revision: 'main' } }));
+    mockPypi(() => JSON.stringify({ info: { version: '1.0.1' }, releases: { '1.0.1': [{}] } }));
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string, args: string[], _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (cmd === 'git') cb(null, `${nextCommit}\trefs/heads/main\n`, '');
+      else if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v1.0.0\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+    vi.mocked(isServerRunning).mockReturnValueOnce(wasRunning);
+    vi.mocked(lockedServerInstallArgs).mockImplementationOnce(() => {
+      throw Object.assign(new Error('CA export denied'), { code: 'EACCES' });
+    });
+
+    const result = await maybeUpdateServer();
+
+    expect(result).toMatchObject({ updated: false, error: 'CA export denied' });
+    expect(result.outcome).toBeUndefined();
+    expect(lockedServerInstallArgs).toHaveBeenCalledOnce();
+    expect(vi.mocked(cp.execFile).mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === 'tool' && args[1] === 'install')).toHaveLength(0);
+    expect(stopServer).toHaveBeenCalledTimes(Number(wasRunning));
+    expect(startServer).toHaveBeenCalledTimes(Number(wasRunning));
+    expect(forgetServerCapability).not.toHaveBeenCalled();
+    if (wasRunning) {
+      expect(vi.mocked(stopServer).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(lockedServerInstallArgs).mock.invocationCallOrder[0]);
+      expect(vi.mocked(startServer).mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(lockedServerInstallArgs).mock.invocationCallOrder[0]);
+    }
   });
 
   it.each([true, false])('Git rollback preserves the prior sources (Anton from Git: %s)', async (antonFromGit) => {
@@ -516,6 +559,30 @@ describe('repairServerInstall (orchestration)', () => {
     }) as never);
 
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
+  });
+
+  it('asks uv for an uncoloured tools dir, since forced colour wins over NO_COLOR', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push(args);
+      if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    await repairServerInstall(BROKEN);
+
+    const toolDirCalls = execCalls.filter((args) => args[0] === 'tool' && args[1] === 'dir');
+    expect(toolDirCalls.length).toBeGreaterThan(0);
+    for (const args of toolDirCalls) expect(args).toEqual(['tool', 'dir', '--color', 'never']);
   });
 });
 

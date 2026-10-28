@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ContextCard } from './ContextCard';
+import { fetchAuthenticatedResponse, openAuthenticatedResource } from '../../lib/authenticatedResource';
 
 // Regression coverage: disconnecting a Google Drive connection (from
 // Connected Apps and Data, the in-chat "Modify connection" bubble, or the
@@ -31,6 +33,11 @@ const apiMock = vi.hoisted(() => ({
 }));
 const hostState = vi.hoisted(() => ({ isWeb: true }));
 vi.mock('../../api', () => apiMock);
+vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchAuthenticatedResponse: vi.fn(),
+  openAuthenticatedResource: vi.fn(async () => true),
+}));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -111,6 +118,23 @@ describe('ContextCard — memory', () => {
     });
 
     expect(apiMock.fetchMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists learned memory and leaves the deployment\'s rules to the Memories page', async () => {
+    apiMock.fetchMemory.mockResolvedValue({
+      sections: [
+        { scope: 'Global', files: [{ path: 'Global:global:lessons', scope: 'Global', category: 'lessons', content: 'Ships on Fridays.' }] },
+        { scope: 'Deployment', files: [{ path: 'Deployment:global:rules', scope: 'Deployment', category: 'rules', content: 'List package names only.' }] },
+      ],
+    });
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general' }} conversationId={null} />);
+    });
+
+    expect(await screen.findByText('Global memory')).toBeInTheDocument();
+    expect(screen.queryByText('Deployment')).toBeNull();
+    expect(screen.queryByText('Rules')).toBeNull();
   });
 });
 
@@ -776,5 +800,56 @@ describe('ContextCard — Notion pages in Project files', () => {
 
     expect(onAddNotionPages).toHaveBeenCalledWith('general');
     await waitFor(() => expect(onFetchNotionPages).toHaveBeenCalledTimes(2));
+  });
+});
+
+/* A task upload opens in the shared file viewer by its raw URL. It shows as
+   text when it is text, and offers no Edit: an upload has no project path to
+   save to. */
+describe('ContextCard — a task upload in the file viewer', () => {
+  const RAW = '/api/v1/attachments/billing/task-1/a1/raw';
+
+  afterEach(() => {
+    apiMock.fetchAttachments.mockReset();
+    apiMock.attachmentRawUrl.mockReset();
+  });
+
+  it('shows an uploaded CSV as text, read from its raw URL, with no Edit', async () => {
+    apiMock.fetchAttachments.mockResolvedValue({ attachments: [{ id: 'a1', name: 'stock.csv', mime: 'text/csv' }] });
+    apiMock.attachmentRawUrl.mockReturnValue(RAW);
+    vi.mocked(fetchAuthenticatedResponse).mockResolvedValue(new Response('sku,qty\nmug,250\n'));
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'billing', path: '/projects/billing' }} conversationId="task-1" />);
+    });
+    fireEvent.click(await screen.findByText('stock.csv'));
+
+    expect(await screen.findByText(/mug,250/)).toBeInTheDocument();
+    expect(fetchAuthenticatedResponse).toHaveBeenCalledWith(RAW);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(apiMock.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  /* Desktop has nowhere to open an upload: the OS browser carries no token for
+     the local server. openAuthenticatedResource saves it there instead, so the
+     row's menu says Download. */
+  it.each([
+    ['web', 'Open', true],
+    ['desktop', 'Download', false],
+  ])('on %s, offers the upload from its menu as %s, by its raw URL', async (_name, label, isWeb) => {
+    hostState.isWeb = isWeb;
+    const user = userEvent.setup();
+    apiMock.fetchAttachments.mockResolvedValue({ attachments: [{ id: 'a1', name: 'plan.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }] });
+    apiMock.attachmentRawUrl.mockReturnValue(RAW);
+
+    await act(async () => {
+      render(<ContextCard project={{ name: 'billing', path: '/projects/billing' }} conversationId="task-1" />);
+    });
+    const row = (await screen.findByText('plan.xlsx')).closest('[role="button"]');
+    await user.click(within(row).getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByRole('menuitem', { name: label === 'Open' ? 'Download' : 'Open' })).toBeNull();
+    await user.click(await screen.findByRole('menuitem', { name: label }));
+
+    expect(openAuthenticatedResource).toHaveBeenCalledWith(RAW, { filename: 'plan.xlsx' });
   });
 });

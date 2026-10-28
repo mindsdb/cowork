@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { limitArtifactFrames } from '../artifactPreviewUtils';
 
 function concise(text, limit = 180) {
   const value = String(text || '').trim();
@@ -53,7 +54,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
           <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
           <iframe
             title={`Artifact before ${beforeLabel}`}
-            srcDoc={model.before}
+            srcDoc={limitArtifactFrames(model.before)}
             sandbox="allow-scripts"
           />
         </section>
@@ -61,7 +62,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
           <div className="artifact-compare-label section-label">After · {afterLabel}</div>
           <iframe
             title={`Artifact after ${afterLabel}`}
-            srcDoc={model.after}
+            srcDoc={limitArtifactFrames(model.after)}
             sandbox="allow-scripts"
           />
         </section>

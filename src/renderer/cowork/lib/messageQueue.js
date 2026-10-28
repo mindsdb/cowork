@@ -112,6 +112,34 @@ export function finishedCids(prevIds, nextIds, streamingTaskId) {
   return [...prevIds].filter((cid) => !next.has(cid) && cid !== streamingTaskId);
 }
 
+// "Run now" answers with the run's conversation before the server starts the
+// run, so the in-flight list can leave it out for a few seconds. Until the
+// server lists it once, a poll without it means not started yet, not finished.
+export const UNLISTED_RUN_GRACE_MS = 30_000;
+
+// When the window that pressed "Run now" asks again whether the run has
+// started, so it can attach to it. They add up to the grace period.
+export const RUN_START_PROBE_DELAYS_MS = [500, 1000, 1500, 2000, 3000, 3000, 4000, 5000, 5000, 5000];
+
+// What one in-flight probe says about a run started with "Run now": 'running',
+// 'ended' (it started and finished between probes, so it left a buffer), or
+// 'not-started'. The run's conversation is new, so any buffer is this run's.
+export function runStartProbeOutcome(status) {
+  if (status?.in_flight) return 'running';
+  if (status?.has_buffer) return 'ended';
+  return 'not-started';
+}
+
+// `awaiting` maps each run started here to when it was started. Returns the
+// runs a poll that didn't list them should still count as in flight: those the
+// server has never listed, within the grace period.
+export function runsAwaitingTheirStart(awaiting, listedIds, now, graceMs = UNLISTED_RUN_GRACE_MS) {
+  const listed = new Set(listedIds);
+  return [...awaiting]
+    .filter(([cid, startedAt]) => !listed.has(cid) && now - startedAt < graceMs)
+    .map(([cid]) => cid);
+}
+
 // Re-key queued messages when the server mints a canonical id for a task
 // that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
 // source id's queue onto `toId`, preserving FIFO order (existing `toId`
