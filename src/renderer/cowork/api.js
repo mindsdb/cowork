@@ -2082,6 +2082,17 @@ export async function fetchConnector(id) {
   return req(`/connectors/specs/${encodeURIComponent(id)}`);
 }
 
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route keeps the old answer, yes.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch {
+    return true;
+  }
+}
+
 export async function matchConnector(query, maxCandidates = 3) {
   return req('/connectors/specs/match', {
     method: 'POST',

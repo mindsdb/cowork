@@ -1,13 +1,16 @@
-// Building a connector from the directory. Local installs only for now.
+// Building a connector from the directory, offered only where the server says
+// one would be kept, and never in org mode.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setOrgMode } from '../../../lib/orgMode';
 
 const fetchConnectors = vi.fn();
+const fetchCanBuildCustomConnector = vi.fn();
 vi.mock('../../api', () => ({
   fetchConnectors: (...args) => fetchConnectors(...args),
+  fetchCanBuildCustomConnector: (...args) => fetchCanBuildCustomConnector(...args),
 }));
 vi.mock('../../../platform/host', () => ({
   host: { openExternal: vi.fn() },
@@ -39,9 +42,14 @@ async function openWith(connectors, props = {}) {
   return onBuildCustom;
 }
 
+beforeEach(() => {
+  fetchCanBuildCustomConnector.mockResolvedValue(true);
+});
+
 afterEach(() => {
   setOrgMode(false);
   fetchConnectors.mockReset();
+  fetchCanBuildCustomConnector.mockReset();
 });
 
 describe('ConnectorPicker build a custom connector', () => {
@@ -110,6 +118,16 @@ describe('ConnectorPicker build a custom connector', () => {
     setOrgMode(true);
     await openWith([GMAIL]);
 
+    expect(screen.queryByText('Build a custom connector')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
+    expect(screen.queryByRole('button', { name: /Build a custom connector/ })).toBeNull();
+  });
+
+  it('shows neither entry point where the server says a connector would not be kept', async () => {
+    fetchCanBuildCustomConnector.mockResolvedValue(false);
+    await openWith([GMAIL]);
+
+    expect(fetchCanBuildCustomConnector).toHaveBeenCalled();
     expect(screen.queryByText('Build a custom connector')).toBeNull();
     fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
     expect(screen.queryByRole('button', { name: /Build a custom connector/ })).toBeNull();

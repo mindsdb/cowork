@@ -12,7 +12,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { fetchConnectors } from '../../api';
+import { fetchCanBuildCustomConnector, fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { connectorInitials } from '../../lib/connectionIdentity';
@@ -252,8 +252,9 @@ function matchesSearch(connector, q) {
   return hay.includes(q);
 }
 
-// `onBuildCustom(query)` starts an Anton task that builds a connector. Local
-// installs only for now; org mode never shows the entry points.
+// `onBuildCustom(query)` starts an Anton task that builds a connector. The
+// entry points show only where the server says one would be kept (one
+// person's own scope), and never in org mode.
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, onBuildCustom }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
@@ -285,6 +286,22 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       .catch((e) => setError(e?.message || 'Failed to load connectors'))
       .finally(() => setLoading(false));
   }, [open, orgMode]);
+
+  // The server says whether a custom connector built here would be kept: only
+  // in one person's own scope. Hidden until it answers, so it never flashes.
+  const offersBuild = Boolean(onBuildCustom);
+  const [buildAllowed, setBuildAllowed] = useState(false);
+  useEffect(() => {
+    if (!open || orgMode || !offersBuild) return undefined;
+    let live = true;
+    setBuildAllowed(false);
+    fetchCanBuildCustomConnector().then((allowed) => {
+      if (live) setBuildAllowed(allowed);
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, orgMode, offersBuild]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -332,7 +349,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     return { available: a, desktopOnly: d };
   }, [filtered]);
 
-  const canBuildCustom = Boolean(onBuildCustom) && !orgMode;
+  const canBuildCustom = offersBuild && !orgMode && buildAllowed;
   const trimmedQuery = query.trim();
   const offerBuildForQuery = canBuildCustom && Boolean(trimmedQuery) && !queryMatchesAny;
 
