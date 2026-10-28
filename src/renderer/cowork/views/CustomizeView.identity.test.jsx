@@ -132,7 +132,6 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
   });
 
   it('preserves the card and enables retry when disconnect fails', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
@@ -140,7 +139,11 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     render(<CustomizeView connectors={CONNECTIONS} onConnectionsSynced={onConnectionsSynced} />);
     const card = screen.getAllByRole('article')[0];
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Could not disconnect: Connection is unavailable'));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Disconnect'}));
+    const error = await screen.findByRole('dialog', {name:'Could not disconnect'});
+    expect(error).toHaveTextContent('Connection is unavailable');
+    expect(window.alert).not.toHaveBeenCalled();
+    await userEvent.click(within(error).getByRole('button', {name:'OK'}));
     expect(screen.getAllByRole('article')).toHaveLength(6);
     expect(within(card).getByRole('button', {name:'Disconnect'})).toBeEnabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -148,6 +151,7 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     vi.mocked(deleteDatasource).mockResolvedValueOnce({ok:true});
     vi.mocked(fetchDatasources).mockResolvedValueOnce({connections:CONNECTIONS.slice(1)});
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Disconnect'}));
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(5));
     expect(onConnectionsSynced).toHaveBeenLastCalledWith(CONNECTIONS.slice(1));
   });

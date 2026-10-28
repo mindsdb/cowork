@@ -29,6 +29,8 @@ import {
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -103,6 +105,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   // after-connect setting, so this is its own small piece of state rather
   // than reusing pickerState's shape.
   const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
+  // 'reconnect' | 'remove' while its confirm dialog is open. In-app dialogs,
+  // not window.confirm: on Windows the native dialog leaves the page without
+  // keyboard focus, so no text field takes typing afterwards.
+  const [confirming, setConfirming] = useState(null);
   // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
   // a pick attempt's own continuation can tell whether it's still the
   // active one — a single shared boolean "was cancel ever clicked" flag
@@ -153,6 +159,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const managed = connection.managed === true || saved?.managed === true;
   /* With `managed` false, the caller's own connection that others use. */
   const shared = connection.shared === true || saved?.shared === true;
+  const reconnectLabel = spec?.label || connection.engine;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -459,14 +466,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {spec && (
                 <Button
                   variant="primary"
-                  onClick={() => {
-                    const label = spec.label || connection.engine;
-                    if (!window.confirm(shared
-                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
-                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
-                    )) return;
-                    onReconnect?.(connection, spec, { shared });
-                  }}
+                  onClick={() => setConfirming('reconnect')}
                   className="w-full justify-center"
                 >
                   Reconnect
@@ -475,19 +475,38 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               <Button
                 variant="danger"
                 block
-                onClick={() => {
-                  if (!window.confirm(disconnectPrompt({
-                    engine: connection.engine,
-                    name: connection.name,
-                    shared,
-                  }))) return;
-                  onDisconnect?.(connection, saved);
-                  onClose();
-                }}
+                onClick={() => setConfirming('remove')}
               >
                 {Ico.trash(14)}
                 Remove
               </Button>
+              {spec && (
+                <ConfirmModal
+                  open={confirming === 'reconnect'}
+                  title={`Reconnect ${reconnectLabel}?`}
+                  message={shared
+                    ? `You'll connect ${reconnectLabel} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
+                    : `The existing ${reconnectLabel} connection will be removed and you'll connect it again from scratch.`}
+                  confirmLabel="Reconnect"
+                  onConfirm={() => {
+                    setConfirming(null);
+                    onReconnect?.(connection, spec, { shared });
+                  }}
+                  onClose={() => setConfirming(null)}
+                />
+              )}
+              <ConfirmModal
+                open={confirming === 'remove'}
+                {...disconnectPrompt({ engine: connection.engine, name: connection.name, shared })}
+                confirmLabel="Remove"
+                destructive
+                onConfirm={() => {
+                  setConfirming(null);
+                  onDisconnect?.(connection, saved);
+                  onClose();
+                }}
+                onClose={() => setConfirming(null)}
+              />
             </>
           )}
         </div>
@@ -512,6 +531,9 @@ export default function CustomizeView({
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  // Shown in an in-app dialog rather than alert(), for the same Windows focus
+  // reason as the confirm dialogs.
+  const [deleteError, setDeleteError] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -632,7 +654,7 @@ export default function CustomizeView({
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      setDeleteError(String(e?.message || e));
       return false;
     }
     await syncAfterDelete();
@@ -722,6 +744,22 @@ export default function CustomizeView({
           </ListGroup>
         )}
       </CollectionState>
+
+      <Modal
+        open={deleteError != null}
+        onClose={() => setDeleteError(null)}
+        size="sm"
+        width="min(420px, 92vw)"
+        labelledBy="disconnect-error-title"
+      >
+        <ModalHeader id="disconnect-error-title" title="Could not disconnect" />
+        <ModalBody>
+          <div className="s-body">{deleteError}</div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setDeleteError(null)} autoFocus>OK</Button>
+        </ModalFooter>
+      </Modal>
 
       {selectedConn && (
         <ConnectionDetailPanel

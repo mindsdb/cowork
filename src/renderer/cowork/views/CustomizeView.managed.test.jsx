@@ -70,6 +70,12 @@ function refusal(status, message) {
   return Object.assign(new Error(message), { status });
 }
 
+// Clicks a button in the in-app confirm dialog titled `title`.
+async function answerConfirm(title, button) {
+  const confirm = await screen.findByRole('dialog', { name: title });
+  await userEvent.click(within(confirm).getByRole('button', { name: button }));
+}
+
 async function openPanel(connections, saved, props = {}) {
   state.connections = connections;
   state.saved = saved;
@@ -167,7 +173,6 @@ describe('CustomizeView managed and shared connections', () => {
 
 describe('CustomizeView Reconnect', () => {
   it('never opens a new connect flow when the delete fails', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(deleteDatasource).mockRejectedValueOnce(refusal(403, READ_ONLY_NOTE));
@@ -175,8 +180,12 @@ describe('CustomizeView Reconnect', () => {
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(`Could not disconnect: ${READ_ONLY_NOTE}`));
+    const error = await screen.findByRole('dialog', { name: 'Could not disconnect' });
+    expect(error).toHaveTextContent(READ_ONLY_NOTE);
+    expect(window.alert).not.toHaveBeenCalled();
+    await userEvent.click(within(error).getByRole('button', { name: 'OK' }));
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
     expect(onReconnect).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -186,18 +195,18 @@ describe('CustomizeView Reconnect', () => {
     ['without either field', CONNECTION, SAVED],
     ['that is not shared', { ...CONNECTION, managed: false, shared: false }, { ...SAVED, managed: false, shared: false }],
   ])('deletes a connection %s, then opens the connect flow with the spec', async (_, connection, saved) => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.mocked(deleteDatasource).mockResolvedValueOnce({ ok: true });
     const onReconnect = vi.fn();
     const dialog = await openPanel([connection], saved, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    expect(await screen.findByRole('dialog', { name: 'Reconnect Google Drive?' })).toHaveTextContent(
+      "The existing Google Drive connection will be removed and you'll connect it again from scratch.",
+    );
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "The existing Google Drive connection will be removed and you'll connect it again from scratch. Continue?",
-    );
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
     expect(vi.mocked(deleteDatasource).mock.invocationCallOrder[0])
       .toBeLessThan(onReconnect.mock.invocationCallOrder[0]);
@@ -212,19 +221,19 @@ describe('CustomizeView Reconnect', () => {
     /* Deleting it first would remove it for everyone it's shared with, and
        cowork-server refuses the new connection under the name the operator
        still shares. */
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     const onReconnect = vi.fn();
     const dialog = await openPanel([connection], saved, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    expect(await screen.findByRole('dialog', { name: 'Reconnect Google Drive?' })).toHaveTextContent(
+      "You'll connect Google Drive again. It's shared, so connect the same account to update it in place for everyone it's shared with.",
+    );
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
     /* Shared, so the existing name rides along: the submit updates that entry
        in place instead of saving a second one under a fresh slug. */
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, { existingName: 'google_drive-team' }));
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "You'll connect Google Drive again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?",
-    );
     expect(deleteDatasource).not.toHaveBeenCalled();
     expect(host.keychainRevoke).not.toHaveBeenCalled();
     expect(window.alert).not.toHaveBeenCalled();
@@ -234,11 +243,11 @@ describe('CustomizeView Reconnect', () => {
   });
 
   it("keeps the creator's own shared connection when the person cancels Reconnect", async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const onReconnect = vi.fn();
     const dialog = await openPanel([{ ...CONNECTION, managed: false, shared: true }], SAVED, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    await answerConfirm('Reconnect Google Drive?', 'Cancel');
 
     expect(onReconnect).not.toHaveBeenCalled();
     expect(deleteDatasource).not.toHaveBeenCalled();
@@ -246,7 +255,6 @@ describe('CustomizeView Reconnect', () => {
   });
 
   it('opens the connect flow when the connection was already removed', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     /* Someone else removed it first, so the vault no longer lists it and the
        DELETE answers 404. */
@@ -259,6 +267,7 @@ describe('CustomizeView Reconnect', () => {
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect, onConnectionsSynced });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     expect(window.alert).not.toHaveBeenCalled();
@@ -268,7 +277,6 @@ describe('CustomizeView Reconnect', () => {
   });
 
   it('opens the connect flow when the refresh fails after a successful delete', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.mocked(deleteDatasource).mockImplementationOnce(() => {
@@ -282,6 +290,7 @@ describe('CustomizeView Reconnect', () => {
     const dialog = await openPanel([CONNECTION], SAVED, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     // Once on mount, once for the refresh that failed.
@@ -294,7 +303,6 @@ describe('CustomizeView Reconnect', () => {
 
 describe('CustomizeView Disconnect', () => {
   it('drops a card whose connection was already removed, without an alert', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.mocked(deleteDatasource).mockImplementationOnce(() => {
       state.connections = [];
@@ -304,6 +312,7 @@ describe('CustomizeView Disconnect', () => {
     render(<CustomizeView connectors={[CONNECTION]} />);
 
     await userEvent.click(within(screen.getByRole('article')).getByRole('button', { name: 'Disconnect' }));
+    await answerConfirm('Disconnect google_drive/google_drive-team?', 'Disconnect');
 
     await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
     expect(window.alert).not.toHaveBeenCalled();
@@ -315,29 +324,28 @@ describe('CustomizeView panel Remove', () => {
     ['the list row', { ...CONNECTION, managed: false, shared: true }, SAVED],
     ['the detail response', CONNECTION, { ...SAVED, managed: false, shared: true }],
   ])("says everyone loses the creator's own shared connection and its name stays taken when %s marks it shared", async (_, connection, saved) => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const dialog = await openPanel([connection], saved);
 
     await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
 
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith(
-      "Disconnect google_drive/google_drive-team?\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
+    expect(await screen.findByRole('dialog', { name: 'Disconnect google_drive/google_drive-team?' })).toHaveTextContent(
+      "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
     );
+    await answerConfirm('Disconnect google_drive/google_drive-team?', 'Cancel');
     expect(deleteDatasource).not.toHaveBeenCalled();
   });
 
   it('asks only the plain question for a connection without either field', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const dialog = await openPanel([CONNECTION], SAVED);
 
     await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
 
-    expect(window.confirm).toHaveBeenCalledExactlyOnceWith('Disconnect google_drive/google_drive-team?');
+    expect(await screen.findByRole('dialog', { name: 'Disconnect google_drive/google_drive-team?' })).not.toHaveTextContent("It's shared");
+    await answerConfirm('Disconnect google_drive/google_drive-team?', 'Cancel');
     expect(deleteDatasource).not.toHaveBeenCalled();
   });
 
   it('drops the card when the panel Remove hits a 404, without an alert', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.mocked(deleteDatasource).mockImplementationOnce(() => {
       state.connections = [];
@@ -346,6 +354,7 @@ describe('CustomizeView panel Remove', () => {
     const dialog = await openPanel([CONNECTION], SAVED);
 
     await userEvent.click(within(dialog).getByRole('button', { name: /Remove/ }));
+    await answerConfirm('Disconnect google_drive/google_drive-team?', 'Remove');
 
     await waitFor(() => expect(screen.queryByRole('article')).not.toBeInTheDocument());
     expect(deleteDatasource).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team');
@@ -361,7 +370,6 @@ describe('CustomizeView Reconnect on desktop', () => {
   });
 
   it.each(['browser_oauth_builtin', 'mcp'])('revokes in main and opens the connect flow for a %s connection', async (method) => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     host.keychainRevoke.mockImplementationOnce(() => {
       state.connections = [];
@@ -371,6 +379,7 @@ describe('CustomizeView Reconnect on desktop', () => {
     const dialog = await openPanel([CONNECTION], { ...SAVED, method }, { onReconnect });
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    await answerConfirm('Reconnect Google Drive?', 'Reconnect');
 
     await waitFor(() => expect(onReconnect).toHaveBeenCalledExactlyOnceWith(SPEC, {}));
     expect(host.keychainRevoke).toHaveBeenCalledExactlyOnceWith('google_drive', 'google_drive-team', 'team@example.com');
