@@ -2,7 +2,7 @@
 // one would be kept, and never in org mode.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setOrgMode } from '../../../lib/orgMode';
 
@@ -131,6 +131,50 @@ describe('ConnectorPicker build a custom connector', () => {
     expect(screen.queryByText('Build a custom connector')).toBeNull();
     fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
     expect(screen.queryByRole('button', { name: /Build a custom connector/ })).toBeNull();
+  });
+
+  it('shows neither entry point while the server has not answered', async () => {
+    fetchCanBuildCustomConnector.mockReturnValue(new Promise(() => {}));
+    await openWith([GMAIL]);
+
+    expect(screen.queryByText('Build a custom connector')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
+    expect(screen.queryByRole('button', { name: /Build a custom connector/ })).toBeNull();
+  });
+
+  it('asks again on each open and never shows the previous answer', async () => {
+    fetchConnectors.mockResolvedValue([GMAIL]);
+    const props = { onPick: vi.fn(), onClose: vi.fn(), onBuildCustom: vi.fn() };
+    const { rerender } = render(<ConnectorPicker open {...props} />);
+    expect(await screen.findByRole('button', { name: /^Build a custom connector Connect a system/ })).toBeTruthy();
+
+    rerender(<ConnectorPicker open={false} {...props} />);
+    let answer;
+    fetchCanBuildCustomConnector.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    rerender(<ConnectorPicker open {...props} />);
+    await screen.findAllByText('Gmail', { exact: false });
+
+    expect(screen.queryByText('Build a custom connector')).toBeNull();
+    await act(async () => answer(false));
+    expect(fetchCanBuildCustomConnector).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Build a custom connector')).toBeNull();
+  });
+
+  it('ignores an answer that arrives after the picker was closed', async () => {
+    fetchConnectors.mockResolvedValue([GMAIL]);
+    const props = { onPick: vi.fn(), onClose: vi.fn(), onBuildCustom: vi.fn() };
+    let firstAnswer;
+    fetchCanBuildCustomConnector.mockReturnValueOnce(new Promise((resolve) => { firstAnswer = resolve; }));
+    const { rerender } = render(<ConnectorPicker open {...props} />);
+    await screen.findAllByText('Gmail', { exact: false });
+
+    rerender(<ConnectorPicker open={false} {...props} />);
+    fetchCanBuildCustomConnector.mockReturnValue(new Promise(() => {}));
+    rerender(<ConnectorPicker open {...props} />);
+    await screen.findAllByText('Gmail', { exact: false });
+    await act(async () => firstAnswer(true));
+
+    expect(screen.queryByText('Build a custom connector')).toBeNull();
   });
 
   it('shows neither entry point when the host does not handle building', async () => {

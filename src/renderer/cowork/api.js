@@ -2083,13 +2083,14 @@ export async function fetchConnector(id) {
 }
 
 // Whether the caller can build a custom connector that is kept for reuse: only
-// in one person's own scope. A server without the route keeps the old answer, yes.
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
 export async function fetchCanBuildCustomConnector() {
   try {
     const data = await req('/connectors/specs/custom-availability');
     return data?.can_build !== false;
-  } catch {
-    return true;
+  } catch (err) {
+    return err?.status === 404;
   }
 }
 

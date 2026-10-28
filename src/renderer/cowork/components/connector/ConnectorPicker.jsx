@@ -288,7 +288,9 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
   }, [open, orgMode]);
 
   // The server says whether a custom connector built here would be kept: only
-  // in one person's own scope. Hidden until it answers, so it never flashes.
+  // in one person's own scope. Hidden until it answers, so it never flashes,
+  // and asked again on each open. Org mode skips the ask; canBuildCustom also
+  // checks it, so either guard alone keeps the entries out of org mode.
   const offersBuild = Boolean(onBuildCustom);
   const [buildAllowed, setBuildAllowed] = useState(false);
   useEffect(() => {

@@ -33,3 +33,15 @@ it('keeps the old answer, yes, against a server without the route', async () => 
 
   await expect(fetchCanBuildCustomConnector()).resolves.toBe(true);
 });
+
+it.each([401, 500])('says no when the server answers %s', async (status) => {
+  answer(status, { detail: 'nope' });
+
+  await expect(fetchCanBuildCustomConnector()).resolves.toBe(false);
+});
+
+it('says no when the request fails before an answer', async () => {
+  vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+
+  await expect(fetchCanBuildCustomConnector()).resolves.toBe(false);
+});
