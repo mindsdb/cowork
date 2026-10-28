@@ -122,8 +122,8 @@ describe('SharePointImportModal', () => {
     renderModal();
 
     await within(tree()).findByText('f100.txt');
-    // One act around the clicks keeps a hundred picks of a 101-row tree well
-    // inside the timeout on a loaded machine (21 s without it, under load).
+    // Each pick re-renders the 101-row tree: about 4 s locally and 17 s on CI
+    // under coverage, hence the test's own timeout below.
     const boxes = Array.from({ length: 100 }, (_, n) => screen.getByRole('checkbox', { name: `Pick f${n}.txt` }));
     act(() => {
       for (const box of boxes) fireEvent.click(box);
@@ -131,7 +131,7 @@ describe('SharePointImportModal', () => {
 
     expect(screen.getByText(/100 of 100 picked/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Pick f100.txt' })).toHaveAttribute('data-disabled');
-  });
+  }, 30_000);
 
   it('imports the picks in one request, shows the result and announces the new files', async () => {
     const user = userEvent.setup();
