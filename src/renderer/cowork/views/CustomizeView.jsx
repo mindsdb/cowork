@@ -501,7 +501,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         open={confirming !== null}
         title={confirming === 'disconnect' ? `Disconnect ${connection.name}?` : 'Connect this again from scratch?'}
         message={confirming === 'disconnect'
-          ? `The saved ${connection.engine} connection is removed. You can connect it again later.${shared ? ` ${SHARED_DISCONNECT_NOTE}` : ''}`
+          ? `The saved ${connection.engine} connection is removed. ${shared ? SHARED_DISCONNECT_NOTE : 'You can connect it again later.'}`
           : shared
             ? `You'll connect ${spec?.label || connection.engine} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
             : `The existing ${spec?.label || connection.engine} connection is removed first, then you connect it again.`}
@@ -672,8 +672,9 @@ export default function CustomizeView({
 
   /* Resolves once the connection is gone and rejects when the delete failed,
      so the confirm dialog that asked can say why; a caller that goes on to
-     reconnect must stop on a rejection. A 404 from the delete counts as gone.
-     On desktop, an OAuth or MCP connection resolves once main's keychain:revoke
+     reconnect must stop on a rejection. A 404 from the vault delete counts as
+     gone; the relay delete of a database connection still rejects on one. On
+     desktop, an OAuth or MCP connection resolves once main's keychain:revoke
      handler (src/main/app.ts) ran: that handler always answers ok and doesn't
      report whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {

@@ -100,7 +100,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         title={`Disconnect ${title}?`}
         message={`${isDatasourceRow(connection)
           ? `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.`
-          : `${subtitle} will be disconnected. You can connect it again later.`}${shared ? ` ${SHARED_DISCONNECT_NOTE}` : ''}`}
+          : `${subtitle} will be disconnected.${shared ? '' : ' You can connect it again later.'}`}${shared ? ` ${SHARED_DISCONNECT_NOTE}` : ''}`}
         confirmLabel="Disconnect"
         busyLabel="Disconnecting…"
         destructive
