@@ -109,8 +109,21 @@ describe('OrbitMorph frame loop', () => {
 
   it('restarts the idle satellite when its period changes', () => {
     const { rerender, satLayer } = renderOrb({ state: 'idle' });
+    const writes = [];
+    const proto = Object.getPrototypeOf(satLayer.style);
+    const animation = Object.getOwnPropertyDescriptor(proto, 'animation');
+    Object.defineProperty(satLayer.style, 'animation', {
+      configurable: true,
+      get() { return animation.get.call(this); },
+      set(value) { writes.push(value); animation.set.call(this, value); },
+    });
+    const layoutRead = vi.spyOn(satLayer, 'offsetWidth', 'get');
+
     rerender(<OrbitMorph state="idle" orbitPeriodMs={3000} />);
-    expect(satLayer.style.animation).toContain('spin 3000ms');
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toBe('none');
+    expect(writes[1]).toContain('spin 3000ms');
+    expect(layoutRead).toHaveBeenCalled();
   });
 
   it('cancels the pending frame and removes both layers on unmount', () => {
