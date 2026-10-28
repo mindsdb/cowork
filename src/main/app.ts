@@ -12,12 +12,13 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, sidecarIsOnCurrentStores, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
+import { decideConfigured, probeServerReadiness, type ConfiguredAnswer, type ServerAnswer, type ServerReadiness } from './boot-configured';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
@@ -177,20 +178,24 @@ let bootUpdateSettled: Promise<void> = Promise.resolve();
 // Ask the running server for its readiness. Reads `config_ready` from /health —
 // the SAME signal the in-app chat gate uses (settings.config_status) — so
 // routing and the chat gate read one identical value and cannot disagree.
-// Returns null when the server can't be reached/answered, so the caller falls
-// back to the .env heuristic.
-async function serverConfigured(): Promise<{
-  configured: boolean;
-  provider: string;
-  mindsRuntimeCredentialRequired: boolean | null;
-} | null> {
+async function serverConfigured(): Promise<ServerReadiness> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
-  if (!isServerRunning()) return null;
-  // Never read readiness off a sidecar serving another account's database. The
-  // account is recorded at the auth choke point, long before a sign-in reaches
-  // commitMindsSignIn — and some never reach it — so without this a reload in
-  // that window routes straight into the previous account's data.
-  if (!(await ensureSidecarOnCurrentAccountRoot())) return null;
+  return probeServerReadiness({
+    isRunning: isServerRunning,
+    isStarting: isServerStarting,
+    isOnCurrentStores: sidecarIsOnCurrentStores,
+    moveToCurrentRoot: ensureSidecarOnCurrentAccountRoot,
+    readHealth: readServerHealth,
+  });
+}
+
+/**
+ * Read readiness off the sidecar's /health.
+ *
+ * Output: the answer, or null when /health fails or has no `config_ready`.
+ * Logs why it fell through.
+ */
+async function readServerHealth(): Promise<ServerAnswer | null> {
   try {
     const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
       signal: AbortSignal.timeout(3000),
@@ -219,38 +224,25 @@ async function serverConfigured(): Promise<{
   }
 }
 
-async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
-  const vars = readEnvFile();
-  if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  /*
-   * A sign-out in flight is a definite answer, and it comes before both reads
-   * below. Sign-out now replies and reloads while its sidecar restart is still
-   * running, so the reloaded page can reach a sidecar that has not stopped yet
-   * and hear `config_ready: true` from it — which would route the person who
-   * just signed out straight back into the app.
-   */
-  if (isSignOutRoutingActive()) return { configured: false, provider: '' };
-  // config_ready from /health is authoritative and is the SAME signal the
-  // in-app chat gate uses — defer to it so routing and the chat gate can't
-  // disagree. (The old .env any-key check could pass here while config_ready
-  // was false, stranding the user on "Connect a provider" with no recovery.)
-  const fromServer = await serverConfigured();
-  if (fromServer) return fromServer;
-  // Server genuinely unreachable: fall back to the .env heuristic so a
-  // configured user isn't needlessly bounced to onboarding. Provider strings
-  // mirror the server's config_status vocabulary so the IPC value isn't
-  // path-dependent.
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
-  if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
-  return { configured: false, provider: '' };
+/**
+ * Whether boot routing may enter the app, for SETTINGS_CHECK_CONFIGURED.
+ *
+ * Output: `{ configured, provider }`. Side effects: those of
+ * `serverConfigured()`, and a keychain read when the sidecar is unreachable.
+ */
+function checkConfigured(): Promise<ConfiguredAnswer> {
+  return decideConfigured({
+    env: readEnvFile(),
+    signOutRoutingActive: isSignOutRoutingActive,
+    readServer: serverConfigured,
+  });
 }
 
 async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
-  const configured = await serverConfigured();
+  const readiness = await serverConfigured();
   // A missing field identifies an older or unreachable sidecar. The request
   // gate treats that as unknown and preserves the conservative wait.
-  return configured?.mindsRuntimeCredentialRequired ?? null;
+  return readiness.kind === 'answered' ? readiness.answer.mindsRuntimeCredentialRequired : null;
 }
 
 // Map a server-updater notification onto the UI update-status shape the renderer
