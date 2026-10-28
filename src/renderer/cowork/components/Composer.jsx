@@ -142,6 +142,7 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
@@ -1319,6 +1320,17 @@ export default function Composer({
                       disabled={gdrivePickerBusy}
                     >
                       {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                    </button>
+                  )}
+                  {onAddSharePointFiles && project?.name && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onAddSharePointFiles(project.name);
+                      }}
+                    >
+                      {Ico.folder(14)} Add files from SharePoint
                     </button>
                   )}
                   <button
