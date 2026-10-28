@@ -302,6 +302,8 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
     });
     return () => {
       live = false;
+      // The picker stays mounted while closed; the next open starts hidden.
+      setBuildAllowed(false);
     };
   }, [open, orgMode, offersBuild]);
 
