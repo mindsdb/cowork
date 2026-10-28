@@ -11,16 +11,19 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+from urllib.request import HTTPSHandler, build_opener, install_opener, urlopen
 import zipfile
 
 
 REPOSITORY = "https://github.com/mindsdb/cowork-server.git"
 CONTRACT_MEMBER = "cowork/release-requirements.txt"
 MAX_DOWNLOAD = 64 * 1024 * 1024
+CACHE_NAME = ".cowork-release-contracts"
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,21 @@ class Release:
 class InstallState:
     # Unknown prior state is unsafe to restart until the tool directory is read.
     changed: bool = True
+
+
+def trust_bundled_roots(ca_file: Path) -> None:
+    """Verify every download against the platform's roots plus a PEM bundle.
+
+    Python on Windows sees only the roots Windows has already downloaded, and
+    Windows downloads a missing one only when a program verifies through
+    Windows. OpenSSL never does, so a fresh machine cannot verify PyPI. The
+    app passes the public roots its runtime bundles to close that gap.
+    """
+    context = ssl.create_default_context()
+    # Not create_default_context(cafile=...): that skips the platform's
+    # stores, which hold the roots an organization installs.
+    context.load_verify_locations(cafile=ca_file)
+    install_opener(build_opener(HTTPSHandler(context=context)))
 
 
 def download(url: str) -> bytes:
@@ -254,9 +272,26 @@ print(json.dumps({"identity": identity, "contract": contract}))
 '''
 
 
+def contract_cache(tools_dir: Path) -> Path:
+    """Keep release state beside uv's tool environments, never among them."""
+    # uv reads every folder in its tool directory as a tool, and `uv tool list`
+    # (where the app reads the installed version) fails on one it cannot name.
+    # Move a cache an older installer left there, marker and snapshots included.
+    cache = tools_dir.parent / CACHE_NAME
+    legacy = tools_dir / CACHE_NAME
+    if legacy.is_dir():
+        cache.mkdir(exist_ok=True)
+        for entry in legacy.iterdir():
+            # Entries are keyed by release identity; the cache's copy wins.
+            if not (cache / entry.name).exists():
+                entry.rename(cache / entry.name)
+        shutil.rmtree(legacy)
+    return cache
+
+
 def snapshot_installed(uv: str, tools_dir: Path) -> Path:
     """Retain the actual legacy environment solely for repair and rollback."""
-    cache = tools_dir / ".cowork-release-contracts"
+    cache = contract_cache(tools_dir)
     if (cache / "install-incomplete").exists():
         return cache
     python = tools_dir / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -324,8 +359,9 @@ def install(uv: str, arguments: list[str], python: Path | None = None, state: In
     position = positions[0]
     cache = None
     if not python:
-        tools_dir = Path(subprocess.check_output([uv, "tool", "dir"], text=True).strip())
-        state.changed = (tools_dir / ".cowork-release-contracts/install-incomplete").exists()
+        # A forced-colour env (FORCE_COLOR, CLICOLOR_FORCE) wins over NO_COLOR in uv.
+        tools_dir = Path(subprocess.check_output([uv, "tool", "dir", "--color", "never"], text=True).strip())
+        state.changed = (contract_cache(tools_dir) / "install-incomplete").exists()
         cache = snapshot_installed(uv, tools_dir)
     with tempfile.TemporaryDirectory(prefix="cowork-release-") as temporary:
         directory = Path(temporary)
@@ -386,11 +422,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uv", default="uv")
     parser.add_argument("--venv-python", type=Path)
+    parser.add_argument("--ca-file", type=Path, help="PEM roots to trust beside the platform's")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
     state = InstallState()
     try:
+        if args.ca_file:
+            trust_bundled_roots(args.ca_file)
         install(args.uv, arguments, args.venv_python, state)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         print(f"Locked server install failed: {exc}", file=sys.stderr)

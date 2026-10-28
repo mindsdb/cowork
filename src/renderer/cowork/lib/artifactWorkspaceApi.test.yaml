@@ -1,0 +1,14 @@
+# Draft URLs that name no artifact the export route can be addressed by, read
+# by artifactWorkspaceApi.test.js. requestArtifactExport sends nothing for any
+# of them.
+unaddressableDraftUrls:
+  - label: a cross-origin draft URL
+    draftUrl: https://evil.example/api/v1/artifacts/drafts/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/report.md
+  - label: an embedded draft URL
+    draftUrl: 'data:text/markdown,%23%20Hi'
+  - label: a URL that is not a draft URL
+    draftUrl: /api/v1/artifacts/serve/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/report.md
+  - label: a draft URL with no file path
+    draftUrl: /api/v1/artifacts/drafts/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/
+  - label: no draft URL
+    draftUrl: ''
