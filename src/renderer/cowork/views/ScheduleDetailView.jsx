@@ -87,6 +87,8 @@ function oneOffWithoutTime(task, state) {
 export default function ScheduleDetailView({
   task,
   projects = [],
+  models = [],
+  modelMeta,
   onBack,                   // → setRoute('scheduled')
   onOpenRunSession,         // (sessionId) → navigate to that conversation
   onUpdate,                 // (id, payload) → server PUT
@@ -107,6 +109,7 @@ export default function ScheduleDetailView({
   const toastManager = useToastManager();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const modelName = (id) => models.find((m) => m.id === id)?.name || id;
 
   const taskId = task?.id;
   const autoPausedAt = task?.autoPausedAt;
@@ -224,7 +227,7 @@ export default function ScheduleDetailView({
             <span>{projectDisplay || t('scheduleCommon.noProject')}</span>
             <span aria-hidden className="text-ink-4">·</span>
             {/* "default" is the account's configured model, not a model id. */}
-            <span>{!task.model || task.model === 'default' ? t('scheduleDetail.accountDefaultModel') : task.model}</span>
+            <span>{!task.model || task.model === 'default' ? t('scheduleDetail.accountDefaultModel') : modelName(task.model)}</span>
             {finished.length > 0 && (
               <>
                 <span aria-hidden className="text-ink-4">·</span>
@@ -272,6 +275,11 @@ export default function ScheduleDetailView({
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
+                    {run.unavailableModel && (
+                      <Tooltip content={`${modelName(run.unavailableModel)} isn't available, so this run used your default model.`}>
+                        <span tabIndex={0} className="relative z-10 cursor-help">Default model</span>
+                      </Tooltip>
+                    )}
                     {reason ? (
                       // Above the row's stretched link, so the pointer reaches it.
                       <Tooltip content={reason}>
@@ -303,6 +311,8 @@ export default function ScheduleDetailView({
         onSubmit={async (payload, id) => onUpdate?.(id, payload)}
         task={task}
         projects={projects}
+        models={models}
+        modelMeta={modelMeta}
         agentLabel={agentLabel}
       />
 

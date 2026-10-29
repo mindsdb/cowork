@@ -2,8 +2,8 @@
 // edit.
 //
 // Layout: what to do (the prompt) first, then when, read back as a sentence
-// with the next few runs, then the name and project. Pausing lives on the
-// task's page and row, not here.
+// with the next few runs, then the name, project and model. Pausing lives on
+// the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -18,6 +18,8 @@ import {
   INTERVAL_MINUTES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, weekdayName, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
+import ModelSelect from '../ModelSelect.jsx';
+import { buildModelPickerOptions, withModelPickerFallback } from '../../lib/modelPickerOptions';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
@@ -34,6 +36,10 @@ const FONT_BODY = 'var(--font-body)';
 // `handleSubmit` resolves it to `project_id: null` (server → general), and it
 // can't collide with a real project path.
 const NO_PROJECT = '__no_project__';
+
+// The server's value for "run on the account's default models". A run whose
+// pinned model can't be served falls back to it.
+const DEFAULT_MODEL = 'default';
 
 // Cadence values and their label keys (scheduleTaskModal.cadence.*).
 const CADENCE_OPTIONS = [
@@ -71,6 +77,8 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
+  models = [],
+  modelMeta = {},
   defaultProjectPath = '',
   busy = false,
   agentLabel,
@@ -102,6 +110,7 @@ export default function ScheduleTaskModal({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
+        model:       task.model || DEFAULT_MODEL,
         ...at,
       });
     } else {
@@ -112,6 +121,14 @@ export default function ScheduleTaskModal({
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
   const zone = timeZoneLabel();
+  const modelOptions = useMemo(() => [
+    { value: DEFAULT_MODEL, label: 'Account default', pin: 'top' },
+    // A pin the catalog no longer lists stays selectable as itself.
+    ...buildModelPickerOptions(
+      withModelPickerFallback(models, form.model === DEFAULT_MODEL ? '' : form.model),
+      modelMeta,
+    ),
+  ], [models, modelMeta, form.model]);
 
   async function handleSubmit({ runOnce = false } = {}) {
     if (!form.prompt.trim()) {
@@ -140,10 +157,8 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
-      // Scheduled tasks always use the user's configured default
-      // model — exposing the picker here let people accidentally
-      // pin a stale model id that's no longer valid.
-      model:        null,
+      // Sent even when it's the default, so an edit can clear a pin.
+      model:        form.model,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -278,6 +293,16 @@ export default function ScheduleTaskModal({
                 ]}
               />
             </Field>
+            <Field label="Model">
+              <ModelSelect
+                value={form.model}
+                onValueChange={(v) => v && update('model', v)}
+                ariaLabel="Model"
+                variant="field"
+                style={fieldSelectStyle}
+                options={modelOptions}
+              />
+            </Field>
           </div>
 
           {error && (
@@ -323,6 +348,7 @@ function emptyForm({ defaultProjectPath }) {
     title: '',
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
+    model: DEFAULT_MODEL,
     ...defaultWhen(),
   };
 }
