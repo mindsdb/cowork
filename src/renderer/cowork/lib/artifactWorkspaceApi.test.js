@@ -10,8 +10,10 @@ import {
   canUseArtifactWorkspace,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  loadArtifactStats,
   requestArtifactExport,
   setArtifactAccess,
+  setArtifactTracking,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
 
@@ -251,6 +253,55 @@ describe('workspace request errors', () => {
       code: null,
       message: 'Bad access',
     });
+  });
+});
+
+// Stats are owner-only and addressed like every other workspace route, so a
+// refusal has to keep its code: the panel picks its copy from it.
+describe('artifact stats routes', () => {
+  const ARTIFACT = { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1' };
+  const BASE_PATH = '/api/v1/artifacts/workspace/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70';
+  const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+
+  it('reads stats from the workspace stats route', async () => {
+    authFetch.mockResolvedValueOnce(ok({ tracking: true, total_views: 3 }));
+
+    const stats = await loadArtifactStats(ARTIFACT);
+
+    expect(authFetch.mock.calls.at(-1)[0]).toBe(`${BASE_PATH}/stats`);
+    expect(stats.total_views).toBe(3);
+  });
+
+  it('switches tracking with a PUT that carries only the new value', async () => {
+    authFetch.mockResolvedValueOnce(ok({ tracking: false }));
+
+    await expect(setArtifactTracking(ARTIFACT, false)).resolves.toEqual({ tracking: false });
+
+    const [url, options] = authFetch.mock.calls.at(-1);
+    expect(url).toBe(`${BASE_PATH}/stats/tracking`);
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({ enabled: false });
+  });
+
+  it('keeps the code, status and message of a refusal', async () => {
+    authFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        detail: { code: 'stats_owned_by_other_account', message: 'Published under another account.' },
+      }),
+    });
+
+    const err = await loadArtifactStats(ARTIFACT).catch((e) => e);
+
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('stats_owned_by_other_account');
+    expect(err.message).toBe('Published under another account.');
+  });
+
+  it('refuses an artifact with no full identity', async () => {
+    await expect(loadArtifactStats({ id: '7db94eb8' })).rejects.toThrow('Artifact has no full identity');
+    await expect(setArtifactTracking({}, true)).rejects.toThrow('Artifact has no full identity');
   });
 });
 

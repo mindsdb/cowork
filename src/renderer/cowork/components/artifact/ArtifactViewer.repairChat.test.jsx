@@ -35,6 +35,8 @@ const workspaceMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api', () => ({
+  fetchPublishStats: vi.fn(),
+  setPublishTracking: vi.fn(),
   allocateConversationId: () => NEW_CHAT,
   mountArtifactPreview: vi.fn(async () => ({ kind: 'static', url: '/preview' })),
   previewArtifact: vi.fn(),
@@ -43,6 +45,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  loadArtifactStats: vi.fn(),
+  setArtifactTracking: vi.fn(),
   loadArtifactDraftText: vi.fn(),
   loadArtifactDraftDocument: vi.fn(),
 }));

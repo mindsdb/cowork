@@ -2412,6 +2412,21 @@ export async function activateArtifactVersion(path, md5) {
   return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
+// View stats of a published artifact for its owner. Same path addressing as
+// /publish/versions; an empty path would only earn a 400, so it is refused here.
+export async function fetchPublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`);
+}
+
+export async function setPublishTracking(path, enabled) {
+  if (!path) throw new Error('Artifact has no path');
+  return req('/publish/stats/tracking', {
+    method: 'PUT',
+    body: JSON.stringify({ path, enabled }),
+  });
+}
+
 // The path to send to publish/unpublish for an artifact. Prefer the
 // artifact *folder* so folder-based artifacts publish as a unit — the
 // server resolves the primary file for static artifacts and treats
