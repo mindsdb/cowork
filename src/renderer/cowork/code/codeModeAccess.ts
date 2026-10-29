@@ -14,10 +14,13 @@ export interface CodeModeAccess {
   setEnabled: (enabled: boolean) => void;
 }
 
+// Code is on until the user turns it off: an unset preference reads as on,
+// and only an explicit 'false' keeps it off.
 export function getCodeModePreference(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return stored === null || stored === 'true';
   } catch {
     return false;
   }
@@ -57,7 +60,7 @@ function subscribe(onStoreChange: () => void): () => void {
 }
 
 export function useCodeModeAccess(): CodeModeAccess {
-  const preference = useSyncExternalStore(subscribe, getCodeModePreference, () => false);
+  const preference = useSyncExternalStore(subscribe, getCodeModePreference, () => true);
   return useMemo(() => ({
     ...deriveCodeModeAccess(host.codeModeAvailable, preference),
     setEnabled: setCodeModePreference,

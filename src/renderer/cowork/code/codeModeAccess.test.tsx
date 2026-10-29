@@ -17,13 +17,34 @@ describe('Code Mode access', () => {
     hostMock.codeModeAvailable = true;
   });
 
-  it('defaults to disabled on a capable desktop', () => {
+  it('defaults to enabled on a capable desktop', () => {
+    expect(getCodeModePreference()).toBe(true);
+    expect(deriveCodeModeAccess(true, true)).toEqual({
+      available: true,
+      enabled: true,
+      state: 'enabled',
+    });
+  });
+
+  it('keeps Code off once the user has turned it off', () => {
+    window.localStorage.setItem('mindshub.code.enabled.v1', 'false');
     expect(getCodeModePreference()).toBe(false);
     expect(deriveCodeModeAccess(true, false)).toEqual({
       available: true,
       enabled: false,
       state: 'disabled',
     });
+  });
+
+  it('stays off when local storage is unreadable', () => {
+    const getItem = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    try {
+      expect(getCodeModePreference()).toBe(false);
+    } finally {
+      getItem.mockRestore();
+    }
   });
 
   it('never enables when the deployment capability is unavailable', () => {
@@ -38,26 +59,26 @@ describe('Code Mode access', () => {
     const first = renderHook(() => useCodeModeAccess());
     const second = renderHook(() => useCodeModeAccess());
 
-    expect(first.result.current.state).toBe('disabled');
-    act(() => first.result.current.setEnabled(true));
-
-    expect(window.localStorage.getItem('mindshub.code.enabled.v1')).toBe('true');
     expect(first.result.current.state).toBe('enabled');
-    expect(second.result.current.state).toBe('enabled');
+    act(() => first.result.current.setEnabled(false));
+
+    expect(window.localStorage.getItem('mindshub.code.enabled.v1')).toBe('false');
+    expect(first.result.current.state).toBe('disabled');
+    expect(second.result.current.state).toBe('disabled');
   });
 
   it('reacts to preference changes from another window', () => {
     const view = renderHook(() => useCodeModeAccess());
-    window.localStorage.setItem('mindshub.code.enabled.v1', 'true');
+    window.localStorage.setItem('mindshub.code.enabled.v1', 'false');
     act(() => window.dispatchEvent(new StorageEvent('storage', {
       key: 'mindshub.code.enabled.v1',
-      newValue: 'true',
+      newValue: 'false',
     })));
-    expect(view.result.current.enabled).toBe(true);
+    expect(view.result.current.enabled).toBe(false);
   });
 
   it('exposes a single setter for callers that do not mount the hook', () => {
-    setCodeModePreference(true);
-    expect(getCodeModePreference()).toBe(true);
+    setCodeModePreference(false);
+    expect(getCodeModePreference()).toBe(false);
   });
 });
