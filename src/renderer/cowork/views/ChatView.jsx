@@ -3120,6 +3120,29 @@ export default function ChatView({
                     />
                   );
                 }
+                /* A proxy in front of the server refused the question with a
+                   503 `cowork_unavailable`: it could open no connection to the
+                   server, as while the server starts again after a crash.
+                   Nothing reached the server, so waiting is the fix, with the
+                   same Retry gate counted down to the proxy's Retry-After. */
+                if (m.code === 'cowork_unavailable') {
+                  const unavailableResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server isn't answering"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={unavailableResend
+                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                        : undefined}
+                    />
+                  );
+                }
                 // `anton_error` and anything unmapped: a deliberately generic
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a

@@ -692,6 +692,42 @@ describe('server_busy failure card', () => {
   });
 });
 
+/* A proxy in front of the server answers 503 `cowork_unavailable` when it can
+   open no connection to the server, as while the server starts again. It isn't
+   a code the server sends, so it stays out of WIRE_CODES below. */
+describe('cowork_unavailable failure card', () => {
+  const BODY = "Cowork isn't answering right now. Try again in a few seconds.";
+
+  it('names a server that isn\'t answering and shows the refusal\'s sentence', () => {
+    render(<ChatView task={taskWith(failedTurn('cowork_unavailable', BODY))} />);
+    expect(screen.getByText("The server isn't answering")).toBeInTheDocument();
+    expect(screen.getByText('Server')).toBeInTheDocument();
+    expect(screen.getByText(BODY)).toBeInTheDocument();
+    expect(screen.queryByText('Too many requests too quickly')).toBeNull();
+  });
+
+  it('gates Retry until the Retry-After instant, then resends the question', () => {
+    const onSend = vi.fn();
+    const { unmount } = render(
+      <ChatView
+        task={taskWith(failedTurn('cowork_unavailable', BODY, { retryAt: new Date(Date.now() + 5_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    unmount();
+
+    render(
+      <ChatView
+        task={taskWith(failedTurn('cowork_unavailable', BODY, { retryAt: new Date(Date.now() - 1_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+});
+
 /* Every card whose action resends the failed message sends that message's own
    attachments with it. The composer's staged files belong to the next message. */
 describe('resend cards carry the failed question\'s files', () => {
@@ -705,6 +741,7 @@ describe('resend cards carry the failed question\'s files', () => {
     'model_timeout',
     'stalled',
     'turn_lost',
+    'cowork_unavailable',
   ])('%s: Try again resends the text with its attachments', (code) => {
     const onSend = vi.fn();
     render(
