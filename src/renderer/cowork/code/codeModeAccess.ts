@@ -14,10 +14,12 @@ export interface CodeModeAccess {
   setEnabled: (enabled: boolean) => void;
 }
 
+// On unless this device turned it off. Unreadable storage stays off: it
+// cannot be written either, so a user there could never turn Code off.
 export function getCodeModePreference(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    return window.localStorage.getItem(STORAGE_KEY) !== 'false';
   } catch {
     return false;
   }

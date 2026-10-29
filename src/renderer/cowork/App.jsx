@@ -5699,9 +5699,8 @@ function AppCore() {
         />
       )}
 
-      {/* Code has one deliberate entry point while it is opt-in: Settings.
-          Keeping this corner control exclusively about appearance prevents a
-          hidden product from leaking into ordinary Cowork. */}
+      {/* This corner control stays about appearance only. Code is reached
+          through the workspace switch, and turned off in Settings. */}
       {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
           <Tooltip content={displayToggle.label}>

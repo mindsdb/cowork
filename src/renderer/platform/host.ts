@@ -22,6 +22,7 @@ import { parseCalVer, compareCalVer } from '../../shared/version';
 import { assessShellSupport, type ShellSupportVerdict } from '../../shared/shell-support';
 import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
+import { PLATFORM_UI } from '../lib/deployment';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
@@ -39,12 +40,14 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Static deployment capability. The user's opt-in is intentionally owned by
+// Static deployment capability. The user's choice is intentionally owned by
 // the renderer and stored per device; this flag only answers whether this
 // shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
 // remains unavailable until a future cloud capability is deliberately added.
+// Self-hosted builds (PLATFORM_UI off) never offer Code, so that relaxing the
+// desktop-only rule for web cannot turn it on for a customer's deployment.
 export const codeModeAvailable: boolean =
-  isElectron && bridge.codeModeAvailable === true;
+  PLATFORM_UI && isElectron && bridge.codeModeAvailable === true;
 
 /* Whether this shell may mount the sandboxed document preview frame. Web
    always may. A desktop shell may only when its preload reports exactly true,
