@@ -187,6 +187,20 @@ export async function requestArtifactExport(draftUrl, format) {
   );
 }
 
+/*
+ * A signed link to the draft on the draft host. Org web only: /health's
+ * `draft_links` (lib/draftLinks.ts) says whether the server hands them out.
+ * The link expires in 30 minutes, so the viewer asks for a new one on every
+ * open, reload and "open in a browser tab" and never stores it.
+ */
+export function createDraftLink(projectRef, artifactId) {
+  if (!projectRef || !artifactId) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(
+    `/artifacts/drafts/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/link`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

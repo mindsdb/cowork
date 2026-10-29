@@ -27,7 +27,21 @@ import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
-import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
+import {
+  // Aliased: the component keeps its own `artifactRef` (a React ref).
+  artifactRef as artifactWorkspaceRef,
+  createDraftLink,
+  loadArtifactDraftText,
+  loadArtifactDraftDocument,
+} from '../../lib/artifactWorkspaceApi';
+import {
+  RefusedDraftLink,
+  draftLinkLifetimeMs,
+  draftLinkUrl,
+  draftLinksWithdrawal,
+} from '../../lib/draftLinkRules';
+import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
+import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -73,6 +87,18 @@ import {
 // fall back to a monospace block.
 
 
+// Turns draft links off for this page when a failed request says so
+// (draftLinksWithdrawal), and logs why: a page that silently stops using
+// links would hide a misconfigured draft host. Every preview then reruns
+// through srcdoc. True when links went off.
+async function withdrawDraftLinks(error) {
+  const event = await draftLinksWithdrawal(error, host.checkConfigured);
+  if (!event) return false;
+  diagnostic('renderer.cowork.components.artifact.ArtifactViewer', 'WARNING', event, error);
+  setDraftLinks(false);
+  return true;
+}
+
 // Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
 // carry over from the artifact the report started from.
 function isSameArtifact(a, b) {
@@ -115,6 +141,14 @@ export function ArtifactViewer({
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const draftPreviewUrl = artifact?.draftUrl || '';
+  // Org web: when the deployment serves drafts on a draft host through signed
+  // links (/health's draft_links), the HTML preview opens one; otherwise the
+  // srcdoc path below stays as it was.
+  const draftLinks = useDraftLinks();
+  // Only a draft on this server's drafts route has a link to ask for: an
+  // embedded (data:/blob:) or another origin's draft URL keeps its own route.
+  const draftLinkEnabled = host.isWeb && draftLinks
+    && !!draftPreviewUrl && canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin());
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   /* An .xlsx, .docx, .pptx or .pdf file with a renderer is read-only here:
@@ -154,6 +188,13 @@ export function ArtifactViewer({
   const [textPreview, setTextPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // "Open in a browser tab" failures: shown beside the preview, never in its
+  // place, and cleared when another artifact opens.
+  const [tabError, setTabError] = useState('');
+  useEffect(() => { setTabError(''); }, [open, artifact?.id]);
+  // The preview's signed link has expired: pages and files the draft loads
+  // from now on are refused until a reload asks for a new link.
+  const [draftLinkExpired, setDraftLinkExpired] = useState(false);
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -528,6 +569,7 @@ export function ArtifactViewer({
     setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
+    setDraftLinkExpired(false);
     let cancelled = false;
     const withCommentLayer = commentLayerRequestedRef.current;
     commentLayerMountedRef.current = withCommentLayer;
@@ -586,6 +628,37 @@ export function ArtifactViewer({
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
+      const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;
+      if (linkRef) {
+        // Navigate the frame to a fresh signed link on the draft host. The
+        // document then carries that host's own CSP, so CDN scripts, web fonts
+        // and remote images load as in a browser tab, and the sandbox below
+        // still has no allow-same-origin. A new link on every open and reload:
+        // each expires in 30 minutes, and then the viewer offers a reload.
+        setPreviewKind('static');
+        let expiry = null;
+        createDraftLink(linkRef.projectRef, linkRef.artifactId)
+          .then((link) => {
+            if (cancelled) return;
+            const linked = draftLinkUrl(link);
+            setPreviewUrl(withCommentLayer
+              ? withArtifactCommentFlag(withArtifactVersion(linked, cacheVersion))
+              : withArtifactVersion(linked, cacheVersion));
+            expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(link.expiresAt));
+          })
+          .catch(async (e) => {
+            if (cancelled) return;
+            // Links off reruns this effect, which then takes the srcdoc path.
+            if (await withdrawDraftLinks(e)) return;
+            if (cancelled) return;
+            setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
+          })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => {
+          cancelled = true;
+          clearTimeout(expiry);
+        };
+      }
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
@@ -716,7 +789,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, liveAppView, showDocumentPreview, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -859,6 +932,42 @@ export function ArtifactViewer({
   const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
     ? browserTabTarget
     : `${host.getApiOrigin()}${browserTabTarget}`;
+
+  // Org web, unpublished: the authenticated draft URL cannot open in a tab (the
+  // tab carries no bearer), so open a fresh signed link instead, in a tab
+  // opened inside the click (host.openPendingTab), where popup blockers allow
+  // it. A failure is shown next to the preview, never in its place, and only
+  // while the same artifact is open.
+  const openDraftLinkInTab = async (ref) => {
+    const clicked = artifact;
+    setTabError('');
+    const tab = host.openPendingTab();
+    if (!tab) {
+      setTabError('The browser blocked the new tab. Allow pop-ups for this site and try again.');
+      return;
+    }
+    try {
+      const url = draftLinkUrl(await createDraftLink(ref.projectRef, ref.artifactId));
+      if (!tab.navigate(url)) throw new RefusedDraftLink();
+    } catch (e) {
+      tab.close();
+      await withdrawDraftLinks(e);
+      if (openRef.current && isSameArtifact(artifactRef.current, clicked)) {
+        setTabError(draftPreviewErrorMessage(e, 'Could not open this artifact in a browser.'));
+      }
+    }
+  };
+
+  // An unpublished draft the preview opens by link opens by link in a tab
+  // too. A live app opens where it runs, a backend artifact with an action
+  // path previews through its own runtime, and a card without a full identity
+  // cannot ask for a link: these keep the old route. So do text, images and
+  // Office and PDF files, whose own previews set their tab rules.
+  const draftLinkRef = !isPublished && !liveAppView && draftLinkEnabled
+    && !isText && !isImage && !documentType && !(isBackendArtifact && hasActionPath)
+    ? artifactWorkspaceRef(artifact)
+    : null;
+
   // On desktop an unpublished artifact CANNOT be opened over the served URL,
   // however well-formed it is: the loopback server requires a bearer token
   // (`require_auth` defaults on in local tenancy), and main injects that token
@@ -880,6 +989,7 @@ export function ArtifactViewer({
   // injection does not reach.
   const onOpenInBrowserTab = () => {
     if (!isPublished && canOpenLocalFile && !liveAppView) return onOpenOS();
+    if (draftLinkRef) return openDraftLinkInTab(draftLinkRef);
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
       setErr('Could not open this artifact in a browser.');
@@ -960,6 +1070,7 @@ export function ArtifactViewer({
     canOpenLocalFile,
     isBackendArtifact,
     isLiveApp: liveAppView,
+    opensDraftLinkInTab: !!draftLinkRef,
     backendPort,
     artifact,
     deleteBusy,
@@ -1077,6 +1188,14 @@ export function ArtifactViewer({
             ? 'This draft changed elsewhere. Your text is still here; reload the latest revision before saving.'
             : workspace.error}
         </div>
+      )}
+      {tabError && (
+        <div className="artifact-workspace-notice" role="alert">{tabError}</div>
+      )}
+      {draftLinkExpired && (
+        <button type="button" className="artifact-feedback-notice" onClick={onReload}>
+          {Ico.reload(14)} <span>This preview&apos;s link has expired, so pages and files it opens from now on may not load. Reload to get a new link.</span>
+        </button>
       )}
       {feedbackNotice && (
         <button
