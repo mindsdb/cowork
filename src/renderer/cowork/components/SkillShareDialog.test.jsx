@@ -3,9 +3,16 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const teams = vi.hoisted(() => ({ state: { status: 'ready', reachable: true, teams: [] } }));
-vi.mock('../hooks/useOrgSharing', () => ({ useHubTeams: () => teams.state }));
-const people = vi.hoisted(() => ({ search: vi.fn() }));
-vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), searchHubPeople: people.search }));
+vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useHubTeams: () => teams.state,
+}));
+const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn() }));
+vi.mock('../api', async (importOriginal) => ({
+  ...(await importOriginal()),
+  searchHubPeople: people.search,
+  fetchHubPeopleByIds: people.byIds,
+}));
 
 import SkillShareDialog from './SkillShareDialog';
 
@@ -13,12 +20,12 @@ const SUPPLY = { id: 't-supply', display_name: 'Supply Planning' };
 const FINANCE = { id: 't-finance', display_name: 'Finance' };
 const ALL_MEMBERS = { id: 't-all', display_name: 'All members', is_default: true };
 
-const skill = (sharing, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', can_edit: true, sharing, ...extra });
+const skill = (access, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', can_edit: true, access, ...extra });
 const ADMIN = { enabled: true, can_share_org: true, org_name: 'Kinaxis' };
 const MEMBER = { enabled: true, can_share_org: false, org_name: 'Kinaxis' };
 
-function renderDialog({ sharing = { org: false, team_ids: [], emails: [] }, capabilities = MEMBER, extra = {}, onSave = vi.fn(async () => {}) } = {}) {
-  render(<SkillShareDialog skill={skill(sharing, extra)} capabilities={capabilities} onClose={vi.fn()} onSave={onSave} />);
+function renderDialog({ access = { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities = MEMBER, extra = {}, onSave = vi.fn(async () => {}) } = {}) {
+  render(<SkillShareDialog skill={skill(access, extra)} capabilities={capabilities} onClose={vi.fn()} onSave={onSave} />);
   return { onSave, dialog: screen.getByRole('dialog') };
 }
 
@@ -26,7 +33,17 @@ const box = (dialog, name) => within(dialog).getByRole('checkbox', { name });
 const ALWAYS_ON = 'Always include in every task';
 const alwaysOn = (dialog) => within(dialog).queryByRole('switch', { name: ALWAYS_ON });
 
+const DIRECTORY = [
+  { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
+  { id: 'u-bo', name: 'Bo Chen', email: 'bo@kinaxis.com' },
+];
+
 beforeEach(() => {
+  people.byIds.mockReset();
+  people.byIds.mockImplementation(async (ids) => ({
+    reachable: true,
+    people: DIRECTORY.filter((p) => ids.includes(p.id)),
+  }));
   people.search.mockReset();
   people.search.mockImplementation(async (q) => ({
     reachable: true,
@@ -67,7 +84,7 @@ describe('SkillShareDialog', () => {
     await user.click(box(dialog, 'Everyone at Kinaxis'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
-    expect(onSave).toHaveBeenCalledWith({ org: true, team_ids: [], emails: [], always_on: false });
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
   it('falls back to a generic org label without an org name', () => {
@@ -83,7 +100,7 @@ describe('SkillShareDialog', () => {
     await user.click(box(dialog, 'Supply Planning'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
-    expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: ['t-supply'], emails: [], always_on: false });
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: ['t-supply'], allowed_user_ids: [], always_on: false });
   });
 
   it('says so when the caller is in no teams', async () => {
@@ -120,14 +137,14 @@ describe('SkillShareDialog', () => {
   it('shows a skill shared with the default team as Everyone at the org', async () => {
     const user = userEvent.setup();
     teams.state = { status: 'ready', reachable: true, teams: [ALL_MEMBERS, SUPPLY] };
-    const { dialog, onSave } = renderDialog({ sharing: { org: false, team_ids: ['t-all'], emails: [] }, capabilities: ADMIN });
+    const { dialog, onSave } = renderDialog({ access: { orgAllowed: false, allowedTeamIds: ['t-all'], allowedUserIds: [] }, capabilities: ADMIN });
 
     expect(box(dialog, 'Everyone at Kinaxis')).toBeChecked();
     expect(box(dialog, 'Teams')).not.toBeChecked();
     // Unticking it drops the default team.
     await user.click(box(dialog, 'Everyone at Kinaxis'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: [], always_on: false });
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
   it('says so when the teams could not be loaded', async () => {
@@ -151,7 +168,7 @@ describe('SkillShareDialog', () => {
     expect(box(dialog, 'People in your organization')).toBeInTheDocument();
   });
 
-  it('picks people from the org and saves their emails', async () => {
+  it('picks people from the org and saves their user ids', async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = renderDialog();
 
@@ -160,8 +177,10 @@ describe('SkillShareDialog', () => {
     await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
 
     expect(within(dialog).getByRole('list', { name: 'Picked people' })).toHaveTextContent('Ana Ruiz (ana@kinaxis.com)');
+    // A picked person is never looked up again.
+    expect(people.byIds).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: ['ana@kinaxis.com'], always_on: false });
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u-ana'], always_on: false });
   });
 
   it('will not add a typed email from outside the org', async () => {
@@ -176,32 +195,52 @@ describe('SkillShareDialog', () => {
     expect(within(dialog).queryByRole('list', { name: 'Picked people' })).toBeNull();
   });
 
-  it("shows the server's refusal of an outsider in place", async () => {
+  it("shows a stored id the hub doesn't know as Unknown person, which can be removed", async () => {
     const user = userEvent.setup();
-    const refusal = Object.assign(new Error('Skills can only be shared with people in your organization: zed@elsewhere.com'), { status: 400 });
+    const { dialog, onSave } = renderDialog({
+      access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u-bo', 'u-gone'] },
+    });
+
+    const picked = within(dialog).getByRole('list', { name: 'Picked people' });
+    await waitFor(() => expect(picked).toHaveTextContent('Unknown person'));
+    expect(picked).toHaveTextContent('Bo Chen (bo@kinaxis.com)');
+    expect(people.byIds).toHaveBeenCalledTimes(1);
+    expect(people.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Remove Unknown person' }));
+    expect(picked).not.toHaveTextContent('Unknown person');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u-bo'], always_on: false });
+  });
+
+  it("shows the server's refusal of someone outside the org in place", async () => {
+    const user = userEvent.setup();
+    const refusal = Object.assign(new Error('Skills can only be shared with people in your organization.'), { status: 400 });
     const { dialog } = renderDialog({
-      sharing: { org: false, team_ids: [], emails: ['zed@elsewhere.com'] },
+      access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u-gone'] },
       onSave: vi.fn(async () => { throw refusal; }),
     });
 
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(within(dialog).getByRole('alert'))
-      .toHaveTextContent('Skills can only be shared with people in your organization: zed@elsewhere.com'));
+      .toHaveTextContent('Skills can only be shared with people in your organization.'));
   });
 
   it('pre-fills the current audience and clears it with Only me', async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = renderDialog({
-      sharing: { org: false, team_ids: ['t-finance'], emails: ['bo@kinaxis.com'] },
+      access: { orgAllowed: false, allowedTeamIds: ['t-finance'], allowedUserIds: ['u-bo'] },
     });
 
     expect(box(dialog, 'Finance')).toBeChecked();
     expect(box(dialog, 'People in Kinaxis')).toBeChecked();
-    expect(within(dialog).getByRole('list', { name: 'Picked people' })).toHaveTextContent('bo@kinaxis.com');
+    // The stored id is named once the hub answers.
+    await waitFor(() => expect(within(dialog).getByRole('list', { name: 'Picked people' }))
+      .toHaveTextContent('Bo Chen (bo@kinaxis.com)'));
 
     await user.click(box(dialog, 'Only me'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: [], always_on: false });
+    expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
   it("shows the server's refusal in place", async () => {
@@ -249,25 +288,26 @@ describe('SkillShareDialog', () => {
       await user.click(alwaysOn(dialog));
       await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
-      expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: ['t-finance'], emails: [], always_on: true });
+      expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: ['t-finance'], allowed_user_ids: [], always_on: true });
     });
 
-    it('pre-fills it from sharing.alwaysOn and sends it for an org-wide skill', async () => {
+    it('pre-fills it from access.alwaysOn and sends it for an org-wide skill', async () => {
       const user = userEvent.setup();
       const { dialog, onSave } = renderDialog({
         capabilities: ADMIN,
-        sharing: { org: true, team_ids: [], emails: [], alwaysOn: true },
+        access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
       });
 
       expect(alwaysOn(dialog)).toBeChecked();
       await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(onSave).toHaveBeenCalledWith({ org: true, team_ids: [], emails: [], always_on: true });
+      expect(onSave).toHaveBeenCalledWith({ org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: true });
     });
 
     it('resets to off once neither the org nor a team is picked', async () => {
       const user = userEvent.setup();
       const { dialog, onSave } = renderDialog({
-        sharing: { org: false, team_ids: ['t-finance'], emails: ['bo@kinaxis.com'], always_on: true },
+        // The server may send access snake_case.
+        access: { org_allowed: false, allowed_team_ids: ['t-finance'], allowed_user_ids: ['u-bo'], always_on: true },
       });
 
       expect(alwaysOn(dialog)).toBeChecked();
@@ -280,27 +320,27 @@ describe('SkillShareDialog', () => {
 
       await user.click(box(dialog, 'Finance'));
       await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: ['bo@kinaxis.com'], always_on: false });
+      expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u-bo'], always_on: false });
     });
 
     it('resets to off with Only me', async () => {
       const user = userEvent.setup();
       const { dialog, onSave } = renderDialog({
         capabilities: ADMIN,
-        sharing: { org: true, team_ids: [], emails: [], alwaysOn: true },
+        access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
       });
 
       await user.click(box(dialog, 'Only me'));
       expect(alwaysOn(dialog)).toBeNull();
       await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-      expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: [], always_on: false });
+      expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
     });
 
     it('is locked for an org-wide skill without can_share_org, with the admin hint', async () => {
       const user = userEvent.setup();
       const { dialog } = renderDialog({
         capabilities: MEMBER,
-        sharing: { org: true, team_ids: [], emails: [], alwaysOn: true },
+        access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
       });
 
       expect(alwaysOn(dialog)).toHaveAttribute('aria-disabled', 'true');
@@ -312,7 +352,7 @@ describe('SkillShareDialog', () => {
     it('is locked for a team skill the caller cannot edit, with the editor hint', async () => {
       const user = userEvent.setup();
       const { dialog } = renderDialog({
-        sharing: { org: false, team_ids: ['t-supply'], emails: [] },
+        access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: [] },
         extra: { can_edit: false },
       });
 
@@ -322,7 +362,7 @@ describe('SkillShareDialog', () => {
     });
 
     it('is open on a team skill to a member who can edit it', () => {
-      const { dialog } = renderDialog({ sharing: { org: false, team_ids: ['t-supply'], emails: [] } });
+      const { dialog } = renderDialog({ access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: [] } });
 
       expect(alwaysOn(dialog)).not.toHaveAttribute('aria-disabled', 'true');
       expect(screen.queryByTestId('always-on-locked')).toBeNull();

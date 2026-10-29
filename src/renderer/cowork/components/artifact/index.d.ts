@@ -59,7 +59,12 @@ export interface ArtifactViewerArtifact {
   modified?: boolean;
   publishedUrl?: string;
   accessMode?: string;
+  /** Restricted access: people outside the org by email in org mode
+   *  (`allowed_emails`), everyone named on desktop. */
   accessEmails?: string[];
+  /** Org mode (ENG-3787): teams and people in the org (hub user ids). */
+  allowedTeamIds?: string[];
+  allowedUserIds?: string[];
   updated?: string;
   live?: boolean;
   fileCount?: number;

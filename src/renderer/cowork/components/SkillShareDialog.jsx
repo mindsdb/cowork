@@ -9,19 +9,19 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, Spinner } from './ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import SkillAudienceFields from './SkillAudienceFields';
-import { audiencePayload, canEditSkill, skillAudience } from '../lib/orgSharing';
+import { canEditSkill, skillAccess, skillAccessPayload } from '../lib/orgSharing';
 
 /**
  * @param {{
  *   skill: object | null,
  *   capabilities: { can_share_org: boolean, org_name: string | null },
  *   onClose: () => void,
- *   onSave: (audience: { org: boolean, team_ids: string[], emails: string[], always_on: boolean }) => Promise<void>,
+ *   onSave: (access: { org_allowed: boolean, allowed_team_ids: string[], allowed_user_ids: string[], always_on: boolean }) => Promise<void>,
  * }} props
  */
 export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
   const open = !!skill;
-  const [audience, setAudience] = useState(() => skillAudience(skill));
+  const [access, setAccess] = useState(() => skillAccess(skill));
   // Text in the email box that hasn't become a chip, so Save waits for it.
   const [emailPending, setEmailPending] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
 
   useEffect(() => {
     if (!open) return;
-    setAudience(skillAudience(skill));
+    setAccess(skillAccess(skill));
     setEmailPending(false);
     setBusy(false);
     setError('');
@@ -43,7 +43,7 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
     setBusy(true);
     setError('');
     try {
-      await onSave(audiencePayload(audience));
+      await onSave(skillAccessPayload(access));
     } catch (err) {
       setError(err?.message || "Couldn't change who can use this skill.");
     } finally {
@@ -64,8 +64,8 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
           {open && (
             <SkillAudienceFields
               key={`${skill?.label}:${generation}`}
-              value={audience}
-              onChange={setAudience}
+              value={access}
+              onChange={setAccess}
               capabilities={capabilities}
               canEdit={canEditSkill(skill)}
               onPendingChange={setEmailPending}

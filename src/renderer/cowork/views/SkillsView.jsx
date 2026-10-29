@@ -14,20 +14,21 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import {
-  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAudienceAndSync,
+  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAccessAndSync,
 } from '../lib/skillsStore';
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareDialog from '../components/SkillShareDialog';
-import SkillAudienceFields, { PRIVATE_AUDIENCE } from '../components/SkillAudienceFields';
+import SkillAudienceFields from '../components/SkillAudienceFields';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
-  audiencePayload,
   canEditSkill,
   groupSkillsBySection,
-  isPrivateAudience,
+  isPrivateAccess,
+  PRIVATE_ACCESS,
   isSkillAlwaysOn,
-  skillAudience,
+  skillAccess,
+  skillAccessPayload,
   skillAudienceBadge,
   skillOwnerEmail,
   skillSection,
@@ -179,7 +180,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
      through PUT /skills/{slug}/sharing once the skill exists. Edits leave
      the audience to the Share dialog. */
   const asksAudience = !!orgSharing?.enabled && !isEdit;
-  const [audience, setAudience] = useState(PRIVATE_AUDIENCE);
+  const [access, setAccess] = useState(PRIVATE_ACCESS);
   const [emailPending, setEmailPending] = useState(false);
   // Set once the skill exists but sharing it failed: Create then retries
   // only the sharing, never a second create.
@@ -199,7 +200,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     } else {
       setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
-    setAudience(PRIVATE_AUDIENCE);
+    setAccess(PRIVATE_ACCESS);
     setEmailPending(false);
     setCreatedSlug(null);
     setInlineError('');
@@ -220,14 +221,14 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     const label = isEdit ? initial.label : draft.label.trim();
     if (!label || !draft.declarative.trim()) return;
     if (asksAudience && emailPending) return;
-    const shareAfterCreate = asksAudience && !isPrivateAudience(audience);
+    const shareAfterCreate = asksAudience && !isPrivateAccess(access);
     setBusy(true);
     setInlineError('');
     /* The skill exists; sharing it is the only thing left. A refusal keeps
        the dialog open with the reason, since the skill is already saved. */
     const shareCreated = async (slug, saved) => {
       try {
-        await setSkillAudienceAndSync(slug, audiencePayload(audience));
+        await setSkillAccessAndSync(slug, skillAccessPayload(access));
       } catch (err) {
         setCreatedSlug(slug);
         setInlineError(`Skill created, but it couldn't be shared: ${err?.message || 'unknown error'}. You can share it from the skill's menu.`);
@@ -359,8 +360,8 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
               <Field label={SKILL_SHARING_LABEL}>
                 <div role="group" aria-label={SKILL_SHARING_LABEL} className="min-w-0">
                   <SkillAudienceFields
-                    value={audience}
-                    onChange={setAudience}
+                    value={access}
+                    onChange={setAccess}
                     capabilities={orgSharing}
                     // The creator can always edit their own new skill.
                     canEdit
@@ -658,11 +659,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     }
   };
 
-  const saveAudience = async (audience) => {
+  const saveAccess = async (access) => {
     const skill = sharingSkill;
     if (!skill) return;
     // Throws on a refusal, which the dialog shows in place.
-    await setSkillAudienceAndSync(skill.slug || skill.label, audience);
+    await setSkillAccessAndSync(skill.slug || skill.label, access);
     setSharingSkill(null);
     showToast(`Updated who can use ${skill.label}.`, 'success');
   };
@@ -812,7 +813,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <div className="mb-4">
               <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
               <p className="m-0 text-[13.5px] text-ink leading-[1.5]">
-                {isPrivateAudience(skillAudience(selected))
+                {isPrivateAccess(skillAccess(selected))
                   ? 'Only me'
                   : skillAudienceBadge(selected, orgSharing)}
               </p>
@@ -927,7 +928,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           skill={sharingSkill}
           capabilities={sharingCapabilities}
           onClose={() => setSharingSkill(null)}
-          onSave={saveAudience}
+          onSave={saveAccess}
         />
       )}
       <SkillModal

@@ -15,7 +15,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-import { fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAudience } from '../api';
+import { fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAccess } from '../api';
 
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
@@ -165,8 +165,8 @@ export async function setSkillSharingAndSync(label, shared) {
 
 /** Set who an org skill reaches (ENG-3787), then refresh the shared list so
  *  its section and badge follow. Re-throws, so the dialog can show a refusal. */
-export async function setSkillAudienceAndSync(slug, audience) {
-  const saved = await setSkillAudience(slug, audience);
+export async function setSkillAccessAndSync(slug, access) {
+  const saved = await setSkillAccess(slug, access);
   await reloadSkills({ afterCurrent: true });
   return saved;
 }

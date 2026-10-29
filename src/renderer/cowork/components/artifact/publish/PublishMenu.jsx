@@ -45,8 +45,10 @@ function draftDiffers(draft, current) {
   if (draft.mode === 'restricted') {
     const a = parseEmailList(draft.emailsText).valid.join(',');
     const b = parseEmailList(current.emailsText).valid.join(',');
-    const teams = (d) => [...(d.teamIds || [])].sort().join(',');
-    return a !== b || !!draft.orgAllowed !== !!current.orgAllowed || teams(draft) !== teams(current);
+    const ids = (list) => [...(list || [])].sort().join(',');
+    return a !== b || !!draft.orgAllowed !== !!current.orgAllowed
+      || ids(draft.teamIds) !== ids(current.teamIds)
+      || ids(draft.userIds) !== ids(current.userIds);
   }
   return false;
 }
@@ -250,7 +252,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (!open || view !== 'access' || draftDirty) return;
     setDraft(accessDraftFromArtifact(pub));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.accessTeamIds || []).join(',')]);
+  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(',')]);
 
   const current = accessDraftFromArtifact(pub);
   // Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).

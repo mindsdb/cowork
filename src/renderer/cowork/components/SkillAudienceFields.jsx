@@ -7,31 +7,33 @@
 // combine; "Only me" is the state with none of them, and picking it clears the
 // rest.
 //
-// Controlled: `value` is `{ org, teamIds, emails, alwaysOn }` and `onChange`
-// gets the next one. Which rows are open is kept here, seeded from `value` on
+// Controlled: `value` is the skill's access, `{ orgAllowed, allowedTeamIds,
+// allowedUserIds, alwaysOn }`, and `onChange` gets the next one. People are
+// kept by user id; `useKnownPeople` names them for their chips. Which rows are open is kept here, seeded from `value` on
 // mount, so a parent that loads a different skill remounts it with a `key`.
 
 import { useEffect, useRef, useState } from 'react';
 import { Checkbox, Tooltip } from './ui';
 import { Switch } from './ui/Switch';
-import { useHubTeams } from '../hooks/useOrgSharing';
+import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
 import TeamPicker from './TeamPicker';
 import PeoplePicker from './PeoplePicker';
 import {
   ALWAYS_ON_HELP,
   ALWAYS_ON_LABEL,
   ORG_ADMIN_ONLY_HINT,
+  PRIVATE_ACCESS,
   SHARING_NOTE,
   alwaysOnLockReason,
   canBeAlwaysOn,
   everyoneAtLabel,
-  isPrivateAudience,
+  isPrivateAccess,
   namesDefaultTeam,
   peopleInLabel,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
 
-export const PRIVATE_AUDIENCE = Object.freeze({ org: false, teamIds: [], emails: [], alwaysOn: false });
+export { PRIVATE_ACCESS };
 
 function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   const control = (
@@ -77,53 +79,55 @@ function OptionRow({ label, description, checked, onCheckedChange, disabled = fa
 
 /**
  * @param {{
- *   value: { org: boolean, teamIds: string[], emails: string[], alwaysOn: boolean },
- *   onChange: (next: { org: boolean, teamIds: string[], emails: string[], alwaysOn: boolean }) => void,
+ *   value: { orgAllowed: boolean, allowedTeamIds: string[], allowedUserIds: string[], alwaysOn: boolean },
+ *   onChange: (next: { orgAllowed: boolean, allowedTeamIds: string[], allowedUserIds: string[], alwaysOn: boolean }) => void,
  *   capabilities: { can_share_org?: boolean, org_name?: string | null } | null,
  *   canEdit: boolean,
  *   onPendingChange?: (pending: boolean) => void,
  * }} props
  */
 export function SkillAudienceFields({ value, onChange, capabilities, canEdit, onPendingChange = () => {} }) {
-  const audience = value;
+  const access = value;
   // Which audience rows are open, apart from whether they name anyone yet,
   // so ticking "Teams" shows the list before a team is picked.
-  const [showPeople, setShowPeople] = useState(() => audience.emails.length > 0);
-  const [showTeams, setShowTeams] = useState(() => audience.teamIds.length > 0);
+  const [showPeople, setShowPeople] = useState(() => access.allowedUserIds.length > 0);
+  const [showTeams, setShowTeams] = useState(() => access.allowedTeamIds.length > 0);
+  // The picked people's names, looked up by id.
+  const people = useKnownPeople(access.allowedUserIds);
   // Teams load only while the fields are shown.
   const teamsState = useHubTeams(true);
   const teams = teamsState.teams;
   // The org's default team is "Everyone at ‹org›", not one of the Teams.
-  const sharedWithDefaultTeam = namesDefaultTeam(audience.teamIds, teams);
-  const pickedTeamIds = withoutDefaultTeam(audience.teamIds, teams);
+  const sharedWithDefaultTeam = namesDefaultTeam(access.allowedTeamIds, teams);
+  const pickedTeamIds = withoutDefaultTeam(access.allowedTeamIds, teams);
   // Once the teams are known, a skill shared only with the default team
   // doesn't open the Teams row.
   const settledTeamsRow = useRef(false);
   useEffect(() => {
     if (settledTeamsRow.current || teamsState.status !== 'ready') return;
     settledTeamsRow.current = true;
-    if (audience.teamIds.length > 0 && pickedTeamIds.length === 0) setShowTeams(false);
+    if (access.allowedTeamIds.length > 0 && pickedTeamIds.length === 0) setShowTeams(false);
   }, [teamsState.status]);
 
   const orgName = capabilities?.org_name ?? null;
   const canShareOrg = capabilities?.can_share_org === true;
   // Always on resets to off once neither the org nor a team is picked.
   const set = (patch) => {
-    const next = { ...audience, ...patch };
+    const next = { ...access, ...patch };
     onChange(canBeAlwaysOn(next) ? next : { ...next, alwaysOn: false });
   };
-  const showAlwaysOn = canBeAlwaysOn(audience);
-  const onlyMe = isPrivateAudience(audience) && !showPeople && !showTeams;
+  const showAlwaysOn = canBeAlwaysOn(access);
+  const onlyMe = isPrivateAccess(access) && !showPeople && !showTeams;
 
   const orgRow = (
     <OptionRow
       label={everyoneAtLabel(orgName)}
       description="Everyone in the organization can use it."
-      checked={audience.org || sharedWithDefaultTeam}
+      checked={access.orgAllowed || sharedWithDefaultTeam}
       disabled={!canShareOrg}
       onCheckedChange={(next) => set(next
-        ? { org: true }
-        : { org: false, teamIds: withoutDefaultTeam(audience.teamIds, teams) })}
+        ? { orgAllowed: true }
+        : { orgAllowed: false, allowedTeamIds: withoutDefaultTeam(access.allowedTeamIds, teams) })}
     />
   );
 
@@ -136,7 +140,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         disabled={onlyMe}
         onCheckedChange={(next) => {
           if (!next) return;
-          onChange({ ...PRIVATE_AUDIENCE });
+          onChange({ ...PRIVATE_ACCESS, allowedTeamIds: [], allowedUserIds: [] });
           setShowPeople(false);
           setShowTeams(false);
           onPendingChange(false);
@@ -148,16 +152,20 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         checked={showPeople}
         onCheckedChange={(next) => {
           setShowPeople(next);
-          if (!next) set({ emails: [] });
+          if (!next) set({ allowedUserIds: [] });
           onPendingChange(false);
         }}
       >
         <PeoplePicker
-          value={audience.emails}
-          onChange={(emails) => set({ emails })}
-          allowExternal={false}
-          orgName={orgName}
+          value={people.people}
+          onChange={(next) => {
+            people.remember(next);
+            set({ allowedUserIds: next.map((person) => person.id) });
+          }}
         />
+        {people.unreachable && (
+          <span className="mt-1 block font-body text-xs text-ink-3" role="note">Couldn't load some names from your organization.</span>
+        )}
       </OptionRow>
       <OptionRow
         label="Teams"
@@ -166,10 +174,14 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         onCheckedChange={(next) => {
           setShowTeams(next);
           // The default team stands for the org row, so it stays.
-          if (!next) set({ teamIds: audience.teamIds.filter((id) => !pickedTeamIds.includes(id)) });
+          if (!next) set({ allowedTeamIds: access.allowedTeamIds.filter((id) => !pickedTeamIds.includes(id)) });
         }}
       >
-        <TeamPicker teamsState={teamsState} teamIds={audience.teamIds} onChange={(teamIds) => set({ teamIds })} />
+        <TeamPicker
+          teamsState={teamsState}
+          teamIds={access.allowedTeamIds}
+          onChange={(allowedTeamIds) => set({ allowedTeamIds })}
+        />
       </OptionRow>
       {canShareOrg ? orgRow : (
         // A disabled control fires no hover of its own, so the hint hangs
@@ -180,9 +192,9 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
       )}
       {showAlwaysOn && (
         <AlwaysOnRow
-          checked={audience.alwaysOn}
+          checked={access.alwaysOn}
           onCheckedChange={(next) => set({ alwaysOn: next })}
-          lockReason={alwaysOnLockReason(audience, { canShareOrg, canEdit })}
+          lockReason={alwaysOnLockReason(access, { canShareOrg, canEdit })}
         />
       )}
       <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{SHARING_NOTE}</p>

@@ -9,11 +9,12 @@ const api = vi.hoisted(() => ({
   saveSkill: vi.fn(),
   deleteSkill: vi.fn(),
   setSkillSharing: vi.fn(),
-  setSkillAudience: vi.fn(),
+  setSkillAccess: vi.fn(),
   uploadSkillFile: vi.fn(),
   fetchSkillSharingCapabilities: vi.fn(),
   fetchHubTeams: vi.fn(),
   searchHubPeople: vi.fn(),
+  fetchHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
@@ -28,23 +29,23 @@ const SUPPLY = { id: 't-supply', display_name: 'Supply Planning' };
 const mine = {
   label: 'weekly-report', slug: 'weekly-report', description: 'Mine.', isBuiltin: false, enabled: true,
   section: 'mine', can_edit: true, owner: { id: 'u1', email: 'me@kinaxis.com' },
-  sharing: { org: false, team_ids: ['t-supply'], emails: [] }, capabilities: OWNER_CAPS,
+  access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: [] }, capabilities: OWNER_CAPS,
 };
 const fromColleague = {
   label: 'forecast-review', slug: 'forecast-review', description: 'Theirs.', isBuiltin: false, enabled: true,
   section: 'shared_with_me', can_edit: false, owner: { id: 'u2', email: 'ana@kinaxis.com' },
-  sharing: { org: false, team_ids: [], emails: ['me@kinaxis.com', 'bo@kinaxis.com', 'cy@kinaxis.com'] },
+  access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1', 'u5', 'u6'] },
   capabilities: READER_CAPS,
 };
 const orgWide = {
   label: 'brand-voice', slug: 'brand-voice', description: 'Org.', isBuiltin: false, enabled: true,
   section: 'org', can_edit: false, owner: { id: 'u3', email: 'admin@kinaxis.com' },
-  sharing: { org: true, team_ids: [], emails: [] }, capabilities: READER_CAPS,
+  access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }, capabilities: READER_CAPS,
 };
 const teamSkill = {
   label: 'team-playbook', slug: 'team-playbook', description: 'Team.', isBuiltin: false, enabled: true,
   section: 'team', can_edit: false, owner: { id: 'u4', email: 'lead@kinaxis.com' },
-  sharing: { org: false, team_ids: ['t-supply'], emails: [], alwaysOn: true }, capabilities: READER_CAPS,
+  access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: [], alwaysOn: true }, capabilities: READER_CAPS,
 };
 const builtin = {
   label: 'skill-creator', description: 'Built in.', isBuiltin: true, enabled: true,
@@ -89,7 +90,7 @@ describe('SkillsView with org sharing', () => {
 
   it('badges only always-on skills as Always on, with a tooltip', async () => {
     const user = userEvent.setup();
-    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', sharing: { org: true, always_on: true } }]);
+    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', access: { org_allowed: true, always_on: true } }]);
 
     const row = (label) => screen.getByRole('article', { name: label });
     await waitFor(() => expect(within(row('team-playbook')).getByText('Always on')).toBeInTheDocument());
@@ -154,7 +155,7 @@ describe('SkillsView with org sharing', () => {
     const user = userEvent.setup();
     await renderPage([mine]);
     await waitFor(() => expect(section('Only me')).toBeInTheDocument());
-    api.setSkillAudience.mockResolvedValue({ ...mine });
+    api.setSkillAccess.mockResolvedValue({ ...mine });
 
     await user.click(screen.getByText('weekly-report'));
     await user.click(screen.getByRole('button', { name: 'Share' }));
@@ -163,7 +164,7 @@ describe('SkillsView with org sharing', () => {
     const loads = api.fetchSkills.mock.calls.length;
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith('weekly-report', { org: false, team_ids: [], emails: [], always_on: false }));
+    await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', { org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
   });
@@ -205,7 +206,7 @@ describe('SkillsView with org sharing', () => {
     it('badges a skill shared with the default team as Everyone at the org', async () => {
       api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, SUPPLY] });
       vi.resetModules();
-      api.fetchSkills.mockResolvedValue({ skills: [{ ...mine, sharing: { org: false, team_ids: ['t-all'], emails: [] } }], canShare: false });
+      api.fetchSkills.mockResolvedValue({ skills: [{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-all'], allowedUserIds: [] } }], canShare: false });
       api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, can_share_org: false, org_name: 'Kinaxis' });
       const { default: SkillsView } = await import('./SkillsView');
       render(<SkillsView />);
@@ -233,30 +234,30 @@ describe('SkillsView with org sharing', () => {
       await waitFor(() => expect(api.saveSkill).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(api.saveSkill.mock.calls[0][0]).not.toHaveProperty('shared');
-      expect(api.setSkillAudience).not.toHaveBeenCalled();
+      expect(api.setSkillAccess).not.toHaveBeenCalled();
     });
 
     it('creates the skill, then shares it with the picked org audience by its slug', async () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill-slug' });
-      api.setSkillAudience.mockResolvedValue({});
+      api.setSkillAccess.mockResolvedValue({});
       const dialog = await openWriteForm(user, [mine], ADMIN_CAPS);
 
       await user.click(within(dialog).getByRole('checkbox', { name: 'Everyone at Kinaxis' }));
       await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
-        'new-skill-slug', { org: true, team_ids: [], emails: [], always_on: true },
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith(
+        'new-skill-slug', { org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: true },
       ));
-      expect(api.saveSkill.mock.invocationCallOrder[0]).toBeLessThan(api.setSkillAudience.mock.invocationCallOrder[0]);
+      expect(api.saveSkill.mock.invocationCallOrder[0]).toBeLessThan(api.setSkillAccess.mock.invocationCallOrder[0]);
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
     it('lets the creator make a new team skill always on', async () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
-      api.setSkillAudience.mockResolvedValue({});
+      api.setSkillAccess.mockResolvedValue({});
       const dialog = await openWriteForm(user);
 
       await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
@@ -266,15 +267,15 @@ describe('SkillsView with org sharing', () => {
       await user.click(alwaysOn);
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
-        'new-skill', { org: false, team_ids: ['t-supply'], emails: [], always_on: true },
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith(
+        'new-skill', { org_allowed: false, allowed_team_ids: ['t-supply'], allowed_user_ids: [], always_on: true },
       ));
     });
 
     it('shares a new skill with people picked from the org', async () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
-      api.setSkillAudience.mockResolvedValue({});
+      api.setSkillAccess.mockResolvedValue({});
       api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       const dialog = await openWriteForm(user);
 
@@ -284,15 +285,15 @@ describe('SkillsView with org sharing', () => {
       await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
-        'new-skill', { org: false, team_ids: [], emails: ['ana@kinaxis.com'], always_on: false },
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith(
+        'new-skill', { org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u2'], always_on: false },
       ));
     });
 
     it("shows the server's refusal of someone outside the org inline", async () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
-      api.setSkillAudience.mockRejectedValueOnce(Object.assign(
+      api.setSkillAccess.mockRejectedValueOnce(Object.assign(
         new Error('Skills can only be shared with people in your organization: ana@kinaxis.com'), { status: 400 },
       ));
       api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
@@ -310,7 +311,7 @@ describe('SkillsView with org sharing', () => {
     it('keeps the dialog open with an inline note when sharing fails after the create', async () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
-      api.setSkillAudience.mockRejectedValueOnce(new Error('Team not found'));
+      api.setSkillAccess.mockRejectedValueOnce(new Error('Team not found'));
       const dialog = await openWriteForm(user);
 
       await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
@@ -326,9 +327,9 @@ describe('SkillsView with org sharing', () => {
       await waitFor(() => expect(api.fetchSkills.mock.calls.length).toBeGreaterThan(loads + 1));
 
       // A retry shares the existing skill; it never creates a second one.
-      api.setSkillAudience.mockResolvedValueOnce({});
+      api.setSkillAccess.mockResolvedValueOnce({});
       await user.click(within(dialog).getByRole('button', { name: 'Retry sharing' }));
-      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledTimes(2));
       expect(api.saveSkill).toHaveBeenCalledTimes(1);
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 
 const api = vi.hoisted(() => ({ searchHubPeople: vi.fn() }));
@@ -16,7 +16,6 @@ function Harness({ initial = [], onChangeSpy = () => {}, ...props }) {
     <PeoplePicker
       value={value}
       onChange={(next) => { onChangeSpy(next); setValue(next); }}
-      orgName="Kinaxis"
       {...props}
     />
   );
@@ -105,7 +104,7 @@ describe('PeoplePicker', () => {
     expect(input()).toHaveAttribute('aria-activedescendant', second.id);
     fireEvent.keyDown(input(), { key: 'Enter' });
 
-    expect(onChangeSpy).toHaveBeenCalledWith(['andy@kinaxis.com']);
+    expect(onChangeSpy).toHaveBeenCalledWith([ANDY]);
     expect(screen.getByRole('list', { name: 'Picked people' })).toHaveTextContent('Andy Park (andy@kinaxis.com)');
     expect(input()).toHaveValue('');
   });
@@ -128,7 +127,7 @@ describe('PeoplePicker', () => {
     await settle();
 
     fireEvent.mouseDown(screen.getByRole('option', { name: /Ana Ruiz/ }));
-    expect(onChangeSpy).toHaveBeenLastCalledWith(['ana@kinaxis.com']);
+    expect(onChangeSpy).toHaveBeenLastCalledWith([ANA]);
 
     type('an');
     await settle();
@@ -138,9 +137,31 @@ describe('PeoplePicker', () => {
     expect(onChangeSpy).toHaveBeenLastCalledWith([]);
   });
 
-  it('shows an existing email without a name as the email', () => {
-    render(<Harness initial={['bo@kinaxis.com']} />);
-    expect(screen.getByRole('list', { name: 'Picked people' })).toHaveTextContent(/^bo@kinaxis\.com$/);
+  it('leaves a picked person out of the suggestions by id', async () => {
+    render(<Harness initial={[ANA]} />);
+    type('an');
+    await settle();
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Andy Parkandy@kinaxis.com']);
+  });
+
+  it('labels each chip by what is known about the person', () => {
+    render(<Harness initial={[
+      ANA,
+      { id: 'u-bo', name: null, email: 'bo@kinaxis.com' },
+      { id: 'u-wait', name: null, email: null, pending: true },
+      { id: 'u-gone', name: null, email: null },
+    ]} />);
+    const chips = within(screen.getByRole('list', { name: 'Picked people' })).getAllByRole('listitem');
+    expect(chips.map((c) => c.textContent)).toEqual([
+      'Ana Ruiz (ana@kinaxis.com)', 'bo@kinaxis.com', 'Loading…', 'Unknown person',
+    ]);
+  });
+
+  it('removes an Unknown person chip by its id', () => {
+    const onChangeSpy = vi.fn();
+    render(<Harness initial={[ANA, { id: 'u-gone', name: null, email: null }]} onChangeSpy={onChangeSpy} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Unknown person' }));
+    expect(onChangeSpy).toHaveBeenLastCalledWith([ANA]);
   });
 
   it('says when nobody matches', async () => {
@@ -151,67 +172,28 @@ describe('PeoplePicker', () => {
     expect(screen.getByRole('status')).toHaveTextContent('No matches');
   });
 
-  describe('a typed email nobody in the org matches', () => {
-    beforeEach(() => {
-      api.searchHubPeople.mockResolvedValue({ reachable: true, people: [] });
-    });
-
-    it('can be added with allowExternal', async () => {
-      const onChangeSpy = vi.fn();
-      render(<Harness allowExternal onChangeSpy={onChangeSpy} />);
-      type('Zed@Partner.io');
-      await settle();
-
-      const option = screen.getByRole('option', { name: 'Add zed@partner.io (outside Kinaxis)' });
-      expect(option).toBeInTheDocument();
-      fireEvent.keyDown(input(), { key: 'Enter' });
-      expect(onChangeSpy).toHaveBeenCalledWith(['zed@partner.io']);
-    });
-
-    it('cannot be added without allowExternal', async () => {
-      const onChangeSpy = vi.fn();
-      render(<Harness onChangeSpy={onChangeSpy} />);
-      type('zed@partner.io');
-      await settle();
-
-      expect(screen.queryByRole('option')).toBeNull();
-      fireEvent.keyDown(input(), { key: 'Enter' });
-      expect(onChangeSpy).not.toHaveBeenCalled();
-      expect(screen.getByText('Pick someone from your organization')).toBeInTheDocument();
-    });
-  });
-
-  describe('when the org could not be searched', () => {
-    beforeEach(() => {
-      api.searchHubPeople.mockResolvedValue({ reachable: false, people: [] });
-    });
-
-    it('says so and adds nobody without allowExternal', async () => {
-      const onChangeSpy = vi.fn();
-      render(<Harness onChangeSpy={onChangeSpy} />);
-      type('zed@partner.io');
-      await settle();
-
-      expect(screen.getByRole('status')).toHaveTextContent("Couldn't load people from your organization.");
-      fireEvent.keyDown(input(), { key: 'Enter' });
-      expect(onChangeSpy).not.toHaveBeenCalled();
-    });
-
-    it('still offers a typed email with allowExternal', async () => {
-      render(<Harness allowExternal />);
-      type('zed@partner.io');
-      await settle();
-
-      expect(screen.getByRole('status')).toHaveTextContent("Couldn't search Kinaxis");
-      expect(screen.getByRole('option', { name: 'Add zed@partner.io (outside Kinaxis)' })).toBeInTheDocument();
-    });
-  });
-
-  it('names the org generically without a name', async () => {
+  it('will not add a typed email nobody in the org matches', async () => {
     api.searchHubPeople.mockResolvedValue({ reachable: true, people: [] });
-    render(<Harness allowExternal orgName={null} />);
+    const onChangeSpy = vi.fn();
+    render(<Harness onChangeSpy={onChangeSpy} />);
     type('zed@partner.io');
     await settle();
-    expect(screen.getByRole('option', { name: 'Add zed@partner.io (outside your organization)' })).toBeInTheDocument();
+
+    expect(screen.queryByRole('option')).toBeNull();
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(onChangeSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Pick someone from your organization')).toBeInTheDocument();
+  });
+
+  it('says so and adds nobody when the org could not be searched', async () => {
+    api.searchHubPeople.mockResolvedValue({ reachable: false, people: [] });
+    const onChangeSpy = vi.fn();
+    render(<Harness onChangeSpy={onChangeSpy} />);
+    type('zed@partner.io');
+    await settle();
+
+    expect(screen.getByRole('status')).toHaveTextContent("Couldn't load people from your organization.");
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(onChangeSpy).not.toHaveBeenCalled();
   });
 });

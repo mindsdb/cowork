@@ -4,9 +4,11 @@
  * may do what and reports it in `/skills/sharing-capabilities`; these helpers
  * only read the shapes it sends and decide what to show.
  *
- * The server's new fields are snake_case (`team_ids`, `can_edit`,
- * `allowed_team_ids`, `org_wide`) while older fields arrive camelCase, so each
- * reader accepts both spellings.
+ * Skills and artifacts name their audience the same way: everyone in the
+ * org is `org_allowed`, teams are `allowed_team_ids`, people in the org are
+ * `allowed_user_ids` (hub user ids), and, for artifacts only, people outside
+ * the org are `allowed_emails`. Skills add `always_on`. The server may send
+ * any of them snake_case or camelCase, so each reader accepts both.
  */
 
 import { isEmailShaped } from './emailAddress';
@@ -47,33 +49,16 @@ export function peopleOutsideLabel(orgName) {
   return `People outside ${orgNameOrGeneric(orgName)}`;
 }
 
-/** The domain of an email address, lowercased, or '' without one. */
-export function emailDomain(email) {
-  const text = String(email ?? '').trim().toLowerCase();
-  const at = text.lastIndexOf('@');
-  return at > 0 ? text.slice(at + 1) : '';
-}
+/** Chip text for a person picked from the org: "Name (email)", the email
+    alone, "Loading…" while their name is being looked up, or
+    "Unknown person" for an id the hub doesn't know. */
+export const UNKNOWN_PERSON = 'Unknown person';
 
-/**
- * Splits an artifact's existing `allowed_emails` between the "People in
- * ‹org›" and "People outside ‹org›" boxes of the Share panel.
- *
- * The access record keeps one flat email list, so which box an address was
- * added from is lost. Asking the hub about each address would cost a search
- * per email, so this guesses instead: an address on the signed-in person's
- * own email domain shows under "People in ‹org›", anything else (and
- * everything, when the person's email is unknown) under "People outside
- * ‹org›". It only decides where a chip is displayed; both boxes are sent
- * together as `allowed_emails`, so access is the same either way.
- */
-export function splitEmailsByOrgDomain(emails, userEmail) {
-  const domain = emailDomain(userEmail);
-  const inside = [];
-  const outside = [];
-  for (const email of emails || []) {
-    (domain && emailDomain(email) === domain ? inside : outside).push(email);
-  }
-  return { inside, outside };
+export function personLabel(person) {
+  if (!person) return UNKNOWN_PERSON;
+  if (person.email) return person.name ? `${person.name} (${person.email})` : person.email;
+  if (person.pending) return 'Loading…';
+  return person.name || UNKNOWN_PERSON;
 }
 
 /* Every org has a default team everyone is in ("All members"). The server
@@ -111,52 +96,60 @@ function stringList(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string' && v) : [];
 }
 
-/** A skill's audience in one shape: `{ org, teamIds, emails, alwaysOn }`. */
-export function skillAudience(skill) {
-  const sharing = skill?.sharing;
-  if (!sharing || typeof sharing !== 'object') return { org: false, teamIds: [], emails: [], alwaysOn: false };
-  const audience = {
-    org: sharing.org === true,
-    teamIds: stringList(sharing.team_ids ?? sharing.teamIds),
-    emails: stringList(sharing.emails),
-    alwaysOn: (sharing.alwaysOn ?? sharing.always_on) === true,
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+/** The audience of a skill shared with nobody. */
+export const PRIVATE_ACCESS = Object.freeze({ orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], alwaysOn: false });
+
+/** A skill's `access` in one shape:
+    `{ orgAllowed, allowedTeamIds, allowedUserIds, alwaysOn }`. */
+export function skillAccess(skill) {
+  const access = skill?.access;
+  if (!access || typeof access !== 'object') return { ...PRIVATE_ACCESS, allowedTeamIds: [], allowedUserIds: [] };
+  const out = {
+    orgAllowed: firstDefined(access.orgAllowed, access.org_allowed) === true,
+    allowedTeamIds: stringList(firstDefined(access.allowedTeamIds, access.allowed_team_ids)),
+    allowedUserIds: stringList(firstDefined(access.allowedUserIds, access.allowed_user_ids)),
+    alwaysOn: firstDefined(access.alwaysOn, access.always_on) === true,
   };
-  if (!canBeAlwaysOn(audience)) audience.alwaysOn = false;
-  return audience;
+  if (!canBeAlwaysOn(out)) out.alwaysOn = false;
+  return out;
 }
 
 /** Always on needs the whole org or at least one team. */
-export function canBeAlwaysOn(audience) {
-  return audience.org === true || audience.teamIds.length > 0;
+export function canBeAlwaysOn(access) {
+  return access.orgAllowed === true || access.allowedTeamIds.length > 0;
 }
 
 /** Whether a skill is part of every task for everyone it reaches. */
 export function isSkillAlwaysOn(skill) {
-  return skillAudience(skill).alwaysOn;
+  return skillAccess(skill).alwaysOn;
 }
 
 /**
  * Why the caller can't change "always on" for this audience, or null when
  * they can. Org-wide needs `can_share_org`; teams only need edit rights.
  */
-export function alwaysOnLockReason(audience, { canShareOrg = false, canEdit = false } = {}) {
-  if (audience.org) return canShareOrg ? null : ALWAYS_ON_ORG_ADMIN_HINT;
-  if (audience.teamIds.length > 0) return canEdit ? null : ALWAYS_ON_EDITOR_HINT;
+export function alwaysOnLockReason(access, { canShareOrg = false, canEdit = false } = {}) {
+  if (access.orgAllowed) return canShareOrg ? null : ALWAYS_ON_ORG_ADMIN_HINT;
+  if (access.allowedTeamIds.length > 0) return canEdit ? null : ALWAYS_ON_EDITOR_HINT;
   return null;
 }
 
 /** Only me: nobody else is named. */
-export function isPrivateAudience(audience) {
-  return !audience.org && audience.teamIds.length === 0 && audience.emails.length === 0;
+export function isPrivateAccess(access) {
+  return !access.orgAllowed && access.allowedTeamIds.length === 0 && access.allowedUserIds.length === 0;
 }
 
 /** The body `PUT /skills/{slug}/sharing` takes. */
-export function audiencePayload(audience) {
+export function skillAccessPayload(access) {
   return {
-    org: audience.org === true,
-    team_ids: [...audience.teamIds],
-    emails: [...audience.emails],
-    always_on: audience.alwaysOn === true && canBeAlwaysOn(audience),
+    org_allowed: access.orgAllowed === true,
+    allowed_team_ids: [...access.allowedTeamIds],
+    allowed_user_ids: [...access.allowedUserIds],
+    always_on: access.alwaysOn === true && canBeAlwaysOn(access),
   };
 }
 
@@ -188,19 +181,19 @@ export function skillOwnerEmail(skill) {
  * @param {{ teams?: Array<{ id: string, display_name: string }>, orgName?: string | null }} context
  */
 export function skillAudienceBadge(skill, { teams = [], orgName = null } = {}) {
-  const audience = skillAudience(skill);
+  const access = skillAccess(skill);
   // The default team is everyone at the org.
-  if (audience.org || namesDefaultTeam(audience.teamIds, teams)) return everyoneAtLabel(orgName);
+  if (access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams)) return everyoneAtLabel(orgName);
   const parts = [];
-  if (audience.teamIds.length === 1) {
-    const team = teams.find((t) => t.id === audience.teamIds[0]);
+  const teamIds = access.allowedTeamIds;
+  if (teamIds.length === 1) {
+    const team = teams.find((t) => t.id === teamIds[0]);
     parts.push(team ? `Team: ${team.display_name}` : '1 team');
-  } else if (audience.teamIds.length > 1) {
-    parts.push(`${audience.teamIds.length} teams`);
+  } else if (teamIds.length > 1) {
+    parts.push(`${teamIds.length} teams`);
   }
-  if (audience.emails.length) {
-    parts.push(audience.emails.length === 1 ? '1 person' : `${audience.emails.length} people`);
-  }
+  const people = access.allowedUserIds.length;
+  if (people) parts.push(people === 1 ? '1 person' : `${people} people`);
   return parts.length ? parts.join(' · ') : null;
 }
 
@@ -251,15 +244,21 @@ export function parseEmailInput(text, existing = []) {
   return { valid, invalid };
 }
 
-/* Artifact access: the server sends `allowed_team_ids` and `org_wide` beside
-   the older camelCase fields. */
+/* Artifact access, as a publish answer or the access route reports it. */
 
-/** Team ids an artifact's access names. */
-export function accessTeamIds(access) {
-  return stringList(access?.allowed_team_ids ?? access?.allowedTeamIds ?? access?.accessTeamIds);
+/** Team ids an artifact's access names (`allowed_team_ids`). */
+export function accessAllowedTeamIds(access) {
+  return stringList(firstDefined(access?.allowed_team_ids, access?.allowedTeamIds));
 }
 
-/** Whether an artifact's access lets the whole org in. */
-export function accessOrgWide(access) {
-  return !!(access?.org_wide ?? access?.orgWide ?? access?.orgAllowed ?? access?.org_allowed);
+/** User ids of the people in the org an artifact's access names
+    (`allowed_user_ids`). */
+export function accessAllowedUserIds(access) {
+  return stringList(firstDefined(access?.allowed_user_ids, access?.allowedUserIds));
+}
+
+/** Whether an artifact's access lets the whole org in (`org_allowed`; older
+    answers also said `org_wide`). */
+export function accessOrgAllowed(access) {
+  return !!firstDefined(access?.org_allowed, access?.orgAllowed, access?.org_wide, access?.orgWide);
 }

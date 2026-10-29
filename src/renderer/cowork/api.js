@@ -1984,14 +1984,21 @@ export async function fetchSkillSharingCapabilities() {
   }
 }
 
-/* Sets who a skill reaches: the whole org, teams by id, people by email.
-   An empty audience is Only me. `always_on` makes an org-wide or team skill
-   part of every task. A refusal (400/403) throws with the server's `detail`
-   as its message. */
-export async function setSkillAudience(slug, { org = false, team_ids = [], emails = [], always_on = false } = {}) {
+/* Sets who a skill reaches: everyone in the org, teams by id, people in the
+   org by user id. An empty audience is Only me. `always_on` makes an
+   org-wide or team skill part of every task. A refusal (400/403) throws with
+   the server's `detail` as its message. */
+export async function setSkillAccess(slug, {
+  org_allowed = false, allowed_team_ids = [], allowed_user_ids = [], always_on = false,
+} = {}) {
   return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({ org: org === true, team_ids, emails, always_on: always_on === true }),
+    body: JSON.stringify({
+      org_allowed: org_allowed === true,
+      allowed_team_ids,
+      allowed_user_ids,
+      always_on: always_on === true,
+    }),
   });
 }
 
@@ -2028,6 +2035,15 @@ function hubTeamName(team) {
   return UNNAMED_TEAM;
 }
 
+/* One person as the hub sends them, or null without an id. The id is what
+   sharing stores (`allowed_user_ids`); the name and email only label a chip. */
+function hubPerson(person) {
+  if (!person || typeof person.id !== 'string' || !person.id) return null;
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  return { id: person.id, name, email };
+}
+
 /* People in the caller's active MindsHub org whose name or email matches `q`
    (the server wants at least 2 characters and leaves the caller out).
    `reachable: false` on any failure, so the picker can say it couldn't
@@ -2040,17 +2056,53 @@ export async function searchHubPeople(q, { signal, limit = 8 } = {}) {
     const data = await req(`/hub/people/?${params}`, { headers: await hubHeaders(), signal });
     const seen = new Set();
     const people = [];
-    for (const person of Array.isArray(data?.people) ? data.people : []) {
-      const email = typeof person?.email === 'string' ? person.email.trim().toLowerCase() : '';
-      if (!email || seen.has(email)) continue;
-      seen.add(email);
-      const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
-      people.push({ id: typeof person.id === 'string' && person.id ? person.id : email, name, email });
+    for (const raw of Array.isArray(data?.people) ? data.people : []) {
+      const person = hubPerson(raw);
+      // A match is picked by its email, so one without is no use here.
+      if (!person?.email || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
     }
     return { reachable: data?.reachable !== false, people };
   } catch {
     return { reachable: false, people: [] };
   }
+}
+
+export const HUB_PEOPLE_IDS_BATCH = 50;
+
+/* The people a stored audience names, by user id, so their chips can say who
+   they are. Asked in batches of at most 50 ids. Ids the hub doesn't know are
+   simply absent from `people`; `reachable: false` when any batch could not be
+   asked (the people the other batches named are still returned). */
+export async function fetchHubPeopleByIds(ids, { signal } = {}) {
+  const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
+  if (unique.length === 0) return { reachable: true, people: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
+    batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
+  }
+  const headers = await hubHeaders();
+  const answers = await Promise.all(batches.map(async (batch) => {
+    try {
+      const params = new URLSearchParams({ ids: batch.join(',') });
+      const data = await req(`/hub/people/?${params}`, { headers, signal });
+      return {
+        reachable: data?.reachable !== false,
+        people: (Array.isArray(data?.people) ? data.people : []).map(hubPerson).filter(Boolean),
+      };
+    } catch {
+      return { reachable: false, people: [] };
+    }
+  }));
+  const wanted = new Set(unique);
+  const byId = new Map();
+  for (const answer of answers) {
+    for (const person of answer.people) {
+      if (wanted.has(person.id) && !byId.has(person.id)) byId.set(person.id, person);
+    }
+  }
+  return { reachable: answers.every((a) => a.reachable), people: [...byId.values()] };
 }
 
 export async function deleteSkill(label) {

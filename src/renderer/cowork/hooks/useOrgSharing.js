@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { fetchHubTeams, fetchSkillSharingCapabilities } from '../api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities } from '../api';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 
 /*
@@ -82,4 +82,64 @@ export function useHubTeams(active) {
     return () => { live = false; };
   }, [active]);
   return state;
+}
+
+/**
+ * The people an audience names by user id (`allowed_user_ids`), as the
+ * `<PeoplePicker>` shows them: `{ id, name, email }` once the hub has named
+ * them, `{ id, pending: true }` while it's being asked, and `{ id, name: null,
+ * email: null }` for an id it doesn't know (an "Unknown person" chip).
+ *
+ * Ids are asked once each (`fetchHubPeopleByIds`); `remember` records people
+ * the picker found, so a pick is never looked up again. `unreachable` is true
+ * when the hub couldn't be asked about some of them.
+ */
+export function useKnownPeople(ids) {
+  const [known, setKnown] = useState(() => new Map());
+  const [unknown, setUnknown] = useState(() => new Set());
+  const [unreachable, setUnreachable] = useState(false);
+  const asked = useRef(new Set());
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => { live.current = false; };
+  }, []);
+
+  const list = ids || [];
+  const key = list.join(',');
+  useEffect(() => {
+    const toAsk = list.filter((id) => !known.has(id) && !asked.current.has(id));
+    if (toAsk.length === 0) return;
+    for (const id of toAsk) asked.current.add(id);
+    // Not cancelled when the ids change: an answer for an id that has since
+    // been removed is harmless, and dropping it would leave the rest pending.
+    fetchHubPeopleByIds(toAsk).then((result) => {
+      if (!live.current) return;
+      const found = new Map(result.people.map((person) => [person.id, person]));
+      setKnown((current) => {
+        const next = new Map(current);
+        for (const [id, person] of found) next.set(id, person);
+        return next;
+      });
+      setUnknown((current) => {
+        const next = new Set(current);
+        for (const id of toAsk) if (!found.has(id)) next.add(id);
+        return next;
+      });
+      if (!result.reachable) setUnreachable(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const remember = useCallback((people) => {
+    setKnown((current) => {
+      const next = new Map(current);
+      for (const person of people || []) if (person?.id && person.email) next.set(person.id, person);
+      return next;
+    });
+  }, []);
+
+  const people = list.map((id) => known.get(id)
+    || (unknown.has(id) ? { id, name: null, email: null } : { id, name: null, email: null, pending: true }));
+  return { people, remember, unreachable };
 }

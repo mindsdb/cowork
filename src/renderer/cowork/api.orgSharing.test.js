@@ -5,7 +5,9 @@ vi.mock('../platform/host', () => ({
 }));
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: true }));
 
-import { fetchHubTeams, fetchSkillSharingCapabilities, searchHubPeople, setSkillAudience } from './api';
+import {
+  fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities, searchHubPeople, setSkillAccess,
+} from './api';
 
 const jsonRes = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -35,30 +37,36 @@ describe('fetchSkillSharingCapabilities', () => {
   });
 });
 
-describe('setSkillAudience', () => {
+describe('setSkillAccess', () => {
   it('PUTs the audience to the skill\'s sharing route', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly' }));
 
-    await setSkillAudience('weekly report', { org: false, team_ids: ['t1'], emails: ['a@x.com'], always_on: true });
+    await setSkillAccess('weekly report', {
+      org_allowed: false, allowed_team_ids: ['t1'], allowed_user_ids: ['u1'], always_on: true,
+    });
 
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/skills/weekly%20report/sharing');
     expect(init.method).toBe('PUT');
-    expect(JSON.parse(init.body)).toEqual({ org: false, team_ids: ['t1'], emails: ['a@x.com'], always_on: true });
+    expect(JSON.parse(init.body)).toEqual({
+      org_allowed: false, allowed_team_ids: ['t1'], allowed_user_ids: ['u1'], always_on: true,
+    });
   });
 
   it('sends always_on false when it is left out', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly' }));
 
-    await setSkillAudience('weekly', { org: true });
+    await setSkillAccess('weekly', { org_allowed: true });
 
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ org: true, team_ids: [], emails: [], always_on: false });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: false,
+    });
   });
 
   it("throws a 403 with the server's sentence", async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ detail: 'Only admins can share with the whole organization.' }, 403));
 
-    const err = await setSkillAudience('weekly', { org: true }).catch((e) => e);
+    const err = await setSkillAccess('weekly', { org_allowed: true }).catch((e) => e);
 
     expect(err.message).toBe('Only admins can share with the whole organization.');
     expect(err.status).toBe(403);
@@ -128,7 +136,8 @@ describe('searchHubPeople', () => {
         { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Kinaxis.com' },
         { id: 'u2', name: '', email: 'bo@kinaxis.com' },
         { id: 'u3', name: 'No Email' },
-        { id: 'u4', name: 'Dup', email: 'ana@kinaxis.com' },
+        { id: 'u1', name: 'Dup', email: 'ana@kinaxis.com' },
+        { name: 'No Id', email: 'noid@kinaxis.com' },
         null,
       ],
     }));
@@ -170,5 +179,59 @@ describe('searchHubPeople', () => {
   it('reports a network error as unreachable', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
     expect(await searchHubPeople('ana')).toEqual({ reachable: false, people: [] });
+  });
+});
+
+describe('fetchHubPeopleByIds', () => {
+  it('names stored user ids through the people route', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true,
+      people: [
+        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Kinaxis.com' },
+        { id: 'u-other', name: 'Not Asked', email: 'x@kinaxis.com' },
+        { name: 'No Id' },
+      ],
+    }));
+
+    expect(await fetchHubPeopleByIds(['u1', 'u2', 'u1', ''])).toEqual({
+      reachable: true,
+      people: [{ id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }],
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/people/?ids=u1%2Cu2');
+    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
+  });
+
+  it('asks in batches of at most 50 ids', async () => {
+    const ids = Array.from({ length: 120 }, (_, i) => `u${i}`);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const asked = new URL(url).searchParams.get('ids').split(',');
+      return jsonRes({ reachable: true, people: asked.map((id) => ({ id, name: id, email: `${id}@kinaxis.com` })) });
+    });
+
+    const result = await fetchHubPeopleByIds(ids);
+
+    expect(fetch.mock.calls.map(([url]) => new URL(url).searchParams.get('ids').split(',').length)).toEqual([50, 50, 20]);
+    expect(result.reachable).toBe(true);
+    expect(result.people.map((p) => p.id)).toEqual(ids);
+  });
+
+  it('keeps what the other batches named when one fails', async () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `u${i}`);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonRes({ detail: 'boom' }, 500))
+      .mockResolvedValueOnce(jsonRes({ reachable: true, people: [{ id: 'u55', name: 'Bo', email: 'bo@kinaxis.com' }] }));
+
+    expect(await fetchHubPeopleByIds(ids)).toEqual({
+      reachable: false,
+      people: [{ id: 'u55', name: 'Bo', email: 'bo@kinaxis.com' }],
+    });
+  });
+
+  it('asks nothing for no ids', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    expect(await fetchHubPeopleByIds([])).toEqual({ reachable: true, people: [] });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

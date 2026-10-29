@@ -3,20 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
-  accessOrgWide,
-  accessTeamIds,
+  accessAllowedTeamIds,
+  accessAllowedUserIds,
+  accessOrgAllowed,
   alwaysOnLockReason,
-  audiencePayload,
   canEditSkill,
   groupSkillsBySection,
+  isPrivateAccess,
   isSkillAlwaysOn,
   parseEmailInput,
-  skillAudience,
+  personLabel,
+  skillAccess,
+  skillAccessPayload,
   skillAudienceBadge,
-  emailDomain,
   peopleInLabel,
   peopleOutsideLabel,
-  splitEmailsByOrgDomain,
   shareableTeams,
   namesDefaultTeam,
   withoutDefaultTeam,
@@ -50,20 +51,21 @@ describe('groupSkillsBySection', () => {
 describe('skillAudienceBadge', () => {
   const teams = [{ id: 't1', display_name: 'Supply Planning' }];
   it.each([
-    [{ org: false, team_ids: [], emails: [] }, null],
-    [{ org: true, team_ids: ['t1'], emails: ['a@x.com'] }, 'Everyone at Kinaxis'],
-    [{ org: false, team_ids: ['t1'], emails: [] }, 'Team: Supply Planning'],
-    [{ org: false, team_ids: ['t-other'], emails: [] }, '1 team'],
-    [{ org: false, team_ids: ['t1', 't2'], emails: ['a@x.com'] }, '2 teams · 1 person'],
-    [{ org: false, team_ids: [], emails: ['a@x.com', 'b@x.com', 'c@x.com'] }, '3 people'],
-  ])('labels %j as %s', (sharing, label) => {
-    expect(skillAudienceBadge(skill('s', { sharing }), { teams, orgName: 'Kinaxis' })).toBe(label);
+    [{ orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, null],
+    [{ orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'] }, 'Everyone at Kinaxis'],
+    [{ orgAllowed: false, allowedTeamIds: ['t1'], allowedUserIds: [] }, 'Team: Supply Planning'],
+    [{ orgAllowed: false, allowedTeamIds: ['t-other'], allowedUserIds: [] }, '1 team'],
+    [{ orgAllowed: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1'] }, '2 teams · 1 person'],
+    [{ orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1', 'u2', 'u3'] }, '3 people'],
+    [{ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u1', 'u2'] }, '2 people'],
+  ])('labels %j as %s', (access, label) => {
+    expect(skillAudienceBadge(skill('s', { access }), { teams, orgName: 'Kinaxis' })).toBe(label);
   });
 
   it('reads a skill shared with the default team as everyone at the org', () => {
     const withDefault = [{ id: 't0', display_name: 'All members', is_default: true }, ...teams];
-    const badge = (team_ids) => skillAudienceBadge(
-      skill('s', { sharing: { org: false, team_ids, emails: [] } }), { teams: withDefault, orgName: 'Kinaxis' },
+    const badge = (allowedTeamIds) => skillAudienceBadge(
+      skill('s', { access: { orgAllowed: false, allowedTeamIds, allowedUserIds: [] } }), { teams: withDefault, orgName: 'Kinaxis' },
     );
     expect(badge(['t0'])).toBe('Everyone at Kinaxis');
     expect(badge(['t0', 't1'])).toBe('Everyone at Kinaxis');
@@ -88,23 +90,30 @@ describe('default team', () => {
 
 describe('always on', () => {
   it('reads alwaysOn in either spelling, and only for org-wide or team skills', () => {
-    expect(isSkillAlwaysOn(skill('s', { sharing: { org: true, alwaysOn: true } }))).toBe(true);
-    expect(isSkillAlwaysOn(skill('s', { sharing: { team_ids: ['t1'], always_on: true } }))).toBe(true);
-    expect(isSkillAlwaysOn(skill('s', { sharing: { org: true } }))).toBe(false);
-    expect(isSkillAlwaysOn(skill('s', { sharing: { emails: ['a@x.com'], alwaysOn: true } }))).toBe(false);
+    expect(isSkillAlwaysOn(skill('s', { access: { orgAllowed: true, alwaysOn: true } }))).toBe(true);
+    expect(isSkillAlwaysOn(skill('s', { access: { allowed_team_ids: ['t1'], always_on: true } }))).toBe(true);
+    expect(isSkillAlwaysOn(skill('s', { access: { orgAllowed: true } }))).toBe(false);
+    expect(isSkillAlwaysOn(skill('s', { access: { allowedUserIds: ['u1'], alwaysOn: true } }))).toBe(false);
     expect(isSkillAlwaysOn(skill('s'))).toBe(false);
+    // The older `sharing` field is no longer read.
+    expect(isSkillAlwaysOn(skill('s', { sharing: { org: true, alwaysOn: true } }))).toBe(false);
   });
 
   it('sends always_on only when the org or a team is picked', () => {
-    const base = { org: false, teamIds: [], emails: [], alwaysOn: true };
-    expect(audiencePayload({ ...base, teamIds: ['t1'] })).toEqual({ org: false, team_ids: ['t1'], emails: [], always_on: true });
-    expect(audiencePayload({ ...base, emails: ['a@x.com'] })).toEqual({ org: false, team_ids: [], emails: ['a@x.com'], always_on: false });
-    expect(audiencePayload(skillAudience(skill('s')))).toEqual({ org: false, team_ids: [], emails: [], always_on: false });
+    const base = { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true };
+    expect(skillAccessPayload({ ...base, allowedTeamIds: ['t1'] }))
+      .toEqual({ org_allowed: false, allowed_team_ids: ['t1'], allowed_user_ids: [], always_on: true });
+    expect(skillAccessPayload({ ...base, allowedUserIds: ['u1'] }))
+      .toEqual({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u1'], always_on: false });
+    expect(skillAccessPayload({ ...base, orgAllowed: true }))
+      .toEqual({ org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: true });
+    expect(skillAccessPayload(skillAccess(skill('s'))))
+      .toEqual({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
   it('locks it for an org-wide skill without can_share_org and a team skill without can_edit', () => {
-    const org = { org: true, teamIds: ['t1'], emails: [] };
-    const team = { org: false, teamIds: ['t1'], emails: [] };
+    const org = { orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: [] };
+    const team = { orgAllowed: false, allowedTeamIds: ['t1'], allowedUserIds: [] };
     expect(alwaysOnLockReason(org, { canShareOrg: false, canEdit: true })).toBe('Only admins can make an organization-wide skill always on');
     expect(alwaysOnLockReason(org, { canShareOrg: true, canEdit: false })).toBeNull();
     expect(alwaysOnLockReason(team, { canShareOrg: false, canEdit: false })).toBe('Only people who can edit this skill can change this');
@@ -131,13 +140,18 @@ describe('parseEmailInput', () => {
 });
 
 describe('artifact access fields', () => {
-  it('reads team ids and org_wide in either spelling', () => {
-    expect(accessTeamIds({ allowed_team_ids: ['t1'] })).toEqual(['t1']);
-    expect(accessTeamIds({ allowedTeamIds: ['t2'] })).toEqual(['t2']);
-    expect(accessTeamIds({})).toEqual([]);
-    expect(accessOrgWide({ org_wide: true, orgAllowed: false })).toBe(true);
-    expect(accessOrgWide({ orgAllowed: true })).toBe(true);
-    expect(accessOrgWide({})).toBe(false);
+  it('reads team ids, user ids and org_allowed in either spelling', () => {
+    expect(accessAllowedTeamIds({ allowed_team_ids: ['t1'] })).toEqual(['t1']);
+    expect(accessAllowedTeamIds({ allowedTeamIds: ['t2'] })).toEqual(['t2']);
+    expect(accessAllowedTeamIds({})).toEqual([]);
+    expect(accessAllowedUserIds({ allowed_user_ids: ['u1', 7] })).toEqual(['u1']);
+    expect(accessAllowedUserIds({ allowedUserIds: ['u2'] })).toEqual(['u2']);
+    expect(accessAllowedUserIds({})).toEqual([]);
+    expect(accessOrgAllowed({ org_allowed: true })).toBe(true);
+    expect(accessOrgAllowed({ orgAllowed: true })).toBe(true);
+    expect(accessOrgAllowed({ org_wide: true })).toBe(true);
+    expect(accessOrgAllowed({ orgAllowed: false, orgWide: true })).toBe(false);
+    expect(accessOrgAllowed({})).toBe(false);
   });
 });
 
@@ -150,20 +164,20 @@ describe('people labels', () => {
   });
 });
 
-describe('splitEmailsByOrgDomain', () => {
-  it('puts addresses on the signed-in domain inside and the rest outside', () => {
-    expect(splitEmailsByOrgDomain(['bo@kinaxis.com', 'zed@partner.io', 'ana@KINAXIS.com'], 'Me@Kinaxis.com')).toEqual({
-      inside: ['bo@kinaxis.com', 'ana@KINAXIS.com'],
-      outside: ['zed@partner.io'],
-    });
+describe('skillAccess', () => {
+  it('reads access in either spelling and treats a skill without it as private', () => {
+    expect(skillAccess(skill('s', { access: { org_allowed: true, allowed_team_ids: ['t1'], allowed_user_ids: ['u1'], always_on: true } })))
+      .toEqual({ orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'], alwaysOn: true });
+    expect(isPrivateAccess(skillAccess(skill('s')))).toBe(true);
+    expect(isPrivateAccess(skillAccess(skill('s', { access: { allowedUserIds: ['u1'] } })))).toBe(false);
   });
+});
 
-  it('puts everyone outside without a signed-in email', () => {
-    expect(splitEmailsByOrgDomain(['bo@kinaxis.com'], null)).toEqual({ inside: [], outside: ['bo@kinaxis.com'] });
-  });
-
-  it('reads a domain', () => {
-    expect(emailDomain('A@B.Com')).toBe('b.com');
-    expect(emailDomain('nope')).toBe('');
+describe('personLabel', () => {
+  it('says who a picked person is, or that they are unknown', () => {
+    expect(personLabel({ id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' })).toBe('Ana Ruiz (ana@kinaxis.com)');
+    expect(personLabel({ id: 'u1', name: null, email: 'ana@kinaxis.com' })).toBe('ana@kinaxis.com');
+    expect(personLabel({ id: 'u1', pending: true })).toBe('Loading…');
+    expect(personLabel({ id: 'u1', name: null, email: null })).toBe('Unknown person');
   });
 });

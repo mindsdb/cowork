@@ -29,9 +29,9 @@ import {
   namesDefaultTeam,
   peopleInLabel,
   peopleOutsideLabel,
-  splitEmailsByOrgDomain,
   withoutDefaultTeam,
 } from '../../../lib/orgSharing';
+import { useKnownPeople } from '../../../hooks/useOrgSharing';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -47,7 +47,7 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // chooses who can open the link first: `isAccessDraftValid` refuses a draft
 // with no mode, which keeps Share disabled until then.
 export function newAccessDraft() {
-  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false, teamIds: [] };
+  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false, teamIds: [], userIds: [] };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
@@ -70,7 +70,10 @@ export function accessDraftFromArtifact(artifact) {
     password: artifact?.accessPassword || '',
     emailsText: (artifact?.accessEmails || []).join(', '),
     orgAllowed: !!artifact?.orgAllowed,
-    teamIds: [...(artifact?.accessTeamIds || [])],
+    teamIds: [...(artifact?.allowedTeamIds || [])],
+    // People in the org, by hub user id (ENG-3787). `emailsText` is then the
+    // people outside it.
+    userIds: [...(artifact?.allowedUserIds || [])],
   };
 }
 
@@ -80,7 +83,8 @@ export function accessDraftFromArtifact(artifact) {
 export function isOwnerOnlySelection(artifact) {
   if (artifact?.ownerOnly != null) return !!artifact.ownerOnly;
   return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed
-    && (artifact?.accessTeamIds || []).length === 0;
+    && (artifact?.allowedTeamIds || []).length === 0
+    && (artifact?.allowedUserIds || []).length === 0;
 }
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
@@ -118,24 +122,32 @@ export function isAccessDraftValid(draft) {
     // separate option now, so an empty list here is an unfinished selection
     // rather than a silent private publish — block it instead of quietly
     // doing something other than what the label says.
-    return valid.length > 0 || !!draft.orgAllowed || (draft.teamIds || []).length > 0;
+    return valid.length > 0 || !!draft.orgAllowed || (draft.teamIds || []).length > 0
+      || (draft.userIds || []).length > 0;
   }
   return false;
 }
 
 // Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
 // is derived, never stored on the draft: the textarea is the source of truth.
-// With org sharing on (ENG-3787) a restricted payload also names teams and
-// `org_wide`; the "Everyone at ‹org›" box sets it and `org_allowed` alike.
+// With org sharing on (ENG-3787) a restricted payload names its audience the
+// way skills do: `org_allowed`, `allowed_team_ids`, `allowed_user_ids` (people
+// in the org) and `allowed_emails` (people outside it). `emails` and
+// `team_ids` repeat the outside emails and the teams under the names
+// cowork-server's publish still reads.
 export function buildAccessPayload(draft, { orgSharing = false } = {}) {
   const payload = buildBaseAccessPayload(draft);
   if (!orgSharing || payload.mode !== 'restricted') return payload;
-  const teamIds = draft?.mode === 'restricted' ? [...(draft.teamIds || [])] : [];
+  const restricted = draft?.mode === 'restricted';
+  const teamIds = restricted ? [...(draft.teamIds || [])] : [];
+  const userIds = restricted ? [...new Set(draft.userIds || [])] : [];
   return {
     ...payload,
+    allowed_emails: [...payload.emails],
+    allowed_team_ids: teamIds,
+    allowed_user_ids: userIds,
     team_ids: teamIds,
-    org_wide: payload.org_allowed,
-    owner_only: payload.owner_only && teamIds.length === 0,
+    owner_only: payload.owner_only && teamIds.length === 0 && userIds.length === 0,
   };
 }
 
@@ -367,35 +379,27 @@ function SharingRow({ label, checked, onCheckedChange, children }) {
 }
 
 // The restricted choice with org sharing on (ENG-3787): everyone at the org,
-// teams, people picked from the org's directory, and people outside it by
-// email. Both people boxes go out together as the one `emails` list, kept in
-// `emailsText` so validation and the payload read it as before; `orgEmails`
-// and `outsideEmails` only remember which box a chip sits in.
+// teams, people picked from the org's directory (by user id, `userIds`), and
+// people outside it by email (`emailsText`, so validation and the payload
+// read it as before).
 function OrgRestrictedFields({ draft, set, sharing, modes }) {
   const teamIds = draft.teamIds || [];
-  const { valid: allEmails } = parseEmailList(draft.emailsText);
-  // A draft seeded from the artifact has no split yet: guess one by domain
-  // (see splitEmailsByOrgDomain). It only places the chips.
-  const split = Array.isArray(draft.orgEmails) && Array.isArray(draft.outsideEmails)
-    ? { inside: draft.orgEmails, outside: draft.outsideEmails }
-    : splitEmailsByOrgDomain(allEmails, sharing.userEmail);
+  const userIds = draft.userIds || [];
+  const { valid: outsideEmails } = parseEmailList(draft.emailsText);
+  // The picked people's names, looked up by id.
+  const people = useKnownPeople(userIds);
   const [showTeams, setShowTeams] = useState(false);
   const [showInside, setShowInside] = useState(false);
   const [showOutside, setShowOutside] = useState(false);
-
-  const setPeople = (inside, outside) => {
-    const merged = [...new Set([...inside, ...outside])];
-    set({ orgEmails: inside, outsideEmails: outside, emailsText: merged.join(', ') });
-  };
 
   // The org's default team is "Everyone at ‹org›", not one of the Teams.
   const hubTeams = sharing.teams?.teams || [];
   const orgOn = !!draft.orgAllowed || namesDefaultTeam(teamIds, hubTeams);
   const pickedTeamIds = withoutDefaultTeam(teamIds, hubTeams);
   const teamsOn = showTeams || pickedTeamIds.length > 0;
-  const insideOn = showInside || split.inside.length > 0;
-  const outsideOn = showOutside || split.outside.length > 0;
-  const nothing = allEmails.length === 0 && !draft.orgAllowed && teamIds.length === 0;
+  const insideOn = showInside || userIds.length > 0;
+  const outsideOn = showOutside || outsideEmails.length > 0;
+  const nothing = outsideEmails.length === 0 && userIds.length === 0 && !draft.orgAllowed && teamIds.length === 0;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
@@ -419,26 +423,30 @@ function OrgRestrictedFields({ draft, set, sharing, modes }) {
       <SharingRow
         label={peopleInLabel(sharing.orgName)}
         checked={insideOn}
-        onCheckedChange={(v) => { setShowInside(v); if (!v) setPeople([], split.outside); }}
+        onCheckedChange={(v) => { setShowInside(v); if (!v) set({ userIds: [] }); }}
       >
         <PeoplePicker
-          value={split.inside}
-          onChange={(inside) => setPeople(inside, split.outside.filter((e) => !inside.includes(e)))}
-          allowExternal={false}
-          orgName={sharing.orgName}
+          value={people.people}
+          onChange={(next) => {
+            people.remember(next);
+            set({ userIds: next.map((person) => person.id) });
+          }}
         />
+        {people.unreachable && (
+          <span className="mt-1 block font-body text-xs text-ink-3" role="note">Couldn't load some names from your organization.</span>
+        )}
       </SharingRow>
       <SharingRow
         label={peopleOutsideLabel(sharing.orgName)}
         checked={outsideOn}
         onCheckedChange={(v) => {
           setShowOutside(v);
-          if (!v) { setPeople(split.inside, []); set({ emailsPending: false }); }
+          if (!v) set({ emailsText: '', emailsPending: false });
         }}
       >
         <EmailChipsInput
-          emails={split.outside}
-          onChange={(outside) => setPeople(split.inside.filter((e) => !outside.includes(e)), outside)}
+          emails={outsideEmails}
+          onChange={(outside) => set({ emailsText: outside.join(', ') })}
           onPendingChange={(pending) => set({ emailsPending: pending })}
           inputLabel="Add people outside by email"
           listLabel="People outside"
