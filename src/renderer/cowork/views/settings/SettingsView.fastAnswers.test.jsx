@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
-// Jev routing: the "Fast answers" group, and the router row it makes redundant.
+// Jev routing: the "Fast answers with Jev" switch, and the router row it makes redundant.
 
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({ server_version: '0.1.0', anton_version: '0.1.0' })),
@@ -33,6 +33,9 @@ const settingsFor = (type, card, extra = {}) => ({
   providers: [card],
   providerStatus: { [type]: 'ok' },
   providerTypeLabels: { 'minds-cloud': 'MindsHub', 'openai-compatible': 'OpenAI-compatible' },
+  // The switch sits in Advanced Settings, which needs the budget settings.
+  maxToolRounds: 50,
+  maxContinuations: 3,
   ...extra,
 });
 
@@ -66,7 +69,8 @@ function Harness({ initial }) {
 }
 
 const ROUTER_ROW = 'Routing and summarization model';
-const expandFastAnswers = () => fireEvent.click(screen.getByRole('button', { name: 'Fast answers' }));
+const SWITCH = 'Fast answers with Jev';
+const expandAdvanced = async () => fireEvent.click(await screen.findByRole('button', { name: 'Advanced Settings' }));
 
 describe('the router row', () => {
   it('is hidden once the server routes with a decision model', async () => {
@@ -86,49 +90,40 @@ describe('the router row', () => {
   });
 });
 
-describe('the Fast answers group', () => {
-  it('is absent on a server that does not report routing', async () => {
-    render(<Harness initial={settingsFor('minds-cloud', MINDS)} />);
-    await screen.findByText('Planning model');
-    expect(screen.queryByRole('button', { name: 'Fast answers' })).toBeNull();
+describe('the Fast answers with Jev switch', () => {
+  it.each([
+    ['an older server', undefined],
+    ['another provider', { mode: 'llm' }],
+    ["an org's own decision model", { mode: 'own' }],
+  ])('is absent on %s, where it would change nothing', async (_name, routing) => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
+    await expandAdvanced();
+    expect(screen.getByText('Max steps per task')).toBeInTheDocument();
+    expect(screen.queryByLabelText(SWITCH)).toBeNull();
   });
 
-  it('starts collapsed, and says who decides', async () => {
-    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'off' } })} />);
-    await screen.findByRole('button', { name: 'Fast answers' });
-    expect(screen.queryByLabelText('Use Jev on MindsHub')).toBeNull();
-
-    expandFastAnswers();
-
-    expect(screen.getByTestId('routing-status')).toHaveTextContent(
-      'Jev is off and no decision model is set, so every message runs Anton.',
-    );
+  it('shows off once the organization turned Jev off', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'off' }, jevDecisionsEnabled: false })} />);
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).not.toBeChecked();
   });
 
-  it('saves the Jev switch and the decision model fields', async () => {
+  it('saves turning Jev off', async () => {
     const onSave = vi.fn(async () => {});
     render(<SettingsView
-      settings={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' }, jevDecisionsEnabled: true })}
+      settings={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } })}
       setSetting={vi.fn()} onSave={onSave}
       theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
       customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
       section="agent" onSectionChange={vi.fn()} shellUpdate={null} onDownloadShellUpdate={vi.fn()}
     />);
-    await screen.findByRole('button', { name: 'Fast answers' });
-    expandFastAnswers();
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).toBeChecked();
 
-    fireEvent.click(screen.getByLabelText('Use Jev on MindsHub'));
-    fireEvent.change(screen.getByLabelText('Decision model endpoint'), {
-      target: { value: 'https://api.typesafe.ai/v1/systemone' },
-    });
-    fireEvent.change(screen.getByLabelText('Decision model name'), { target: { value: 'jev-latest' } });
+    fireEvent.click(screen.getByLabelText(SWITCH));
     fireEvent.click(await screen.findByRole('button', { name: /^Save settings$/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
 
-    expect(onSave.mock.calls.at(-1)[0]).toMatchObject({
-      jevDecisionsEnabled: false,
-      decisionModelUrl: 'https://api.typesafe.ai/v1/systemone',
-      decisionModel: 'jev-latest',
-    });
+    expect(onSave.mock.calls.at(-1)[0]).toMatchObject({ jevDecisionsEnabled: false });
   });
 });

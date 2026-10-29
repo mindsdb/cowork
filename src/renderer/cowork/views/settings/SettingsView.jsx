@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, routingStatusCopy, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -865,7 +865,6 @@ export default function SettingsView({
   // mount, even after a successful fetch). Live is equally safe — the only
   // writer that can materialize these keys is the budget field itself, which
   // sits inside this gate, so on an older server they can never appear.
-  const routingStatus = routingStatusCopy(settings?.routing, { agentLabel: agentLabel || 'Anton' });
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
@@ -1987,54 +1986,20 @@ export default function SettingsView({
                 />
               </Section>
             )}
-          </SettingsGroup>
-        )}
-
-        {/* Only a server that routes with a decision model sends `routing`;
-            on an older one these settings would do nothing. These are
-            org-level settings: who may change them is the server's call,
-            as for the budgets above. */}
-        {settings.routing && (
-          <SettingsGroup title="Fast answers" collapsible defaultCollapsed>
-            {routingStatus && (
-              <div className="text-sm text-ink-3 pt-3" data-testid="routing-status">{routingStatus}</div>
+            {/* An org-level setting, like the budgets: who may change it is
+                the server's call. */}
+            {showJevSwitch(settings.routing) && (
+              <Section
+                title="Fast answers with Jev"
+                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off if your organization requires zero data retention: every message then runs ${agentLabel || 'Anton'}.`}
+              >
+                <Switch
+                  checked={settings.jevDecisionsEnabled ?? true}
+                  onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
+                  aria-label="Fast answers with Jev"
+                />
+              </Section>
             )}
-            <Section
-              title="Use Jev on MindsHub"
-              subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn off if your organization requires zero data retention: every message then runs ${agentLabel || 'Anton'}, unless you set a decision model of your own below.`}
-            >
-              <Switch
-                checked={settings.jevDecisionsEnabled ?? true}
-                onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
-                aria-label="Use Jev on MindsHub"
-              />
-            </Section>
-            <Section
-              title="Decision model endpoint"
-              subtitle="Use your own decision model instead of Jev on MindsHub, for any provider. The full URL of an endpoint that takes TypeSafe's decision request, for example https://api.typesafe.ai/v1/systemone. Used once the endpoint and key are both set."
-            >
-              <TextInput
-                value={settings.decisionModelUrl}
-                onChange={(v) => setSetting('decisionModelUrl', v)}
-                placeholder="https://api.typesafe.ai/v1/systemone"
-                ariaLabel="Decision model endpoint"
-              />
-            </Section>
-            <Section title="Decision model API key" subtitle="The key for your decision model's endpoint.">
-              <ApiKeyInput
-                value={settings.decisionModelApiKey}
-                onChange={(v) => setSetting('decisionModelApiKey', v)}
-                placeholder="Decision model API key"
-              />
-            </Section>
-            <Section title="Decision model name" subtitle="The model name your endpoint expects.">
-              <TextInput
-                value={settings.decisionModel}
-                onChange={(v) => setSetting('decisionModel', v)}
-                placeholder="jev"
-                ariaLabel="Decision model name"
-              />
-            </Section>
           </SettingsGroup>
         )}
       </SettingsSectionPanel>

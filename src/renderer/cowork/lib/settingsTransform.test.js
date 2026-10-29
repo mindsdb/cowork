@@ -20,7 +20,7 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
-  routingStatusCopy,
+  showJevSwitch,
   showRouterRoleRow,
 } from './settingsTransform';
 
@@ -1097,38 +1097,14 @@ describe('committedSettingsPatch', () => {
 });
 
 
-// ─── Fast answers (Jev routing) ──────────────────────────────────────
+// ─── Jev routing ─────────────────────────────────────────────────────
 
-describe('fast answers settings', () => {
-  it('reads the routing settings from server rows, keeping the key masked', () => {
-    const out = transformSettingsRows([
-      { key: 'jev_decisions_enabled', value: 'False' },
-      { key: 'decision_model_url', value: 'https://api.typesafe.ai/v1/systemone' },
-      { key: 'decision_model_api_key', is_sensitive: true, is_set: true },
-      { key: 'decision_model', value: 'jev-latest' },
-    ]);
-
-    expect(out).toMatchObject({
-      jevDecisionsEnabled: false,
-      decisionModelUrl: 'https://api.typesafe.ai/v1/systemone',
-      decisionModelApiKey: '***',
-      decisionModel: 'jev-latest',
-    });
-  });
-
-  it('writes them under the server keys, and never writes the masked key back', () => {
-    const writes = diffSettingsForWrite({
-      jevDecisionsEnabled: false,
-      decisionModelUrl: 'https://api.typesafe.ai/v1/systemone',
-      decisionModelApiKey: '***',
-      decisionModel: 'jev-latest',
-    }, { jevDecisionsEnabled: true, decisionModelApiKey: '***' });
-
-    expect(writes).toEqual({
-      jev_decisions_enabled: 'false',
-      decision_model_url: 'https://api.typesafe.ai/v1/systemone',
-      decision_model: 'jev-latest',
-    });
+describe('jev routing settings', () => {
+  it('reads and writes the Jev switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_decisions_enabled', value: 'False' }]))
+      .toMatchObject({ jevDecisionsEnabled: false });
+    expect(diffSettingsForWrite({ jevDecisionsEnabled: false }, { jevDecisionsEnabled: true }))
+      .toEqual({ jev_decisions_enabled: 'false' });
   });
 
   it('keeps the routing it holds when the server sends none', () => {
@@ -1148,14 +1124,13 @@ describe('fast answers settings', () => {
     expect(showRouterRoleRow(routing, provider)).toBe(shown);
   });
 
-  it('says who decides for each mode, and nothing for one it does not know', () => {
-    expect(routingStatusCopy({ mode: 'jev' }, { agentLabel: 'Cowork' })).toMatch(/^Jev on MindsHub decides/);
-    expect(routingStatusCopy({ mode: 'own' })).toMatch(/^Your decision model decides/);
-    expect(routingStatusCopy({ mode: 'off' }, { agentLabel: 'Cowork' })).toBe(
-      'Jev is off and no decision model is set, so every message runs Cowork.',
-    );
-    expect(routingStatusCopy({ mode: 'llm' })).toMatch(/^Your provider's fastest model decides/);
-    expect(routingStatusCopy({ mode: 'something-new' })).toBe('');
-    expect(routingStatusCopy(null)).toBe('');
+  it.each([
+    [{ mode: 'jev' }, true],
+    [{ mode: 'off' }, true],
+    [{ mode: 'llm' }, false],
+    [{ mode: 'own' }, false],
+    [null, false],
+  ])('shows the Jev switch for routing %j: %s', (routing, shown) => {
+    expect(showJevSwitch(routing)).toBe(shown);
   });
 });

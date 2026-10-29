@@ -67,13 +67,8 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
-  // Who decides whether a turn can be answered without the full agent
-  // (`settings.routing`, see routingStatusCopy): Jev on MindsHub unless the
-  // organization turned it off, or a decision model of the org's own.
+  // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
-  decision_model_url: 'decisionModelUrl',
-  decision_model_api_key: 'decisionModelApiKey',
-  decision_model: 'decisionModel',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
   max_turn_tokens: 'maxTurnTokens',
@@ -325,7 +320,7 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   };
 }
 
-// ─── Fast answers (routing) ─────────────────────────────────────────
+// ─── Jev routing ────────────────────────────────────────────────────
 
 /**
  * Whether Settings shows the "Routing and summarization model" row.
@@ -342,23 +337,12 @@ export function showRouterRoleRow(routing, routerProviderType) {
 }
 
 /**
- * One line saying who decides whether a message is answered directly, from
- * the server's `routing.mode` (jev_route.gate_mode). Empty for an unknown mode
- * from a newer server, so the line is left out rather than guessed.
+ * Whether Settings shows the "Fast answers with Jev" switch: only while turns
+ * would route with Jev on MindsHub (`jev`) or have it turned off (`off`). On
+ * other providers, or with an org's own decision model, it would change nothing.
  */
-export function routingStatusCopy(routing, { agentLabel = 'Anton' } = {}) {
-  switch (routing?.mode) {
-    case 'jev':
-      return `Jev on MindsHub decides which messages your chosen model can answer directly, without running ${agentLabel}.`;
-    case 'own':
-      return `Your decision model decides which messages your chosen model can answer directly, without running ${agentLabel}.`;
-    case 'off':
-      return `Jev is off and no decision model is set, so every message runs ${agentLabel}.`;
-    case 'llm':
-      return `Your provider's fastest model decides which messages it can answer directly. Set a decision model below to answer them on your chosen model instead.`;
-    default:
-      return '';
-  }
+export function showJevSwitch(routing) {
+  return routing?.mode === 'jev' || routing?.mode === 'off';
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────
