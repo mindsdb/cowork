@@ -2367,7 +2367,7 @@ function AppCore() {
       }));
     };
 
-    const streamFlush = frameScheduler({ render: () => flushSync(flushStreaming), flush: flushStreaming });
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
 
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
@@ -3650,7 +3650,7 @@ function AppCore() {
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
     let sessionCtrl = null;
-    const streamFlush = frameScheduler({ render: () => flushSync(flushStreamingMessage), flush: flushStreamingMessage });
+    const streamFlush = frameScheduler(() => flushSync(flushStreamingMessage));
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -4179,7 +4179,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
-    const streamFlush = frameScheduler({ render: () => flushSync(flushStreaming), flush: flushStreaming });
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
@@ -4509,7 +4509,7 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
-    const streamFlush = frameScheduler({ render: () => flushSync(flushStreaming), flush: flushStreaming });
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     // Same superseded guard the other three stream sites carry, in the same
     // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"

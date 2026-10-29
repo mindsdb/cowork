@@ -7,7 +7,6 @@ describe('frameScheduler', () => {
   let clock;
   let renderCostMs;
   let render;
-  let flush;
   let scheduler;
 
   // The scheduler reads the clock around each render; the test clock moves
@@ -23,8 +22,7 @@ describe('frameScheduler', () => {
     renderCostMs = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => clock);
     render = vi.fn(() => { clock += renderCostMs; });
-    flush = vi.fn();
-    scheduler = frameScheduler({ render, flush });
+    scheduler = frameScheduler(render);
   });
 
   afterEach(() => {
@@ -64,13 +62,13 @@ describe('frameScheduler', () => {
     expect(render).toHaveBeenCalledTimes(2);
   });
 
-  it('writes a waiting render through flush instead and drops its frame', () => {
+  it('runs a waiting render at once when flushed and drops its frame', () => {
     scheduler.request();
     scheduler.flushPending();
 
-    expect(flush).toHaveBeenCalledTimes(1);
+    expect(render).toHaveBeenCalledTimes(1);
     advance(FRAME_MS);
-    expect(render).not.toHaveBeenCalled();
+    expect(render).toHaveBeenCalledTimes(1);
   });
 
   it('cancels a render waiting out the pause when flushed', () => {
@@ -81,8 +79,7 @@ describe('frameScheduler', () => {
     scheduler.flushPending();
 
     advance(200);
-    expect(render).toHaveBeenCalledTimes(1);
-    expect(flush).toHaveBeenCalledTimes(1);
+    expect(render).toHaveBeenCalledTimes(2);
   });
 
   it('does nothing on flush when no render is waiting', () => {
@@ -90,7 +87,7 @@ describe('frameScheduler', () => {
     advance(FRAME_MS);
     scheduler.flushPending();
 
-    expect(flush).not.toHaveBeenCalled();
+    expect(render).toHaveBeenCalledTimes(1);
   });
 
   it('keeps working after a flush', () => {
@@ -99,6 +96,6 @@ describe('frameScheduler', () => {
     scheduler.request();
     advance(FRAME_MS);
 
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(render).toHaveBeenCalledTimes(2);
   });
 });

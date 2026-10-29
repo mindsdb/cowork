@@ -12,7 +12,7 @@ const spies = vi.hoisted(() => ({
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
-  liveAnswerRenders: 0,
+  liveAnswerTexts: [],
 }));
 
 vi.mock('./api', async (importOriginal) => ({
@@ -71,7 +71,7 @@ vi.mock('./components/markdown/MarkdownContent', async (importOriginal) => {
   const actual = await importOriginal();
   function CountingMarkdownContent(props) {
     if (props.complete === false && String(props.text || '').includes('River fact')) {
-      spies.liveAnswerRenders += 1;
+      spies.liveAnswerTexts.push(props.text);
     }
     return <actual.MarkdownContent {...props} />;
   }
@@ -102,7 +102,8 @@ function listDeltas(from, to) {
 }
 
 // Two network reads, each carrying half the list as one text event per item.
-function stubResponsesFetch({ completes, conversationId = 'conv-a' }) {
+// `pauseMs` lets animation frames run between the reads.
+function stubResponsesFetch({ completes, conversationId = 'conv-a', pauseMs = 0 }) {
   const half = Math.floor(ITEMS / 2);
   const reads = [
     sse([
@@ -120,8 +121,10 @@ function stubResponsesFetch({ completes, conversationId = 'conv-a' }) {
       ok: true,
       status: 200,
       body: new ReadableStream({
-        start(controller) {
-          reads.forEach((read) => controller.enqueue(read));
+        async start(controller) {
+          controller.enqueue(reads[0]);
+          if (pauseMs) await new Promise((resolve) => { setTimeout(resolve, pauseMs); });
+          controller.enqueue(reads[1]);
           controller.close();
         },
       }),
@@ -146,7 +149,7 @@ async function send(user, text) {
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   __resetDraftsForTests();
-  spies.liveAnswerRenders = 0;
+  spies.liveAnswerTexts = [];
   spies.fetchSessions.mockReset().mockResolvedValue([
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
   ]);
@@ -161,8 +164,8 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-// The old per-event render takes 10 to 50 s here; the limit lets it fail on
-// the render count instead of timing out.
+// The limit lets a per-event render regression fail on the render count,
+// not on a timeout.
 describe('a long streamed answer', { timeout: 90_000 }, () => {
   it('in an open task, renders per frame rather than per text event and ends with the whole list', async () => {
     const user = userEvent.setup();
@@ -174,7 +177,7 @@ describe('a long streamed answer', { timeout: 90_000 }, () => {
 
     expect(await screen.findByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
     expect(screen.getByText('River fact 1.')).toBeInTheDocument();
-    expect(spies.liveAnswerRenders).toBeLessThan(10);
+    expect(spies.liveAnswerTexts.length).toBeLessThan(10);
   });
 
   it('in a new task, renders per frame rather than per text event and ends with the whole list', async () => {
@@ -187,7 +190,21 @@ describe('a long streamed answer', { timeout: 90_000 }, () => {
     await send(user, 'List river facts');
 
     expect(await screen.findByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
-    expect(spies.liveAnswerRenders).toBeLessThan(10);
+    expect(spies.liveAnswerTexts.length).toBeLessThan(10);
+  });
+
+  it('draws the part of the list that has arrived while the rest is still coming', async () => {
+    const user = userEvent.setup();
+    stubResponsesFetch({ completes: true, pauseMs: 100 });
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+
+    await send(user, 'List river facts');
+
+    expect(await screen.findByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
+    const partial = spies.liveAnswerTexts.filter((text) => !text.includes(`River fact ${ITEMS}.`));
+    expect(partial.some((text) => text.includes(`River fact ${ITEMS / 2}.`))).toBe(true);
+    expect(spies.liveAnswerTexts.length).toBeLessThan(10);
   });
 
   it('keeps the text that arrived when the stream breaks before any frame drew it', async () => {
@@ -200,5 +217,55 @@ describe('a long streamed answer', { timeout: 90_000 }, () => {
 
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
+  });
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe('a follow-up queued on a new task', () => {
+  it('goes once to the conversation the server assigned when the first turn arrives in one read', async () => {
+    const user = userEvent.setup();
+    const firstTurn = deferred();
+    const posts = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+      posts.push(JSON.parse(init.body));
+      const first = posts.length === 1;
+      // A runaway resend never finishes, so it cannot spin the test forever.
+      const runaway = posts.length > 3;
+      return {
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          async start(controller) {
+            if (first) await firstTurn.promise;
+            if (runaway) return;
+            controller.enqueue(sse([
+              { type: 'response.created', conversation_id: 'conv-new', user_message_id: `user-${posts.length}` },
+              { type: 'response.output_text.delta', delta: first ? 'First answer.' : 'Second answer.' },
+              { type: 'response.completed', response: { status: 'completed' } },
+            ]));
+            controller.close();
+          },
+        }),
+      };
+    }));
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await send(user, 'first question');
+    await waitFor(() => expect(posts).toHaveLength(1));
+    await send(user, 'follow up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    firstTurn.resolve();
+
+    expect(await screen.findByText('Second answer.')).toBeInTheDocument();
+    await new Promise((resolve) => { setTimeout(resolve, 300); });
+    expect(posts.map((post) => post.conversation)).toEqual([null, 'conv-new']);
   });
 });

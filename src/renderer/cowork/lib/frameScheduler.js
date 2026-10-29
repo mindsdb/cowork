@@ -5,11 +5,11 @@
 // slows the redraw rate instead of blocking scrolling and clicks.
 
 /**
- * `render` draws the latest state and is timed, so it must do its work
- * synchronously. `flush` writes the latest state without drawing; it runs
- * instead of a render still waiting when the stream ends.
+ * `render` draws the latest state and is timed, so it must commit
+ * synchronously. `flushPending` runs a waiting render at once, so a stream's
+ * terminal handler reads committed state.
  */
-export function frameScheduler({ render, flush }) {
+export function frameScheduler(render) {
   let timer = 0;
   let frame = 0;
   let pending = false;
@@ -45,7 +45,7 @@ export function frameScheduler({ render, flush }) {
       cancelAnimationFrame(frame);
       timer = 0;
       frame = 0;
-      flush();
+      render();
     },
   };
 }

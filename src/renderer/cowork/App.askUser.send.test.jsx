@@ -1497,9 +1497,9 @@ describe('two events in one synchronous burst', () => {
     const handle = streams[streams.length - 1];
     // Both events in the same tick, with no await between them — the burst the
     // exactly-once property has to survive. It rests on the drainedQuestionsRef
-    // entry added for this question_id alone: onEvent no longer commits a
-    // render per event, so messageQueueRef is not resynced before the second
-    // event runs.
+    // entry added for this question_id: onEvent does not commit between
+    // events, so messageQueueRef still holds the queue when the second event
+    // runs.
     await act(async () => {
       handle.opts.onEvent(ASK_EVENT);
       handle.opts.onEvent({ ...ASK_EVENT, question_id: 'ask:1' });
