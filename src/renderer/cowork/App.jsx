@@ -61,6 +61,7 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
+import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
 import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
@@ -6595,6 +6596,7 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
+      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
       <CoworkProvider value={coworkValue}>
         <CoworkRouterProvider router={routerRef.current} />
       </CoworkProvider>
