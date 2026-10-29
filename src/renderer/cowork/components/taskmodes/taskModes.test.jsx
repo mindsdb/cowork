@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Ico from '../Icons';
-import { TASK_MODES, composeModeMessage } from './taskModes';
+import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 import TaskModePills from './TaskModePills';
@@ -59,6 +59,20 @@ describe('TASK_MODES data', () => {
       'Clean up my spreadsheet and chart it',
       'Review what is on my plate this week',
     ]));
+  });
+
+  it('featured examples are existing samples, so their ids and prompts are the ones everywhere else', () => {
+    const all = TASK_MODES.flatMap((m) => m.samples);
+    expect(FEATURED_EXAMPLES_MODE.samples).toHaveLength(7);
+    for (const sample of FEATURED_EXAMPLES_MODE.samples) expect(all).toContain(sample);
+    expect(TASK_MODES.map((m) => m.id)).not.toContain(FEATURED_EXAMPLES_MODE.id);
+    expect(typeof Ico[FEATURED_EXAMPLES_MODE.icon]).toBe('function');
+  });
+
+  it('adds nothing to what is sent from the featured examples, edited or not', () => {
+    const [first] = FEATURED_EXAMPLES_MODE.samples;
+    expect(composeModeMessage(FEATURED_EXAMPLES_MODE, first.prompt)).toBe(first.prompt);
+    expect(composeModeMessage(FEATURED_EXAMPLES_MODE, 'my own task')).toBe('my own task');
   });
 
   it('composeModeMessage APPENDS the instruction (titles derive from the message head)', () => {

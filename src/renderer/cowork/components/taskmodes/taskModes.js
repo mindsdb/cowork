@@ -276,7 +276,7 @@ export const TASK_MODES = [
     search index all derive from the message HEAD — a leading instruction would
     make every task of a mode read identically and bury the user's actual ask. */
 export function composeModeMessage(mode, text) {
-  if (!mode) return text;
+  if (!mode || !mode.instruction) return text;
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
@@ -285,3 +285,27 @@ export function composeModeMessage(mode, text) {
   if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return text;
   return `${text}\n\n${mode.instruction}`;
 }
+
+// What the checklist's "Try an example" row opens on Home: one short list that
+// crosses modes, led by the cheap, reliable ones. It is not one of the pills,
+// and it has no instruction of its own, so nothing is added to what is sent.
+const FEATURED_LABELS = [
+  'Classic snake game',
+  'Neon falling blocks',
+  'Show weekly sales activity via heatmap',
+  'Build a habit tracker',
+  'Build a quote or invoice generator',
+  "Draft this week's update from last week's",
+  'Review what is on my plate this week',
+];
+const ALL_SAMPLES = TASK_MODES.flatMap((m) => m.samples);
+
+export const FEATURED_EXAMPLES_MODE = {
+  id: 'examples',
+  chipLabel: 'Examples',
+  icon: 'sparkle',
+  placeholder: 'Pick an example, or describe your own task',
+  instruction: '',
+  samplesVariant: 'rows',
+  samples: FEATURED_LABELS.map((label) => ALL_SAMPLES.find((s) => s.label === label)).filter(Boolean),
+};

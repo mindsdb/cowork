@@ -718,6 +718,8 @@ function AppCore() {
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
+  // Set by the checklist's "Try an example" row; Home answers it and clears it.
+  const [examplesRequest, setExamplesRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -5828,9 +5830,12 @@ function AppCore() {
             if (sidebarPopout) setNavPopoutOpen(false);
             return handleSendFromHome(text);
           }}
-          // The example row sends nothing: it opens Home, whose examples are
-          // one click away. newTask also closes the popout drawer.
-          onOpenExamples={newTask}
+          // The example row sends nothing: it opens Home with the examples
+          // showing. newTask also closes the popout drawer.
+          onOpenExamples={() => {
+            newTask();
+            setExamplesRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -5928,6 +5933,8 @@ function AppCore() {
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
             onPrefillConsumed={() => setComposerPrefill(null)}
+            examplesRequest={examplesRequest}
+            onExamplesRequestConsumed={() => setExamplesRequest(0)}
             codingModeEnabled={false}
           />
         )}

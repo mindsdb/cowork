@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { composeModeMessage } from '../components/taskmodes/taskModes';
+import { composeModeMessage, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
 import { completeStep } from '../components/onboarding/onboardingStore';
 import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -260,6 +260,10 @@ export default function HomeView({
   // copied it into the draft, which keeps the user's edits; replaying it on
   // the way back would overwrite them.
   onPrefillConsumed,
+  // The checklist's "Try an example" row asks Home to show the examples. Any
+  // truthy value is a request; Home answers once and reports it consumed.
+  examplesRequest = 0,
+  onExamplesRequestConsumed,
   codingModeEnabled = false,
   codingModelDefault,
   harnessClaudeCodeEnabled,
@@ -445,6 +449,14 @@ export default function HomeView({
     trackComposerReady(handoff.entrySource, exampleId, prefilled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
+
+  // Shows the examples once the composer is usable, like the console handoff.
+  useEffect(() => {
+    if (!examplesRequest || !composerUsable || codingModeEnabled) return;
+    setTaskMode(FEATURED_EXAMPLES_MODE);
+    onExamplesRequestConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examplesRequest, composerUsable, codingModeEnabled]);
 
   return (
     <div
