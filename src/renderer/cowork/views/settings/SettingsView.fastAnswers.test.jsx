@@ -95,11 +95,21 @@ describe('the Fast answers with Jev switch', () => {
     ['an older server', undefined],
     ['another provider', { mode: 'llm' }],
     ["an org's own decision model", { mode: 'own' }],
+    ['zero data retention', { mode: 'zdr' }],
   ])('is absent on %s, where it would change nothing', async (_name, routing) => {
     render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
     await expandAdvanced();
     expect(screen.getByText('Max steps per task')).toBeInTheDocument();
     expect(screen.queryByLabelText(SWITCH)).toBeNull();
+  });
+
+  it('is replaced by an Off line under zero data retention', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'zdr' }, jevDecisionsEnabled: true })} />);
+    await expandAdvanced();
+
+    expect(screen.queryByLabelText(SWITCH)).toBeNull();
+    expect(screen.getByTestId('jev-zdr-off')).toHaveTextContent('Off');
+    expect(screen.getByText(/your organization has zero data retention/)).toBeInTheDocument();
   });
 
   it('shows off once the organization turned Jev off', async () => {

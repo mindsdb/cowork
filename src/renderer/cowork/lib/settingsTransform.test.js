@@ -1129,6 +1129,7 @@ describe('jev routing settings', () => {
     [{ mode: 'off' }, true],
     [{ mode: 'llm' }, false],
     [{ mode: 'own' }, false],
+    [{ mode: 'zdr' }, false],
     [null, false],
   ])('shows the Jev switch for routing %j: %s', (routing, shown) => {
     expect(showJevSwitch(routing)).toBe(shown);

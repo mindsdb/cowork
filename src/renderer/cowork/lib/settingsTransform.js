@@ -339,7 +339,8 @@ export function showRouterRoleRow(routing, routerProviderType) {
 /**
  * Whether Settings shows the "Fast answers with Jev" switch: only while turns
  * would route with Jev on MindsHub (`jev`) or have it turned off (`off`). On
- * other providers, or with an org's own decision model, it would change nothing.
+ * other providers, with an org's own decision model, or under zero data
+ * retention (`zdr`, where MindsHub refuses Jev), it would change nothing.
  */
 export function showJevSwitch(routing) {
   return routing?.mode === 'jev' || routing?.mode === 'off';
