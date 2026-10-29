@@ -53,11 +53,22 @@ describe('incomplete reason under the answer', () => {
     ['handback_verifier_failure', "Stopped early: the agent couldn't confirm the task was done."],
     ['handback_stuck', 'Stopped early: the agent judged the task stuck.'],
     ['retry_exhausted', 'Stopped early: the task kept failing.'],
+    ['question_unanswered', 'Stopped early: a question went unanswered.'],
+    ['content_filter', "Stopped early: the model's content filter blocked a reply."],
   ])('names %s with its own line', (reason, line) => {
     render(<ChatView task={taskWith(hydrateMessagesFromServerEvents(persistedTurn(
       { status: 'incomplete', incomplete_details: { reason } },
     )))} />);
     expect(screen.getByTestId('incomplete-reason')).toHaveTextContent(line);
+  });
+
+  it('says a question went unanswered on a live answer, not the generic line', () => {
+    render(<ChatView task={taskWith([
+      { role: 'user', content: 'create approved.txt if I say yes' },
+      { role: 'assistant', content: 'I asked: "Create approved.txt?" and haven\'t had an answer.', incompleteReason: 'question_unanswered' },
+    ])} />);
+    expect(screen.getByRole('note')).toHaveTextContent('Stopped early: a question went unanswered.');
+    expect(screen.queryByText('Stopped before it finished.')).toBeNull();
   });
 
   it('falls back to a generic line for a reason it does not know', () => {
