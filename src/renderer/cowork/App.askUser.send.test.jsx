@@ -1496,10 +1496,9 @@ describe('two events in one synchronous burst', () => {
 
     const handle = streams[streams.length - 1];
     // Both events in the same tick, with no await between them — the burst the
-    // exactly-once property has to survive. It rests on the drainedQuestionsRef
-    // entry added for this question_id: onEvent does not commit between
-    // events, so messageQueueRef still holds the queue when the second event
-    // runs.
+    // exactly-once property has to survive. Two guards hold it, and this test
+    // does not isolate either: the drainedQuestionsRef entry for this
+    // question_id, and clearQueueForTask emptying messageQueueRef at once.
     await act(async () => {
       handle.opts.onEvent(ASK_EVENT);
       handle.opts.onEvent({ ...ASK_EVENT, question_id: 'ask:1' });

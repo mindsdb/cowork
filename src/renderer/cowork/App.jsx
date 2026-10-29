@@ -1140,6 +1140,14 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
+  // Every queue write goes through here so messageQueueRef stays in step:
+  // stream events in one network read run before any commit, and the queue
+  // drain reads the ref between them. `update` must be pure.
+  const updateMessageQueue = (update) => {
+    setMessageQueue(update);
+    messageQueueRef.current = update(messageQueueRef.current);
+  };
+
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
@@ -1149,10 +1157,10 @@ function AppCore() {
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
     const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
-    setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
-    setMessageQueue((prev) => {
+    updateMessageQueue((prev) => {
       const arr = (prev[taskId] || []).filter((q) => q.id !== itemId);
       const next = { ...prev };
       if (arr.length === 0) delete next[taskId];
@@ -1161,38 +1169,26 @@ function AppCore() {
     });
   };
   const popQueueHead = (taskId) => {
-    const arr = messageQueueRef.current[taskId] || [];
-    if (arr.length === 0) return null;
-    const [head, ...rest] = arr;
-    setMessageQueue((prev) => {
-      const next = { ...prev };
-      if (rest.length === 0) delete next[taskId];
-      else next[taskId] = rest;
-      return next;
-    });
+    const head = (messageQueueRef.current[taskId] || [])[0];
+    if (!head) return null;
+    removeFromQueue(taskId, head.id);
     return head;
   };
   // When the server mints a canonical id for a task that was streaming under
   // a tmp id, move any messages queued under the old id(s) onto the new one.
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
-  // Both keep messageQueueRef in lockstep: stream events in one network read
-  // run before any commit, and the queue drain reads the ref between them.
   const migrateQueuedMessages = (fromIds, toId) => {
-    const migrate = (queues) => mergeQueuesForAdoptedId(queues, fromIds, toId);
-    setMessageQueue(migrate);
-    messageQueueRef.current = migrate(messageQueueRef.current);
+    updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
-    const clear = (queues) => {
+    updateMessageQueue((queues) => {
       if (!queues[taskId]) return queues;
       const next = { ...queues };
       delete next[taskId];
       return next;
-    };
-    setMessageQueue(clear);
-    messageQueueRef.current = clear(messageQueueRef.current);
+    });
   };
 
   // Fans lib/stampUserMessageId out over the ids a stream can be filed under
@@ -1448,13 +1444,8 @@ function AppCore() {
       else delete next[cidToCancel];
       return next;
     };
-    setMessageQueue(withoutQueuedAtClick);
-    /*
-     * Prune the ref in lockstep: the drain below reads messageQueueRef
-     * synchronously and the state→ref effect hasn't run yet, so without this
-     * it would still see (and could re-pick) the dropped messages.
-     */
-    messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
+    // The drain below reads messageQueueRef before the state→ref effect runs.
+    updateMessageQueue(withoutQueuedAtClick);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     releaseSlotClaim(cidToCancel);
