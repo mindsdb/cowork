@@ -6118,6 +6118,7 @@ function AppCore() {
             scheduled={scheduled}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -6145,6 +6146,7 @@ function AppCore() {
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
             projects={runnableProjects}
             models={modelOptions}
+            modelMeta={modelMeta}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
