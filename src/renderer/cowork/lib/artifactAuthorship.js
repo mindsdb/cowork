@@ -1,7 +1,10 @@
 // Whose artifact this is, as far as the viewer is allowed to know (ENG-2979).
 //
-// The server never names another member: shared_resources.py returns an
-// actor's identity only to that actor. So the UI can say "not you", never who.
+// shared_resources.py never names another member: it returns an actor's
+// identity only to that actor. So this marker can say "not you", never who.
+// With live apps on, two places name another member, and only to someone that
+// member shared with: `ownerEmail` in the shared-live-apps list, and
+// `receivedFrom` on a copy's card in the artifact list (lib/liveAppSharing.js).
 //
 // Keyed on `role`, never on `canEdit`: the server lowers `canEdit` for an owner
 // who lacks the `artifact.manage` product permission, and that artifact is

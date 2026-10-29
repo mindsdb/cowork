@@ -126,3 +126,44 @@ export function validateAndSaveConnector(
   connectorId: string,
   payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
 ): Promise<SavedConnectorResult>;
+
+export const CONNECTIONS_VAULT_KEEP: string;
+export const SHAREPOINT_UNAVAILABLE_MESSAGE: string;
+
+export interface SharePointKey {
+  userLabel?: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  siteUrls: string;
+}
+export interface SharePointSaved { ok: boolean; name: string; user_label: string | null }
+export interface SharePointLibrary { id: string; name: string }
+export interface SharePointItem {
+  id: string;
+  name: string;
+  size: number;
+  kind: 'file' | 'folder' | 'other';
+  modified: string | null;
+}
+export interface SharePointImportResult {
+  imported: { path: string; size: number }[];
+  skipped: { path: string; reason: string }[];
+}
+export function createSharePointConnection(key: SharePointKey & { name: string }): Promise<SharePointSaved>;
+export function editSharePointConnection(name: string, key: SharePointKey): Promise<SharePointSaved>;
+export function listSharePointLibraries(name: string, site: string): Promise<{ libraries: SharePointLibrary[] }>;
+export function listSharePointChildren(
+  name: string,
+  page: { site: string; driveId: string; itemId?: string; cursor?: string | null },
+): Promise<{ items: SharePointItem[]; cursor: string | null }>;
+export function importSharePointFiles(
+  projectName: string,
+  pick: { connection: string; site: string; driveId: string; folder?: string; itemIds: string[] },
+): Promise<SharePointImportResult>;
+
+export interface LiveAppPreviewLease { id: string; intent: string }
+export function createLiveAppPreview(launchId: string): Promise<LiveAppPreviewLease>;
+export function keepLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreview(id: string): Promise<void>;
+export function revokeLiveAppPreviews(): Promise<void>;

@@ -1,5 +1,6 @@
 import { diagnostic } from '../../shared/diagnostics';
 import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
@@ -17,6 +18,8 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -380,12 +383,15 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
   // the replay at the api boundary so the rest of the app sees a
   // consistent message shape regardless of whether the data came from
   // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
       .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
-    : [];
+    : undefined;
 
   return {
     id: conv.id,
@@ -623,12 +629,16 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
  * treated as an empty conversation on a 404 (the one benign case); any other
  * items failure is 'unavailable' so a real transcript is never silently blanked.
  *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
-export async function fetchSessionResult(id) {
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`),
-    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -719,6 +729,20 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
+  // MODEL_ROUTER_ID never leaves the renderer — it's how the
+  // composer represents "let this account's Settings decide"
+  // (modelCatalog.js). The server already treats a null/absent
+  // model as exactly that. With platform UI off, only the operator's
+  // picker (lib/modelPicker) sends a model, and App hands it only the
+  // models that picker offers. With it off, all callers use
+  // operator-configured role settings, including restored tasks.
+  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  // A per-task effort is available with platform UI on, and under the
+  // operator's picker for an effort it lets users pick on the model this
+  // question sends, a retried task's saved effort included. Omit the key
+  // otherwise so this request cannot override role settings.
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
   (async () => {
     try {
       bumpIdle();
@@ -727,20 +751,13 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          // MODEL_ROUTER_ID never leaves the renderer — it's how the
-          // composer represents "let this account's Settings decide"
-          // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that. With platform UI off, all callers use
-          // operator-configured role settings, including restored tasks.
-          model: (PLATFORM_UI && model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: sentModel,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // A per-task effort is available only with platform UI on. Omit
-          // the key otherwise so this request cannot override role settings.
-          ...(PLATFORM_UI && reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -1314,6 +1331,23 @@ export async function readProjectFile(projectName, path) {
   return req(`/projects/${enc(projectName)}/files/${safe}`);
 }
 
+export function listSharedProjectFiles(projectId) {
+  // Bounded so one hung request can't stall the access recheck that runs after it.
+  return req(`/shared-projects/${enc(projectId)}/files`, { cache: 'no-store', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function readSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return req(`/shared-projects/${enc(projectId)}/files/${safe}`, { cache: 'no-store' });
+}
+
+export async function downloadSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  const response = await authFetch(`${BASE}/shared-projects/${enc(projectId)}/files-raw/${safe}`, { cache: 'no-store' });
+  if (!response.ok) throw await responseError(response, 'Download unavailable');
+  return response.blob();
+}
+
 // HTML preview-mount for a project file — server registers the
 // parent dir under a token and returns `relUrl`, relative to BASE.
 // `url` is the absolute iframe `src`.
@@ -1516,12 +1550,6 @@ export async function mountArtifactPreview(path) {
 
 export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
-}
-
-// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
-// writes the result into the same artifact folder and returns its path.
-export async function exportArtifact(path, format) {
-  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
 }
 
 // Absolute "private" URL for an artifact's primary file: the
@@ -1884,6 +1912,25 @@ export async function deleteMemory(payload) {
   return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
+/* Whether the server removes the caller's whole memory in one step. A server
+   without the route answers 404 or 405, which means it offers no reset; any
+   other failure is the caller's to report. */
+export async function fetchMemoryCapabilities() {
+  try {
+    const capabilities = await req('/memory/capabilities');
+    return { canReset: capabilities?.canReset === true };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return { canReset: false };
+    throw err;
+  }
+}
+
+/* Removes all of the caller's learned memory: their profile, rules and
+   lessons, in every project of theirs. */
+export async function resetMemory() {
+  return req('/memory/all', { method: 'DELETE' });
+}
+
 export async function fetchSkills() {
   return req('/skills/');
 }
@@ -2004,6 +2051,78 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 // name, the two are deliberately distinct and must not be conflated.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+/** The document libraries of one site the connection names. */
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
+}
+
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
 // Predefined JSON specs in server/connectors/. Three calls:
@@ -2033,6 +2152,18 @@ export async function fetchConnectors({ includeUnavailable = false } = {}) {
 
 export async function fetchConnector(id) {
   return req(`/connectors/specs/${encodeURIComponent(id)}`);
+}
+
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch (err) {
+    return err?.status === 404;
+  }
 }
 
 export async function matchConnector(query, maxCandidates = 3) {
@@ -2290,6 +2421,93 @@ export async function activateArtifactVersion(path, md5) {
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
+
+export function createLiveAppPreview(launchId) {
+  return req('/live-apps/previews', { method: 'POST', body: JSON.stringify({ launchId }), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function keepLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}/keepalive`, { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function revokeLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS, keepalive: true });
+}
+
+export async function revokeLiveAppPreviews() {
+  try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
+  catch (error) { if (error.status !== 404) throw error; }
+}
+
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
 }
 
 export async function fetchBrowseStatus() {

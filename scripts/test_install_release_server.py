@@ -1,20 +1,33 @@
 """Release artifacts and preflight failures must preserve the reviewed selection."""
 
+import contextlib
+import datetime
 import hashlib
+import http.server
 import importlib.metadata
 import importlib.util
 import io
+import ipaddress
 import json
 import os
 from pathlib import Path
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
+from urllib.error import URLError
+from urllib.request import install_opener
 import zipfile
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
 spec = importlib.util.spec_from_file_location("install_release_server", Path(__file__).with_name("install_release_server.py"))
@@ -95,6 +108,68 @@ def git_project(directory, name, requirements=()):
     return "git+" + project.as_uri() + "@" + commit, commit
 
 
+def tls_authority(directory, name, host="127.0.0.1"):
+    """A throwaway root and a server certificate it signs for host, as PEM files."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"{name} root")])
+    usage = dict(digital_signature=True, content_commitment=False, key_encipherment=False, data_encipherment=False, key_agreement=False, encipher_only=False, decipher_only=False)
+    root = (
+        x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key())
+        .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=5)).not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(x509.KeyUsage(**usage, key_cert_sign=True, crl_sign=True), critical=True)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    server_key = ec.generate_private_key(ec.SECP256R1())
+    try:
+        alternative = x509.IPAddress(ipaddress.ip_address(host))
+    except ValueError:
+        alternative = x509.DNSName(host)
+    server = (
+        x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)])).issuer_name(subject).public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=5)).not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.KeyUsage(**usage, key_cert_sign=False, crl_sign=False), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(x509.SubjectAlternativeName([alternative]), critical=False)
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(key.public_key()), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    paths = {part: Path(directory) / f"{name}-{part}.pem" for part in ("root", "certificate", "key")}
+    paths["root"].write_bytes(root.public_bytes(serialization.Encoding.PEM))
+    paths["certificate"].write_bytes(server.public_bytes(serialization.Encoding.PEM))
+    paths["key"].write_bytes(server_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    paths["thumbprint"] = root.fingerprint(hashes.SHA1()).hex()
+    return paths
+
+
+@contextlib.contextmanager
+def https_server(authority, body=b"release bytes"):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(authority["certificate"], authority["key"])
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"https://127.0.0.1:{server.server_address[1]}/release"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class ReleaseTests(unittest.TestCase):
     def test_exact_artifact_contract_is_used(self):
         data = wheel()
@@ -133,14 +208,47 @@ class ReleaseTests(unittest.TestCase):
     def test_incomplete_install_cannot_replace_saved_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            cache = root / ".cowork-release-contracts"
+            tools = root / "tools"
+            cache = root / installer.CACHE_NAME
             cache.mkdir()
             (cache / "install-incomplete").touch()
-            python = root / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             python.parent.mkdir(parents=True)
             python.touch()
             with patch.object(installer.subprocess, "run", side_effect=AssertionError("Rejected environment was inspected for snapshot")):
-                self.assertEqual(installer.snapshot_installed("uv", root), cache)
+                self.assertEqual(installer.snapshot_installed("uv", tools), cache)
+
+    def test_cache_left_among_tools_moves_beside_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tools = root / "tools"
+            legacy = tools / installer.CACHE_NAME
+            legacy.mkdir(parents=True)
+            (legacy / "install-incomplete").touch()
+            moved = hashlib.sha256(b"cowork-server==1.0.0").hexdigest() + ".txt"
+            (legacy / moved).write_text(CONTRACT)
+            kept = hashlib.sha256(b"cowork-server==2.0.0").hexdigest() + ".txt"
+            (legacy / kept).write_text("stale\n")
+            cache = root / installer.CACHE_NAME
+            cache.mkdir()
+            (cache / kept).write_text(CONTRACT)
+            self.assertEqual(installer.contract_cache(tools), cache)
+            self.assertFalse(legacy.exists())
+            self.assertTrue((cache / "install-incomplete").is_file())
+            self.assertEqual((cache / moved).read_text(), CONTRACT)
+            self.assertEqual((cache / kept).read_text(), CONTRACT)
+
+    def test_moved_incomplete_marker_still_reports_a_changed_install(self):
+        # The app rolls back on exit 1 and keeps the old server on exit 2, so a
+        # marker lost in the move would leave a half-replaced server running.
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory) / "tools"
+            (tools / installer.CACHE_NAME).mkdir(parents=True)
+            (tools / installer.CACHE_NAME / "install-incomplete").touch()
+            with patch.object(installer.subprocess, "check_output", return_value=str(tools)), patch.object(installer, "prepare", side_effect=ValueError("missing contract")), patch.object(installer.subprocess, "run") as run, patch.object(sys, "argv", ["installer", "--", "tool", "install", "cowork-server==1.0.0"]):
+                self.assertEqual(installer.main(), 1)
+                run.assert_not_called()
+            self.assertTrue((Path(directory) / installer.CACHE_NAME / "install-incomplete").is_file())
 
     def test_cli_reports_preflight_failure_without_replacement(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(installer.subprocess, "check_output", return_value=directory), patch.object(installer, "prepare", side_effect=ValueError("missing contract")), patch.object(installer.subprocess, "run") as run, patch.object(sys, "argv", ["installer", "--", "tool", "install", "cowork-server==1.0.0"]):
@@ -320,6 +428,11 @@ class ReleaseTests(unittest.TestCase):
                 python = tools / "cowork-server" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                 version = actual_output([str(python), "-c", "from importlib.metadata import version; print(version('fixture-dependency'))"], text=True)
                 self.assertEqual(version.strip(), "1.0.0")
+                # The app reads the installed version from this listing, which
+                # uv refuses to print while a non-tool folder sits among tools.
+                listing = actual_run([shutil.which("uv"), "tool", "list"], capture_output=True, text=True)
+                self.assertEqual(listing.returncode, 0, listing.stderr)
+                self.assertIn("cowork-server v1.0.0", listing.stdout)
                 # An override must not hide the server's original Anton range:
                 # reject the incompatible Git source before touching a working tool.
                 candidate = root / "cowork_server-2.0.0-py3-none-any.whl"
@@ -337,7 +450,7 @@ class ReleaseTests(unittest.TestCase):
                         installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==2.0.0"], state=state)
                     self.assertFalse(state.changed, "incompatible source reached live tool replacement")
                     self.assertEqual(tool_files(), before)
-                    self.assertFalse((tools / ".cowork-release-contracts/install-incomplete").exists())
+                    self.assertFalse((root / installer.CACHE_NAME / "install-incomplete").exists())
                     native_rejected = root / "native-rejected" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                     with self.assertRaises(subprocess.CalledProcessError):
                         installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==2.0.0"], native_rejected)
@@ -349,7 +462,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(version.strip(), "1.0.0")
                 with patch.object(installer, "verify", side_effect=ValueError("rejected inventory")), patch.object(sys, "argv", ["installer", "--uv", shutil.which("uv"), "--", "tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"]):
                     self.assertEqual(installer.main(), 1)
-                marker = tools / ".cowork-release-contracts/install-incomplete"
+                marker = root / installer.CACHE_NAME / "install-incomplete"
                 self.assertTrue(marker.is_file())
                 installer.install(shutil.which("uv"), ["tool", "install", "--force", "--reinstall", "cowork-server==1.0.0"])
                 self.assertFalse(marker.exists())
@@ -387,6 +500,104 @@ class ReleaseTests(unittest.TestCase):
                         installer.install(shutil.which("uv"), ["tool", "install", "cowork-server==1.0.0"], root / "bad-hash" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
                     self.assertIn(b"Hash mismatch", failure.exception.stderr)
 
+
+class TrustTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(install_opener, None)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.directory = Path(directory.name)
+
+    def test_bundled_roots_verify_a_server_the_platform_does_not_know(self):
+        bundled = tls_authority(self.directory, "bundled")
+        with https_server(bundled) as url:
+            with self.assertRaisesRegex(URLError, "CERTIFICATE_VERIFY_FAILED"):
+                installer.download(url)
+            installer.trust_bundled_roots(bundled["root"])
+            self.assertEqual(installer.download(url), b"release bytes")
+
+    def test_platform_roots_still_verify_beside_the_bundle(self):
+        # SSL_CERT_FILE stands in for the platform's roots: OpenSSL's default
+        # paths read it everywhere, Windows included. A fix that passed the
+        # bundle as create_default_context(cafile=...) would drop it.
+        platform, bundled = tls_authority(self.directory, "platform"), tls_authority(self.directory, "bundled")
+        with patch.dict(os.environ, {"SSL_CERT_FILE": str(platform["root"])}), https_server(platform) as url:
+            installer.trust_bundled_roots(bundled["root"])
+            self.assertEqual(installer.download(url), b"release bytes")
+
+    def test_an_unrelated_root_or_a_wrong_host_still_fails(self):
+        trusted, unrelated = tls_authority(self.directory, "trusted"), tls_authority(self.directory, "unrelated")
+        wrong_host = tls_authority(self.directory, "wrong-host", host="example.invalid")
+        for bundled, server, reason in ((trusted, unrelated, "unable to get local issuer"), (wrong_host, wrong_host, "mismatch")):
+            with self.subTest(reason=reason), https_server(server) as url:
+                installer.trust_bundled_roots(bundled["root"])
+                with self.assertRaisesRegex(URLError, f"CERTIFICATE_VERIFY_FAILED.*{reason}"):
+                    installer.download(url)
+
+    def test_cli_trusts_the_bundle_before_any_download(self):
+        bundled = tls_authority(self.directory, "bundled")
+        with https_server(bundled) as url:
+            for arguments, fetched in ((["--ca-file", str(bundled["root"])], [b"release bytes"]), ([], [])):
+                received = []
+
+                def fetch(*args):
+                    received.append(installer.download(url))
+                    raise ValueError("stop before install")
+
+                argv = ["installer", *arguments, "--", "tool", "install", "cowork-server==1.0.0"]
+                with self.subTest(arguments=arguments), patch.object(installer.subprocess, "check_output", return_value=str(self.directory)), patch.object(installer, "prepare", side_effect=fetch), patch.object(installer.subprocess, "run") as run, patch.object(sys, "argv", argv):
+                    # Exit 2: a failed download, verified or not, replaced nothing.
+                    self.assertEqual(installer.main(), 2)
+                    run.assert_not_called()
+                    self.assertEqual(received, fetched)
+                install_opener(None)
+
+
+# GlobalSign Root CA - R3 (pypi.org, files.pythonhosted.org) and ISRG Root X1
+# (raw.githubusercontent.com). A fresh Windows downloads both only on demand.
+# SHA-256 fingerprints; the workflow removes the same roots by SHA-1 thumbprint.
+PUBLIC_ROOTS_WINDOWS_FETCHES = {"cbb522d7b7f127ad6a0113865bdf1cd4102e7d0759af635a7cf4720dc963c53b", "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6"}
+
+
+@unittest.skipUnless(os.name == "nt" and os.environ.get("COWORK_PUBLIC_ROOTS"), "needs a Windows store without PyPI's and GitHub's roots, and the runtime's roots file")
+class WindowsStoreTests(unittest.TestCase):
+    """Real downloads on a Windows store trimmed to what a fresh machine holds."""
+
+    def setUp(self):
+        self.addCleanup(install_opener, None)
+        self.bundled = Path(os.environ["COWORK_PUBLIC_ROOTS"])
+
+    def test_the_store_lacks_the_roots_windows_fetches_on_demand(self):
+        present = {hashlib.sha256(der).hexdigest() for store in ("ROOT", "CA") for der, encoding, _ in ssl.enum_certificates(store) if encoding == "x509_asn"}
+        self.assertFalse(PUBLIC_ROOTS_WINDOWS_FETCHES & present)
+
+    def test_downloads_fail_without_the_bundled_roots(self):
+        for url in ("https://pypi.org/pypi/cowork-server/json", f"https://raw.githubusercontent.com/mindsdb/cowork-server/staging/{installer.CONTRACT_MEMBER}"):
+            with self.subTest(url=url), self.assertRaisesRegex(URLError, "CERTIFICATE_VERIFY_FAILED"):
+                installer.download(url)
+
+    def test_bundled_roots_reach_pypi_and_github(self):
+        installer.trust_bundled_roots(self.bundled)
+        metadata = json.loads(installer.download("https://pypi.org/pypi/cowork-server/json"))
+        artifact = next(item for item in metadata["urls"] if item["filename"].endswith("-py3-none-any.whl"))
+        self.assertEqual(hashlib.sha256(installer.download(artifact["url"])).hexdigest(), artifact["digests"]["sha256"])
+        with tempfile.TemporaryDirectory() as directory:
+            release = installer.prepare(f"git+{installer.REPOSITORY}@staging", Path(directory))
+        self.assertIn("anton-agent==", release.contract)
+
+    def test_a_root_only_in_the_windows_store_still_verifies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            organization = tls_authority(directory, "organization")
+            with https_server(organization) as url:
+                subprocess.run(["certutil", "-addstore", "Root", str(organization["root"])], check=True, capture_output=True)
+                try:
+                    installer.trust_bundled_roots(self.bundled)
+                    self.assertEqual(installer.download(url), b"release bytes")
+                finally:
+                    subprocess.run(["certutil", "-delstore", "Root", organization["thumbprint"]], check=True, capture_output=True)
+                installer.trust_bundled_roots(self.bundled)
+                with self.assertRaisesRegex(URLError, "CERTIFICATE_VERIFY_FAILED"):
+                    installer.download(url)
 
 
 if __name__ == "__main__":
