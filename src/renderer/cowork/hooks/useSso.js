@@ -42,7 +42,10 @@ export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refr
     ssoBusyRef.current = true;
     setSsoError('');
     try {
-      const loginResult = await host.mindshubLogin();
+      // A login that throws (a token store that cannot be written, a dropped
+      // IPC call) fails the same way as one that reports failure, so no
+      // caller is left with an unhandled rejection and a stale screen.
+      const loginResult = await host.mindshubLogin().catch((e) => ({ ok: false, reason: e?.message }));
       if (!loginResult?.ok) {
         // ENG-761: this used to silently return — the browser said
         // "You're authorized!" while the app showed nothing. Surface the

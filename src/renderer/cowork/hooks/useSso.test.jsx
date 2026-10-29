@@ -86,6 +86,16 @@ describe('useSso', () => {
     expect(d.refreshData).not.toHaveBeenCalled();
   });
 
+  it('a login that throws fails like one that reports failure, without rejecting', async () => {
+    hostMock.host.mindshubLogin.mockRejectedValue(new Error('keychain locked'));
+    const { result, d } = await mount();
+    await act(async () => { await expect(result.current.handleSsoSignIn()).resolves.toBeUndefined(); });
+    expect(result.current.ssoError).toBe('keychain locked');
+    expect(d.setSettingsSection).toHaveBeenCalledWith('account');
+    expect(d.setSettingsOpen).toHaveBeenCalledWith(true);
+    expect(d.refreshData).not.toHaveBeenCalled();
+  });
+
   it('counts a provisioning refusal (402/upgradeRequired) without blocking sign-in', async () => {
     hostMock.host.mindshubFinalize.mockResolvedValue({ upgradeRequired: true });
     const { result } = await mount();
