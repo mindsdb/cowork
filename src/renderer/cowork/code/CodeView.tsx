@@ -75,6 +75,7 @@ export default function CodeView({
   onOpenTasks = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
+  onConnectMindsHub,
   active = true,
   onSessionsChange,
   onSelectionChange,
@@ -103,6 +104,7 @@ export default function CodeView({
   onOpenTasks?: (projectId?: string | null) => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
+  onConnectMindsHub?: () => Promise<void>;
   active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
@@ -483,6 +485,10 @@ export default function CodeView({
             modelMeta={modelMeta}
             catalog={catalog}
             onCreate={createTask}
+            onConnectMindsHub={onConnectMindsHub ? async () => {
+              await onConnectMindsHub();
+              setActionError('');
+            } : undefined}
             projects={projects.projects}
             selectedProjectId={projects.selectedId}
             connections={connections}

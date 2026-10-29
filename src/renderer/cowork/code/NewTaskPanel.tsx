@@ -24,6 +24,14 @@ import { ComposerAddMenu } from './ComposerAddMenu';
 import { planModeCommand } from './planModeCommand';
 import type { CodingCatalog } from './useCodingCatalog';
 
+// cowork-server refuses a Code task without a MindsHub key with this message
+// and no error code, from the task route and the engine alike.
+const MINDSHUB_NOT_CONNECTED = 'MindsHub is not connected';
+
+function mindsHubNotConnected(error: string): boolean {
+  return error.startsWith(MINDSHUB_NOT_CONNECTED);
+}
+
 export function NewTaskPanel({
   suspended = false,
   busy,
@@ -41,6 +49,7 @@ export function NewTaskPanel({
   onProjectConnectionsChange,
   onCreateProject = onOpenProjectSettings,
   onCreate,
+  onConnectMindsHub,
   catalog,
 }: {
   suspended?: boolean;
@@ -59,9 +68,13 @@ export function NewTaskPanel({
   onProjectConnectionsChange?: () => Promise<void> | void;
   onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  // Offered when a task is refused for want of MindsHub; absent where the app
+  // has no sign-in to offer.
+  onConnectMindsHub?: () => Promise<void>;
   catalog?: CodingCatalog;
 }) {
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [taskMode, setTaskMode] = useState<TaskMode>('build');
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
@@ -398,7 +411,28 @@ export function NewTaskPanel({
             </div>
           )}
         </div>
-        {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
+        {onConnectMindsHub && mindsHubNotConnected(error) ? (
+          <Alert variant="danger">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>Code runs on MindsHub. Connect your MindsHub account to start a task.</span>
+              <Button
+                size="sm"
+                variant="subtle"
+                disabled={connecting}
+                onClick={async () => {
+                  setConnecting(true);
+                  try {
+                    await onConnectMindsHub();
+                  } finally {
+                    setConnecting(false);
+                  }
+                }}
+              >
+                {connecting ? 'Connecting…' : 'Connect MindsHub'}
+              </Button>
+            </div>
+          </Alert>
+        ) : (error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
         <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
       </div>
     </main>

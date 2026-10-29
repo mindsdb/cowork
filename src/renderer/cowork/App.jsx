@@ -6256,6 +6256,7 @@ function AppCore() {
               onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
+              onConnectMindsHub={!ssoConnected && host.isElectron ? handleSsoSignIn : undefined}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
               onAttentionSelect={selectCodingSession}

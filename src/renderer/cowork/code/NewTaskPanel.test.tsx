@@ -200,6 +200,34 @@ describe('NewTaskPanel', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Plan a timer', taskMode: 'plan', permissionMode: 'supervised' })));
   });
 
+  it('offers to connect MindsHub when a task is refused for want of it', async () => {
+    const user = userEvent.setup();
+    let finish = () => {};
+    const onConnectMindsHub = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<NewTaskPanel busy={false} error="MindsHub is not connected. Sign in or configure a MindsHub API key first." defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} onConnectMindsHub={onConnectMindsHub} />);
+    expect(screen.getByText('Code runs on MindsHub. Connect your MindsHub account to start a task.')).toBeInTheDocument();
+    expect(screen.queryByText(/configure a MindsHub API key/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Connect MindsHub' }));
+
+    expect(onConnectMindsHub).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Connecting…' })).toBeDisabled();
+    await act(async () => finish());
+    expect(screen.getByRole('button', { name: 'Connect MindsHub' })).toBeEnabled();
+  });
+
+  it('shows the refusal as is when there is no sign-in to offer', () => {
+    render(<NewTaskPanel busy={false} error="MindsHub is not connected. Sign in or configure a MindsHub API key first." defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} />);
+    expect(screen.getByText('MindsHub is not connected. Sign in or configure a MindsHub API key first.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect MindsHub' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer MindsHub for an unrelated task failure', () => {
+    render(<NewTaskPanel busy={false} error="The folder could not be read." defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} onConnectMindsHub={vi.fn(async () => {})} />);
+    expect(screen.getByText('The folder could not be read.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect MindsHub' })).not.toBeInTheDocument();
+  });
+
   it('does not offer planning on a runtime that has not advertised it', async () => {
     const user = userEvent.setup();
     render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} />);
