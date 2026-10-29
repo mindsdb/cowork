@@ -14,8 +14,19 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import {
-  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync,
+  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAudienceAndSync,
 } from '../lib/skillsStore';
+import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
+import SkillShareDialog from '../components/SkillShareDialog';
+import {
+  canEditSkill,
+  groupSkillsBySection,
+  isPrivateAudience,
+  skillAudience,
+  skillAudienceBadge,
+  skillOwnerEmail,
+  skillSection,
+} from '../lib/orgSharing';
 import { relativeAge } from '../lib/formatTime';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import {
@@ -64,6 +75,9 @@ function isOwnSharedSkill(skill) {
   return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
 }
 
+/* The detail note on a team or org-wide skill someone else shares. */
+const ALWAYS_APPLIED_DETAIL = "It's applied to every task, and only its owner can change it.";
+
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
 const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
 /* Shown in the detail view and the Edit modal, since an edit or the switch
@@ -79,25 +93,30 @@ function readOnlyNote(skill) {
 
 // A kit row: name, description, and inline meta (project, stable creator,
 // last update).
-function SkillRow({ skill, onClick, projects = [] }) {
+function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
-  const author = sharedResourceAttribution(skill)?.createdBy;
+  /* With org sharing on, a skill someone else owns names them; the caller's
+     own skills need no byline. */
+  const sharedBy = orgSharing && !canEditSkill(skill) ? skillOwnerEmail(skill) : null;
+  const author = orgSharing ? null : sharedResourceAttribution(skill)?.createdBy;
   /* `shared: true` marks the creator's own shared skill and one someone else
      shares alike; the detail view's actions tell the two apart. */
-  const shared = isSharedSkill(skill);
+  const shared = !orgSharing && isSharedSkill(skill);
+  const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
   return (
     <ListItem
       as="article"
       aria-label={skill.label}
       leading={<span className="font-mono text-sm font-medium">/</span>}
       title={skill.label}
-      badges={(skill.enabled === false || skill.isBuiltin || shared) && (
+      badges={(skill.enabled === false || skill.isBuiltin || shared || audience) && (
         <>
           {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
           {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
           {shared && <Badge variant="muted" size="sm">Shared</Badge>}
+          {audience && <Badge variant="muted" size="sm">{audience}</Badge>}
         </>
       )}
       description={skill.description || skill.declarative?.slice(0, 120) || '—'}
@@ -109,6 +128,7 @@ function SkillRow({ skill, onClick, projects = [] }) {
             <span className="truncate">{project || 'All projects'}</span>
           </span>
           {author && <span className="max-w-[160px] truncate" title={author}>{author}</span>}
+          {sharedBy && <span className="max-w-[220px] truncate" title={sharedBy}>Shared by {sharedBy}</span>}
           {age && <span className="whitespace-nowrap">Updated {age}</span>}
         </>
       )}
@@ -444,6 +464,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      held, rather than the list's older one. */
   const [pendingSharing, setPendingSharing] = useState(() => new Map());
   const searchRef = useRef(null);
+  /* Org sharing (ENG-3787) groups the list by who each skill reaches and
+     replaces the "Who can use it" select with the Share dialog. Off on every
+     other build, where the page is as it was. */
+  const sharingCapabilities = useSharingCapabilities();
+  const orgSharingOn = sharingCapabilities.enabled;
+  const teamsState = useHubTeams(orgSharingOn);
+  const orgSharing = orgSharingOn
+    ? { teams: teamsState.teams, orgName: sharingCapabilities.org_name }
+    : null;
+  const [sharingSkill, setSharingSkill] = useState(null);
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
   const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
@@ -529,6 +559,23 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     }
   };
 
+  const saveAudience = async (audience) => {
+    const skill = sharingSkill;
+    if (!skill) return;
+    // Throws on a refusal, which the dialog shows in place.
+    await setSkillAudienceAndSync(skill.slug || skill.label, audience);
+    setSharingSkill(null);
+    showToast(`Updated who can use ${skill.label}.`, 'success');
+  };
+
+  /* Whether the open skill offers Share: the caller's own, on an org. */
+  const canOpenShare = (skill) => orgSharingOn && !skill.isBuiltin && canEditSkill(skill);
+  /* An org skill someone else owns keeps no Edit or Uninstall at all. */
+  const hidesOwnerActions = (skill) => orgSharingOn && !canEditSkill(skill);
+  /* Team and org-wide skills someone else owns are always applied. */
+  const alwaysApplied = (skill) => orgSharingOn && !canEditSkill(skill)
+    && (skillSection(skill) === 'team' || skillSection(skill) === 'org');
+
   const startNew  = () => setModalSkill(undefined);
   const startEdit = (skill) => {
     if (canUseSharedResource(skill, 'canEdit')) setModalSkill(skill);
@@ -563,7 +610,13 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             current={selected.label}
             actions={
               <>
-                <Switch
+                {canOpenShare(selected) && (
+                  <Button variant="default" onClick={() => setSharingSkill(selected)}>
+                    {Ico.people(14)}
+                    Share
+                  </Button>
+                )}
+                {!alwaysApplied(selected) && <Switch
                   checked={selected.enabled ?? true}
                   aria-label="Skill enabled"
                   disabled={!canUseSharedResource(selected, 'canDisable')}
@@ -593,11 +646,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                       showToast(err.message || 'Could not update skill.');
                     }
                   }}
-                />
+                />}
                 <OverflowMenu
                   items={[
                     { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                    {
+                    ...(hidesOwnerActions(selected) ? [] : [{
                       id: 'edit', label: 'Edit', icon: Ico.edit(14),
                       disabled: !canUseSharedResource(selected, 'canEdit'),
                       hint: !canUseSharedResource(selected, 'canEdit')
@@ -615,7 +668,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                         : undefined,
                       title: !canUseSharedResource(selected, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
                       onClick: () => remove(selected),
-                    },
+                    }]),
                   ]}
                 />
               </>
@@ -623,16 +676,24 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           />
           <div className="pt-6 px-8 pb-8">
 
-          <SharedResourceAttribution
-            resource={selected}
-            className={canUseSharedResource(selected, 'canEdit') && !isOwnSharedSkill(selected) ? 'mb-4' : 'mb-2'}
-          />
-          {!canUseSharedResource(selected, 'canEdit') && (
+          {!orgSharingOn && (
+            <SharedResourceAttribution
+              resource={selected}
+              className={canUseSharedResource(selected, 'canEdit') && !isOwnSharedSkill(selected) ? 'mb-4' : 'mb-2'}
+            />
+          )}
+          {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
+            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
+              {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
+              {alwaysApplied(selected) ? ALWAYS_APPLIED_DETAIL : "You can use it but can't change it."}
+            </p>
+          )}
+          {!orgSharingOn && !canUseSharedResource(selected, 'canEdit') && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
               {readOnlyNote(selected)}
             </p>
           )}
-          {isOwnSharedSkill(selected) && (
+          {!orgSharingOn && isOwnSharedSkill(selected) && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
               {OWN_SHARED_CHANGE_NOTE}
             </p>
@@ -648,7 +709,17 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           {/* Who can use it: only on the caller's own skill, where the server
               lets them share it. */}
-          {canShareSkill(selected) && (
+          {canOpenShare(selected) && (
+            <div className="mb-4">
+              <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
+              <p className="m-0 text-[13.5px] text-ink leading-[1.5]">
+                {isPrivateAudience(skillAudience(selected))
+                  ? 'Only me'
+                  : skillAudienceBadge(selected, orgSharing)}
+              </p>
+            </div>
+          )}
+          {!orgSharingOn && canShareSkill(selected) && (
             <div className="mb-4">
               <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
               <Select
@@ -712,11 +783,28 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               style: { flex: 1 },
             }}
           >
-            <ListGroup className={LIST_CLASS}>
-              {sorted.map((skill) => (
-                <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
-              ))}
-            </ListGroup>
+            {orgSharing ? (
+              <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (
+                  <ListGroup
+                    key={group.id}
+                    aria-label={group.title}
+                    title={<h2>{group.title}</h2>}
+                    description={group.hint}
+                  >
+                    {group.skills.map((skill) => (
+                      <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} />
+                    ))}
+                  </ListGroup>
+                ))}
+              </div>
+            ) : (
+              <ListGroup className={LIST_CLASS}>
+                {sorted.map((skill) => (
+                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
+                ))}
+              </ListGroup>
+            )}
           </CollectionState>
         </>
       )}
@@ -736,6 +824,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onClose={() => setRemoving(null)}
         onConfirm={() => { const skill = removing; setRemoving(null); if (skill) confirmRemove(skill); }}
       />
+      {orgSharingOn && (
+        <SkillShareDialog
+          skill={sharingSkill}
+          capabilities={sharingCapabilities}
+          onClose={() => setSharingSkill(null)}
+          onSave={saveAudience}
+        />
+      )}
       <SkillModal
         open={modalSkill !== null}
         onClose={closeModal}

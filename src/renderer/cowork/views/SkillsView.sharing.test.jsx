@@ -10,7 +10,11 @@ const api = vi.hoisted(() => ({
   saveSkill: vi.fn(),
   deleteSkill: vi.fn(),
   setSkillSharing: vi.fn(),
+  setSkillAudience: vi.fn(),
   uploadSkillFile: vi.fn(),
+  // Org sharing (ENG-3787) is off here: this file is the per-person build.
+  fetchSkillSharingCapabilities: vi.fn(async () => ({ enabled: false })),
+  fetchHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 const hostState = vi.hoisted(() => ({ isWeb: true }));

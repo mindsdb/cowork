@@ -49,8 +49,17 @@ export type CoworkSkill = {
   updatedAt?: string;
   capabilities?: SkillCapabilities;
   attribution?: SkillAttribution;
+  /** Org sharing (ENG-3787): who the skill reaches. Hosted org mode only. */
+  sharing?: SkillAudience;
+  /** Which Skills page section the caller sees it in. */
+  section?: 'mine' | 'shared_with_me' | 'team' | 'org';
+  can_edit?: boolean;
+  owner?: { id: string | null; email: string | null };
   [key: string]: unknown;
 };
+
+/** The body of `PUT /skills/{slug}/sharing`, and a skill's `sharing`. */
+export type SkillAudience = { org: boolean; team_ids: string[]; emails: string[] };
 
 /** `loaded` is the only status whose absence/presence decision came from a
  *  valid server response. A refresh moves the status to `loading` while the
@@ -93,5 +102,7 @@ export function useSkillNames(): Set<string>;
 export function saveSkillAndSync(payload: SkillSavePayload, isEdit?: boolean): Promise<CoworkSkill>;
 /** PUT /skills/{label}/sharing, then a reload that starts after it. */
 export function setSkillSharingAndSync(label: string, shared: boolean): Promise<CoworkSkill>;
+/** PUT /skills/{slug}/sharing with an org audience, then a reload after it. */
+export function setSkillAudienceAndSync(slug: string, audience: SkillAudience): Promise<CoworkSkill>;
 /** The API answers a delete with 204, which the client surfaces as `{ ok: true }`. */
 export function deleteSkillAndSync(label: string): Promise<{ ok: true }>;

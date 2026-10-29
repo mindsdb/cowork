@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   saveSkill: vi.fn(),
   deleteSkill: vi.fn(),
   setSkillSharing: vi.fn(),
+  setSkillAudience: vi.fn(),
 }));
 
 vi.mock('../api', () => api);

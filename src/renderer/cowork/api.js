@@ -1963,6 +1963,53 @@ export async function setSkillSharing(label, shared) {
   });
 }
 
+/* Org sharing (ENG-3787): who a skill reaches on a hosted org deployment.
+   `enabled: false` is every other build, and the sharing UI stays hidden
+   there. A server without the route answers 404 and reads the same. */
+const SHARING_OFF = Object.freeze({ enabled: false, can_share_org: false, can_write_org: false, org_name: null });
+
+export async function fetchSkillSharingCapabilities() {
+  try {
+    const data = await req('/skills/sharing-capabilities');
+    if (!data || typeof data !== 'object') return SHARING_OFF;
+    return {
+      enabled: data.enabled === true,
+      can_share_org: data.can_share_org === true,
+      can_write_org: data.can_write_org === true,
+      org_name: typeof data.org_name === 'string' && data.org_name.trim() ? data.org_name.trim() : null,
+    };
+  } catch (err) {
+    if (err?.status === 404) return SHARING_OFF;
+    throw err;
+  }
+}
+
+/* Sets who a skill reaches: the whole org, teams by id, people by email.
+   An empty audience is Only me. A refusal (403) throws with the server's
+   `detail` as its message. */
+export async function setSkillAudience(slug, { org = false, team_ids = [], emails = [] } = {}) {
+  return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({ org: org === true, team_ids, emails }),
+  });
+}
+
+/* The caller's teams in the MindsHub org. `reachable: false` when the hub
+   could not be asked, so the picker can say so rather than show no teams. */
+export async function fetchHubTeams() {
+  try {
+    const data = await req('/hub/teams/', { headers: await hubHeaders() });
+    const teams = Array.isArray(data?.teams)
+      ? data.teams
+        .filter((team) => team && typeof team.id === 'string' && team.id)
+        .map((team) => ({ id: team.id, display_name: String(team.display_name || team.id) }))
+      : [];
+    return { reachable: data?.reachable !== false, teams };
+  } catch {
+    return { reachable: false, teams: [] };
+  }
+}
+
 export async function deleteSkill(label) {
   return req(`/skills/${encodeURIComponent(label)}`, { method: 'DELETE' });
 }

@@ -45,7 +45,8 @@ function draftDiffers(draft, current) {
   if (draft.mode === 'restricted') {
     const a = parseEmailList(draft.emailsText).valid.join(',');
     const b = parseEmailList(current.emailsText).valid.join(',');
-    return a !== b || !!draft.orgAllowed !== !!current.orgAllowed;
+    const teams = (d) => [...(d.teamIds || [])].sort().join(',');
+    return a !== b || !!draft.orgAllowed !== !!current.orgAllowed || teams(draft) !== teams(current);
   }
   return false;
 }
@@ -249,13 +250,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (!open || view !== 'access' || draftDirty) return;
     setDraft(accessDraftFromArtifact(pub));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(',')]);
+  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.accessTeamIds || []).join(',')]);
 
   const current = accessDraftFromArtifact(pub);
+  // Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).
+  const sharing = pub.orgSharing?.enabled ? pub.orgSharing : null;
+  const accessPayload = (d) => buildAccessPayload(d, { orgSharing: !!sharing });
 
   const doPublish = async () => {
     if (!isAccessDraftValid(draft)) return;
-    const ok = await pub.publish(buildAccessPayload(draft));
+    const ok = await pub.publish(accessPayload(draft));
     if (ok) setView('summary');
   };
   const doApplyAccess = async () => {
@@ -264,7 +268,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     // the disabled "Update" button below.
     if (!pub.accessLoaded) return;
     if (!isAccessDraftValid(draft) || !draftDiffers(draft, current)) return;
-    const ok = await pub.publish(buildAccessPayload(draft));
+    const ok = await pub.publish(accessPayload(draft));
     if (ok) setView('summary');
   };
   const doSavePassword = async () => {
@@ -335,7 +339,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <PanelHeader title="Share to the Web" />
                   <div className="py-3 px-4">
                     <SectionLabel>Who can access your app</SectionLabel>
-                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
+                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} sharing={sharing} />
                   </div>
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
@@ -383,7 +387,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(accessDraftFromArtifact(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
-                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} />
+                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
                       </>
                     )}
   

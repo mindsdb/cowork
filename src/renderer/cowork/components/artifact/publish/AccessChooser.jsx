@@ -20,6 +20,8 @@ import { Checkbox, Textarea, Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
+import TeamPicker from '../../TeamPicker';
+import { everyoneAtLabel } from '../../../lib/orgSharing';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -35,7 +37,7 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // chooses who can open the link first: `isAccessDraftValid` refuses a draft
 // with no mode, which keeps Share disabled until then.
 export function newAccessDraft() {
-  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false };
+  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false, teamIds: [] };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
@@ -58,6 +60,7 @@ export function accessDraftFromArtifact(artifact) {
     password: artifact?.accessPassword || '',
     emailsText: (artifact?.accessEmails || []).join(', '),
     orgAllowed: !!artifact?.orgAllowed,
+    teamIds: [...(artifact?.accessTeamIds || [])],
   };
 }
 
@@ -66,7 +69,8 @@ export function accessDraftFromArtifact(artifact) {
 // derivation for a record written before that flag existed.
 export function isOwnerOnlySelection(artifact) {
   if (artifact?.ownerOnly != null) return !!artifact.ownerOnly;
-  return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed;
+  return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed
+    && (artifact?.accessTeamIds || []).length === 0;
 }
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
@@ -102,14 +106,28 @@ export function isAccessDraftValid(draft) {
     // separate option now, so an empty list here is an unfinished selection
     // rather than a silent private publish — block it instead of quietly
     // doing something other than what the label says.
-    return valid.length > 0 || !!draft.orgAllowed;
+    return valid.length > 0 || !!draft.orgAllowed || (draft.teamIds || []).length > 0;
   }
   return false;
 }
 
 // Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
 // is derived, never stored on the draft: the textarea is the source of truth.
-export function buildAccessPayload(draft) {
+// With org sharing on (ENG-3787) a restricted payload also names teams and
+// `org_wide`; the "Everyone at ‹org›" box sets it and `org_allowed` alike.
+export function buildAccessPayload(draft, { orgSharing = false } = {}) {
+  const payload = buildBaseAccessPayload(draft);
+  if (!orgSharing || payload.mode !== 'restricted') return payload;
+  const teamIds = draft?.mode === 'restricted' ? [...(draft.teamIds || [])] : [];
+  return {
+    ...payload,
+    team_ids: teamIds,
+    org_wide: payload.org_allowed,
+    owner_only: payload.owner_only && teamIds.length === 0,
+  };
+}
+
+function buildBaseAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
   // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
   // `restricted` with neither emails nor an org would otherwise be read as an
@@ -209,15 +227,21 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
 // defaults to every mode this build offers. `value`/`onChange` are the
 // controlled draft.
+// `sharing` turns on org sharing (ENG-3787): `{ enabled, orgName, teams }`,
+// where `teams` is what `useHubTeams` returns. Off, the chooser is as it was.
 export function AccessChooser({
   value,
   onChange,
   modes = DEFAULT_MODES,
   onSubmit,
+  sharing = null,
 }) {
   const draft = value;
   const set = (patch) => onChange?.({ ...draft, ...patch });
   const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(draft.emailsText);
+  const orgSharing = sharing?.enabled === true;
+  const teamIds = draft.teamIds || [];
+  const orgLabel = orgSharing ? everyoneAtLabel(sharing.orgName) : 'Everyone in my organization';
 
   return (
     <div>
@@ -289,18 +313,23 @@ export function AccessChooser({
           <div className="font-body text-xs text-ink-4 mt-[6px]">
             {invalidEmails.length
               ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
-              : (parsedEmails.length === 0 && !draft.orgAllowed
+              : (parsedEmails.length === 0 && !draft.orgAllowed && teamIds.length === 0
                 // Not "only you will have access": that is now a choice of its
                 // own, so arriving here means the selection is simply unfinished.
                 ? (modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone')
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>
+          {orgSharing && (
+            <div className="mt-3">
+              <div className="font-body text-xs font-semibold text-ink-2 mb-[6px]">Teams</div>
+              <TeamPicker teamsState={sharing.teams} teamIds={teamIds} onChange={(next) => set({ teamIds: next })} />
+            </div>
+          )}
           <label className="flex items-center gap-2 mt-2 cursor-pointer font-body text-sm text-ink">
             <Checkbox checked={draft.orgAllowed}
-              onCheckedChange={(v) => set({ orgAllowed: v })}
-              aria-label="Everyone in my organization" />
-            Everyone in my organization
+              onCheckedChange={(v) => set({ orgAllowed: v })} />
+            {orgLabel}
           </label>
         </div>
       )}
