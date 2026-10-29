@@ -24,6 +24,16 @@ import { ComposerAddMenu } from './ComposerAddMenu';
 import { planModeCommand } from './planModeCommand';
 import type { CodingCatalog } from './useCodingCatalog';
 
+// cowork-server refuses a Code task without a MindsHub key with this message
+// and no error code, from the task route and the engine alike. Usually the
+// empty model list catches it first; this covers a refusal that still gets
+// through, such as a key that went away after the models loaded.
+const MINDSHUB_NOT_CONNECTED = 'MindsHub is not connected';
+
+function mindsHubNotConnected(error: string): boolean {
+  return error.startsWith(MINDSHUB_NOT_CONNECTED);
+}
+
 export function NewTaskPanel({
   suspended = false,
   busy,
@@ -41,6 +51,7 @@ export function NewTaskPanel({
   onProjectConnectionsChange,
   onCreateProject = onOpenProjectSettings,
   onCreate,
+  onConnectMindsHub,
   catalog,
 }: {
   suspended?: boolean;
@@ -59,9 +70,13 @@ export function NewTaskPanel({
   onProjectConnectionsChange?: () => Promise<void> | void;
   onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  // Offered when a task is refused for want of MindsHub; absent where the app
+  // has no sign-in to offer.
+  onConnectMindsHub?: () => Promise<void>;
   catalog?: CodingCatalog;
 }) {
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [taskMode, setTaskMode] = useState<TaskMode>('build');
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
@@ -91,8 +106,11 @@ export function NewTaskPanel({
     projectId: selectedProjectId,
   });
   useEffect(() => setPaletteIndex(0), [commandQuery]);
+  const needsMindsHub = !!onConnectMindsHub
+    && (mindsHubNotConnected(error) || (!error && !catalogError && draft.noCodingModels));
   const readinessText = sourceLoading ? 'Loading issue or PR…' : planUnavailable && !engineLoading && !catalogError
-    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.' : readinessMessage;
+    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.'
+    : needsMindsHub && draft.noCodingModels ? 'Connect MindsHub to start a task.' : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -398,7 +416,28 @@ export function NewTaskPanel({
             </div>
           )}
         </div>
-        {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
+        {onConnectMindsHub && needsMindsHub ? (
+          <Alert variant="danger">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>Code runs on MindsHub. Connect your MindsHub account to start a task.</span>
+              <Button
+                size="sm"
+                variant="subtle"
+                disabled={connecting}
+                onClick={async () => {
+                  setConnecting(true);
+                  try {
+                    await onConnectMindsHub();
+                  } finally {
+                    setConnecting(false);
+                  }
+                }}
+              >
+                {connecting ? 'Connecting…' : 'Connect MindsHub'}
+              </Button>
+            </div>
+          </Alert>
+        ) : (error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
         <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
       </div>
     </main>
