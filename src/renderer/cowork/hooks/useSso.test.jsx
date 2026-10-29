@@ -87,10 +87,10 @@ describe('useSso', () => {
   });
 
   it('a login that throws fails like one that reports failure, without rejecting', async () => {
-    hostMock.host.mindshubLogin.mockRejectedValue(new Error('keychain locked'));
+    hostMock.host.mindshubLogin.mockRejectedValue(new Error("Error invoking remote method 'mindshub:login': Error: keychain locked"));
     const { result, d } = await mount();
     await act(async () => { await expect(result.current.handleSsoSignIn()).resolves.toBeUndefined(); });
-    expect(result.current.ssoError).toBe('keychain locked');
+    expect(result.current.ssoError).toBe('Sign in failed. Please try again.');
     expect(d.setSettingsSection).toHaveBeenCalledWith('account');
     expect(d.setSettingsOpen).toHaveBeenCalledWith(true);
     expect(d.refreshData).not.toHaveBeenCalled();

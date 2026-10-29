@@ -44,8 +44,13 @@ export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refr
     try {
       // A login that throws (a token store that cannot be written, a dropped
       // IPC call) fails the same way as one that reports failure, so no
-      // caller is left with an unhandled rejection and a stale screen.
-      const loginResult = await host.mindshubLogin().catch((e) => ({ ok: false, reason: e?.message }));
+      // caller is left with an unhandled rejection and a stale screen. Its
+      // message carries Electron's IPC wrapper, so it goes to the log, not
+      // the account card.
+      const loginResult = await host.mindshubLogin().catch((e) => {
+        diagnostic("renderer.cowork.hooks.useSso", "WARNING", "sso_login_threw", '[sso] sign-in threw:', e);
+        return { ok: false };
+      });
       if (!loginResult?.ok) {
         // ENG-761: this used to silently return — the browser said
         // "You're authorized!" while the app showed nothing. Surface the
