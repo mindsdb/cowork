@@ -20,9 +20,6 @@ const keycloakMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/keycloak', () => keycloakMock);
 
-const deploymentMock = vi.hoisted(() => ({ PLATFORM_UI: true }));
-vi.mock('../lib/deployment', () => deploymentMock);
-
 function setUrl(url: string) {
   (window as unknown as { happyDOM: { setURL(u: string): void } }).happyDOM.setURL(url);
 }
@@ -436,17 +433,6 @@ describe('electron mode (bridge present)', () => {
     (window as unknown as Record<string, unknown>).antontron = {};
     host = await importHost();
     expect(host.codeModeAvailable).toBe(false);
-  });
-
-  it('codeModeAvailable is false on a self-hosted build even when the bridge allows Code', async () => {
-    deploymentMock.PLATFORM_UI = false;
-    try {
-      (window as unknown as Record<string, unknown>).antontron = { codeModeAvailable: true };
-      const host = await importHost();
-      expect(host.codeModeAvailable).toBe(false);
-    } finally {
-      deploymentMock.PLATFORM_UI = true;
-    }
   });
 
   it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {

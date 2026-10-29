@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hostMock = vi.hoisted(() => ({ codeModeAvailable: true }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
+const deploymentMock = vi.hoisted(() => ({ PLATFORM_UI: true }));
+vi.mock('../../lib/deployment', () => deploymentMock);
 
 import {
+  codeModeAvailable,
   deriveCodeModeAccess,
   getCodeModePreference,
   setCodeModePreference,
@@ -15,6 +18,7 @@ describe('Code Mode access', () => {
   beforeEach(() => {
     window.localStorage.clear();
     hostMock.codeModeAvailable = true;
+    deploymentMock.PLATFORM_UI = true;
   });
 
   it('defaults to enabled on a capable desktop that never chose', () => {
@@ -45,6 +49,12 @@ describe('Code Mode access', () => {
       enabled: false,
       state: 'disabled',
     });
+  });
+
+  it('is unavailable on a self-hosted build even when the desktop shell allows Code', () => {
+    deploymentMock.PLATFORM_UI = false;
+    expect(codeModeAvailable()).toBe(false);
+    expect(renderHook(() => useCodeModeAccess()).result.current.state).toBe('unavailable');
   });
 
   it('never enables when the deployment capability is unavailable', () => {
