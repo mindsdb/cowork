@@ -40,6 +40,11 @@ const orgWide = {
   section: 'org', can_edit: false, owner: { id: 'u3', email: 'admin@kinaxis.com' },
   sharing: { org: true, team_ids: [], emails: [] }, capabilities: READER_CAPS,
 };
+const teamSkill = {
+  label: 'team-playbook', slug: 'team-playbook', description: 'Team.', isBuiltin: false, enabled: true,
+  section: 'team', can_edit: false, owner: { id: 'u4', email: 'lead@kinaxis.com' },
+  sharing: { org: false, team_ids: ['t-supply'], emails: [], alwaysOn: true }, capabilities: READER_CAPS,
+};
 const builtin = {
   label: 'skill-creator', description: 'Built in.', isBuiltin: true, enabled: true,
   capabilities: READER_CAPS,
@@ -73,12 +78,28 @@ describe('SkillsView with org sharing', () => {
     expect(section('My teams')).toBeNull();
   });
 
-  it('says team and org-wide skills are applied to every task', async () => {
-    await renderPage([mine, orgWide]);
+  it('no longer says team and org-wide sections are applied to every task', async () => {
+    await renderPage([mine, orgWide, teamSkill]);
 
     await waitFor(() => expect(section('Everyone at Kinaxis')).toBeInTheDocument());
-    expect(within(section('Everyone at Kinaxis')).getByText('Applied to every task')).toBeInTheDocument();
-    expect(within(section('Only me')).queryByText('Applied to every task')).toBeNull();
+    expect(screen.queryByText('Applied to every task')).toBeNull();
+    expect(within(section('My teams')).getByText('team-playbook')).toBeInTheDocument();
+  });
+
+  it('badges only always-on skills as Always on, with a tooltip', async () => {
+    const user = userEvent.setup();
+    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', sharing: { org: true, always_on: true } }]);
+
+    const row = (label) => screen.getByRole('article', { name: label });
+    await waitFor(() => expect(within(row('team-playbook')).getByText('Always on')).toBeInTheDocument());
+    expect(within(row('legal-checks')).getByText('Always on')).toBeInTheDocument();
+    expect(within(row('brand-voice')).queryByText('Always on')).toBeNull();
+    expect(within(row('weekly-report')).queryByText('Always on')).toBeNull();
+    // Next to its sharing badge.
+    await waitFor(() => expect(within(row('team-playbook')).getByText('Team: Supply Planning')).toBeInTheDocument());
+
+    await user.hover(within(row('team-playbook')).getByText('Always on'));
+    expect(await screen.findByText("Part of every task for everyone it's shared with")).toBeInTheDocument();
   });
 
   it('badges each row with its audience and names the owner of a skill shared with the caller', async () => {
@@ -112,9 +133,20 @@ describe('SkillsView with org sharing', () => {
     expect(screen.queryByRole('menuitem', { name: /Edit/ })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /Uninstall/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
-    // Always applied, so there is no switch to turn it off.
+    // An org skill someone else owns has no switch to turn it off.
     expect(screen.queryByRole('switch', { name: 'Skill enabled' })).toBeNull();
-    expect(screen.getByRole('note')).toHaveTextContent('Shared by admin@kinaxis.com.');
+    expect(screen.getByRole('note')).toHaveTextContent("Shared by admin@kinaxis.com. You can use it but can't change it.");
+  });
+
+  it('says an always-on team skill is part of every task, and keeps its switch hidden', async () => {
+    const user = userEvent.setup();
+    await renderPage([teamSkill]);
+    await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+
+    await user.click(screen.getByText('team-playbook'));
+
+    expect(screen.queryByRole('switch', { name: 'Skill enabled' })).toBeNull();
+    expect(screen.getByRole('note')).toHaveTextContent("It's part of every task, and only its owner can change it.");
   });
 
   it('shares the caller\'s own skill through the dialog and reloads the list', async () => {
@@ -130,7 +162,7 @@ describe('SkillsView with org sharing', () => {
     const loads = api.fetchSkills.mock.calls.length;
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith('weekly-report', { org: false, team_ids: [], emails: [] }));
+    await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith('weekly-report', { org: false, team_ids: [], emails: [], always_on: false }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
   });

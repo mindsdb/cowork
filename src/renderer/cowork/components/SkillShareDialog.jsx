@@ -1,23 +1,58 @@
 // `<SkillShareDialog>` — who a skill reaches inside a hosted org (ENG-3787):
 // only the caller, specific people, teams, or everyone at the org. The three
 // audiences combine; "Only me" is the state with none of them, and picking it
-// clears the rest.
+// clears the rest. A skill reaching the whole org or a team can also be made
+// "always on": part of every task for everyone it reaches, instead of being
+// recalled when it's relevant.
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
 import { Alert, Button, Checkbox, Input, Spinner, Tooltip } from './ui';
+import { Switch } from './ui/Switch';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { useHubTeams } from '../hooks/useOrgSharing';
 import TeamPicker from './TeamPicker';
 import {
-  ALWAYS_APPLIED_NOTE,
+  ALWAYS_ON_HELP,
+  ALWAYS_ON_LABEL,
   ORG_ADMIN_ONLY_HINT,
+  SHARING_NOTE,
+  alwaysOnLockReason,
   audiencePayload,
+  canBeAlwaysOn,
+  canEditSkill,
   everyoneAtLabel,
   isPrivateAudience,
   parseEmailInput,
   skillAudience,
 } from '../lib/orgSharing';
+
+function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
+  const control = (
+    <div className="flex items-center justify-between gap-3">
+      <span className="font-body text-[13px] font-semibold text-ink">{ALWAYS_ON_LABEL}</span>
+      <Switch
+        size="sm"
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={!!lockReason}
+        aria-label={ALWAYS_ON_LABEL}
+      />
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-1 rounded-card border border-solid border-line bg-surface-2 py-[10px] px-3">
+      {lockReason ? (
+        // A disabled switch fires no hover of its own, so the hint hangs off
+        // a wrapper.
+        <Tooltip content={lockReason}>
+          <div data-testid="always-on-locked">{control}</div>
+        </Tooltip>
+      ) : control}
+      <span className="font-body text-[11.5px] text-ink-3">{ALWAYS_ON_HELP}</span>
+    </div>
+  );
+}
 
 function OptionRow({ label, description, checked, onCheckedChange, disabled = false, children }) {
   return (
@@ -93,7 +128,7 @@ function EmailChips({ emails, onChange, onPendingChange }) {
  *   skill: object | null,
  *   capabilities: { can_share_org: boolean, org_name: string | null },
  *   onClose: () => void,
- *   onSave: (audience: { org: boolean, team_ids: string[], emails: string[] }) => Promise<void>,
+ *   onSave: (audience: { org: boolean, team_ids: string[], emails: string[], always_on: boolean }) => Promise<void>,
  * }} props
  */
 export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
@@ -123,7 +158,13 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
 
   const orgName = capabilities?.org_name ?? null;
   const canShareOrg = capabilities?.can_share_org === true;
-  const set = (patch) => setAudience((current) => ({ ...current, ...patch }));
+  const canEdit = canEditSkill(skill);
+  // Always on resets to off once neither the org nor a team is picked.
+  const set = (patch) => setAudience((current) => {
+    const next = { ...current, ...patch };
+    return canBeAlwaysOn(next) ? next : { ...next, alwaysOn: false };
+  });
+  const showAlwaysOn = canBeAlwaysOn(audience);
   const onlyMe = isPrivateAudience(audience) && !showPeople && !showTeams;
 
   const save = async () => {
@@ -166,7 +207,7 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
             disabled={onlyMe}
             onCheckedChange={(next) => {
               if (!next) return;
-              setAudience({ org: false, teamIds: [], emails: [] });
+              setAudience({ org: false, teamIds: [], emails: [], alwaysOn: false });
               setShowPeople(false);
               setShowTeams(false);
               setEmailPending(false);
@@ -205,7 +246,14 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
               <div data-testid="org-option-locked">{orgRow}</div>
             </Tooltip>
           )}
-          <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{ALWAYS_APPLIED_NOTE}</p>
+          {showAlwaysOn && (
+            <AlwaysOnRow
+              checked={audience.alwaysOn}
+              onCheckedChange={(next) => set({ alwaysOn: next })}
+              lockReason={alwaysOnLockReason(audience, { canShareOrg, canEdit })}
+            />
+          )}
+          <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{SHARING_NOTE}</p>
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>

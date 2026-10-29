@@ -5,9 +5,13 @@ vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 import {
   accessOrgWide,
   accessTeamIds,
+  alwaysOnLockReason,
+  audiencePayload,
   canEditSkill,
   groupSkillsBySection,
+  isSkillAlwaysOn,
   parseEmailInput,
+  skillAudience,
   skillAudienceBadge,
 } from './orgSharing';
 
@@ -23,7 +27,8 @@ describe('groupSkillsBySection', () => {
     ], { orgName: 'Kinaxis' });
 
     expect(groups.map((g) => g.title)).toEqual(['Only me', 'My teams', 'Everyone at Kinaxis', 'Built-in']);
-    expect(groups.map((g) => g.hint)).toEqual([null, 'Applied to every task', 'Applied to every task', null]);
+    // Sections no longer claim their skills are applied to every task.
+    expect(groups.every((g) => !('hint' in g))).toBe(true);
   });
 
   it('puts a skill without a section with the caller\'s own, and names an unnamed org generically', () => {
@@ -46,6 +51,32 @@ describe('skillAudienceBadge', () => {
     [{ org: false, team_ids: [], emails: ['a@x.com', 'b@x.com', 'c@x.com'] }, '3 people'],
   ])('labels %j as %s', (sharing, label) => {
     expect(skillAudienceBadge(skill('s', { sharing }), { teams, orgName: 'Kinaxis' })).toBe(label);
+  });
+});
+
+describe('always on', () => {
+  it('reads alwaysOn in either spelling, and only for org-wide or team skills', () => {
+    expect(isSkillAlwaysOn(skill('s', { sharing: { org: true, alwaysOn: true } }))).toBe(true);
+    expect(isSkillAlwaysOn(skill('s', { sharing: { team_ids: ['t1'], always_on: true } }))).toBe(true);
+    expect(isSkillAlwaysOn(skill('s', { sharing: { org: true } }))).toBe(false);
+    expect(isSkillAlwaysOn(skill('s', { sharing: { emails: ['a@x.com'], alwaysOn: true } }))).toBe(false);
+    expect(isSkillAlwaysOn(skill('s'))).toBe(false);
+  });
+
+  it('sends always_on only when the org or a team is picked', () => {
+    const base = { org: false, teamIds: [], emails: [], alwaysOn: true };
+    expect(audiencePayload({ ...base, teamIds: ['t1'] })).toEqual({ org: false, team_ids: ['t1'], emails: [], always_on: true });
+    expect(audiencePayload({ ...base, emails: ['a@x.com'] })).toEqual({ org: false, team_ids: [], emails: ['a@x.com'], always_on: false });
+    expect(audiencePayload(skillAudience(skill('s')))).toEqual({ org: false, team_ids: [], emails: [], always_on: false });
+  });
+
+  it('locks it for an org-wide skill without can_share_org and a team skill without can_edit', () => {
+    const org = { org: true, teamIds: ['t1'], emails: [] };
+    const team = { org: false, teamIds: ['t1'], emails: [] };
+    expect(alwaysOnLockReason(org, { canShareOrg: false, canEdit: true })).toBe('Only admins can make an organization-wide skill always on');
+    expect(alwaysOnLockReason(org, { canShareOrg: true, canEdit: false })).toBeNull();
+    expect(alwaysOnLockReason(team, { canShareOrg: false, canEdit: false })).toBe('Only people who can edit this skill can change this');
+    expect(alwaysOnLockReason(team, { canShareOrg: false, canEdit: true })).toBeNull();
   });
 });
 

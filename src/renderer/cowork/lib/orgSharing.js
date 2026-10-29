@@ -14,11 +14,18 @@ import { canUseSharedResource } from './sharedResourceAccess';
 
 export const SKILL_SECTIONS = ['mine', 'shared_with_me', 'team', 'org'];
 
-/* Team and org-wide skills are applied to every task by the server, so the
-   people they reach can't turn them off. */
-export const ALWAYS_APPLIED_HINT = 'Applied to every task';
-export const ALWAYS_APPLIED_NOTE = "Skills shared with a team or the whole organization are applied to everyone's tasks automatically.";
 export const ORG_ADMIN_ONLY_HINT = 'Only admins can share with the whole organization';
+
+/* A skill shared with teams or the whole org is recalled when it's relevant
+   to a task. Someone allowed to may make it "always on": part of every task
+   for everyone it reaches. The server enforces who may; these mirror it. */
+export const SHARING_NOTE = 'Anton uses a shared skill when it\'s relevant to the task, unless it\'s set to always on.';
+export const ALWAYS_ON_LABEL = 'Always include in every task';
+export const ALWAYS_ON_HELP = "Off: Anton uses it when it's relevant. On: it's part of every task for everyone it's shared with.";
+export const ALWAYS_ON_ORG_ADMIN_HINT = 'Only admins can make an organization-wide skill always on';
+export const ALWAYS_ON_EDITOR_HINT = 'Only people who can edit this skill can change this';
+export const ALWAYS_ON_BADGE = 'Always on';
+export const ALWAYS_ON_BADGE_HINT = "Part of every task for everyone it's shared with";
 
 /** "Everyone at Kinaxis", or a generic label when the org has no name. */
 export function everyoneAtLabel(orgName) {
@@ -29,15 +36,38 @@ function stringList(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string' && v) : [];
 }
 
-/** A skill's audience in one shape: `{ org, teamIds, emails }`. */
+/** A skill's audience in one shape: `{ org, teamIds, emails, alwaysOn }`. */
 export function skillAudience(skill) {
   const sharing = skill?.sharing;
-  if (!sharing || typeof sharing !== 'object') return { org: false, teamIds: [], emails: [] };
-  return {
+  if (!sharing || typeof sharing !== 'object') return { org: false, teamIds: [], emails: [], alwaysOn: false };
+  const audience = {
     org: sharing.org === true,
     teamIds: stringList(sharing.team_ids ?? sharing.teamIds),
     emails: stringList(sharing.emails),
+    alwaysOn: (sharing.alwaysOn ?? sharing.always_on) === true,
   };
+  if (!canBeAlwaysOn(audience)) audience.alwaysOn = false;
+  return audience;
+}
+
+/** Always on needs the whole org or at least one team. */
+export function canBeAlwaysOn(audience) {
+  return audience.org === true || audience.teamIds.length > 0;
+}
+
+/** Whether a skill is part of every task for everyone it reaches. */
+export function isSkillAlwaysOn(skill) {
+  return skillAudience(skill).alwaysOn;
+}
+
+/**
+ * Why the caller can't change "always on" for this audience, or null when
+ * they can. Org-wide needs `can_share_org`; teams only need edit rights.
+ */
+export function alwaysOnLockReason(audience, { canShareOrg = false, canEdit = false } = {}) {
+  if (audience.org) return canShareOrg ? null : ALWAYS_ON_ORG_ADMIN_HINT;
+  if (audience.teamIds.length > 0) return canEdit ? null : ALWAYS_ON_EDITOR_HINT;
+  return null;
 }
 
 /** Only me: nobody else is named. */
@@ -47,7 +77,12 @@ export function isPrivateAudience(audience) {
 
 /** The body `PUT /skills/{slug}/sharing` takes. */
 export function audiencePayload(audience) {
-  return { org: audience.org === true, team_ids: [...audience.teamIds], emails: [...audience.emails] };
+  return {
+    org: audience.org === true,
+    team_ids: [...audience.teamIds],
+    emails: [...audience.emails],
+    always_on: audience.alwaysOn === true && canBeAlwaysOn(audience),
+  };
 }
 
 /** Which section of the Skills page a skill sits in. A skill without one (an
@@ -104,7 +139,7 @@ const SECTION_TITLES = {
  * The Skills page's groups, in page order, empty ones left out. Built-ins
  * carry no audience, so they keep a group of their own at the end.
  *
- * @returns {Array<{ id: string, title: string, hint: string | null, skills: object[] }>}
+ * @returns {Array<{ id: string, title: string, skills: object[] }>}
  */
 export function groupSkillsBySection(skills, { orgName = null } = {}) {
   const buckets = { mine: [], shared_with_me: [], team: [], org: [], builtin: [] };
@@ -115,10 +150,9 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
   const groups = SKILL_SECTIONS.map((id) => ({
     id,
     title: SECTION_TITLES[id](orgName),
-    hint: id === 'team' || id === 'org' ? ALWAYS_APPLIED_HINT : null,
     skills: buckets[id],
   }));
-  groups.push({ id: 'builtin', title: 'Built-in', hint: null, skills: buckets.builtin });
+  groups.push({ id: 'builtin', title: 'Built-in', skills: buckets.builtin });
   return groups.filter((group) => group.skills.length > 0);
 }
 

@@ -1985,12 +1985,13 @@ export async function fetchSkillSharingCapabilities() {
 }
 
 /* Sets who a skill reaches: the whole org, teams by id, people by email.
-   An empty audience is Only me. A refusal (403) throws with the server's
-   `detail` as its message. */
-export async function setSkillAudience(slug, { org = false, team_ids = [], emails = [] } = {}) {
+   An empty audience is Only me. `always_on` makes an org-wide or team skill
+   part of every task. A refusal (400/403) throws with the server's `detail`
+   as its message. */
+export async function setSkillAudience(slug, { org = false, team_ids = [], emails = [], always_on = false } = {}) {
   return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({ org: org === true, team_ids, emails }),
+    body: JSON.stringify({ org: org === true, team_ids, emails, always_on: always_on === true }),
   });
 }
 

@@ -58,8 +58,16 @@ export type CoworkSkill = {
   [key: string]: unknown;
 };
 
-/** The body of `PUT /skills/{slug}/sharing`, and a skill's `sharing`. */
-export type SkillAudience = { org: boolean; team_ids: string[]; emails: string[] };
+/** The body of `PUT /skills/{slug}/sharing`, and a skill's `sharing`.
+ *  `always_on` (sent) / `alwaysOn` (read): part of every task for everyone it
+ *  reaches; only for org-wide or team skills. */
+export type SkillAudience = {
+  org: boolean;
+  team_ids: string[];
+  emails: string[];
+  always_on?: boolean;
+  alwaysOn?: boolean;
+};
 
 /** `loaded` is the only status whose absence/presence decision came from a
  *  valid server response. A refresh moves the status to `loading` while the

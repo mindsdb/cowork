@@ -39,12 +39,20 @@ describe('setSkillAudience', () => {
   it('PUTs the audience to the skill\'s sharing route', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly' }));
 
-    await setSkillAudience('weekly report', { org: false, team_ids: ['t1'], emails: ['a@x.com'] });
+    await setSkillAudience('weekly report', { org: false, team_ids: ['t1'], emails: ['a@x.com'], always_on: true });
 
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/skills/weekly%20report/sharing');
     expect(init.method).toBe('PUT');
-    expect(JSON.parse(init.body)).toEqual({ org: false, team_ids: ['t1'], emails: ['a@x.com'] });
+    expect(JSON.parse(init.body)).toEqual({ org: false, team_ids: ['t1'], emails: ['a@x.com'], always_on: true });
+  });
+
+  it('sends always_on false when it is left out', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly' }));
+
+    await setSkillAudience('weekly', { org: true });
+
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ org: true, team_ids: [], emails: [], always_on: false });
   });
 
   it("throws a 403 with the server's sentence", async () => {

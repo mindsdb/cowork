@@ -5,7 +5,7 @@ import {
   PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
   ListGroup, ListItem,
 } from '../components/collection';
-import { Menu, Badge, Button, Field, Select, Input, Textarea } from '../components/ui';
+import { Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -19,9 +19,12 @@ import {
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareDialog from '../components/SkillShareDialog';
 import {
+  ALWAYS_ON_BADGE,
+  ALWAYS_ON_BADGE_HINT,
   canEditSkill,
   groupSkillsBySection,
   isPrivateAudience,
+  isSkillAlwaysOn,
   skillAudience,
   skillAudienceBadge,
   skillOwnerEmail,
@@ -75,8 +78,8 @@ function isOwnSharedSkill(skill) {
   return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
 }
 
-/* The detail note on a team or org-wide skill someone else shares. */
-const ALWAYS_APPLIED_DETAIL = "It's applied to every task, and only its owner can change it.";
+/* The detail note on an always-on team or org-wide skill someone else shares. */
+const ALWAYS_ON_DETAIL = "It's part of every task, and only its owner can change it.";
 
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
 const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
@@ -105,6 +108,7 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
      shares alike; the detail view's actions tell the two apart. */
   const shared = !orgSharing && isSharedSkill(skill);
   const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
+  const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
   return (
     <ListItem
       as="article"
@@ -117,6 +121,11 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
           {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
           {shared && <Badge variant="muted" size="sm">Shared</Badge>}
           {audience && <Badge variant="muted" size="sm">{audience}</Badge>}
+          {alwaysOn && (
+            <Tooltip content={ALWAYS_ON_BADGE_HINT}>
+              <span className="inline-flex"><Badge variant="muted" size="sm">{ALWAYS_ON_BADGE}</Badge></span>
+            </Tooltip>
+          )}
         </>
       )}
       description={skill.description || skill.declarative?.slice(0, 120) || '—'}
@@ -572,7 +581,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const canOpenShare = (skill) => orgSharingOn && !skill.isBuiltin && canEditSkill(skill);
   /* An org skill someone else owns keeps no Edit or Uninstall at all. */
   const hidesOwnerActions = (skill) => orgSharingOn && !canEditSkill(skill);
-  /* Team and org-wide skills someone else owns are always applied. */
+  /* Team and org-wide skills someone else owns offer no on/off switch. */
   const alwaysApplied = (skill) => orgSharingOn && !canEditSkill(skill)
     && (skillSection(skill) === 'team' || skillSection(skill) === 'org');
 
@@ -685,7 +694,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
             <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
               {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
-              {alwaysApplied(selected) ? ALWAYS_APPLIED_DETAIL : "You can use it but can't change it."}
+              {alwaysApplied(selected) && isSkillAlwaysOn(selected) ? ALWAYS_ON_DETAIL : "You can use it but can't change it."}
             </p>
           )}
           {!orgSharingOn && !canUseSharedResource(selected, 'canEdit') && (
@@ -790,7 +799,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     key={group.id}
                     aria-label={group.title}
                     title={<h2>{group.title}</h2>}
-                    description={group.hint}
                   >
                     {group.skills.map((skill) => (
                       <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} />
