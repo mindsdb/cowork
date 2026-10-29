@@ -5828,6 +5828,9 @@ function AppCore() {
             if (sidebarPopout) setNavPopoutOpen(false);
             return handleSendFromHome(text);
           }}
+          // The example row sends nothing: it opens Home, whose examples are
+          // one click away. newTask also closes the popout drawer.
+          onOpenExamples={newTask}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state

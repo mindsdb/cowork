@@ -7,6 +7,8 @@ import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { captureConsoleHandoff, findSample } from '../lib/consoleHandoff';
 import { __resetDraftsForTests, setDraft } from '../lib/draftStore';
+import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
+import { getSnapshot, reset as resetOnboarding } from '../components/onboarding/onboardingStore';
 
 const { trackComposerReady, setEntryAttribution } = vi.hoisted(() => ({
   trackComposerReady: vi.fn(),
@@ -87,6 +89,7 @@ beforeEach(() => {
   __resetDraftsForTests();
   trackComposerReady.mockClear();
   setEntryAttribution.mockClear();
+  resetOnboarding();
 });
 
 describe('HomeView console handoff', () => {
@@ -252,6 +255,55 @@ describe('HomeView console handoff', () => {
     render(<Home onSend={vi.fn()} />);
     await new Promise((r) => setTimeout(r, 20));
     expect(trackComposerReady).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('opens with the own-work prompt in the composer and does not send it', async () => {
+    arriveFromConsole('?from=console&start=own-work');
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+
+    await screen.findByDisplayValue(OWN_WORK_PROMPT);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work');
+    // It is the first onboarding step, not an example from a mode.
+    expect(screen.queryByRole('button', { name: /^Remove .* mode$/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit this prompt, then send when you're ready.")).not.toBeInTheDocument();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(getSnapshot().completed.has('bring-your-work')).toBe(false);
+
+    await userEvent.setup().keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(OWN_WORK_PROMPT);
+    await waitFor(() => expect(getSnapshot().completed.has('bring-your-work')).toBe(true));
+  });
+
+  it('keeps an unsent draft instead of replacing it with the own-work prompt', async () => {
+    setDraft('new', 'my half-written idea');
+    arriveFromConsole('?from=console&start=own-work');
+    render(<Home onSend={vi.fn()} />);
+
+    expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(OWN_WORK_PROMPT)).not.toBeInTheDocument();
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', false);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null);
+  });
+
+  it('replaces an own-work prompt left unsent from an earlier visit', async () => {
+    setDraft('new', OWN_WORK_PROMPT);
+    arriveFromConsole('?from=console');
+    render(<Home onSend={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+  });
+
+  it('opens an empty composer for a start it does not know', async () => {
+    arriveFromConsole('?from=console&start=something-else');
+    render(<Home onSend={vi.fn()} />);
+
+    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false));
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
 });

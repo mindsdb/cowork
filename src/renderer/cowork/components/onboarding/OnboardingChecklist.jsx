@@ -8,7 +8,8 @@ import { useToastManager } from '../ui/Toast';
 // "Get to know Cowork" checklist — docked in the sidebar above the
 // footer, on every screen. Each row seeds a new chat with that step's
 // prompt and marks the step done; `onStartChat` is App's send-from-home
-// handler (it creates the session and routes to it).
+// handler (it creates the session and routes to it). A row flagged
+// `opensExamples` instead takes the person to Home through `onOpenExamples`.
 //
 // Collapsible: click the header to hide/show the steps; the choice
 // persists in localStorage. Card chrome lives in `.onboarding-card`
@@ -16,7 +17,7 @@ import { useToastManager } from '../ui/Toast';
 const COLLAPSE_KEY = 'anton.onboarding.sidebarCollapsed';
 const STEPS_ID = 'onboarding-sidebar-steps';
 
-export default function OnboardingChecklist({ onStartChat }) {
+export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
   const { steps, isComplete, completedCount, total, allDone, dismissed, complete, dismiss } = useOnboarding();
   const toastManager = useToastManager();
   const startingSteps = useRef(new Set());
@@ -38,6 +39,12 @@ export default function OnboardingChecklist({ onStartChat }) {
   // the silent case, so that one gets a toast.
   const start = async (step) => {
     if (isComplete(step.id) || startingSteps.current.has(step.id)) return;
+    // The examples live on Home. Nothing is sent here, so the step is not
+    // completed by the click: Home completes it when an example goes out.
+    if (step.opensExamples) {
+      onOpenExamples?.();
+      return;
+    }
     startingSteps.current.add(step.id);
     try {
       if (await onStartChat(step.prompt)) complete(step.id);

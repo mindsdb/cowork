@@ -5,13 +5,14 @@ import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
 import { composeModeMessage } from '../components/taskmodes/taskModes';
 import { completeStep } from '../components/onboarding/onboardingStore';
-import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
+import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
+import { stepsCompletedBySend } from '../components/onboarding/completion';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady } from '../lib/analytics';
-import { takeConsoleHandoff, sampleId, isUntouchedSample } from '../lib/consoleHandoff';
+import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
 
 // ── Boot choreography ───────────────────────────────────────────────────
@@ -285,19 +286,17 @@ export default function HomeView({
     if (codingModeEnabled) setTaskMode(null);
   }, [codingModeEnabled]);
 
-  // Sending the habit-tracker prompt completes onboarding step 1 no
-  // matter which surface filled the composer (suggestion chip, sidebar
-  // checklist, or the user typing it by hand) — but only once the send
-  // has gone out: onSend answers false when the provider preflight fails
-  // (ENG-2307). A selected task mode appends its instruction line after
+  // Sending a prompt that belongs to an onboarding step completes it no
+  // matter which surface filled the composer (a console link, an example,
+  // the sidebar checklist, or the user typing it by hand) — but only once the
+  // send has gone out: onSend answers false when the provider preflight
+  // fails (ENG-2307). A selected task mode appends its instruction line after
   // the user text (titles and search derive from the message head) and
   // clears itself after a successful send. `meta` (harness/model,
   // ENG-1656) passes through untouched.
   const sendTracked = async (text, meta) => {
     const result = await onSend(composeModeMessage(taskMode, text), meta);
-    if (result && typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
-      completeStep('see-it-work');
-    }
+    if (result) stepsCompletedBySend(text).forEach(completeStep);
     setTaskMode(null);
     return result;
   };
@@ -423,19 +422,23 @@ export default function HomeView({
     const handoff = takeConsoleHandoff();
     if (!handoff) return;
     const { sample } = handoff;
+    const ownWork = !sample && handoff.start === OWN_WORK_START;
+    const placed = sample ? sample.prompt : (ownWork ? OWN_WORK_PROMPT : null);
     const draft = getDraft('new');
     const draftIsUsers = Boolean(draft) && !isUntouchedSample(draft);
-    const prefilled = Boolean(sample && onPrefill && !codingModeEnabled && !draftIsUsers);
+    const prefilled = Boolean(placed && onPrefill && !codingModeEnabled && !draftIsUsers);
     if (prefilled) {
-      setTaskMode(handoff.mode);
-      onPrefill(sample.prompt);
-      setHandoffHint(true);
-    } else if (!sample && onPrefill && draft && !draftIsUsers) {
+      if (sample) {
+        setTaskMode(handoff.mode);
+        setHandoffHint(true);
+      }
+      onPrefill(placed);
+    } else if (!placed && onPrefill && draft && !draftIsUsers) {
       // "Start a task" promises an empty composer. A sample left there from an
       // earlier visit is not the user's text, so it goes; their own draft stays.
       onPrefill('');
     }
-    const exampleId = sample ? sampleId(sample.label) : null;
+    const exampleId = sample ? sampleId(sample.label) : (ownWork ? OWN_WORK_START : null);
     // The task is credited to the example only if the example was placed; a
     // kept draft of the user's own is not the example's doing.
     setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);

@@ -6,6 +6,10 @@
 // brand-adapted where they name the product. Website has no sample prompts on
 // Manus (it shows a category flow instead), so those prompts are authored in
 // the same style from Manus's website categories.
+// The samples that start from the person's own file, notes or inbox, and the
+// habit tracker, are ours, not Manus's. A sample with `plain: true` sits in a
+// mode its instruction does not fit (a weekly update is not a slide deck), and
+// the person is expected to add to it, so it is sent as written even then.
 //
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
@@ -13,6 +17,8 @@
 // (optional) is the noun the chip's remove aria-label uses when `chipLabel`
 // is a verb phrase — "Remove Games mode" reads better than
 // "Remove Create games mode".
+
+import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 
 export const TASK_MODES = [
   {
@@ -39,6 +45,11 @@ export const TASK_MODES = [
       {
         label: 'Research market opportunity for product launch',
         prompt: 'Prepare a market opportunity presentation for a new product launch, covering target market size, customer segments, demand, and a go-to-market plan.',
+      },
+      {
+        label: "Draft this week's update from last week's",
+        prompt: "I'm going to paste last week's update and my rough notes for this week. Draft this week's update in the same format, highlight what changed, and ask me if anything is unclear.",
+        plain: true,
       },
     ],
   },
@@ -103,6 +114,19 @@ export const TASK_MODES = [
         label: 'Build customer feedback collection app',
         prompt: 'Build a feedback collection app with a short survey form and a results view that summarizes the responses.',
       },
+      {
+        label: 'Build a quote or invoice generator',
+        prompt: 'Build a single-page quote and invoice generator for my business: company details at the top, line items with quantity and price, automatic totals and tax, and a clean printable layout.',
+      },
+      {
+        label: 'Explain an error and suggest a fix',
+        prompt: "I'm going to paste an error message or a link to my code. Explain the likely cause in two sentences and propose a fix.",
+        plain: true,
+      },
+      {
+        label: 'Build a habit tracker',
+        prompt: HABIT_TRACKER_PROMPT,
+      },
     ],
   },
   {
@@ -133,6 +157,10 @@ export const TASK_MODES = [
       {
         label: 'Calculate IRR for investment cash flows',
         prompt: 'Build an investment cash flow table with capital calls, exit payouts, and a yearly IRR calculation. Use sample numbers I can replace.',
+      },
+      {
+        label: 'Clean up my spreadsheet and chart it',
+        prompt: "I'm going to attach a spreadsheet or CSV. Clean it up (duplicates, blanks, odd dates), tell me what you changed, and chart the main trend.",
       },
     ],
   },
@@ -192,6 +220,21 @@ export const TASK_MODES = [
         label: 'Research customer personas and journey maps',
         prompt: 'Research and develop detailed customer personas and journey maps for a B2B SaaS product, including pain points, decision criteria, touchpoint analysis, and conversion optimization opportunities.',
       },
+      {
+        label: 'Summarize a document and draft my reply',
+        prompt: "I'm going to attach a document. Summarize it, list what I need to do, and draft a reply I can send.",
+        plain: true,
+      },
+      {
+        label: 'Choose a local model that fits my computer',
+        prompt: 'Help me choose a local AI model that fits my computer. Ask for my specs, compare two or three options for daily use, coding and documents, and recommend one.',
+        plain: true,
+      },
+      {
+        label: 'Review what is on my plate this week',
+        prompt: "What's on my plate this week? Look through my recent Gmail and list my main work items with a priority and timing for each. Read only: don't send, delete or change anything.",
+        plain: true,
+      },
     ],
   },
   {
@@ -205,6 +248,14 @@ export const TASK_MODES = [
     samplesVariant: 'rows',
     samples: [
       {
+        label: 'Classic snake game',
+        prompt: 'Make a classic snake game: the snake moves around a grid eating food, grows longer with each bite, and dies if it hits a wall or its own body. Style it as a koi fish gliding through a tranquil Japanese zen garden viewed from above, leaving a gentle ripple trail on the water.',
+      },
+      {
+        label: 'Neon falling blocks',
+        prompt: 'Make a classic falling-block puzzle game: four-square geometric pieces drop from the top, the player moves and rotates them to fill horizontal lines, completed lines clear and score points, and the speed increases over time. Style it as glowing neon glass blocks on a dark cyberpunk grid, with a satisfying light-burst effect when lines clear.',
+      },
+      {
         label: 'Firefly memory sequence',
         prompt: 'Make a color memory game: four glowing spots light up in a growing sequence, the player repeats the sequence by clicking them in order, and one mistake ends the run. Style it as fireflies blinking on lily pads across a moonlit pond, each with its own soft chime.',
       },
@@ -216,14 +267,6 @@ export const TASK_MODES = [
         label: 'Paper plane tap flyer',
         prompt: 'Make a one-tap flying game: the player taps to keep flying upward against gravity, steering through gaps between obstacles, and the score counts how many obstacles are passed. Style it as a folded paper plane gliding through a hand-drawn notebook world of pencil-sketched pipes and doodle clouds.',
       },
-      {
-        label: 'Neon falling blocks',
-        prompt: 'Make a classic falling-block puzzle game: four-square geometric pieces drop from the top, the player moves and rotates them to fill horizontal lines, completed lines clear and score points, and the speed increases over time. Style it as glowing neon glass blocks on a dark cyberpunk grid, with a satisfying light-burst effect when lines clear.',
-      },
-      {
-        label: 'Classic snake game',
-        prompt: 'Make a classic snake game: the snake moves around a grid eating food, grows longer with each bite, and dies if it hits a wall or its own body. Style it as a koi fish gliding through a tranquil Japanese zen garden viewed from above, leaving a gentle ripple trail on the water.',
-      },
     ],
   },
 ];
@@ -234,8 +277,11 @@ export const TASK_MODES = [
     make every task of a mode read identically and bury the user's actual ask. */
 export function composeModeMessage(mode, text) {
   if (!mode) return text;
+  const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
-  if (mode.samples.some((s) => s.prompt === text.trim())) return text;
+  if (mode.samples.some((s) => s.prompt === sent)) return text;
+  // A plain sample keeps its own wording once the person adds to it.
+  if (mode.samples.some((s) => s.plain && sent.startsWith(s.prompt))) return text;
   return `${text}\n\n${mode.instruction}`;
 }
