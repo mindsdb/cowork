@@ -631,3 +631,32 @@ describe('SkillsView: asking who can use a new skill', () => {
     expect(api.uploadSkillFile).toHaveBeenCalledWith(file, {});
   });
 });
+
+describe('SkillsView: the Create skill menu and Add a Skill form', () => {
+  it('lists Write Skill Instructions first, then the other options in order', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+
+    await user.click(screen.getByRole('button', { name: /Create skill/i }));
+    const items = await screen.findAllByRole('menuitem');
+
+    expect(items.map((item) => item.textContent.trim())).toEqual([
+      'Write Skill Instructions', 'Create With Cowork', 'Upload a skill',
+    ]);
+  });
+
+  it('labels the project choice Project, not Scope, and asks no org audience', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+
+    await user.click(screen.getByRole('button', { name: /Create skill/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /Write Skill Instructions/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const project = within(dialog).getByRole('combobox', { name: 'Project' });
+    expect(project).toHaveTextContent('All projects');
+    expect(within(dialog).queryByRole('combobox', { name: 'Scope' })).toBeNull();
+    expect(within(dialog).queryByRole('group', { name: 'Who can use it' })).toBeNull();
+    expect(within(dialog).queryByRole('checkbox', { name: 'Specific people' })).toBeNull();
+  });
+});

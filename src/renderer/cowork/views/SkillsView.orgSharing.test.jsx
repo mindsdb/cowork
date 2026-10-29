@@ -166,4 +166,113 @@ describe('SkillsView with org sharing', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
   });
+
+  describe('creating a skill', () => {
+    async function openWriteForm(user, skills = [mine], capabilities) {
+      await renderPage(skills, capabilities);
+      await waitFor(() => expect(section('Only me')).toBeInTheDocument());
+      await user.click(screen.getByRole('button', { name: /Create skill/i }));
+      await user.click(await screen.findByRole('menuitem', { name: /Write Skill Instructions/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByRole('textbox', { name: 'Label' }), 'new-skill');
+      await user.type(within(dialog).getByRole('textbox', { name: 'Instructions' }), 'Do it.');
+      return dialog;
+    }
+    const ADMIN_CAPS = { enabled: true, can_share_org: true, org_name: 'Kinaxis' };
+
+    it('asks who can use it right after Project, starting on Only me, without the old select', async () => {
+      const user = userEvent.setup();
+      const dialog = await openWriteForm(user);
+
+      const group = within(dialog).getByRole('group', { name: 'Who can use it' });
+      expect(within(group).getByRole('checkbox', { name: 'Only me' })).toBeChecked();
+      expect(within(dialog).queryByRole('combobox', { name: 'Who can use it' })).toBeNull();
+      const labels = [...dialog.querySelectorAll('label')].map((l) => l.textContent.trim());
+      const order = ['Label', 'Project', 'Who can use it', 'Description', 'Instructions'].map((l) => labels.indexOf(l));
+      expect(order.every((i) => i >= 0)).toBe(true);
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+    });
+
+    it('disables Everyone at the org without can_share_org', async () => {
+      const user = userEvent.setup();
+      const dialog = await openWriteForm(user);
+
+      expect(within(dialog).getByRole('checkbox', { name: 'Everyone at Kinaxis' })).toHaveAttribute('aria-disabled', 'true');
+      expect(within(dialog).getByTestId('org-option-locked')).toBeInTheDocument();
+    });
+
+    it('makes no sharing call for Only me', async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
+      const dialog = await openWriteForm(user);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(api.saveSkill).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(api.saveSkill.mock.calls[0][0]).not.toHaveProperty('shared');
+      expect(api.setSkillAudience).not.toHaveBeenCalled();
+    });
+
+    it('creates the skill, then shares it with the picked org audience by its slug', async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill-slug' });
+      api.setSkillAudience.mockResolvedValue({});
+      const dialog = await openWriteForm(user, [mine], ADMIN_CAPS);
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Everyone at Kinaxis' }));
+      await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
+        'new-skill-slug', { org: true, team_ids: [], emails: [], always_on: true },
+      ));
+      expect(api.saveSkill.mock.invocationCallOrder[0]).toBeLessThan(api.setSkillAudience.mock.invocationCallOrder[0]);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('lets the creator make a new team skill always on', async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
+      api.setSkillAudience.mockResolvedValue({});
+      const dialog = await openWriteForm(user);
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
+      await user.click(await within(dialog).findByRole('checkbox', { name: 'Supply Planning' }));
+      const alwaysOn = within(dialog).getByRole('switch', { name: 'Always include in every task' });
+      expect(alwaysOn).not.toBeDisabled();
+      await user.click(alwaysOn);
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
+        'new-skill', { org: false, team_ids: ['t-supply'], emails: [], always_on: true },
+      ));
+    });
+
+    it('keeps the dialog open with an inline note when sharing fails after the create', async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
+      api.setSkillAudience.mockRejectedValueOnce(new Error('Team not found'));
+      const dialog = await openWriteForm(user);
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
+      await user.click(await within(dialog).findByRole('checkbox', { name: 'Supply Planning' }));
+      const loads = api.fetchSkills.mock.calls.length;
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      expect(await within(dialog).findByText(
+        "Skill created, but it couldn't be shared: Team not found. You can share it from the skill's menu.",
+      )).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(api.deleteSkill).not.toHaveBeenCalled();
+      await waitFor(() => expect(api.fetchSkills.mock.calls.length).toBeGreaterThan(loads + 1));
+
+      // A retry shares the existing skill; it never creates a second one.
+      api.setSkillAudience.mockResolvedValueOnce({});
+      await user.click(within(dialog).getByRole('button', { name: 'Retry sharing' }));
+      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledTimes(2));
+      expect(api.saveSkill).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+  });
 });

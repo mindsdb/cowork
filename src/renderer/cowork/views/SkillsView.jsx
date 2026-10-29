@@ -5,7 +5,7 @@ import {
   PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
   ListGroup, ListItem,
 } from '../components/collection';
-import { Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
+import { Alert, Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -18,9 +18,11 @@ import {
 } from '../lib/skillsStore';
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareDialog from '../components/SkillShareDialog';
+import SkillAudienceFields, { PRIVATE_AUDIENCE } from '../components/SkillAudienceFields';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
+  audiencePayload,
   canEditSkill,
   groupSkillsBySection,
   isPrivateAudience,
@@ -47,7 +49,7 @@ import {
   sharingValue,
 } from '../lib/skillSharing';
 
-// Sentinel for the "All projects" scope choice in the Scope <Select>. It must
+// Sentinel for the "All projects" choice in the Project <Select>. It must
 // be a non-empty string: Base UI's <Select.Value> treats an empty-string value
 // as "nothing selected" and shows the placeholder, so an option with value ''
 // would render as the "Select…" placeholder on the closed control even though
@@ -163,15 +165,27 @@ const fieldStyle = {
   boxSizing: 'border-box',
 };
 
-function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [], canShare = false }) {
+function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, orgSharing = null }) {
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
+  /* Org sharing (ENG-3787): a create asks who can use the skill with the
+     Share dialog's audience controls, and applies a non-private answer
+     through PUT /skills/{slug}/sharing once the skill exists. Edits leave
+     the audience to the Share dialog. */
+  const asksAudience = !!orgSharing?.enabled && !isEdit;
+  const [audience, setAudience] = useState(PRIVATE_AUDIENCE);
+  const [emailPending, setEmailPending] = useState(false);
+  // Set once the skill exists but sharing it failed: Create then retries
+  // only the sharing, never a second create.
+  const [createdSlug, setCreatedSlug] = useState(null);
+  const [inlineError, setInlineError] = useState('');
   /* Who can use the skill: a create asks where the list grants sharing, the
      creator's own edit where this skill's own capabilities do. A create sends
      the answer as `shared`; an edit applies a changed choice through the
-     sharing route after the save, and surfaces its refusal. */
-  const asksSharing = isEdit ? canShareSkill(initial) : canShare;
+     sharing route after the save, and surfaces its refusal. Org sharing
+     replaces this select. */
+  const asksSharing = !orgSharing?.enabled && (isEdit ? canShareSkill(initial) : canShare);
 
   useEffect(() => {
     if (!open) return;
@@ -180,6 +194,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     } else {
       setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
+    setAudience(PRIVATE_AUDIENCE);
+    setEmailPending(false);
+    setCreatedSlug(null);
+    setInlineError('');
   }, [open]);
 
   const setField = (key, value) =>
@@ -196,7 +214,33 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     }
     const label = isEdit ? initial.label : draft.label.trim();
     if (!label || !draft.declarative.trim()) return;
+    if (asksAudience && emailPending) return;
+    const shareAfterCreate = asksAudience && !isPrivateAudience(audience);
     setBusy(true);
+    setInlineError('');
+    /* The skill exists; sharing it is the only thing left. A refusal keeps
+       the dialog open with the reason, since the skill is already saved. */
+    const shareCreated = async (slug, saved) => {
+      try {
+        await setSkillAudienceAndSync(slug, audiencePayload(audience));
+      } catch (err) {
+        setCreatedSlug(slug);
+        setInlineError(`Skill created, but it couldn't be shared: ${err?.message || 'unknown error'}. You can share it from the skill's menu.`);
+        await onPartialSave?.(saved);
+        return false;
+      }
+      handleClose();
+      await onSaved(saved, { sharedWithAudience: true });
+      return true;
+    };
+    if (createdSlug) {
+      try {
+        await shareCreated(createdSlug, { label, slug: createdSlug });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     try {
       const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
       const payload = { label, description: draft.description, declarative: draft.declarative, projects: scopedProject };
@@ -206,6 +250,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       if (asksSharing && !isEdit) payload.shared = sharedChoice;
       const sharingChanged = isEdit && asksSharing && draft.sharing !== sharingValue(initial);
       const saved = await saveSkillAndSync(payload, isEdit);
+      if (shareAfterCreate) {
+        await shareCreated(saved?.slug || saved?.label || label, saved ?? { label });
+        return;
+      }
       if (sharingChanged) await setSkillSharingAndSync(label, sharedChoice);
       handleClose();
       await onSaved(saved, {
@@ -219,7 +267,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     }
   };
 
-  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy;
+  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(asksAudience && emailPending);
 
   return (
     <Modal open={open} onClose={handleClose} width="549px" labelledBy="skill-modal-title">
@@ -245,9 +293,9 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               autoFocus={!isEdit}
             />
           </Field>
-          <Field label="Scope">
+          <Field label="Project">
             <Select
-              ariaLabel="Scope"
+              ariaLabel="Project"
               value={draft.project}
               onValueChange={(v) => setField('project', v)}
               style={{ ...fieldStyle, height: 34 }}
@@ -263,6 +311,20 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               ]}
             />
           </Field>
+          {asksAudience && (
+            <Field label={SKILL_SHARING_LABEL}>
+              <div role="group" aria-label={SKILL_SHARING_LABEL}>
+                <SkillAudienceFields
+                  value={audience}
+                  onChange={setAudience}
+                  capabilities={orgSharing}
+                  // The creator can always edit their own new skill.
+                  canEdit
+                  onPendingChange={setEmailPending}
+                />
+              </div>
+            </Field>
+          )}
           {asksSharing && (
             <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
               <Select
@@ -292,13 +354,14 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             />
           </Field>
+          {inlineError && <Alert variant="danger">{inlineError}</Alert>}
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" onClick={handleClose}>Cancel</Button>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {!isEdit && !busy && Ico.plus(14)}
-          {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+          {busy ? 'Saving…' : isEdit ? 'Save' : createdSlug ? 'Retry sharing' : 'Create'}
         </Button>
       </ModalFooter>
     </Modal>
@@ -431,9 +494,9 @@ const COWORK_PREFILL = "Let's create a skill together using your /skill-creator 
 
 function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
   const items = [
+    { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
     { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(14), onClick: () => onCowork?.(COWORK_PREFILL) },
     { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(14),  onClick: onUpload },
-    { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
     <Button
@@ -504,9 +567,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      lock the creator out of the skill they just saved. The effect above
      re-points `selected` at the reloaded entry; a save response only names
      the skill for the toast. */
-  const onSkillSaved = (saved, { shared = false, stoppedSharing = false } = {}) => {
+  const onSkillSaved = (saved, { shared = false, stoppedSharing = false, sharedWithAudience = false } = {}) => {
     const label = saved?.label;
-    if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
+    if (sharedWithAudience) showToast(`Created and shared ${label}.`, 'success');
+    else if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
     else if (stoppedSharing) showToast(`Saved ${label} and stopped sharing it.`, 'success');
     else showToast(`Saved ${label}.`, 'success');
   };
@@ -845,9 +909,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onClose={closeModal}
         onSaved={onSkillSaved}
         onError={showToast}
+        onPartialSave={() => reload({ afterCurrent: true })}
         initial={modalSkill ?? null}
         projects={projects}
         canShare={canShare}
+        orgSharing={orgSharingOn ? sharingCapabilities : null}
       />
     </div>
   );
