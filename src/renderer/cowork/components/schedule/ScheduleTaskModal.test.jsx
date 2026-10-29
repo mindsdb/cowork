@@ -138,3 +138,34 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(screen.queryByText(/runs once when it’s back/)).not.toBeInTheDocument();
   });
 });
+
+describe('ScheduleTaskModal — model', () => {
+  const MODELS = [{ id: 'claude-fast', name: 'Claude Fast' }, { id: 'claude-deep', name: 'Claude Deep' }];
+  const submitted = async (onSubmit, button = /^Schedule$/) => {
+    fireEvent.click(screen.getByRole('button', { name: button }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][0];
+  };
+
+  it('runs on the account default unless a model is picked', async () => {
+    const { onSubmit } = renderModal({ models: MODELS });
+    prompt('check status');
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('Account default');
+    expect((await submitted(onSubmit)).model).toBe('default');
+  });
+
+  it('sends the model picked', async () => {
+    const { onSubmit } = renderModal({ models: MODELS });
+    prompt('check status');
+    await pick('Model', /Claude Deep/);
+    expect((await submitted(onSubmit)).model).toBe('claude-deep');
+  });
+
+  it('keeps a pinned model the catalog no longer lists, and can clear it back to the default', async () => {
+    const task = { id: 's1', prompt: 'check status', cadence: 'daily', model: 'claude-retired' };
+    const { onSubmit } = renderModal({ models: MODELS, task });
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('claude-retired');
+    await pick('Model', /Account default/);
+    expect((await submitted(onSubmit, /Save changes/i)).model).toBe('default');
+  });
+});

@@ -134,6 +134,19 @@ describe('ScheduleDetailView — header and summary', () => {
     expect(screen.getByText('Account default model')).toBeInTheDocument();
   });
 
+  it('names a pinned model by its catalog name', () => {
+    setup({ models: [{ id: 'gpt-x', name: 'GPT X' }] });
+    expect(screen.getByText('GPT X')).toBeInTheDocument();
+  });
+
+  it('says when a run used the default because its model was unavailable', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [{ ...RUNS[1], unavailableModel: 'gpt-x' }] });
+    const { user } = setup({ models: [{ id: 'gpt-x', name: 'GPT X' }] });
+    const note = await screen.findByText('Default model');
+    await user.hover(note);
+    expect(await screen.findByText("GPT X isn't available, so this run used your default model.")).toBeInTheDocument();
+  });
+
   it('goes back from the breadcrumb', async () => {
     const { user, props } = setup();
     await user.click(screen.getByRole('button', { name: /Scheduled Tasks/ }));

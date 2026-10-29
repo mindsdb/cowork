@@ -1,9 +1,9 @@
 // Schedule a new task, or edit one: the same modal for both; pass `task` to
 // edit.
 //
-// Layout: what to do (the prompt) first, then when, read back as a sentence
-// with the next few runs, then the name and project. Pausing lives on the
-// task's page and row, not here.
+// Layout: the name, what to do (the prompt), then when, read back as a
+// sentence with the next few runs, then the project and model side by side.
+// Pausing lives on the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -18,6 +18,8 @@ import {
   INTERVAL_MINUTES, WEEKDAY_NAMES, defaultWhen, describeWhen, formatRun, nextRuns, timeZoneLabel, whenFromDate,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
+import ModelSelect from '../ModelSelect.jsx';
+import { buildModelPickerOptions, withModelPickerFallback } from '../../lib/modelPickerOptions';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
@@ -32,6 +34,10 @@ const FONT_BODY = 'var(--font-body)';
 // `handleSubmit` resolves it to `project_id: null` (server → general), and it
 // can't collide with a real project path.
 const NO_PROJECT = '__no_project__';
+
+// The server's value for "run on the account's default models". A run whose
+// pinned model can't be served falls back to it.
+const DEFAULT_MODEL = 'default';
 
 const CADENCE_OPTIONS = [
   { value: 'once',     label: 'Once' },
@@ -68,6 +74,8 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
+  models = [],
+  modelMeta = {},
   defaultProjectPath = '',
   busy = false,
   agentLabel,
@@ -96,6 +104,7 @@ export default function ScheduleTaskModal({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
+        model:       task.model || DEFAULT_MODEL,
         ...at,
       });
     } else {
@@ -106,6 +115,14 @@ export default function ScheduleTaskModal({
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
   const zone = timeZoneLabel();
+  const modelOptions = useMemo(() => [
+    { value: DEFAULT_MODEL, label: 'Account default', pin: 'top' },
+    // A pin the catalog no longer lists stays selectable as itself.
+    ...buildModelPickerOptions(
+      withModelPickerFallback(models, form.model === DEFAULT_MODEL ? '' : form.model),
+      modelMeta,
+    ),
+  ], [models, modelMeta, form.model]);
 
   async function handleSubmit({ runOnce = false } = {}) {
     if (!form.prompt.trim()) {
@@ -134,10 +151,8 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
-      // Scheduled tasks always use the user's configured default
-      // model — exposing the picker here let people accidentally
-      // pin a stale model id that's no longer valid.
-      model:        null,
+      // Sent even when it's the default, so an edit can clear a pin.
+      model:        form.model,
     };
     try {
       await onSubmit(payload, task?.id || null, { runOnce });
@@ -169,6 +184,15 @@ export default function ScheduleTaskModal({
       />
       <ModalBody padding="18px 20px">
         <div className="flex flex-col gap-[18px]">
+          <Field label="Name" optional>
+            <Input
+              value={form.title}
+              onChange={(v) => update('title', v)}
+              placeholder="Named from the prompt"
+              style={fieldInput}
+            />
+          </Field>
+
           <Field label={`What should ${displayName} do?`}>
             <Textarea
               value={form.prompt}
@@ -245,14 +269,6 @@ export default function ScheduleTaskModal({
           </div>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label="Name" optional>
-              <Input
-                value={form.title}
-                onChange={(v) => update('title', v)}
-                placeholder="Named from the prompt"
-                style={fieldInput}
-              />
-            </Field>
             <Field label="Project">
               <Select
                 value={form.projectPath}
@@ -266,6 +282,16 @@ export default function ScheduleTaskModal({
                   { separator: true },
                   ...projects.map((p) => ({ value: p.path, label: projectLabel(p) })),
                 ]}
+              />
+            </Field>
+            <Field label="Model">
+              <ModelSelect
+                value={form.model}
+                onValueChange={(v) => v && update('model', v)}
+                ariaLabel="Model"
+                variant="field"
+                style={fieldSelectStyle}
+                options={modelOptions}
               />
             </Field>
           </div>
@@ -312,6 +338,7 @@ function emptyForm({ defaultProjectPath }) {
     title: '',
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
+    model: DEFAULT_MODEL,
     ...defaultWhen(),
   };
 }
