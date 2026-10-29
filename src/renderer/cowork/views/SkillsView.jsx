@@ -165,6 +165,11 @@ const fieldStyle = {
   boxSizing: 'border-box',
 };
 
+// Wide enough for the form beside a ~300px settings column; capped to the
+// window so a narrow one stacks the two (see the 720px breakpoint below).
+const SKILL_MODAL_WIDTH = 'min(960px, 94vw)';
+const SKILL_MODAL_HEIGHT = 'min(680px, 88vh)';
+
 function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, orgSharing = null }) {
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
@@ -270,91 +275,112 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
   const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(asksAudience && emailPending);
 
   return (
-    <Modal open={open} onClose={handleClose} width="549px" labelledBy="skill-modal-title">
+    <Modal
+      open={open}
+      onClose={handleClose}
+      width={SKILL_MODAL_WIDTH}
+      height={SKILL_MODAL_HEIGHT}
+      labelledBy="skill-modal-title"
+    >
       <ModalHeader
         id="skill-modal-title"
         title={isEdit ? 'Edit Skill' : 'Add a Skill'}
         subtitle="Write a name, description, and instructions for the skill."
         onClose={handleClose}
       />
-      <ModalBody padding="20px">
-        <div className="flex flex-col gap-3">
-          {isEdit && isOwnSharedSkill(initial) && (
-            <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
-          )}
-          <Field label="Label">
-            <Input
-              aria-label="Label"
-              value={draft.label}
-              onChange={(v) => setField('label', v)}
-              placeholder="weekly-status-report"
-              readOnly={isEdit}
-              style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
-              autoFocus={!isEdit}
-            />
-          </Field>
-          <Field label="Project">
-            <Select
-              ariaLabel="Project"
-              value={draft.project}
-              onValueChange={(v) => setField('project', v)}
-              style={{ ...fieldStyle, height: 34 }}
-              options={[
-                // The global scope is a mode, not a project — set it apart from
-                // the real projects (which map 1:1 to the projects page) with a
-                // leading icon and a divider.
-                { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
-                { separator: true },
-                // value stays the slug -- it is what `submit` persists into
-                // `skill.projects`. Only the label is for reading.
-                ...projects.map((p) => ({ value: p.name, label: projectLabel(p) })),
-              ]}
-            />
-          </Field>
-          {asksAudience && (
-            <Field label={SKILL_SHARING_LABEL}>
-              <div role="group" aria-label={SKILL_SHARING_LABEL}>
-                <SkillAudienceFields
-                  value={audience}
-                  onChange={setAudience}
-                  capabilities={orgSharing}
-                  // The creator can always edit their own new skill.
-                  canEdit
-                  onPendingChange={setEmailPending}
-                />
-              </div>
-            </Field>
-          )}
-          {asksSharing && (
-            <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
-              <Select
-                ariaLabel={SKILL_SHARING_LABEL}
-                value={draft.sharing}
-                onValueChange={(v) => setField('sharing', v)}
-                style={{ ...fieldStyle, height: 34 }}
-                options={SKILL_SHARING_OPTIONS}
+      {/* Two columns on a wide window: what the skill says on the left, where
+          it applies and who can use it on the right. Below 720px they stack,
+          main first, and the body scrolls as one. */}
+      <ModalBody padding="0">
+        <div className="flex flex-col min-[720px]:h-full min-[720px]:min-h-0 min-[720px]:flex-row">
+          <div
+            data-testid="skill-modal-main"
+            className="flex min-w-0 flex-col gap-3 p-5 min-[720px]:min-h-0 min-[720px]:flex-1 min-[720px]:overflow-y-auto"
+          >
+            {isEdit && isOwnSharedSkill(initial) && (
+              <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+            )}
+            <Field label="Label">
+              <Input
+                aria-label="Label"
+                value={draft.label}
+                onChange={(v) => setField('label', v)}
+                placeholder="weekly-status-report"
+                readOnly={isEdit}
+                style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
+                autoFocus={!isEdit}
               />
             </Field>
-          )}
-          <Field label="Description">
-            <Textarea
-              aria-label="Description"
-              value={draft.description}
-              onChange={(v) => setField('description', v)}
-              placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
-              style={{ ...fieldStyle, height: 80 }}
-            />
-          </Field>
-          <Field label="Instructions">
-            <Textarea
-              aria-label="Instructions"
-              value={draft.declarative}
-              onChange={(v) => setField('declarative', v)}
-              placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
-              style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
-            />
-          </Field>
-          {inlineError && <Alert variant="danger">{inlineError}</Alert>}
+            <Field label="Description">
+              <Textarea
+                aria-label="Description"
+                value={draft.description}
+                onChange={(v) => setField('description', v)}
+                placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
+                style={{ ...fieldStyle, height: 80 }}
+              />
+            </Field>
+            {/* Instructions take whatever height the column has left. */}
+            <Field label="Instructions" className="min-[720px]:min-h-0 min-[720px]:flex-1">
+              <Textarea
+                aria-label="Instructions"
+                value={draft.declarative}
+                onChange={(v) => setField('declarative', v)}
+                placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
+                className="min-[720px]:flex-1"
+                style={{ ...fieldStyle, minHeight: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+              />
+            </Field>
+            {inlineError && <Alert variant="danger">{inlineError}</Alert>}
+          </div>
+          <aside
+            aria-label="Skill settings"
+            className="flex flex-col gap-3 border-0 border-t border-solid border-line p-5 min-[720px]:w-[300px] min-[720px]:shrink-0 min-[720px]:overflow-y-auto min-[720px]:border-l min-[720px]:border-t-0"
+          >
+            <Field label="Project">
+              <Select
+                ariaLabel="Project"
+                value={draft.project}
+                onValueChange={(v) => setField('project', v)}
+                style={{ ...fieldStyle, height: 34 }}
+                options={[
+                  // The global scope is a mode, not a project — set it apart from
+                  // the real projects (which map 1:1 to the projects page) with a
+                  // leading icon and a divider.
+                  { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
+                  { separator: true },
+                  // value stays the slug -- it is what `submit` persists into
+                  // `skill.projects`. Only the label is for reading.
+                  ...projects.map((p) => ({ value: p.name, label: projectLabel(p) })),
+                ]}
+              />
+            </Field>
+            {asksAudience && (
+              <Field label={SKILL_SHARING_LABEL}>
+                <div role="group" aria-label={SKILL_SHARING_LABEL} className="min-w-0">
+                  <SkillAudienceFields
+                    value={audience}
+                    onChange={setAudience}
+                    capabilities={orgSharing}
+                    // The creator can always edit their own new skill.
+                    canEdit
+                    onPendingChange={setEmailPending}
+                  />
+                </div>
+              </Field>
+            )}
+            {asksSharing && (
+              <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
+                <Select
+                  ariaLabel={SKILL_SHARING_LABEL}
+                  value={draft.sharing}
+                  onValueChange={(v) => setField('sharing', v)}
+                  style={{ ...fieldStyle, height: 34 }}
+                  options={SKILL_SHARING_OPTIONS}
+                />
+              </Field>
+            )}
+          </aside>
         </div>
       </ModalBody>
       <ModalFooter>

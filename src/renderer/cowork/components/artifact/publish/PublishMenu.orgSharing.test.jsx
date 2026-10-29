@@ -99,6 +99,23 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByRole('checkbox', { name: 'Supply Planning' })).toBeChecked();
   });
 
+  it("leaves the org's default team out and reads it as Everyone at the org", async () => {
+    const user = userEvent.setup();
+    const withDefault = { ...TEAMS, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, ...TEAMS.teams] };
+    render(<PublishMenu controller={makeController({
+      accessTeamIds: ['t-all'], ownerOnly: false,
+      orgSharing: { enabled: true, orgName: 'Kinaxis', teams: withDefault, userEmail: 'me@kinaxis.com' },
+    })} />);
+    await user.click(screen.getByText(/Shared/));
+    await user.click(screen.getByText('Change'));
+
+    expect(screen.getByRole('checkbox', { name: 'Everyone at Kinaxis' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Teams' })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'Teams' }));
+    expect(screen.getByRole('checkbox', { name: 'Supply Planning' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'All members' })).toBeNull();
+  });
+
   it('says when the teams could not be loaded', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({

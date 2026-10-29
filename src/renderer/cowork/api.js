@@ -2003,7 +2003,13 @@ export async function fetchHubTeams() {
     const teams = Array.isArray(data?.teams)
       ? data.teams
         .filter((team) => team && typeof team.id === 'string' && team.id)
-        .map((team) => ({ id: team.id, display_name: hubTeamName(team) }))
+        .map((team) => ({
+          id: team.id,
+          display_name: hubTeamName(team),
+          // The org's default "All members" team, which the server maps to
+          // org-wide: the pickers leave it out for "Everyone at ‹org›".
+          is_default: (team.isDefault ?? team.is_default) === true,
+        }))
       : [];
     return { reachable: data?.reachable !== false, teams };
   } catch {

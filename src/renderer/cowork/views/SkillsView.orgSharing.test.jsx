@@ -181,17 +181,38 @@ describe('SkillsView with org sharing', () => {
     }
     const ADMIN_CAPS = { enabled: true, can_share_org: true, org_name: 'Kinaxis' };
 
-    it('asks who can use it right after Project, starting on Only me, without the old select', async () => {
+    it('puts the form on the left and Project and Who can use it in the side column', async () => {
       const user = userEvent.setup();
       const dialog = await openWriteForm(user);
 
-      const group = within(dialog).getByRole('group', { name: 'Who can use it' });
+      const main = within(dialog).getByTestId('skill-modal-main');
+      const side = within(dialog).getByRole('complementary', { name: 'Skill settings' });
+      for (const name of ['Label', 'Description', 'Instructions']) {
+        expect(within(main).getByRole('textbox', { name })).toBeInTheDocument();
+        expect(within(side).queryByRole('textbox', { name })).toBeNull();
+      }
+      expect(within(side).getByRole('combobox', { name: 'Project' })).toBeInTheDocument();
+      const group = within(side).getByRole('group', { name: 'Who can use it' });
       expect(within(group).getByRole('checkbox', { name: 'Only me' })).toBeChecked();
+      expect(within(main).queryByRole('group', { name: 'Who can use it' })).toBeNull();
       expect(within(dialog).queryByRole('combobox', { name: 'Who can use it' })).toBeNull();
-      const labels = [...dialog.querySelectorAll('label')].map((l) => l.textContent.trim());
-      const order = ['Label', 'Project', 'Who can use it', 'Description', 'Instructions'].map((l) => labels.indexOf(l));
-      expect(order.every((i) => i >= 0)).toBe(true);
-      expect([...order].sort((a, b) => a - b)).toEqual(order);
+      // Main column first, so a narrow window stacks it above the settings.
+      expect(main.compareDocumentPosition(side) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // Instructions grow to fill the column on a wide window.
+      expect(within(main).getByRole('textbox', { name: 'Instructions' }).className).toContain('min-[720px]:flex-1');
+    });
+
+    it('badges a skill shared with the default team as Everyone at the org', async () => {
+      api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, SUPPLY] });
+      vi.resetModules();
+      api.fetchSkills.mockResolvedValue({ skills: [{ ...mine, sharing: { org: false, team_ids: ['t-all'], emails: [] } }], canShare: false });
+      api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, can_share_org: false, org_name: 'Kinaxis' });
+      const { default: SkillsView } = await import('./SkillsView');
+      render(<SkillsView />);
+      const row = () => screen.getByRole('article', { name: 'weekly-report' });
+
+      await waitFor(() => expect(within(row()).getByText('Everyone at Kinaxis')).toBeInTheDocument());
+      expect(within(row()).queryByText('1 team')).toBeNull();
     });
 
     it('disables Everyone at the org without can_share_org', async () => {

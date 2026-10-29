@@ -3,9 +3,12 @@
 // `useHubTeams` returns; loading, unreachable and no-teams each say so.
 // Only the caller's own teams are ever listed (and the server refuses any
 // other), so the search box filters that list rather than the whole org.
+// The org's default team ("All members") is never listed: "Everyone at
+// ‹org›" is that choice. A default team id already in `teamIds` is kept.
 
 import { useState } from 'react';
 import { Checkbox, Input, Spinner } from './ui';
+import { shareableTeams } from '../lib/orgSharing';
 
 export function filterTeams(teams, query, teamIds = []) {
   const q = (query || '').trim().toLowerCase();
@@ -27,10 +30,11 @@ export function TeamPicker({ teamsState, teamIds, onChange }) {
   if (!teamsState.reachable) {
     return <span className="font-body text-xs text-ink-3">Couldn't load your teams. Try again later.</span>;
   }
-  if (teamsState.teams.length === 0) {
+  const teams = shareableTeams(teamsState.teams);
+  if (teams.length === 0) {
     return <span className="font-body text-xs text-ink-3">You're not in any teams yet.</span>;
   }
-  const shown = filterTeams(teamsState.teams, query, teamIds);
+  const shown = filterTeams(teams, query, teamIds);
   return (
     <div className="flex flex-col gap-2">
     <Input
@@ -46,7 +50,7 @@ export function TeamPicker({ teamsState, teamIds, onChange }) {
       {shown.map((team) => {
         const checked = teamIds.includes(team.id);
         return (
-          <label key={team.id} className="flex items-center gap-2 cursor-pointer font-body text-[13px] text-ink">
+          <label key={team.id} className="flex min-w-0 items-center gap-2 cursor-pointer font-body text-[13px] text-ink [overflow-wrap:anywhere]">
             <Checkbox
               checked={checked}
               onCheckedChange={(next) => onChange(next

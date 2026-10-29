@@ -76,6 +76,37 @@ export function splitEmailsByOrgDomain(emails, userEmail) {
   return { inside, outside };
 }
 
+/* Every org has a default team everyone is in ("All members"). The server
+   maps it to org-wide, so sharing never lists it as a team: "Everyone at
+   ‹org›" is that choice, and an audience naming it reads as org-wide. */
+
+/** Whether a team (as fetchHubTeams returns it) is the org's default team. */
+export function isDefaultTeam(team) {
+  return team?.is_default === true || team?.isDefault === true;
+}
+
+/** The teams to offer when sharing: all but the default team. */
+export function shareableTeams(teams) {
+  return (teams || []).filter((team) => !isDefaultTeam(team));
+}
+
+/** Ids of the default team(s) among `teams`. */
+export function defaultTeamIds(teams) {
+  return (teams || []).filter(isDefaultTeam).map((team) => team.id);
+}
+
+/** Whether `teamIds` names the org's default team. */
+export function namesDefaultTeam(teamIds, teams) {
+  const ids = defaultTeamIds(teams);
+  return ids.length > 0 && (teamIds || []).some((id) => ids.includes(id));
+}
+
+/** `teamIds` without the default team. */
+export function withoutDefaultTeam(teamIds, teams) {
+  const ids = defaultTeamIds(teams);
+  return (teamIds || []).filter((id) => !ids.includes(id));
+}
+
 function stringList(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string' && v) : [];
 }
@@ -158,7 +189,8 @@ export function skillOwnerEmail(skill) {
  */
 export function skillAudienceBadge(skill, { teams = [], orgName = null } = {}) {
   const audience = skillAudience(skill);
-  if (audience.org) return everyoneAtLabel(orgName);
+  // The default team is everyone at the org.
+  if (audience.org || namesDefaultTeam(audience.teamIds, teams)) return everyoneAtLabel(orgName);
   const parts = [];
   if (audience.teamIds.length === 1) {
     const team = teams.find((t) => t.id === audience.teamIds[0]);

@@ -11,6 +11,7 @@ import SkillShareDialog from './SkillShareDialog';
 
 const SUPPLY = { id: 't-supply', display_name: 'Supply Planning' };
 const FINANCE = { id: 't-finance', display_name: 'Finance' };
+const ALL_MEMBERS = { id: 't-all', display_name: 'All members', is_default: true };
 
 const skill = (sharing, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', can_edit: true, sharing, ...extra });
 const ADMIN = { enabled: true, can_share_org: true, org_name: 'Kinaxis' };
@@ -93,6 +94,40 @@ describe('SkillShareDialog', () => {
     await user.click(box(dialog, 'Teams'));
 
     expect(within(dialog).getByText("You're not in any teams yet.")).toBeInTheDocument();
+  });
+
+  it("doesn't list the org's default team: Everyone at the org is that choice", async () => {
+    const user = userEvent.setup();
+    teams.state = { status: 'ready', reachable: true, teams: [ALL_MEMBERS, SUPPLY] };
+    const { dialog } = renderDialog();
+
+    await user.click(box(dialog, 'Teams'));
+
+    expect(box(dialog, 'Supply Planning')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox', { name: 'All members' })).toBeNull();
+  });
+
+  it('says the caller is in no teams when the default team is their only one', async () => {
+    const user = userEvent.setup();
+    teams.state = { status: 'ready', reachable: true, teams: [ALL_MEMBERS] };
+    const { dialog } = renderDialog();
+
+    await user.click(box(dialog, 'Teams'));
+
+    expect(within(dialog).getByText("You're not in any teams yet.")).toBeInTheDocument();
+  });
+
+  it('shows a skill shared with the default team as Everyone at the org', async () => {
+    const user = userEvent.setup();
+    teams.state = { status: 'ready', reachable: true, teams: [ALL_MEMBERS, SUPPLY] };
+    const { dialog, onSave } = renderDialog({ sharing: { org: false, team_ids: ['t-all'], emails: [] }, capabilities: ADMIN });
+
+    expect(box(dialog, 'Everyone at Kinaxis')).toBeChecked();
+    expect(box(dialog, 'Teams')).not.toBeChecked();
+    // Unticking it drops the default team.
+    await user.click(box(dialog, 'Everyone at Kinaxis'));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: [], always_on: false });
   });
 
   it('says so when the teams could not be loaded', async () => {

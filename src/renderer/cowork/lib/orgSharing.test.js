@@ -17,6 +17,9 @@ import {
   peopleInLabel,
   peopleOutsideLabel,
   splitEmailsByOrgDomain,
+  shareableTeams,
+  namesDefaultTeam,
+  withoutDefaultTeam,
 } from './orgSharing';
 
 const skill = (label, extra = {}) => ({ label, isBuiltin: false, ...extra });
@@ -55,6 +58,31 @@ describe('skillAudienceBadge', () => {
     [{ org: false, team_ids: [], emails: ['a@x.com', 'b@x.com', 'c@x.com'] }, '3 people'],
   ])('labels %j as %s', (sharing, label) => {
     expect(skillAudienceBadge(skill('s', { sharing }), { teams, orgName: 'Kinaxis' })).toBe(label);
+  });
+
+  it('reads a skill shared with the default team as everyone at the org', () => {
+    const withDefault = [{ id: 't0', display_name: 'All members', is_default: true }, ...teams];
+    const badge = (team_ids) => skillAudienceBadge(
+      skill('s', { sharing: { org: false, team_ids, emails: [] } }), { teams: withDefault, orgName: 'Kinaxis' },
+    );
+    expect(badge(['t0'])).toBe('Everyone at Kinaxis');
+    expect(badge(['t0', 't1'])).toBe('Everyone at Kinaxis');
+    expect(badge(['t1'])).toBe('Team: Supply Planning');
+  });
+});
+
+describe('default team', () => {
+  const teams = [
+    { id: 't0', display_name: 'All members', is_default: true },
+    { id: 't1', display_name: 'Supply Planning', is_default: false },
+  ];
+  it('is left out of the teams to share with', () => {
+    expect(shareableTeams(teams).map((t) => t.id)).toEqual(['t1']);
+  });
+  it('is spotted in, and dropped from, a list of team ids', () => {
+    expect(namesDefaultTeam(['t1', 't0'], teams)).toBe(true);
+    expect(namesDefaultTeam(['t1'], teams)).toBe(false);
+    expect(withoutDefaultTeam(['t1', 't0'], teams)).toEqual(['t1']);
   });
 });
 

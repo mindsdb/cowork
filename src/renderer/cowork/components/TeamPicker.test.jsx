@@ -33,4 +33,20 @@ describe('<TeamPicker>', () => {
     fireEvent.change(screen.getByLabelText('Search your teams'), { target: { value: 'zzz' } });
     expect(screen.getByText('None of your teams match.')).toBeTruthy();
   });
+  it('leaves the org default team out: Everyone at the org is that choice', () => {
+    const onChange = vi.fn();
+    const withDefault = { ...ready, teams: [{ id: 't0', display_name: 'All members', is_default: true }, ...teams] };
+    render(<TeamPicker teamsState={withDefault} teamIds={['t0']} onChange={onChange} />);
+    expect(screen.queryByText('All members')).toBeNull();
+    expect(screen.getByText('Finance')).toBeTruthy();
+    // Ticking another team keeps the default team id it was given.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Finance' }));
+    expect(onChange).toHaveBeenCalledWith(['t0', 't2']);
+  });
+  it('reads as no teams when the default team is the only one', () => {
+    const onlyDefault = { ...ready, teams: [{ id: 't0', display_name: 'All members', is_default: true }] };
+    render(<TeamPicker teamsState={onlyDefault} teamIds={[]} onChange={vi.fn()} />);
+    expect(screen.getByText("You're not in any teams yet.")).toBeTruthy();
+    expect(screen.queryByLabelText('Search your teams')).toBeNull();
+  });
 });

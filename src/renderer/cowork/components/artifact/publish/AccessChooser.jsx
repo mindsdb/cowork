@@ -26,9 +26,11 @@ import PeoplePicker from '../../PeoplePicker';
 import EmailChipsInput from '../../EmailChipsInput';
 import {
   everyoneAtLabel,
+  namesDefaultTeam,
   peopleInLabel,
   peopleOutsideLabel,
   splitEmailsByOrgDomain,
+  withoutDefaultTeam,
 } from '../../../lib/orgSharing';
 
 const FONT_MONO = "var(--font-mono)";
@@ -386,7 +388,11 @@ function OrgRestrictedFields({ draft, set, sharing, modes }) {
     set({ orgEmails: inside, outsideEmails: outside, emailsText: merged.join(', ') });
   };
 
-  const teamsOn = showTeams || teamIds.length > 0;
+  // The org's default team is "Everyone at ‹org›", not one of the Teams.
+  const hubTeams = sharing.teams?.teams || [];
+  const orgOn = !!draft.orgAllowed || namesDefaultTeam(teamIds, hubTeams);
+  const pickedTeamIds = withoutDefaultTeam(teamIds, hubTeams);
+  const teamsOn = showTeams || pickedTeamIds.length > 0;
   const insideOn = showInside || split.inside.length > 0;
   const outsideOn = showOutside || split.outside.length > 0;
   const nothing = allEmails.length === 0 && !draft.orgAllowed && teamIds.length === 0;
@@ -395,13 +401,18 @@ function OrgRestrictedFields({ draft, set, sharing, modes }) {
     <div className="mt-2 flex flex-col gap-2">
       <SharingRow
         label={everyoneAtLabel(sharing.orgName)}
-        checked={!!draft.orgAllowed}
-        onCheckedChange={(v) => set({ orgAllowed: v })}
+        checked={orgOn}
+        onCheckedChange={(v) => set(v
+          ? { orgAllowed: true }
+          : { orgAllowed: false, teamIds: withoutDefaultTeam(teamIds, hubTeams) })}
       />
       <SharingRow
         label="Teams"
         checked={teamsOn}
-        onCheckedChange={(v) => { setShowTeams(v); if (!v) set({ teamIds: [] }); }}
+        onCheckedChange={(v) => {
+          setShowTeams(v);
+          if (!v) set({ teamIds: teamIds.filter((id) => !pickedTeamIds.includes(id)) });
+        }}
       >
         <TeamPicker teamsState={sharing.teams} teamIds={teamIds} onChange={(next) => set({ teamIds: next })} />
       </SharingRow>

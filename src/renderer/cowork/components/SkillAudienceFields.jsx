@@ -11,7 +11,7 @@
 // gets the next one. Which rows are open is kept here, seeded from `value` on
 // mount, so a parent that loads a different skill remounts it with a `key`.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Checkbox, Tooltip } from './ui';
 import { Switch } from './ui/Switch';
 import { useHubTeams } from '../hooks/useOrgSharing';
@@ -26,7 +26,9 @@ import {
   canBeAlwaysOn,
   everyoneAtLabel,
   isPrivateAudience,
+  namesDefaultTeam,
   peopleInLabel,
+  withoutDefaultTeam,
 } from '../lib/orgSharing';
 
 export const PRIVATE_AUDIENCE = Object.freeze({ org: false, teamIds: [], emails: [], alwaysOn: false });
@@ -90,6 +92,18 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
   const [showTeams, setShowTeams] = useState(() => audience.teamIds.length > 0);
   // Teams load only while the fields are shown.
   const teamsState = useHubTeams(true);
+  const teams = teamsState.teams;
+  // The org's default team is "Everyone at ‹org›", not one of the Teams.
+  const sharedWithDefaultTeam = namesDefaultTeam(audience.teamIds, teams);
+  const pickedTeamIds = withoutDefaultTeam(audience.teamIds, teams);
+  // Once the teams are known, a skill shared only with the default team
+  // doesn't open the Teams row.
+  const settledTeamsRow = useRef(false);
+  useEffect(() => {
+    if (settledTeamsRow.current || teamsState.status !== 'ready') return;
+    settledTeamsRow.current = true;
+    if (audience.teamIds.length > 0 && pickedTeamIds.length === 0) setShowTeams(false);
+  }, [teamsState.status]);
 
   const orgName = capabilities?.org_name ?? null;
   const canShareOrg = capabilities?.can_share_org === true;
@@ -105,9 +119,11 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
     <OptionRow
       label={everyoneAtLabel(orgName)}
       description="Everyone in the organization can use it."
-      checked={audience.org}
+      checked={audience.org || sharedWithDefaultTeam}
       disabled={!canShareOrg}
-      onCheckedChange={(next) => set({ org: next })}
+      onCheckedChange={(next) => set(next
+        ? { org: true }
+        : { org: false, teamIds: withoutDefaultTeam(audience.teamIds, teams) })}
     />
   );
 
@@ -149,7 +165,8 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         checked={showTeams}
         onCheckedChange={(next) => {
           setShowTeams(next);
-          if (!next) set({ teamIds: [] });
+          // The default team stands for the org row, so it stays.
+          if (!next) set({ teamIds: audience.teamIds.filter((id) => !pickedTeamIds.includes(id)) });
         }}
       >
         <TeamPicker teamsState={teamsState} teamIds={audience.teamIds} onChange={(teamIds) => set({ teamIds })} />
