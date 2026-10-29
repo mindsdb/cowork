@@ -54,6 +54,7 @@ describe('incomplete reason under the answer', () => {
     ['handback_stuck', 'Stopped early: the agent judged the task stuck.'],
     ['retry_exhausted', 'Stopped early: the task kept failing.'],
     ['question_unanswered', 'Stopped early: a question went unanswered.'],
+    ['content_filter', "Stopped early: the model's content filter blocked a reply."],
   ])('names %s with its own line', (reason, line) => {
     render(<ChatView task={taskWith(hydrateMessagesFromServerEvents(persistedTurn(
       { status: 'incomplete', incomplete_details: { reason } },
