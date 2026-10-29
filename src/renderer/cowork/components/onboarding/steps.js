@@ -12,10 +12,11 @@
 // the user through local-machine access can't be completed there.
 
 // The first step starts from the person's own work. The prompt names the ways
-// to bring it, so the agent's first reply lists them; the same text is what a
-// console link places in the composer.
+// to bring it and a few small things to start with, so the agent's first reply
+// lists them instead of leaving a blank page; the same text is what a console
+// link places in the composer.
 export const OWN_WORK_PROMPT =
-  'I\'d like to start with something real from my work. Ask me what I\'m working on this week, and tell me I can attach a file, paste notes or a link, or connect Gmail if it lives in my email. Then take the first step once I answer.';
+  'I\'d like to start with something real from my work. Ask me one question about what I\'m working on, and give me two or three small examples to jump-start it, like a report to update, a spreadsheet to clean, or a thread to answer. Tell me I can attach a file, paste notes or a link, or connect Gmail, and say you\'ll take the first step once I answer.';
 
 // Stable prefixes used to recognize a (possibly user-edited) send and complete
 // the matching step. Kept next to the prompts so a copy edit can't silently
