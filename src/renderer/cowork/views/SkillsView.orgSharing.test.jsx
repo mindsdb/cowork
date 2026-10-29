@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   uploadSkillFile: vi.fn(),
   fetchSkillSharingCapabilities: vi.fn(),
   fetchHubTeams: vi.fn(),
+  searchHubPeople: vi.fn(),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
@@ -247,6 +248,42 @@ describe('SkillsView with org sharing', () => {
       await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
         'new-skill', { org: false, team_ids: ['t-supply'], emails: [], always_on: true },
       ));
+    });
+
+    it('shares a new skill with people picked from the org', async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
+      api.setSkillAudience.mockResolvedValue({});
+      api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
+      const dialog = await openWriteForm(user);
+
+      expect(within(dialog).queryByRole('checkbox', { name: 'Specific people' })).toBeNull();
+      await user.click(within(dialog).getByRole('checkbox', { name: 'People in Kinaxis' }));
+      await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
+      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(api.setSkillAudience).toHaveBeenCalledWith(
+        'new-skill', { org: false, team_ids: [], emails: ['ana@kinaxis.com'], always_on: false },
+      ));
+    });
+
+    it("shows the server's refusal of someone outside the org inline", async () => {
+      const user = userEvent.setup();
+      api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
+      api.setSkillAudience.mockRejectedValueOnce(Object.assign(
+        new Error('Skills can only be shared with people in your organization: ana@kinaxis.com'), { status: 400 },
+      ));
+      api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
+      const dialog = await openWriteForm(user);
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'People in Kinaxis' }));
+      await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
+      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      expect(await within(dialog).findByText(/Skills can only be shared with people in your organization: ana@kinaxis.com/))
+        .toBeInTheDocument();
     });
 
     it('keeps the dialog open with an inline note when sharing fails after the create', async () => {

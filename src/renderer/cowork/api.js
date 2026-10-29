@@ -2003,11 +2003,47 @@ export async function fetchHubTeams() {
     const teams = Array.isArray(data?.teams)
       ? data.teams
         .filter((team) => team && typeof team.id === 'string' && team.id)
-        .map((team) => ({ id: team.id, display_name: String(team.display_name || team.id) }))
+        .map((team) => ({ id: team.id, display_name: hubTeamName(team) }))
       : [];
     return { reachable: data?.reachable !== false, teams };
   } catch {
     return { reachable: false, teams: [] };
+  }
+}
+
+/* A team's name to show. cowork-server sends `displayName` (camelCase);
+   older builds sent `display_name`. A raw id is never shown. */
+export const UNNAMED_TEAM = 'Unnamed team';
+
+function hubTeamName(team) {
+  for (const candidate of [team.displayName, team.display_name, team.name]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return UNNAMED_TEAM;
+}
+
+/* People in the caller's active MindsHub org whose name or email matches `q`
+   (the server wants at least 2 characters and leaves the caller out).
+   `reachable: false` on any failure, so the picker can say it couldn't
+   search rather than claim nobody matched. */
+export async function searchHubPeople(q, { signal, limit = 8 } = {}) {
+  const text = String(q ?? '').trim();
+  if (text.length < 2) return { reachable: true, people: [] };
+  try {
+    const params = new URLSearchParams({ q: text, limit: String(limit) });
+    const data = await req(`/hub/people/?${params}`, { headers: await hubHeaders(), signal });
+    const seen = new Set();
+    const people = [];
+    for (const person of Array.isArray(data?.people) ? data.people : []) {
+      const email = typeof person?.email === 'string' ? person.email.trim().toLowerCase() : '';
+      if (!email || seen.has(email)) continue;
+      seen.add(email);
+      const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+      people.push({ id: typeof person.id === 'string' && person.id ? person.id : email, name, email });
+    }
+    return { reachable: data?.reachable !== false, people };
+  } catch {
+    return { reachable: false, people: [] };
   }
 }
 

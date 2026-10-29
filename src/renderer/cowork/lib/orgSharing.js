@@ -32,6 +32,50 @@ export function everyoneAtLabel(orgName) {
   return orgName ? `Everyone at ${orgName}` : 'Everyone in your organization';
 }
 
+/** The org's name for running text, or "your organization". */
+export function orgNameOrGeneric(orgName) {
+  return orgName || 'your organization';
+}
+
+/** "People in Kinaxis" / "People in your organization". */
+export function peopleInLabel(orgName) {
+  return `People in ${orgNameOrGeneric(orgName)}`;
+}
+
+/** "People outside Kinaxis" / "People outside your organization". */
+export function peopleOutsideLabel(orgName) {
+  return `People outside ${orgNameOrGeneric(orgName)}`;
+}
+
+/** The domain of an email address, lowercased, or '' without one. */
+export function emailDomain(email) {
+  const text = String(email ?? '').trim().toLowerCase();
+  const at = text.lastIndexOf('@');
+  return at > 0 ? text.slice(at + 1) : '';
+}
+
+/**
+ * Splits an artifact's existing `allowed_emails` between the "People in
+ * ‹org›" and "People outside ‹org›" boxes of the Share panel.
+ *
+ * The access record keeps one flat email list, so which box an address was
+ * added from is lost. Asking the hub about each address would cost a search
+ * per email, so this guesses instead: an address on the signed-in person's
+ * own email domain shows under "People in ‹org›", anything else (and
+ * everything, when the person's email is unknown) under "People outside
+ * ‹org›". It only decides where a chip is displayed; both boxes are sent
+ * together as `allowed_emails`, so access is the same either way.
+ */
+export function splitEmailsByOrgDomain(emails, userEmail) {
+  const domain = emailDomain(userEmail);
+  const inside = [];
+  const outside = [];
+  for (const email of emails || []) {
+    (domain && emailDomain(email) === domain ? inside : outside).push(email);
+  }
+  return { inside, outside };
+}
+
 function stringList(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string' && v) : [];
 }

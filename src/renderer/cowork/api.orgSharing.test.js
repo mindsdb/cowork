@@ -5,7 +5,7 @@ vi.mock('../platform/host', () => ({
 }));
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: true }));
 
-import { fetchHubTeams, fetchSkillSharingCapabilities, setSkillAudience } from './api';
+import { fetchHubTeams, fetchSkillSharingCapabilities, searchHubPeople, setSkillAudience } from './api';
 
 const jsonRes = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -77,11 +77,83 @@ describe('fetchHubTeams', () => {
     expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
   });
 
+  it('reads the camelCase displayName cowork-server sends', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true, teams: [{ id: 't1', displayName: 'Supply Planning' }, { id: 't2', display_name: 'Finance' }],
+    }));
+
+    expect((await fetchHubTeams()).teams).toEqual([
+      { id: 't1', display_name: 'Supply Planning' },
+      { id: 't2', display_name: 'Finance' },
+    ]);
+  });
+
+  it('never shows a raw id for a team without a name', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true, teams: [{ id: '5f1c2e9a-uuid', displayName: '  ' }, { id: '7a2b-uuid' }],
+    }));
+
+    expect((await fetchHubTeams()).teams.map((t) => t.display_name)).toEqual(['Unnamed team', 'Unnamed team']);
+  });
+
   it.each([
     ['an unreachable hub', () => jsonRes({ reachable: false, teams: [] })],
     ['a failed request', () => jsonRes({ detail: 'boom' }, 500)],
   ])('reports %s as unreachable', async (_, response) => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(response());
     expect(await fetchHubTeams()).toEqual({ reachable: false, teams: [] });
+  });
+});
+
+describe('searchHubPeople', () => {
+  it('asks the people route with the query, limit and MindsHub credential', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true,
+      people: [
+        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Kinaxis.com' },
+        { id: 'u2', name: '', email: 'bo@kinaxis.com' },
+        { id: 'u3', name: 'No Email' },
+        { id: 'u4', name: 'Dup', email: 'ana@kinaxis.com' },
+        null,
+      ],
+    }));
+    const controller = new AbortController();
+
+    expect(await searchHubPeople(' an ', { signal: controller.signal })).toEqual({
+      reachable: true,
+      people: [
+        { id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
+        { id: 'u2', name: null, email: 'bo@kinaxis.com' },
+      ],
+    });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/people/?q=an&limit=8');
+    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
+    expect(init.signal).toBeDefined();
+  });
+
+  it('does not ask for fewer than two characters', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    expect(await searchHubPeople('a')).toEqual({ reachable: true, people: [] });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an unreachable hub', () => jsonRes({ reachable: false, people: [] })],
+    ['a failed request', () => jsonRes({ detail: 'boom' }, 500)],
+    ['a body without people', () => jsonRes({ reachable: false })],
+  ])('reports %s as unreachable', async (_, response) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response());
+    expect(await searchHubPeople('ana')).toEqual({ reachable: false, people: [] });
+  });
+
+  it('reads a malformed body as no people', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ people: 'nope' }));
+    expect(await searchHubPeople('ana')).toEqual({ reachable: true, people: [] });
+  });
+
+  it('reports a network error as unreachable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    expect(await searchHubPeople('ana')).toEqual({ reachable: false, people: [] });
   });
 });

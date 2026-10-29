@@ -20,6 +20,7 @@ const sharing = vi.hoisted(() => ({
   useHubTeams: vi.fn(),
 }));
 vi.mock('../../../hooks/useOrgSharing', () => sharing);
+vi.mock('../../../hooks/useAccountEmail', () => ({ useAccountEmail: () => 'me@kinaxis.com' }));
 
 const wsMock = vi.hoisted(() => ({
   canUseArtifactWorkspace: vi.fn(() => true),
@@ -80,6 +81,8 @@ describe('usePublish with org sharing', () => {
 
   it('hands the panel the org name and teams', () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
-    expect(result.current.orgSharing).toEqual({ enabled: true, orgName: 'Kinaxis', teams: TEAMS });
+    expect(result.current.orgSharing).toEqual({
+      enabled: true, orgName: 'Kinaxis', teams: TEAMS, userEmail: 'me@kinaxis.com',
+    });
   });
 });

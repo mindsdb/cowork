@@ -30,7 +30,7 @@ export function TeamPicker({ teamsState, teamIds, onChange }) {
                 ? [...teamIds, team.id]
                 : teamIds.filter((id) => id !== team.id))}
             />
-            {team.display_name}
+            {team.display_name || 'Unnamed team'}
           </label>
         );
       })}

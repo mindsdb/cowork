@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 
 const teams = vi.hoisted(() => ({ state: { status: 'ready', reachable: true, teams: [] } }));
 vi.mock('../hooks/useOrgSharing', () => ({ useHubTeams: () => teams.state }));
+const people = vi.hoisted(() => ({ search: vi.fn() }));
+vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), searchHubPeople: people.search }));
 
 import SkillShareDialog from './SkillShareDialog';
 
@@ -24,6 +26,14 @@ const ALWAYS_ON = 'Always include in every task';
 const alwaysOn = (dialog) => within(dialog).queryByRole('switch', { name: ALWAYS_ON });
 
 beforeEach(() => {
+  people.search.mockReset();
+  people.search.mockImplementation(async (q) => ({
+    reachable: true,
+    people: [
+      { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
+      { id: 'u-bo', name: 'Bo Chen', email: 'bo@kinaxis.com' },
+    ].filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase())),
+  }));
   teams.state = { status: 'ready', reachable: true, teams: [SUPPLY, FINANCE] };
 });
 
@@ -32,7 +42,8 @@ describe('SkillShareDialog', () => {
     const { dialog } = renderDialog();
 
     expect(box(dialog, 'Only me')).toBeChecked();
-    expect(box(dialog, 'Specific people')).not.toBeChecked();
+    expect(box(dialog, 'People in Kinaxis')).not.toBeChecked();
+    expect(within(dialog).queryByRole('checkbox', { name: 'Specific people' })).toBeNull();
     const note = within(dialog).getByRole('note');
     expect(note).toHaveTextContent("Anton uses a shared skill when it's relevant to the task");
     expect(note).not.toHaveTextContent('automatically');
@@ -94,21 +105,53 @@ describe('SkillShareDialog', () => {
     expect(within(dialog).getByText("Couldn't load your teams. Try again later.")).toBeInTheDocument();
   });
 
-  it('turns typed addresses into chips and refuses one that is not an email', async () => {
+  it('offers People in the org, Teams and Everyone at the org, in that order', () => {
+    const { dialog } = renderDialog({ capabilities: ADMIN });
+    const names = within(dialog).getAllByRole('checkbox').map((c) => c.getAttribute('aria-label') || c.closest('label')?.textContent);
+    expect(names).toEqual(['Only me', 'People in Kinaxis', 'Teams', 'Everyone at Kinaxis']);
+  });
+
+  it('names the org generically without an org name', () => {
+    const { dialog } = renderDialog({ capabilities: { ...MEMBER, org_name: null } });
+    expect(box(dialog, 'People in your organization')).toBeInTheDocument();
+  });
+
+  it('picks people from the org and saves their emails', async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = renderDialog();
 
-    await user.click(box(dialog, 'Specific people'));
-    const input = within(dialog).getByRole('textbox', { name: 'Add people by email' });
-    await user.type(input, 'Ana@Kinaxis.com, nope{Enter}');
+    await user.click(box(dialog, 'People in Kinaxis'));
+    await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
+    await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
 
-    expect(within(dialog).getByRole('list', { name: 'People' })).toHaveTextContent('ana@kinaxis.com');
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('Not an email: nope');
-    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
-
-    await user.clear(input);
+    expect(within(dialog).getByRole('list', { name: 'Picked people' })).toHaveTextContent('Ana Ruiz (ana@kinaxis.com)');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(onSave).toHaveBeenCalledWith({ org: false, team_ids: [], emails: ['ana@kinaxis.com'], always_on: false });
+  });
+
+  it('will not add a typed email from outside the org', async () => {
+    const user = userEvent.setup();
+    const { dialog } = renderDialog();
+
+    await user.click(box(dialog, 'People in Kinaxis'));
+    await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'zed@elsewhere.com{Enter}');
+
+    expect(await within(dialog).findByText('Pick someone from your organization')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('option', { name: /Add zed@elsewhere.com/ })).toBeNull();
+    expect(within(dialog).queryByRole('list', { name: 'Picked people' })).toBeNull();
+  });
+
+  it("shows the server's refusal of an outsider in place", async () => {
+    const user = userEvent.setup();
+    const refusal = Object.assign(new Error('Skills can only be shared with people in your organization: zed@elsewhere.com'), { status: 400 });
+    const { dialog } = renderDialog({
+      sharing: { org: false, team_ids: [], emails: ['zed@elsewhere.com'] },
+      onSave: vi.fn(async () => { throw refusal; }),
+    });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(within(dialog).getByRole('alert'))
+      .toHaveTextContent('Skills can only be shared with people in your organization: zed@elsewhere.com'));
   });
 
   it('pre-fills the current audience and clears it with Only me', async () => {
@@ -118,7 +161,8 @@ describe('SkillShareDialog', () => {
     });
 
     expect(box(dialog, 'Finance')).toBeChecked();
-    expect(within(dialog).getByRole('list', { name: 'People' })).toHaveTextContent('bo@kinaxis.com');
+    expect(box(dialog, 'People in Kinaxis')).toBeChecked();
+    expect(within(dialog).getByRole('list', { name: 'Picked people' })).toHaveTextContent('bo@kinaxis.com');
 
     await user.click(box(dialog, 'Only me'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -143,8 +187,9 @@ describe('SkillShareDialog', () => {
       const { dialog } = renderDialog({ capabilities: ADMIN });
 
       expect(alwaysOn(dialog)).toBeNull();
-      await user.click(box(dialog, 'Specific people'));
-      await user.type(within(dialog).getByRole('textbox', { name: 'Add people by email' }), 'ana@kinaxis.com{Enter}');
+      await user.click(box(dialog, 'People in Kinaxis'));
+      await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
+      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
       expect(alwaysOn(dialog)).toBeNull();
 
       await user.click(box(dialog, 'Teams'));

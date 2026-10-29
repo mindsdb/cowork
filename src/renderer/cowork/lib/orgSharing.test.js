@@ -13,6 +13,10 @@ import {
   parseEmailInput,
   skillAudience,
   skillAudienceBadge,
+  emailDomain,
+  peopleInLabel,
+  peopleOutsideLabel,
+  splitEmailsByOrgDomain,
 } from './orgSharing';
 
 const skill = (label, extra = {}) => ({ label, isBuiltin: false, ...extra });
@@ -106,5 +110,32 @@ describe('artifact access fields', () => {
     expect(accessOrgWide({ org_wide: true, orgAllowed: false })).toBe(true);
     expect(accessOrgWide({ orgAllowed: true })).toBe(true);
     expect(accessOrgWide({})).toBe(false);
+  });
+});
+
+describe('people labels', () => {
+  it('names the org, or says your organization', () => {
+    expect(peopleInLabel('Kinaxis')).toBe('People in Kinaxis');
+    expect(peopleOutsideLabel('Kinaxis')).toBe('People outside Kinaxis');
+    expect(peopleInLabel(null)).toBe('People in your organization');
+    expect(peopleOutsideLabel(null)).toBe('People outside your organization');
+  });
+});
+
+describe('splitEmailsByOrgDomain', () => {
+  it('puts addresses on the signed-in domain inside and the rest outside', () => {
+    expect(splitEmailsByOrgDomain(['bo@kinaxis.com', 'zed@partner.io', 'ana@KINAXIS.com'], 'Me@Kinaxis.com')).toEqual({
+      inside: ['bo@kinaxis.com', 'ana@KINAXIS.com'],
+      outside: ['zed@partner.io'],
+    });
+  });
+
+  it('puts everyone outside without a signed-in email', () => {
+    expect(splitEmailsByOrgDomain(['bo@kinaxis.com'], null)).toEqual({ inside: [], outside: ['bo@kinaxis.com'] });
+  });
+
+  it('reads a domain', () => {
+    expect(emailDomain('A@B.Com')).toBe('b.com');
+    expect(emailDomain('nope')).toBe('');
   });
 });

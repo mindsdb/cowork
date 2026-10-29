@@ -31,6 +31,7 @@ import {
 } from '../../../lib/artifactWorkspaceApi';
 import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
 import { useHubTeams, useSharingCapabilities } from '../../../hooks/useOrgSharing';
+import { useAccountEmail } from '../../../hooks/useAccountEmail';
 import { accessOrgWide, accessTeamIds } from '../../../lib/orgSharing';
 
 // Map the publish failures a user can act on (a missing Minds API key, an
@@ -134,7 +135,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // choice. Asked only on an org deployment with the panel open.
   const capabilities = useSharingCapabilities(orgMode && enabled);
   const teams = useHubTeams(orgMode && enabled && capabilities.enabled);
-  const orgSharing = { enabled: capabilities.enabled, orgName: capabilities.org_name, teams };
+  // The caller's email places existing recipients in the "People in ‹org›"
+  // or "People outside ‹org›" box (see splitEmailsByOrgDomain).
+  const userEmail = useAccountEmail(orgMode && enabled && capabilities.enabled);
+  const orgSharing = { enabled: capabilities.enabled, orgName: capabilities.org_name, teams, userEmail };
   // Names the artifact a refresh() response belongs to. Written during render
   // so a switch is seen before any response from the previous artifact lands.
   const identityKey = orgMode

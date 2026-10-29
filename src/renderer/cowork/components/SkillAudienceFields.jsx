@@ -1,6 +1,8 @@
 // `<SkillAudienceFields>` — the audience controls for a skill inside a hosted
-// org (ENG-3787): Only me, specific people, teams, everyone at the org, and the
+// org (ENG-3787): Only me, people in the org, teams, everyone at the org, and the
 // "Always include in every task" switch once the org or a team is picked.
+// People are picked from the org's directory (`<PeoplePicker>`); a skill
+// can't be shared with anyone outside the org, and the server refuses it.
 // Shared by the Share dialog and the Add a Skill dialog. The three audiences
 // combine; "Only me" is the state with none of them, and picking it clears the
 // rest.
@@ -10,11 +12,11 @@
 // mount, so a parent that loads a different skill remounts it with a `key`.
 
 import { useState } from 'react';
-import Ico from './Icons';
-import { Checkbox, Input, Tooltip } from './ui';
+import { Checkbox, Tooltip } from './ui';
 import { Switch } from './ui/Switch';
 import { useHubTeams } from '../hooks/useOrgSharing';
 import TeamPicker from './TeamPicker';
+import PeoplePicker from './PeoplePicker';
 import {
   ALWAYS_ON_HELP,
   ALWAYS_ON_LABEL,
@@ -24,7 +26,7 @@ import {
   canBeAlwaysOn,
   everyoneAtLabel,
   isPrivateAudience,
-  parseEmailInput,
+  peopleInLabel,
 } from '../lib/orgSharing';
 
 export const PRIVATE_AUDIENCE = Object.freeze({ org: false, teamIds: [], emails: [], alwaysOn: false });
@@ -67,60 +69,6 @@ function OptionRow({ label, description, checked, onCheckedChange, disabled = fa
         {description && <span className="block pl-[26px] font-body text-[11.5px] text-ink-3 mt-px">{description}</span>}
       </div>
       {checked && children && <div className="pl-[26px]">{children}</div>}
-    </div>
-  );
-}
-
-// Typed addresses become chips on Enter, comma or blur. Anything that isn't
-// an email stays in the box with a note, so nothing is dropped silently.
-function EmailChips({ emails, onChange, onPendingChange }) {
-  const [text, setText] = useState('');
-  const [invalid, setInvalid] = useState([]);
-
-  const commit = () => {
-    const { valid, invalid: bad } = parseEmailInput(text, emails);
-    if (valid.length) onChange([...emails, ...valid]);
-    setInvalid(bad);
-    setText(bad.join(', '));
-    onPendingChange(bad.length > 0);
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      {emails.length > 0 && (
-        <ul className="m-0 p-0 list-none flex flex-wrap gap-[6px]" aria-label="People">
-          {emails.map((email) => (
-            <li key={email} className="inline-flex items-center gap-1 rounded-full border border-solid border-line bg-surface py-[2px] pl-[10px] pr-1 font-body text-[12px] text-ink">
-              {email}
-              <button
-                type="button"
-                aria-label={`Remove ${email}`}
-                onClick={() => onChange(emails.filter((e) => e !== email))}
-                className="inline-flex bg-transparent border-0 cursor-pointer p-[2px] text-ink-4"
-              >{Ico.close(12)}</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <Input
-        aria-label="Add people by email"
-        value={text}
-        placeholder="name@company.com"
-        onChange={(v) => {
-          setText(v);
-          if (invalid.length) setInvalid([]);
-          onPendingChange(v.trim().length > 0);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(); }
-        }}
-        onBlur={commit}
-      />
-      {invalid.length > 0 && (
-        <span className="font-body text-xs text-danger" role="alert">
-          {invalid.length === 1 ? `Not an email: ${invalid[0]}` : `Not emails: ${invalid.join(', ')}`}
-        </span>
-      )}
     </div>
   );
 }
@@ -179,18 +127,20 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         }}
       />
       <OptionRow
-        label="Specific people"
-        description="People you add by email."
+        label={peopleInLabel(orgName)}
+        description="People you pick from your organization."
         checked={showPeople}
         onCheckedChange={(next) => {
           setShowPeople(next);
-          if (!next) { set({ emails: [] }); onPendingChange(false); }
+          if (!next) set({ emails: [] });
+          onPendingChange(false);
         }}
       >
-        <EmailChips
-          emails={audience.emails}
+        <PeoplePicker
+          value={audience.emails}
           onChange={(emails) => set({ emails })}
-          onPendingChange={onPendingChange}
+          allowExternal={false}
+          orgName={orgName}
         />
       </OptionRow>
       <OptionRow

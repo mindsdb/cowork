@@ -13,6 +13,7 @@
 //   <AccessChooser value={draft} onChange={setDraft} />
 //   // on confirm: publish(buildAccessPayload(draft))
 
+import { useRef, useState } from 'react';
 import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
@@ -21,7 +22,14 @@ import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 import TeamPicker from '../../TeamPicker';
-import { everyoneAtLabel } from '../../../lib/orgSharing';
+import PeoplePicker from '../../PeoplePicker';
+import EmailChipsInput from '../../EmailChipsInput';
+import {
+  everyoneAtLabel,
+  peopleInLabel,
+  peopleOutsideLabel,
+  splitEmailsByOrgDomain,
+} from '../../../lib/orgSharing';
 
 const FONT_MONO = "var(--font-mono)";
 
@@ -102,6 +110,8 @@ export function isAccessDraftValid(draft) {
   if (draft.mode === 'restricted') {
     const { valid, invalid } = parseEmailList(draft.emailsText);
     if (invalid.length) return false;
+    // Text in the "People outside ‹org›" box that hasn't become a chip yet.
+    if (draft.emailsPending) return false;
     // An empty "Specific people" used to be how you said "only me". It is a
     // separate option now, so an empty list here is an unfinished selection
     // rather than a silent private publish — block it instead of quietly
@@ -237,11 +247,18 @@ export function AccessChooser({
   sharing = null,
 }) {
   const draft = value;
-  const set = (patch) => onChange?.({ ...draft, ...patch });
+  // Several patches can land in one event (a chip added, then the box
+  // emptied), so each builds on the last rather than on this render's draft.
+  const latest = useRef(draft);
+  latest.current = draft;
+  const set = (patch) => {
+    latest.current = { ...latest.current, ...patch };
+    onChange?.(latest.current);
+  };
   const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(draft.emailsText);
   const orgSharing = sharing?.enabled === true;
   const teamIds = draft.teamIds || [];
-  const orgLabel = orgSharing ? everyoneAtLabel(sharing.orgName) : 'Everyone in my organization';
+  const orgLabel = 'Everyone in my organization';
 
   return (
     <div>
@@ -296,7 +313,11 @@ export function AccessChooser({
         </div>
       )}
 
-      {draft.mode === 'restricted' && (
+      {draft.mode === 'restricted' && orgSharing && (
+        <OrgRestrictedFields draft={draft} set={set} sharing={sharing} modes={modes} />
+      )}
+
+      {draft.mode === 'restricted' && !orgSharing && (
         <div className="mt-2">
           <Textarea
             value={draft.emailsText}
@@ -320,17 +341,101 @@ export function AccessChooser({
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>
-          {orgSharing && (
-            <div className="mt-3">
-              <div className="font-body text-xs font-semibold text-ink-2 mb-[6px]">Teams</div>
-              <TeamPicker teamsState={sharing.teams} teamIds={teamIds} onChange={(next) => set({ teamIds: next })} />
-            </div>
-          )}
           <label className="flex items-center gap-2 mt-2 cursor-pointer font-body text-sm text-ink">
             <Checkbox checked={draft.orgAllowed}
               onCheckedChange={(v) => set({ orgAllowed: v })} />
             {orgLabel}
           </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SharingRow({ label, checked, onCheckedChange, children }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-card border border-solid border-line bg-surface-2 py-[10px] px-3">
+      <label className="flex items-center gap-[10px] cursor-pointer font-body text-[13px] font-semibold text-ink">
+        <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
+        {label}
+      </label>
+      {checked && children && <div className="pl-[26px]">{children}</div>}
+    </div>
+  );
+}
+
+// The restricted choice with org sharing on (ENG-3787): everyone at the org,
+// teams, people picked from the org's directory, and people outside it by
+// email. Both people boxes go out together as the one `emails` list, kept in
+// `emailsText` so validation and the payload read it as before; `orgEmails`
+// and `outsideEmails` only remember which box a chip sits in.
+function OrgRestrictedFields({ draft, set, sharing, modes }) {
+  const teamIds = draft.teamIds || [];
+  const { valid: allEmails } = parseEmailList(draft.emailsText);
+  // A draft seeded from the artifact has no split yet: guess one by domain
+  // (see splitEmailsByOrgDomain). It only places the chips.
+  const split = Array.isArray(draft.orgEmails) && Array.isArray(draft.outsideEmails)
+    ? { inside: draft.orgEmails, outside: draft.outsideEmails }
+    : splitEmailsByOrgDomain(allEmails, sharing.userEmail);
+  const [showTeams, setShowTeams] = useState(false);
+  const [showInside, setShowInside] = useState(false);
+  const [showOutside, setShowOutside] = useState(false);
+
+  const setPeople = (inside, outside) => {
+    const merged = [...new Set([...inside, ...outside])];
+    set({ orgEmails: inside, outsideEmails: outside, emailsText: merged.join(', ') });
+  };
+
+  const teamsOn = showTeams || teamIds.length > 0;
+  const insideOn = showInside || split.inside.length > 0;
+  const outsideOn = showOutside || split.outside.length > 0;
+  const nothing = allEmails.length === 0 && !draft.orgAllowed && teamIds.length === 0;
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <SharingRow
+        label={everyoneAtLabel(sharing.orgName)}
+        checked={!!draft.orgAllowed}
+        onCheckedChange={(v) => set({ orgAllowed: v })}
+      />
+      <SharingRow
+        label="Teams"
+        checked={teamsOn}
+        onCheckedChange={(v) => { setShowTeams(v); if (!v) set({ teamIds: [] }); }}
+      >
+        <TeamPicker teamsState={sharing.teams} teamIds={teamIds} onChange={(next) => set({ teamIds: next })} />
+      </SharingRow>
+      <SharingRow
+        label={peopleInLabel(sharing.orgName)}
+        checked={insideOn}
+        onCheckedChange={(v) => { setShowInside(v); if (!v) setPeople([], split.outside); }}
+      >
+        <PeoplePicker
+          value={split.inside}
+          onChange={(inside) => setPeople(inside, split.outside.filter((e) => !inside.includes(e)))}
+          allowExternal={false}
+          orgName={sharing.orgName}
+        />
+      </SharingRow>
+      <SharingRow
+        label={peopleOutsideLabel(sharing.orgName)}
+        checked={outsideOn}
+        onCheckedChange={(v) => {
+          setShowOutside(v);
+          if (!v) { setPeople(split.inside, []); set({ emailsPending: false }); }
+        }}
+      >
+        <EmailChipsInput
+          emails={split.outside}
+          onChange={(outside) => setPeople(split.inside.filter((e) => !outside.includes(e)), outside)}
+          onPendingChange={(pending) => set({ emailsPending: pending })}
+          inputLabel="Add people outside by email"
+          listLabel="People outside"
+        />
+      </SharingRow>
+      {nothing && (
+        <div className="font-body text-xs text-ink-4">
+          {modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone'}
         </div>
       )}
     </div>
