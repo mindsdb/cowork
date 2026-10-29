@@ -222,6 +222,17 @@ describe('a long streamed answer', { timeout: 90_000 }, () => {
     expect(screen.getByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
   });
 
+  it('keeps the replayed text when a reconnected stream breaks before any frame drew it', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    stubResponsesFetch({ completes: false });
+    render(<App />);
+
+    await user.click(await screen.findByText('Alpha task'));
+
+    expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
+    expect(screen.getByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
+  });
 });
 
 function deferred() {
