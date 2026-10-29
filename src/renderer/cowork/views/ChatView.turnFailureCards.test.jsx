@@ -704,6 +704,7 @@ describe('resend cards carry the failed question\'s files', () => {
     'worker_unresponsive',
     'model_timeout',
     'stalled',
+    'turn_lost',
   ])('%s: Try again resends the text with its attachments', (code) => {
     const onSend = vi.fn();
     render(
@@ -870,6 +871,37 @@ describe('worker_unresponsive failure card', () => {
     render(
       <ChatView
         task={taskWith([{ role: 'error', content: 'nothing ran', code: 'worker_unresponsive' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
+describe('turn_lost failure card', () => {
+  it('says the server stopped and retries the failed message', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'turn_lost',
+          'The server stopped before this answer finished. The answer ends where it was cut off. Please send your question again.',
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText('The answer was cut off')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was wrong with your question/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'cut off', code: 'turn_lost' }])}
         onSend={vi.fn()}
       />,
     );
@@ -1129,6 +1161,8 @@ const WIRE_CODES = [
   'model_restricted',
   // cowork-server found no free database connection in time; the user waits, then retries.
   'server_busy',
+  // The server stopped while the turn ran; the question itself was fine, so it can be sent again.
+  'turn_lost',
   'anton_error',
 ];
 

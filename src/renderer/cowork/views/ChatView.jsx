@@ -3018,6 +3018,28 @@ export default function ChatView({
                     />
                   );
                 }
+                /* The server stopped while the turn ran (`turn_lost`): a
+                 * shutdown or a crash. The answer above ends where it was cut
+                 * off, and nothing about the question failed, so Try again
+                 * sends it again. A proxy that outlives a crash sends this
+                 * code live; boot recovery saves it for a reload. */
+                if (m.code === 'turn_lost') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The answer was cut off"
+                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 /* The UI heard nothing from the turn for its idle window
                  * (`stalled`). The tab ends only its own reader and sends no
                  * cancel, so the turn may still be running on the server. A
