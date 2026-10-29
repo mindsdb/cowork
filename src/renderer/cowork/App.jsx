@@ -1176,17 +1176,23 @@ function AppCore() {
   // a tmp id, move any messages queued under the old id(s) onto the new one.
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
+  // Both keep messageQueueRef in lockstep: stream events in one network read
+  // run before any commit, and the queue drain reads the ref between them.
   const migrateQueuedMessages = (fromIds, toId) => {
-    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
+    const migrate = (queues) => mergeQueuesForAdoptedId(queues, fromIds, toId);
+    setMessageQueue(migrate);
+    messageQueueRef.current = migrate(messageQueueRef.current);
   };
 
   const clearQueueForTask = (taskId) => {
-    setMessageQueue((prev) => {
-      if (!prev[taskId]) return prev;
-      const next = { ...prev };
+    const clear = (queues) => {
+      if (!queues[taskId]) return queues;
+      const next = { ...queues };
       delete next[taskId];
       return next;
-    });
+    };
+    setMessageQueue(clear);
+    messageQueueRef.current = clear(messageQueueRef.current);
   };
 
   // Fans lib/stampUserMessageId out over the ids a stream can be filed under

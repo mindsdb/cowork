@@ -12,6 +12,7 @@ const spies = vi.hoisted(() => ({
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
+  fetchInFlightStatus: vi.fn(),
   liveAnswerTexts: [],
 }));
 
@@ -30,7 +31,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSchedules: vi.fn(async () => []),
   fetchDatasources: vi.fn(async () => ({ connections: [] })),
   fetchInFlightList: vi.fn(async () => []),
-  fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  fetchInFlightStatus: (...args) => spies.fetchInFlightStatus(...args),
   fetchRecommendedModels: vi.fn(async () => []),
   fetchConnector: vi.fn(async () => ({})),
   fetchSavedConnection: vi.fn(async () => ({})),
@@ -116,7 +117,8 @@ function stubResponsesFetch({ completes, conversationId = 'conv-a', pauseMs = 0 
     ]),
   ];
   vi.stubGlobal('fetch', vi.fn(async (url) => {
-    if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+    // A send posts to /responses; a reconnect tails /responses/tail.
+    if (!String(url).includes('/responses')) throw new Error(`Unexpected fetch: ${url}`);
     return {
       ok: true,
       status: 200,
@@ -160,6 +162,7 @@ beforeEach(() => {
     messagesCursor: null,
   });
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: baseTask });
+  spies.fetchInFlightStatus.mockReset().mockResolvedValue({ in_flight: false });
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -218,6 +221,7 @@ describe('a long streamed answer', { timeout: 90_000 }, () => {
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText(`River fact ${ITEMS}.`)).toBeInTheDocument();
   });
+
 });
 
 function deferred() {
@@ -267,5 +271,54 @@ describe('a follow-up queued on a new task', () => {
     expect(await screen.findByText('Second answer.')).toBeInTheDocument();
     await new Promise((resolve) => { setTimeout(resolve, 300); });
     expect(posts.map((post) => post.conversation)).toEqual([null, 'conv-new']);
+  });
+});
+
+describe('a follow-up queued on a new task, when the agent asks a question', () => {
+  it('moves to the composer and leaves the queue when the question comes in the first read', async () => {
+    const user = userEvent.setup();
+    const firstRead = deferred();
+    const turnEnd = deferred();
+    const posts = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (!String(url).endsWith('/responses')) throw new Error(`Unexpected fetch: ${url}`);
+      posts.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          async start(controller) {
+            await firstRead.promise;
+            controller.enqueue(sse([
+              { type: 'response.created', conversation_id: 'conv-new', user_message_id: 'user-1' },
+              {
+                type: 'response.ask_user',
+                question_id: 'ask:1',
+                prompt: 'Which river?',
+                options: [{ value: 'nile', label: 'Nile' }],
+                select: 'one',
+              },
+            ]));
+            await turnEnd.promise;
+            controller.enqueue(sse([{ type: 'response.completed', response: { status: 'completed' } }]));
+            controller.close();
+          },
+        }),
+      };
+    }));
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await send(user, 'first question');
+    await waitFor(() => expect(posts).toHaveLength(1));
+    await send(user, 'follow up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    firstRead.resolve();
+
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
+    turnEnd.resolve();
+    await new Promise((resolve) => { setTimeout(resolve, 300); });
+    expect(posts).toHaveLength(1);
   });
 });
