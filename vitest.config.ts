@@ -57,6 +57,9 @@ export default defineConfig({
         // user's provider objects still in memory.
         'src/main/sign-out.ts': { statements: 97, branches: 100 },
         'src/main/sign-out-restart.ts': { statements: 100, branches: 87 },
+        // Boot routing with the sidecar down. A branch that stops running sends
+        // signed-in users to sign-in, which looks like an ordinary session loss.
+        'src/main/boot-configured.ts': { statements: 100, branches: 100 },
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
