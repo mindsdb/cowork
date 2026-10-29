@@ -1,10 +1,22 @@
 // `<TeamPicker>` — the caller's MindsHub teams as a checklist, for sharing a
 // skill or an artifact with teams (ENG-3787). `teamsState` is what
 // `useHubTeams` returns; loading, unreachable and no-teams each say so.
+// Only the caller's own teams are ever listed (and the server refuses any
+// other), so the search box filters that list rather than the whole org.
 
-import { Checkbox, Spinner } from './ui';
+import { useState } from 'react';
+import { Checkbox, Input, Spinner } from './ui';
+
+export function filterTeams(teams, query, teamIds = []) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return teams;
+  // A picked team stays visible while searching, so it can be unticked.
+  return teams.filter((team) => teamIds.includes(team.id)
+    || (team.display_name || '').toLowerCase().includes(q));
+}
 
 export function TeamPicker({ teamsState, teamIds, onChange }) {
+  const [query, setQuery] = useState('');
   if (teamsState.status !== 'ready') {
     return (
       <span className="inline-flex items-center gap-2 font-body text-xs text-ink-3">
@@ -18,9 +30,20 @@ export function TeamPicker({ teamsState, teamIds, onChange }) {
   if (teamsState.teams.length === 0) {
     return <span className="font-body text-xs text-ink-3">You're not in any teams yet.</span>;
   }
+  const shown = filterTeams(teamsState.teams, query, teamIds);
   return (
+    <div className="flex flex-col gap-2">
+    <Input
+      value={query}
+      onChange={(v) => setQuery(v)}
+      placeholder="Search your teams"
+      aria-label="Search your teams"
+    />
     <div role="group" aria-label="Teams" className="flex max-h-[160px] flex-col gap-[6px] overflow-y-auto">
-      {teamsState.teams.map((team) => {
+      {shown.length === 0 && (
+        <span className="font-body text-xs text-ink-3">None of your teams match.</span>
+      )}
+      {shown.map((team) => {
         const checked = teamIds.includes(team.id);
         return (
           <label key={team.id} className="flex items-center gap-2 cursor-pointer font-body text-[13px] text-ink">
@@ -34,6 +57,7 @@ export function TeamPicker({ teamsState, teamIds, onChange }) {
           </label>
         );
       })}
+    </div>
     </div>
   );
 }
