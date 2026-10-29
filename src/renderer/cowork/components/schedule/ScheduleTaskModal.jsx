@@ -1,9 +1,9 @@
 // Schedule a new task, or edit one: the same modal for both; pass `task` to
 // edit.
 //
-// Layout: what to do (the prompt) first, then when, read back as a sentence
-// with the next few runs, then the name, project and model. Pausing lives on
-// the task's page and row, not here.
+// Layout: the name, what to do (the prompt), then when, read back as a
+// sentence with the next few runs, then the project and model side by side.
+// Pausing lives on the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -184,6 +184,15 @@ export default function ScheduleTaskModal({
       />
       <ModalBody padding="18px 20px">
         <div className="flex flex-col gap-[18px]">
+          <Field label="Name" optional>
+            <Input
+              value={form.title}
+              onChange={(v) => update('title', v)}
+              placeholder="Named from the prompt"
+              style={fieldInput}
+            />
+          </Field>
+
           <Field label={`What should ${displayName} do?`}>
             <Textarea
               value={form.prompt}
@@ -260,14 +269,6 @@ export default function ScheduleTaskModal({
           </div>
 
           <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
-            <Field label="Name" optional>
-              <Input
-                value={form.title}
-                onChange={(v) => update('title', v)}
-                placeholder="Named from the prompt"
-                style={fieldInput}
-              />
-            </Field>
             <Field label="Project">
               <Select
                 value={form.projectPath}
