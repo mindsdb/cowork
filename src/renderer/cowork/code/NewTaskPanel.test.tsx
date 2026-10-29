@@ -200,6 +200,45 @@ describe('NewTaskPanel', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Plan a timer', taskMode: 'plan', permissionMode: 'supervised' })));
   });
 
+  it.each(['local', 'shared'])('offers MindsHub when the %s catalogue has no models, then starts once it is connected', async source => {
+    codingModels.mockResolvedValue({ items: [] });
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    const onConnectMindsHub = vi.fn(async () => {});
+    render(<CatalogTaskPanel source={source} busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} onConnectMindsHub={onConnectMindsHub} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a calculator');
+
+    expect(await screen.findByText('Code runs on MindsHub. Connect your MindsHub account to start a task.')).toBeInTheDocument();
+    expect(screen.getByText('Connect MindsHub to start a task.')).toBeInTheDocument();
+    expect(screen.queryByText('No coding models are available.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Connect MindsHub' }));
+    expect(onConnectMindsHub).toHaveBeenCalledTimes(1);
+    codingModels.mockResolvedValue({ items: ['mindshub_air', 'gpt-5.6-sol'] });
+    act(() => credentialListeners.forEach((listener) => listener()));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    expect(screen.queryByRole('button', { name: 'Connect MindsHub' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Build a calculator' }));
+  });
+
+  it('keeps the plain empty-catalogue message when there is no sign-in to offer', async () => {
+    codingModels.mockResolvedValue({ items: [] });
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} />);
+    expect(await screen.findByText('No coding models are available.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect MindsHub' })).not.toBeInTheDocument();
+  });
+
+  it('shows a catalogue failure as it is, not as a missing MindsHub connection', async () => {
+    codingModels.mockRejectedValue(new Error('The model catalogue could not be read.'));
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} onConnectMindsHub={vi.fn(async () => {})} />);
+    expect(await screen.findByText('The model catalogue could not be read.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect MindsHub' })).not.toBeInTheDocument();
+  });
+
   it('offers to connect MindsHub when a task is refused for want of it', async () => {
     const user = userEvent.setup();
     let finish = () => {};

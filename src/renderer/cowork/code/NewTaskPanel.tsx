@@ -25,7 +25,9 @@ import { planModeCommand } from './planModeCommand';
 import type { CodingCatalog } from './useCodingCatalog';
 
 // cowork-server refuses a Code task without a MindsHub key with this message
-// and no error code, from the task route and the engine alike.
+// and no error code, from the task route and the engine alike. Usually the
+// empty model list catches it first; this covers a refusal that still gets
+// through, such as a key that went away after the models loaded.
 const MINDSHUB_NOT_CONNECTED = 'MindsHub is not connected';
 
 function mindsHubNotConnected(error: string): boolean {
@@ -104,8 +106,11 @@ export function NewTaskPanel({
     projectId: selectedProjectId,
   });
   useEffect(() => setPaletteIndex(0), [commandQuery]);
+  const needsMindsHub = !!onConnectMindsHub
+    && (mindsHubNotConnected(error) || (!error && !catalogError && draft.noCodingModels));
   const readinessText = sourceLoading ? 'Loading issue or PR…' : planUnavailable && !engineLoading && !catalogError
-    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.' : readinessMessage;
+    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.'
+    : needsMindsHub && draft.noCodingModels ? 'Connect MindsHub to start a task.' : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -411,7 +416,7 @@ export function NewTaskPanel({
             </div>
           )}
         </div>
-        {onConnectMindsHub && mindsHubNotConnected(error) ? (
+        {onConnectMindsHub && needsMindsHub ? (
           <Alert variant="danger">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>Code runs on MindsHub. Connect your MindsHub account to start a task.</span>
