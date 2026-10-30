@@ -1611,3 +1611,4 @@ _Built by MindsDB._
 
 See [structured logging](docs/structured-logging.md) for defaults, troubleshooting
 overrides, retained evidence streams and rollout requirements.
+
