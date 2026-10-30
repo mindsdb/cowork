@@ -18,7 +18,8 @@
 // how many it shows. A typed or pasted email is matched against the loaded
 // directory only: a match is that person, anything else becomes "Invite …"
 // when outside emails are allowed and is reported as not in the org when
-// they aren't. ↑/↓ move across both groups, Enter / Tab / comma add the
+// they aren't. Before the directory has loaded, addresses wait ("Checking…")
+// and resolve once it does; if it failed they stay in the input for a Retry. ↑/↓ move across both groups, Enter / Tab / comma add the
 // highlighted (or top) row, Escape closes; the input keeps the focus, so one
 // can keep typing and adding. A paste of several addresses adds each.
 //
@@ -170,6 +171,9 @@ export function RecipientField({
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
   const [notAdded, setNotAdded] = useState([]);
+  // Addresses typed or pasted before the directory loaded, held (their text
+  // left in the input) until it can say who is in the org.
+  const [held, setHeld] = useState(null);
   const listId = useId();
   const optionId = (i) => `${listId}-opt-${i}`;
   const query = text.trim();
@@ -250,8 +254,22 @@ export function RecipientField({
 
   // Each typed or pasted address becomes a person when the org has that
   // exact email in the loaded directory, else an outside email when allowed,
-  // else it is reported.
+  // else it is reported. Until the directory has loaded nothing is added, so
+  // a member is never taken for an outside address: the text stays in the
+  // input, held while the directory loads, and left for a Retry if it failed.
   const resolveTokens = (tokens) => {
+    if (!emailsOnly && !directoryReady) {
+      setText(tokens.join(' '));
+      setActive(-1);
+      setNotAdded([]);
+      if (directory.status === 'error') {
+        if (typeof document !== 'undefined' && document.activeElement === inputRef.current) setOpen(true);
+      } else {
+        setHeld(tokens);
+      }
+      return;
+    }
+    setHeld(null);
     resetInput();
     const answers = tokens.map((raw) => {
       const email = raw.toLowerCase();
@@ -281,6 +299,15 @@ export function RecipientField({
     }
     setNotAdded(refused);
   };
+
+  // The held addresses resolve once the directory answers; a failure leaves
+  // them in the input with the directory's Retry.
+  useEffect(() => {
+    if (!held) return;
+    if (directory.status === 'ready') resolveTokens(held);
+    else if (directory.status === 'error') setHeld(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directory.status, held]);
 
   /** Adds what Enter / Tab / comma means right now; false when nothing. */
   const commit = () => {
@@ -562,6 +589,7 @@ export function RecipientField({
             setOpen(true);
             setActive(-1);
             if (notAdded.length) setNotAdded([]);
+            if (held) setHeld(null);
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
@@ -594,7 +622,7 @@ export function RecipientField({
           {rows.map((item) => <RecipientRow key={item.key} item={item} onRemove={() => removeItem(item)} />)}
         </ul>
       )}
-      <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{summary}</span>
+      <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{held ? 'Checking…' : summary}</span>
     </div>
   );
 }

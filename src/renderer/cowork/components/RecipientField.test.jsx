@@ -207,15 +207,79 @@ describe('<RecipientField>', () => {
     expect(input()).toHaveFocus();
   });
 
-  it('takes a typed email as an outside one when the directory could not be read', async () => {
-    api.directory.mockResolvedValue({ reachable: false, people: [], truncated: false });
+  it('holds a paste made while the directory loads, says Checking…, and resolves it once loaded', async () => {
+    let answer;
+    api.directory.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    const spy = vi.fn();
+    render(<Harness allowExternal spy={spy} />);
+    fireEvent.focus(input());
+    fireEvent.paste(input(), { clipboardData: { getData: () => 'bo@acme.com, zed@partner.io' } });
+
+    expect(summary()).toBe('Checking…');
+    expect(input()).toHaveValue('bo@acme.com zed@partner.io');
+    expect(spy).not.toHaveBeenCalled();
+
+    answer(directoryAnswer());
+    // The member is added as the person, never as an outside address.
+    await waitFor(() => expect(spy).toHaveBeenLastCalledWith({
+      teamIds: [], userIds: ['u-bo'], emails: ['zed@partner.io'],
+    }));
+    expect(input()).toHaveValue('');
+    expect(summary()).toBe('1 person · 1 outside Acme');
+  });
+
+  it('holds a typed email entered while the directory loads', async () => {
+    let answer;
+    api.directory.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    render(<Harness allowExternal spy={spy} />);
+    await user.type(input(), 'ana@acme.com{Enter}');
+    expect(summary()).toBe('Checking…');
+    expect(spy).not.toHaveBeenCalled();
+
+    answer(directoryAnswer());
+    await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
+  });
+
+  it('keeps a paste in the input and adds nothing when the directory failed, until Retry', async () => {
+    api.directory.mockResolvedValueOnce({ reachable: false, people: [], truncated: false });
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} />);
     await user.click(input());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't load your organization's directory");
+    fireEvent.paste(input(), { clipboardData: { getData: () => 'bo@acme.com zed@partner.io' } });
+
+    expect(input()).toHaveValue('bo@acme.com zed@partner.io');
+    expect(spy).not.toHaveBeenCalled();
+    expect(summary()).not.toBe('Checking…');
+    await user.keyboard('{Enter}');
+    expect(spy).not.toHaveBeenCalled();
+    expect(input()).toHaveValue('bo@acme.com zed@partner.io');
+
+    await user.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await user.click(input());
+    await user.keyboard('{Enter}');
+    expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: ['zed@partner.io'] });
+  });
+
+  it('holds a paste made before a failed load, then leaves it in the input', async () => {
+    let answer;
+    api.directory.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    const spy = vi.fn();
+    render(<Harness allowExternal spy={spy} />);
+    fireEvent.focus(input());
+    fireEvent.paste(input(), { clipboardData: { getData: () => 'bo@acme.com zed@partner.io' } });
+    expect(summary()).toBe('Checking…');
+
+    answer({ reachable: false, people: [], truncated: false });
     await screen.findByRole('alert');
-    await user.type(input(), 'bo@acme.com{Enter}');
-    expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['bo@acme.com'] });
+    await waitFor(() => expect(summary()).not.toBe('Checking…'));
+    expect(input()).toHaveValue('bo@acme.com zed@partner.io');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   describe('a truncated directory', () => {
