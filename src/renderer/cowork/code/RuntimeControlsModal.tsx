@@ -84,6 +84,10 @@ export function RuntimeControlsModal({
   // Switching to a model that lacks the current level moves to its default, so
   // the update never carries a level the new model cannot run.
   const effortLevels = useMemo(() => effortLevelsFor(draft.model, modelMeta.modelEfforts), [draft.model, modelMeta.modelEfforts]);
+  // The catalog lists levels only for models that have them, so a model
+  // missing from the listing (delisted, or not loaded yet) is unknown, not
+  // level-less. Only a listed model with no levels drops the stored effort.
+  const offersNoEffort = !effortLevels && models.some((model) => model.id === draft.model);
   const chooseModel = (next: string) => {
     setDraft((current) => {
       const levels = effortLevelsFor(next, modelMeta.modelEfforts);
@@ -103,7 +107,10 @@ export function RuntimeControlsModal({
   const apply = async () => {
     setSubmitError('');
     try {
-      await onApply(draft);
+      // A model with no levels rejects any effort, including one the task
+      // still stores from an earlier model. The draft keeps it so switching
+      // back restores it; only the update drops it.
+      await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
     }
@@ -235,9 +242,11 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
         </div>
       </ModalBody>
+      {/* Outside the scrolling body: the form overflows the modal, and an error
+          at the end of it lands below the fold. */}
+      {submitError && <div className="code-controls-error"><Alert variant="danger">{submitError}</Alert></div>}
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
