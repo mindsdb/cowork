@@ -1592,3 +1592,109 @@ describe('console handoff attribution', () => {
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
   });
 });
+
+describe('onboarding and start events', () => {
+  it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
+    const fetchMock = mockFetch();
+    const { trackOnboardingRowClicked, trackOnboardingStepCompleted } = await importAnalytics();
+
+    trackOnboardingRowClicked('bring-your-work');
+    trackOnboardingStepCompleted('bring-your-work', 'checklist');
+
+    expect((await sentEvent(fetchMock, 'onboarding_row_clicked')).properties).toMatchObject({ step_id: 'bring-your-work' });
+    expect((await sentEvent(fetchMock, 'onboarding_step_completed')).properties)
+      .toMatchObject({ step_id: 'bring-your-work', via: 'checklist' });
+  });
+
+  it('example_picked names the example and the list it was picked from', async () => {
+    const fetchMock = mockFetch();
+    const { trackExamplePicked } = await importAnalytics();
+
+    trackExamplePicked('classic-snake-game', 'examples');
+
+    expect((await sentEvent(fetchMock, 'example_picked')).properties)
+      .toMatchObject({ example_id: 'classic-snake-game', list: 'examples' });
+  });
+
+  it('new_task_message_sent describes the message without quoting it', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent, setStartVia } = await importAnalytics();
+
+    const text = 'Summarize https://example.com/quarterly-report for the zebra committee';
+    setStartVia('checklist');
+    trackNewTaskMessageSent({
+      text,
+      attachments: 2,
+      start: { start_kind: 'example', example_id: 'summarize-a-document-and-draft-my-reply', added_chars: 41 },
+    });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({
+      start_kind: 'example',
+      example_id: 'summarize-a-document-and-draft-my-reply',
+      via: 'checklist',
+      attachments: 2,
+      has_link: true,
+      chars: text.length,
+      added_chars: 41,
+    });
+    // No text, and no part of the link, rides on the event under any key.
+    expect(JSON.stringify(body)).not.toMatch(/zebra|quarterly|example\.com/);
+  });
+
+  it('says a plain message has no link, and defaults the start to free text from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({ text: 'hello there', start: undefined });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({ start_kind: 'free_text', via: 'composer', attachments: 0, has_link: false, chars: 11 });
+    expect(body.properties).not.toHaveProperty('example_id');
+    expect(body.properties).not.toHaveProperty('added_chars');
+  });
+
+  it('reads a console handoff as the way in, without clearing it for the session event that follows', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackNewTaskMessageSent, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'own-work');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'own_work' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(sent.properties.via).toBe('console_link');
+    expect(session.event).toBe('agent_session_started');
+    expect(session.properties).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+  });
+
+  it('a checklist start set long ago is not carried onto a later message', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+    const now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(5_000_000);
+      setStartVia('checklist');
+      now.mockReturnValue(5_000_000 + 61 * 1000);
+      trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'free_text' } });
+    } finally {
+      now.mockRestore();
+    }
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('composer');
+  });
+
+  it('uses a checklist start once, so the next message is from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    setStartVia('checklist');
+    trackNewTaskMessageSent({ text: 'first', start: { start_kind: 'own_work' } });
+    trackNewTaskMessageSent({ text: 'second', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'composer']);
+  });
+});

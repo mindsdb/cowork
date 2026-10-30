@@ -32,6 +32,10 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
+  ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
+  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -635,6 +639,55 @@ export function trackAgentSessionStarted() {
     EVENTS.AGENT_SESSION_STARTED,
     fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
   );
+}
+
+// How the next new task is being started, for new_task_message_sent: the
+// checklist sets it just before it sends, and anything unset is the composer.
+const START_VIA_TTL_MS = 60 * 1000;
+let pendingStartVia = null;
+
+export function setStartVia(via) {
+  pendingStartVia = via ? { via, at: Date.now() } : null;
+}
+
+export function trackOnboardingRowClicked(stepId) {
+  capture(EVENTS.ONBOARDING_ROW_CLICKED, { step_id: stepId });
+}
+
+export function trackOnboardingStepCompleted(stepId, via) {
+  capture(EVENTS.ONBOARDING_STEP_COMPLETED, { step_id: stepId, via });
+}
+
+export function trackExamplePicked(exampleId, list) {
+  capture(EVENTS.EXAMPLE_PICKED, { example_id: exampleId, list });
+}
+
+/**
+ * The first message of a new task, described but never quoted: what kind of
+ * start it was (see classifyStart), how many files came with it, whether it
+ * holds a link, and how long it is. `added_chars` is what the person added to a
+ * start or example, a paste or details. Joined to the account's later turns
+ * and visits, this is how a start is judged. Read before the session-start
+ * event, which clears the console attribution this one uses.
+ */
+export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
+  const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
+    ? pendingEntryAttribution : null;
+  const pending = pendingStartVia;
+  pendingStartVia = null;
+  const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
+  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const body = typeof text === 'string' ? text : '';
+  const props = {
+    start_kind: start?.start_kind || 'free_text',
+    via,
+    attachments,
+    has_link: /https?:\/\/\S+/i.test(body),
+    chars: body.length,
+  };
+  if (start?.example_id) props.example_id = start.example_id;
+  if (start?.added_chars != null) props.added_chars = start.added_chars;
+  capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,

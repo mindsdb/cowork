@@ -9,6 +9,8 @@ import { HABIT_TRACKER_PROMPT, OWN_WORK_PROMPT } from '../components/onboarding/
 import { findSample } from '../lib/consoleHandoff';
 import { getSnapshot, reset } from '../components/onboarding/onboardingStore';
 
+const { trackOnboardingStepCompleted } = vi.hoisted(() => ({ trackOnboardingStepCompleted: vi.fn() }));
+vi.mock('../lib/analytics', async (importOriginal) => ({ ...(await importOriginal()), trackOnboardingStepCompleted }));
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, fetchSkills: vi.fn(async () => []) };
@@ -43,6 +45,7 @@ const sendHabitTracker = () => sendText(HABIT_TRACKER_PROMPT);
 beforeEach(() => {
   window.localStorage.clear();
   reset();
+  trackOnboardingStepCompleted.mockClear();
 });
 
 describe('HomeView onboarding step 1 (ENG-2307)', () => {
@@ -68,6 +71,8 @@ describe('HomeView onboarding step 1 (ENG-2307)', () => {
     await sendText(OWN_WORK_PROMPT);
     await waitFor(() => expect(getSnapshot().completed.has('bring-your-work')).toBe(true));
     expect(getSnapshot().completed.has('see-it-work')).toBe(false);
+    expect(trackOnboardingStepCompleted).toHaveBeenCalledTimes(1);
+    expect(trackOnboardingStepCompleted).toHaveBeenCalledWith('bring-your-work', 'composer');
   });
 
   it('leaves the own-work step pending when the send does not go out', async () => {
@@ -92,5 +97,6 @@ describe('HomeView onboarding step 1 (ENG-2307)', () => {
     await sendText('what is on my calendar today');
     await waitFor(() => expect(onSend).toHaveBeenCalled());
     expect([...getSnapshot().completed]).toEqual([]);
+    expect(trackOnboardingStepCompleted).not.toHaveBeenCalled();
   });
 });

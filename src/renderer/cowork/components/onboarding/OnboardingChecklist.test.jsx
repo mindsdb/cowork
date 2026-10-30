@@ -11,6 +11,12 @@ const hostMock = vi.hoisted(() => ({ isWeb: false }));
 const toastAdd = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/host', () => ({ host: hostMock }));
 vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
+const analytics = vi.hoisted(() => ({
+  trackOnboardingRowClicked: vi.fn(),
+  trackOnboardingStepCompleted: vi.fn(),
+  setStartVia: vi.fn(),
+}));
+vi.mock('../../lib/analytics', () => analytics);
 
 const load = async () => {
   vi.resetModules();
@@ -23,6 +29,7 @@ describe('OnboardingChecklist', () => {
     localStorage.clear();
     hostMock.isWeb = false;
     toastAdd.mockClear();
+    Object.values(analytics).forEach((fn) => fn.mockClear());
   });
 
   it('closes from the header X without starting any chat', async () => {
@@ -200,5 +207,55 @@ describe('OnboardingChecklist', () => {
     await user.click(screen.getByText('Try an example'));
 
     expect(onOpenExamples).not.toHaveBeenCalled();
+  });
+
+  it('records the click, marks the start as the checklist, and reports the step once the chat starts', async () => {
+    const { OnboardingChecklist } = await load();
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('bring-your-work');
+    expect(analytics.setStartVia).toHaveBeenCalledWith('checklist');
+    // The start must be marked before the message goes out, or it is read as a composer send.
+    expect(analytics.setStartVia.mock.invocationCallOrder[0]).toBeLessThan(onStartChat.mock.invocationCallOrder[0]);
+    expect(analytics.trackOnboardingStepCompleted).toHaveBeenCalledWith('bring-your-work', 'checklist');
+  });
+
+  it('records the click but not a completion when the chat does not start', async () => {
+    const { OnboardingChecklist } = await load();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(false)} />);
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('bring-your-work');
+    expect(analytics.trackOnboardingStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('records the example row click, which sends nothing and completes nothing', async () => {
+    const { OnboardingChecklist } = await load();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn()} onOpenExamples={vi.fn()} />);
+
+    await user.click(screen.getByText('Try an example'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('see-it-work');
+    expect(analytics.setStartVia).not.toHaveBeenCalled();
+    expect(analytics.trackOnboardingStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('records nothing for a row that is already done', async () => {
+    const { OnboardingChecklist } = await load();
+    const { completeStep } = await import('./onboardingStore');
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(true)} />);
+    await act(async () => { completeStep('bring-your-work'); });
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).not.toHaveBeenCalled();
   });
 });

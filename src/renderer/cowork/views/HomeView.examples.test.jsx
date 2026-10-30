@@ -7,6 +7,8 @@ import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
 
+const { trackExamplePicked } = vi.hoisted(() => ({ trackExamplePicked: vi.fn() }));
+vi.mock('../lib/analytics', async (importOriginal) => ({ ...(await importOriginal()), trackExamplePicked }));
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, fetchSkills: vi.fn(async () => []) };
@@ -32,7 +34,10 @@ const renderHome = (props = {}) =>
     />
   );
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  trackExamplePicked.mockClear();
+});
 
 describe('HomeView examples request', () => {
   it('shows the featured examples when asked, and reports the request consumed once', async () => {
@@ -56,6 +61,17 @@ describe('HomeView examples request', () => {
 
     expect(onPrefill).toHaveBeenCalledWith(snake.prompt);
     expect(onSend).not.toHaveBeenCalled();
+    expect(trackExamplePicked).toHaveBeenCalledWith('classic-snake-game', 'examples');
+  });
+
+  it('records a pick from a mode\'s own list under that mode', async () => {
+    renderHome();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create games' }));
+    await user.click(await screen.findByRole('button', { name: 'Neon falling blocks' }));
+
+    expect(trackExamplePicked).toHaveBeenCalledWith('neon-falling-blocks', 'games');
   });
 
   it('shows the usual pills, and no examples, without a request', async () => {

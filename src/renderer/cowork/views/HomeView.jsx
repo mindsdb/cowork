@@ -3,15 +3,15 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { composeModeMessage, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
-import { completeStep } from '../components/onboarding/onboardingStore';
+import { composeModeMessage, findSampleByPrompt, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
+import { completeStepTracked } from '../components/onboarding/track';
 import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { trackBillingOpened, setEntryAttribution, trackComposerReady } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked } from '../lib/analytics';
 import { takeConsoleHandoff, sampleId, isUntouchedSample, OWN_WORK_START } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
 
@@ -300,7 +300,7 @@ export default function HomeView({
   // ENG-1656) passes through untouched.
   const sendTracked = async (text, meta) => {
     const result = await onSend(composeModeMessage(taskMode, text), meta);
-    if (result) stepsCompletedBySend(text).forEach(completeStep);
+    if (result) stepsCompletedBySend(text).forEach((id) => completeStepTracked(id, 'composer'));
     setTaskMode(null);
     return result;
   };
@@ -651,7 +651,16 @@ export default function HomeView({
                 doesn't apply to a Claude Code task. */}
             {!blocked && !codingModeEnabled && (
               taskMode
-                ? (onPrefill && <TaskModeSamples mode={taskMode} onPick={onPrefill} />)
+                ? (onPrefill && (
+                  <TaskModeSamples
+                    mode={taskMode}
+                    onPick={(prompt) => {
+                      const hit = findSampleByPrompt(prompt);
+                      if (hit) trackExamplePicked(sampleId(hit.sample.label), taskMode.id);
+                      onPrefill(prompt);
+                    }}
+                  />
+                ))
                 : <TaskModePills onPick={setTaskMode} />
             )}
             <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />

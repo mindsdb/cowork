@@ -309,3 +309,12 @@ export const FEATURED_EXAMPLES_MODE = {
   samplesVariant: 'rows',
   samples: FEATURED_LABELS.map((label) => ALL_SAMPLES.find((s) => s.label === label)).filter(Boolean),
 };
+
+/** The mode and sample whose prompt is exactly `prompt`, or null. */
+export function findSampleByPrompt(prompt) {
+  for (const mode of TASK_MODES) {
+    const sample = mode.samples.find((s) => s.prompt === prompt);
+    if (sample) return { mode, sample };
+  }
+  return null;
+}

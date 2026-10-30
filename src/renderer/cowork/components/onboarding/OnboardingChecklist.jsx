@@ -4,6 +4,8 @@ import OnboardingItem from './OnboardingItem';
 import OnboardingComplete from './OnboardingComplete';
 import Ico from '../Icons';
 import { useToastManager } from '../ui/Toast';
+import { trackOnboardingRowClicked, setStartVia } from '../../lib/analytics';
+import { completeStepTracked } from './track';
 
 // "Get to know Cowork" checklist — docked in the sidebar above the
 // footer, on every screen. Each row seeds a new chat with that step's
@@ -18,7 +20,7 @@ const COLLAPSE_KEY = 'anton.onboarding.sidebarCollapsed';
 const STEPS_ID = 'onboarding-sidebar-steps';
 
 export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
-  const { steps, isComplete, completedCount, total, allDone, dismissed, complete, dismiss } = useOnboarding();
+  const { steps, isComplete, completedCount, total, allDone, dismissed, dismiss } = useOnboarding();
   const toastManager = useToastManager();
   const startingSteps = useRef(new Set());
 
@@ -39,6 +41,7 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
   // the silent case, so that one gets a toast.
   const start = async (step) => {
     if (isComplete(step.id) || startingSteps.current.has(step.id)) return;
+    trackOnboardingRowClicked(step.id);
     // The examples live on Home. Nothing is sent here, so the step is not
     // completed by the click: Home completes it when an example goes out.
     if (step.opensExamples) {
@@ -47,7 +50,8 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
     }
     startingSteps.current.add(step.id);
     try {
-      if (await onStartChat(step.prompt)) complete(step.id);
+      setStartVia('checklist');
+      if (await onStartChat(step.prompt)) completeStepTracked(step.id, 'checklist');
     } catch {
       toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
     } finally {

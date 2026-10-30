@@ -1,5 +1,6 @@
-import { OWN_WORK_PREFIX, HABIT_TRACKER_PREFIX } from './steps';
+import { OWN_WORK_PREFIX, OWN_WORK_PROMPT, HABIT_TRACKER_PREFIX, ONBOARDING_STEPS } from './steps';
 import { TASK_MODES } from '../taskmodes/taskModes';
+import { sampleId } from '../../lib/consoleHandoff';
 
 // Which onboarding steps a message sent from the home composer completes, no
 // matter which surface filled the composer (a console link, the sidebar
@@ -20,4 +21,30 @@ export function stepsCompletedBySend(text) {
   );
   if (isExample || sent.startsWith(HABIT_TRACKER_PREFIX)) ids.push('see-it-work');
   return ids;
+}
+
+// What kind of start a new task's first message was, for analytics. The text
+// itself is never kept: only the kind, the example's id, and how much the
+// person added to a start or example (a paste, or details).
+export function classifyStart(text) {
+  const sent = typeof text === 'string' ? text.trim() : '';
+  if (sent.startsWith(OWN_WORK_PREFIX)) {
+    return { start_kind: 'own_work', added_chars: Math.max(0, sent.length - OWN_WORK_PROMPT.length) };
+  }
+  const step = ONBOARDING_STEPS.find((s) => s.prompt && s.id !== 'bring-your-work' && s.prompt === sent);
+  if (step) return { start_kind: 'onboarding_step', example_id: step.id };
+  for (const mode of TASK_MODES) {
+    for (const sample of mode.samples) {
+      if (sample.prompt === sent) {
+        return { start_kind: 'example', example_id: sampleId(sample.label), added_chars: 0 };
+      }
+      if (sample.plain && sent.startsWith(sample.prompt)) {
+        return { start_kind: 'example', example_id: sampleId(sample.label), added_chars: sent.length - sample.prompt.length };
+      }
+    }
+  }
+  if (sent.startsWith(HABIT_TRACKER_PREFIX)) {
+    return { start_kind: 'example', example_id: 'build-a-habit-tracker', added_chars: null };
+  }
+  return { start_kind: 'free_text' };
 }
