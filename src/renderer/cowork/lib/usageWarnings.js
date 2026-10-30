@@ -459,7 +459,18 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   const after = freeState(next.freeTokens);
   const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
   if (!before.out && after.out && spendsFree) {
-    out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
+    // The balance it moves onto, named by amount: "your balance" alone reads
+    // as the allowance to someone who sees a dollar figure on sign-in. Only a
+    // balance that can pay is quoted; an empty one stops the task instead.
+    const balance = next.balance;
+    const balanceUsd = balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0
+      ? Number(balance.usd)
+      : null;
+    out.push({
+      kind: 'free_used',
+      resetsAt: next.freeTokens?.resetsAt || null,
+      ...(balanceUsd !== null ? { balanceUsd } : {}),
+    });
   }
   // A long task can cross the low band and empty it without the composer bar
   // ever being looked at, so the crossing is this task's news too. Stepped on

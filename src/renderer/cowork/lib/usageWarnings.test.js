@@ -464,7 +464,20 @@ describe('usageTransitions', () => {
       usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }),
       usage({ freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     );
-    expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET }]);
+    expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET, balanceUsd: 42.1 }]);
+  });
+  it('names no balance amount when the balance cannot pay or is not known', () => {
+    const before = { freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } };
+    const after = { freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } };
+    for (const balance of [
+      null,
+      { usd: 0, canConsume: true, hasToppedUp: true, alert: '' },
+      { usd: 12, canConsume: false, hasToppedUp: true, alert: '' },
+      { usd: 12, canConsume: true, hasToppedUp: true, alert: 'depleted' },
+    ]) {
+      expect(usageTransitions(usage({ ...before, balance }), usage({ ...after, balance })))
+        .toEqual([{ kind: 'free_used', resetsAt: RESET }]);
+    }
   });
   it('skips the free-tokens news for a task on an explicit paid model, which was on the balance all along', () => {
     const before = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });

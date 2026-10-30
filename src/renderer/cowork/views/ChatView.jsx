@@ -14,6 +14,8 @@ import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { CircleAlert } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
@@ -65,7 +67,7 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, formatUsd, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
@@ -1479,29 +1481,26 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, balanceUsd, isBillingOwner }) {
   if (!PLATFORM_UI) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
   if (kind === 'free_low') {
-    // Headline names the crossing, not the count: the composer bar carries
-    // the live count a few pixels above, and two identical headlines that
-    // then drift apart (the bar tracks the next poll, this card is frozen at
-    // the crossing) read as two different figures for one number.
-    // The body says what is true of the allowance rather than of this turn.
-    // The router resolves per turn and can land on a paid model, so "this
-    // task is running on free tokens" is a claim the crossing does not prove.
+    // One quiet line, not a card: nothing about the task has changed yet, and
+    // the composer bar a few pixels below carries the live count and the
+    // "View usage" action. The task keeps one allowance notice, which this
+    // line is until the allowance runs out (lib/usageNoticePlacement).
+    // It says what is true of the allowance rather than of this turn: the
+    // router resolves per turn and can land on a paid model.
+    // No usable refill time drops the clause rather than leaving "refills".
+    const refillsAt = formatResetTime(resetsAt);
     return (
-      <ActionCard
-        time={time}
-        agentLabel={agentLabel}
-        kind="Usage"
-        title="Free Air allowance running low"
-        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
-        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-      />
+      <div className="my-3 flex items-center gap-1.5 font-body text-xs text-ink-3">
+        <Icon of={CircleAlert} size={14} />
+        <span>{`Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`}</span>
+      </div>
     );
   }
   if (kind === 'auto_top_up_failed') {
@@ -1525,7 +1524,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       agentLabel={agentLabel}
       kind="Usage"
       title="Free Air allowance used up"
-      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
+      body={`This task is now using your ${balanceUsd != null ? `${formatUsd(balanceUsd)} ` : ''}balance${refillClause(resetsAt, ' until your free allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
     />
   );
@@ -2116,6 +2115,7 @@ export default function ChatView({
       kind={n.kind}
       resetsAt={n.resetsAt}
       fractionLeft={n.fractionLeft}
+      balanceUsd={n.balanceUsd}
       isBillingOwner={isBillingOwner}
     />
   );

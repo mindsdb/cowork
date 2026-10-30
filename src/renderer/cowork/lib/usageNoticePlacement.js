@@ -86,3 +86,23 @@ export function dropNoticesFromTurn(notices, removedIds) {
   if (removed.size === 0) return notices;
   return notices.filter((n) => n?.anchorId == null || !removed.has(n.anchorId));
 }
+
+// ── One allowance notice per task ────────────────────────────────────────
+//
+// The free allowance steps down 20%, 10%, 5%, then runs out, and each step
+// used to add a notice of its own: four near-identical notices in one task.
+// The allowance is one figure, so a task keeps one notice for it: a new
+// allowance notice replaces the earlier one, and lands at the turn it
+// happened in. Auto top up failures are a separate event and are kept.
+const isAllowanceNotice = (n) => n?.kind === 'free_low' || n?.kind === 'free_used';
+
+// `notices` with `added` appended, each new allowance notice replacing any
+// earlier one.
+export function withUsageNotices(notices, added) {
+  let next = Array.isArray(notices) ? notices : [];
+  for (const n of Array.isArray(added) ? added : []) {
+    if (isAllowanceNotice(n)) next = next.filter((m) => !isAllowanceNotice(m));
+    next = [...next, n];
+  }
+  return next;
+}
