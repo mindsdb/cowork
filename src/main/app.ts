@@ -91,6 +91,9 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+import { installMainErrorDialog } from './main-error-dialog';
+
+installMainErrorDialog();
 
 /* Re-hand the MindsHub credential to every sidecar that comes up.
  *
