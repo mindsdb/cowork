@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1889,7 +1889,10 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
+                    {/* Hidden once the server routes with a decision model:
+                        see showRouterRoleRow for when it stays. */}
+                    {showRouterRoleRow(settings.routing, roleProviderType('router') || defaultProvider?.type || '')
+                      && RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
@@ -1980,6 +1983,29 @@ export default function SettingsView({
                   label="Max tokens per task"
                   setSetting={setSetting}
                   unlimitedLabel="No limit"
+                />
+              </Section>
+            )}
+            {/* An org-level setting, like the budgets: who may change it is
+                the server's call. Under zero data retention MindsHub refuses
+                Jev, so the row says it is off instead of offering a switch. */}
+            {settings.routing?.mode === 'zdr' && (
+              <Section
+                title="Fast answers with Jev"
+                subtitle={`Off because your organization has zero data retention, which Jev isn't covered by. Every message runs ${agentLabel || 'Anton'}.`}
+              >
+                <span className="text-sm text-ink-3" data-testid="jev-zdr-off">Off</span>
+              </Section>
+            )}
+            {showJevSwitch(settings.routing) && (
+              <Section
+                title="Fast answers with Jev"
+                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}. It is off automatically for organizations with zero data retention.`}
+              >
+                <Switch
+                  checked={settings.jevDecisionsEnabled ?? true}
+                  onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
+                  aria-label="Fast answers with Jev"
                 />
               </Section>
             )}

@@ -67,6 +67,8 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
+  // Off sends every MindsHub turn to the agent: no Jev routing or checks.
+  jev_decisions_enabled: 'jevDecisionsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
   max_turn_tokens: 'maxTurnTokens',
@@ -312,7 +314,36 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // servers that resolve it apart from the router pick; an older server sends
     // nothing and the row falls back to describing what that server does.
     gate: (rec.gate && typeof rec.gate === 'object') ? rec.gate : (base.gate ?? null),
+    // Which gate decides turns now. Sent by servers with Jev routing; an older
+    // server sends nothing, and the Settings page keeps its older layout.
+    routing: (rec.routing && typeof rec.routing === 'object') ? rec.routing : (base.routing ?? null),
   };
+}
+
+// ─── Jev routing ────────────────────────────────────────────────────
+
+/**
+ * Whether Settings shows the "Routing and summarization model" row.
+ *
+ * A server that reports `routing` decides turns with Jev or a decision model
+ * of the org's own, so the row only picks the summarization model and stays
+ * hidden — except on openai-compatible, which has no default model and where
+ * the row's pick is the only model the router and summaries can run on. An
+ * older server (no `routing`) still gates on this role, so the row stays.
+ */
+export function showRouterRoleRow(routing, routerProviderType) {
+  if (!routing || typeof routing !== 'object') return true;
+  return routerProviderType === 'openai-compatible';
+}
+
+/**
+ * Whether Settings shows the "Fast answers with Jev" switch: only while turns
+ * would route with Jev on MindsHub (`jev`) or have it turned off (`off`). On
+ * other providers, with an org's own decision model, or under zero data
+ * retention (`zdr`, where MindsHub refuses Jev), it would change nothing.
+ */
+export function showJevSwitch(routing) {
+  return routing?.mode === 'jev' || routing?.mode === 'off';
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────

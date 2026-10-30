@@ -20,6 +20,8 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  showJevSwitch,
+  showRouterRoleRow,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -1091,5 +1093,45 @@ describe('committedSettingsPatch', () => {
       ['anthropic_api_key', 'planning_model'])).toEqual({
       anthropicApiKey: '', planningModel: null, defaultModel: null,
     });
+  });
+});
+
+
+// ─── Jev routing ─────────────────────────────────────────────────────
+
+describe('jev routing settings', () => {
+  it('reads and writes the Jev switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_decisions_enabled', value: 'False' }]))
+      .toMatchObject({ jevDecisionsEnabled: false });
+    expect(diffSettingsForWrite({ jevDecisionsEnabled: false }, { jevDecisionsEnabled: true }))
+      .toEqual({ jev_decisions_enabled: 'false' });
+  });
+
+  it('keeps the routing it holds when the server sends none', () => {
+    const held = { routing: { mode: 'jev' } };
+
+    expect(mergeRecommendedModels(held, { routing: { mode: 'off' } }).routing).toEqual({ mode: 'off' });
+    expect(mergeRecommendedModels(held, {}).routing).toEqual({ mode: 'jev' });
+    expect(mergeRecommendedModels({}, {}).routing).toBeNull();
+  });
+
+  it.each([
+    [null, 'minds-cloud', true],             // older server: it still gates on the row
+    [{ mode: 'jev' }, 'minds-cloud', false],
+    [{ mode: 'llm' }, 'anthropic', false],
+    [{ mode: 'llm' }, 'openai-compatible', true], // the pick is the only router model there
+  ])('shows the router row for routing %j on %s: %s', (routing, provider, shown) => {
+    expect(showRouterRoleRow(routing, provider)).toBe(shown);
+  });
+
+  it.each([
+    [{ mode: 'jev' }, true],
+    [{ mode: 'off' }, true],
+    [{ mode: 'llm' }, false],
+    [{ mode: 'own' }, false],
+    [{ mode: 'zdr' }, false],
+    [null, false],
+  ])('shows the Jev switch for routing %j: %s', (routing, shown) => {
+    expect(showJevSwitch(routing)).toBe(shown);
   });
 });
