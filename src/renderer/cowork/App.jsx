@@ -61,6 +61,7 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
+import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
 import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
@@ -5699,9 +5700,8 @@ function AppCore() {
         />
       )}
 
-      {/* Code has one deliberate entry point while it is opt-in: Settings.
-          Keeping this corner control exclusively about appearance prevents a
-          hidden product from leaking into ordinary Cowork. */}
+      {/* This corner control stays about appearance only. Code is reached
+          through the workspace switch, and turned off in Settings. */}
       {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
           <Tooltip content={displayToggle.label}>
@@ -6257,6 +6257,7 @@ function AppCore() {
               onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
+              onConnectMindsHub={!ssoConnected && host.isElectron ? handleSsoSignIn : undefined}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
               onAttentionSelect={selectCodingSession}
@@ -6595,6 +6596,7 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
+      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
       <CoworkProvider value={coworkValue}>
         <CoworkRouterProvider router={routerRef.current} />
       </CoworkProvider>

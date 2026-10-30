@@ -1005,6 +1005,25 @@ To see every mark without running such a turn, open `/figure-sources-fixture.htm
 
 ---
 
+## Live-app slot notices
+
+If a launch was refused because the app slots were full, Cowork shows a persistent
+notice when the server reports available capacity. You can then ask your agent
+to launch again. The notice does not reserve a slot or launch the app.
+
+The app checks `/api/v1/live-apps/availability` every 15 seconds while its tab is
+visible, and when you return to it. This works on every page without sending a
+chat message, including for someone who has never launched an app. It runs only
+when `/health` reports `live_apps`. The server retains each notice until a visible
+toast has displayed it and Cowork acknowledges its id. Failed reads and
+acknowledgements retry; after each failed read the next check waits twice as long,
+up to one minute, and a successful read returns to 15 seconds. Repeated replies do
+not create duplicate toasts. A new refusal closes a notice already acknowledged, so
+the next one shows as new. A change to the authenticated scope clears the previous
+person's notice.
+
+---
+
 ## Over-the-Air Updates
 
 MindsHub Cowork updates three independently-versioned pieces, each through its own mechanism, so most updates land without the user reinstalling anything:

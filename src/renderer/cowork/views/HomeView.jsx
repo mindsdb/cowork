@@ -60,6 +60,7 @@ const MORPH_MS     = 420;
 const TYPE_PER_CHAR_MS = 22;
 const TYPE_TAIL_MS = 380;       // pause after last char before settling
 const SETTLE_MS    = 520;
+const CROSSFADE_MS = 800;
 
 // (Sizing for each visual layer is hard-coded in the JSX below —
 // the big thinking orb is 64px, the dot is 10px, the idle orb is
@@ -70,6 +71,21 @@ const SETTLE_MS    = 520;
 // (and every other keyframe in the app). (The earlier caret-blink
 // keyframe was dropped when we removed the typewriter cursor in favour
 // of letters appearing letter-by-letter beside the idle orb.)
+
+// A hidden orb keeps moving while it fades out and pauses once the fade
+// is over; it resumes at once when shown again.
+function usePauseAfterFade(hidden, fadeMs) {
+  const [faded, setFaded] = useState(hidden);
+  useEffect(() => {
+    if (!hidden) {
+      setFaded(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setFaded(true), fadeMs);
+    return () => clearTimeout(timer);
+  }, [hidden, fadeMs]);
+  return hidden && faded;
+}
 
 function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }) {
   // Phases: loading → collapsing → traveling → morphing → typing →
@@ -365,6 +381,9 @@ export default function HomeView({
   const inIdleWithActivity = phase === 'idle' && wantsThinking;
   const idleOpacity      = inIdleWithActivity ? 0 : 1;
   const thinkingOpacity  = inIdleWithActivity ? 1 : 0;
+  const bigThinkingPaused = usePauseAfterFade(!bigThinkingOpacity, COLLAPSE_MS);
+  const idlePaused = usePauseAfterFade(!idleLayerOpacity || !idleOpacity, CROSSFADE_MS);
+  const thinkingPaused = usePauseAfterFade(!idleLayerOpacity || !thinkingOpacity, CROSSFADE_MS);
 
   // Greeting text visibility. Hidden during loading/collapsing/
   // traveling/morphing (orb hasn't settled yet); typewrites during
@@ -468,7 +487,7 @@ export default function HomeView({
               transition: `opacity ${COLLAPSE_MS}ms ease-out, transform ${COLLAPSE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
             }}
           >
-            <OrbitMorph size={64} state="thinking" />
+            <OrbitMorph size={64} state="thinking" paused={bigThinkingPaused} />
           </span>
 
           {/* 2) The dot. Solid accent circle, 10px. Visible during
@@ -498,19 +517,21 @@ export default function HomeView({
             <OrbitMorph
               size={42}
               state="idle"
+              paused={idlePaused}
               style={{
                 position: 'absolute', inset: 0,
                 opacity: idleOpacity,
-                transition: 'opacity 800ms ease-in-out',
+                transition: `opacity ${CROSSFADE_MS}ms ease-in-out`,
               }}
             />
             <OrbitMorph
               size={42}
               state="thinking"
+              paused={thinkingPaused}
               style={{
                 position: 'absolute', inset: 0,
                 opacity: thinkingOpacity,
-                transition: 'opacity 800ms ease-in-out',
+                transition: `opacity ${CROSSFADE_MS}ms ease-in-out`,
               }}
             />
           </span>
