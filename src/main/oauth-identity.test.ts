@@ -318,3 +318,35 @@ describe('fetchAccountIdentity — Linear workspace-aware identity', () => {
     await expect(fetchAccountIdentity('linear', 'tok')).resolves.toEqual({ email: '' });
   });
 });
+
+describe('fetchAccountIdentity — Figma', () => {
+  it('uses the email from /v1/me', async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('https://api.figma.com/v1/me');
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+      return new Response(JSON.stringify({ id: '1', handle: 'Ada', email: 'ada@example.com' }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAccountIdentity('figma', 'tok')).resolves.toEqual({ email: 'ada@example.com' });
+  });
+
+  it('falls back to the handle when the email is missing', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ id: '1', handle: 'Ada', email: '' }),
+      { status: 200 },
+    )) as unknown as typeof fetch;
+
+    await expect(fetchAccountIdentity('figma', 'tok')).resolves.toEqual({ email: 'Ada' });
+  });
+
+  it('does not fall back to Google when Figma rejects the token', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response('', { status: 403 });
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAccountIdentity('figma', 'tok')).resolves.toEqual({ email: '' });
+    expect(urls).toEqual(['https://api.figma.com/v1/me']);
+  });
+});
