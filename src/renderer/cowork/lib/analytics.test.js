@@ -1486,6 +1486,7 @@ describe('Code Mode events', () => {
       permission_mode: 'workspace_write',
       task_mode: 'plan',
       workspace_kind: 'git_worktree',
+      workspace_mode: 'worktree',
       in_project: true,
       computer_is_local: true,
       attachment_count: 2,
@@ -1505,6 +1506,16 @@ describe('Code Mode events', () => {
     const { properties } = await sentEvent(fetchMock, 'code_task_started');
     expect(properties).toMatchObject({ origin: 'fork', in_project: false, task_mode: 'build', workspace_kind: 'direct_folder' });
     expect(properties).not.toHaveProperty('attachment_count');
+  });
+
+  it('code_task_started records a task working in the original folder', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted({ ...created, project_id: null, workspace_kind: 'direct_folder', workspace_mode: 'in_place' });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({ workspace_kind: 'direct_folder', workspace_mode: 'in_place' });
   });
 
   it('code_task_started sends nothing for a session without an id', async () => {

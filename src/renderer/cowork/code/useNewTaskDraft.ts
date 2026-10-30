@@ -18,12 +18,21 @@ import {
   type PermissionMode,
   type ProjectFolderInspection,
   type SourceContext,
+  type WorkspaceMode,
+  type WorkspaceModeOptions,
 } from './api';
 import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 import type { TaskRepositorySetup } from './repositorySetupModels';
+import {
+  WORKTREE_ONLY,
+  effectiveWorkspaceMode,
+  offersWorkspaceChoice,
+  storeWorkspaceMode,
+  storedWorkspaceMode,
+} from './workspaceMode';
 
 // The folder of the last folder-only task, preselected for the next one.
 const LAST_FOLDER_KEY = 'mindshub-code:last-folder';
@@ -146,14 +155,47 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
+  // The server says which modes this task could run in; until it answers, or
+  // if it predates modes, the task is isolated as it always was.
+  const [workspaceModeOptions, setWorkspaceModeOptions] = useState<WorkspaceModeOptions>(WORKTREE_ONLY);
+  const [rememberedWorkspaceMode, setRememberedWorkspaceMode] = useState<WorkspaceMode | null>(storedWorkspaceMode);
+  const selectedProjectKey = selectedProject?.id ?? null;
+  const workspaceModeComputer = selectedProject ? computerId || undefined : undefined;
+  // Only a folder in a Git repository can be worked in directly, so the server needs to see it.
+  const workspaceModeFolder = selectedProject ? undefined : standaloneFolderPath || undefined;
+  useEffect(() => {
+    let current = true;
+    setWorkspaceModeOptions(WORKTREE_ONLY);
+    void (async () => {
+      try {
+        const options = await codingApi.workspaceModes(selectedProjectKey, workspaceModeComputer, workspaceModeFolder);
+        if (current) setWorkspaceModeOptions(options);
+      } catch { /* No answer: keep the isolated default. */ }
+    })();
+    return () => { current = false; };
+  }, [selectedProjectKey, workspaceModeComputer, workspaceModeFolder]);
+  const workspaceModeChoice = offersWorkspaceChoice(workspaceModeOptions);
+  const workspaceMode = effectiveWorkspaceMode(workspaceModeOptions, rememberedWorkspaceMode);
   const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
   const [repositoryChoice, setRepositoryChoice] = useState<{
     key: string;
     setup: TaskRepositorySetup;
   } | null>(null);
+  const rememberWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    setRememberedWorkspaceMode(mode);
+    storeWorkspaceMode(mode);
+  }, []);
+  // Branch choices set up an isolated worktree, and a Local task works on each
+  // folder's current branch, so choosing one gives up the other.
+  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    rememberWorkspaceMode(mode);
+    if (mode === 'in_place') setRepositoryChoice(null);
+  }, [rememberWorkspaceMode]);
   const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
-  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) =>
+  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) => {
     setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
+    if (setup && workspaceModeChoice && workspaceMode === 'in_place') rememberWorkspaceMode('worktree');
+  };
   const resourceScopeKey = JSON.stringify(resourceIds);
 
   const engines = codingCatalog.engines;
@@ -408,6 +450,7 @@ export function useNewTaskDraft({
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
       ...(repositorySetup ? { repositorySetup } : {}),
+      ...(workspaceModeChoice ? { workspaceMode } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -436,6 +479,9 @@ export function useNewTaskDraft({
     engineLoading,
     permissionMode,
     setPermissionMode,
+    workspaceMode,
+    setWorkspaceMode,
+    workspaceModeChoice,
     reasoningEffort,
     setReasoningEffort,
     effortLevels,
