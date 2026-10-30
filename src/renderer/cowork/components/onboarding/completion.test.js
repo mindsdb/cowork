@@ -26,14 +26,17 @@ describe('stepsCompletedBySend', () => {
     }
   });
 
-  it('counts a plain example that the person added a paste to, but not an ordinary one', () => {
-    const plain = TASK_MODES.flatMap((m) => m.samples).find((s) => s.plain);
+  it('counts an example the person edited or added to, plain or not, as analytics does', () => {
+    const all = TASK_MODES.flatMap((m) => m.samples);
+    const plain = all.find((s) => s.plain);
+    const ordinary = all.find((s) => !s.plain);
     expect(stepsCompletedBySend(`${plain.prompt}\n\nLast week: all quiet.`)).toEqual(['see-it-work']);
+    expect(stepsCompletedBySend(`${ordinary.prompt} for Acme Plumbing`)).toEqual(['see-it-work']);
   });
 
-  it('does not count an example the person has rewritten', () => {
+  it('does not count a message that only resembles an example', () => {
     const sample = TASK_MODES[0].samples[0];
-    expect(stepsCompletedBySend(`${sample.prompt} Make it shorter.`)).toEqual([]);
+    expect(stepsCompletedBySend(sample.prompt.slice(0, -5))).toEqual([]);
   });
 
   it('ignores ordinary messages and non-text', () => {
@@ -82,6 +85,9 @@ describe('classifyStart', () => {
     expect(classifyStart('I want to set you up for the work I actually do. Ask me a couple of quick questions about my role, remember what matters to me, then suggest and set up a few tools or workflows that would help.'))
       .toEqual({ start_kind: 'onboarding_step', example_id: 'customize-role' });
     expect(classifyStart(HABIT_TRACKER_PROMPT)).toMatchObject({ start_kind: 'example', example_id: 'build-a-habit-tracker' });
+    // A lightly edited habit tracker no longer matches the catalog entry, so it takes the prefix route.
+    expect(classifyStart('Build me a habit tracker with five habits.'))
+      .toEqual({ start_kind: 'example', example_id: sampleId('Build a habit tracker'), added_chars: null });
   });
 
   it('calls anything else free text, including empty and non-text', () => {

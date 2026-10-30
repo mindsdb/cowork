@@ -35,7 +35,7 @@ const EVENTS = {
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
-  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -642,12 +642,28 @@ export function trackAgentSessionStarted() {
 }
 
 // How the next new task is being started, for new_task_message_sent: the
-// checklist sets it just before it sends, and anything unset is the composer.
+// checklist and the app's own sends set it just before they send, and anything
+// unset is the composer.
 const START_VIA_TTL_MS = 60 * 1000;
 let pendingStartVia = null;
 
 export function setStartVia(via) {
   pendingStartVia = via ? { via, at: Date.now() } : null;
+}
+
+// Runs a send that starts a new task under a start label. The label is kept
+// only if the send goes out: a refused one (answers false) or a failed one
+// (throws) must not leave it for the next, unrelated message.
+export async function sendWithStartVia(via, send) {
+  setStartVia(via);
+  try {
+    const sent = await send();
+    if (!sent) setStartVia(null);
+    return sent;
+  } catch (err) {
+    setStartVia(null);
+    throw err;
+  }
 }
 
 export function trackOnboardingRowClicked(stepId) {
@@ -682,7 +698,7 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
     start_kind: start?.start_kind || 'free_text',
     via,
     attachments,
-    has_link: /https?:\/\/\S+/i.test(body),
+    has_link: /\b(?:https?:\/\/|www\.)\S+/i.test(body),
     chars: body.length,
   };
   if (start?.example_id) props.example_id = start.example_id;

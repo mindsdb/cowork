@@ -140,6 +140,7 @@ vi.mock('./lib/analytics', () => ({
   trackArtifactBuilt: vi.fn(),
   trackAgentSessionStarted: vi.fn(),
   trackNewTaskMessageSent: vi.fn(),
+  sendWithStartVia: vi.fn((via, send) => send()),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
@@ -1469,6 +1470,27 @@ describe('the first message of a new task (analytics)', () => {
     // It reads the console attribution that the session event clears, so it goes first.
     expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])
       .toBeLessThan(trackAgentSessionStarted.mock.invocationCallOrder[0]);
+  });
+
+  it('counts the files that went with it', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'report.txt' }]);
+    await attach(user, 'report.txt');
+    await send(user, composer, 'summarize this file');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+    // This file does not clear its mocks between tests; later ones count uploads from zero.
+    uploadAttachments.mockClear();
   });
 });
 

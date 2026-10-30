@@ -111,7 +111,7 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
@@ -2879,7 +2879,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -3077,7 +3077,7 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
-      Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
+      Promise.resolve().then(() => sendFromApp(`Connect ${label}`));
     }
     return tempId;
   };
@@ -3854,6 +3854,10 @@ function AppCore() {
     return true;
   };
 
+  // A task the app starts for the person (a connector button, an artifact
+  // repair), so analytics can tell it from one they typed.
+  const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
+
   // Send inside an existing task
   //
   // Answers `true` when the text is on its way — a stream started, or it was
@@ -4410,7 +4414,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -6438,7 +6442,7 @@ function AppCore() {
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
-          handleSendFromHome(buildCustomConnectorRequest(query));
+          sendFromApp(buildCustomConnectorRequest(query));
         }}
       />
 

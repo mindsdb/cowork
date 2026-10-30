@@ -14,7 +14,8 @@ vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
 const analytics = vi.hoisted(() => ({
   trackOnboardingRowClicked: vi.fn(),
   trackOnboardingStepCompleted: vi.fn(),
-  setStartVia: vi.fn(),
+  // The real helper's label handling is tested with analytics; here it only runs the send.
+  sendWithStartVia: vi.fn((via, send) => send()),
 }));
 vi.mock('../../lib/analytics', () => analytics);
 
@@ -218,9 +219,9 @@ describe('OnboardingChecklist', () => {
     await user.click(screen.getByText('Start with your own work'));
 
     expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('bring-your-work');
-    expect(analytics.setStartVia).toHaveBeenCalledWith('checklist');
-    // The start must be marked before the message goes out, or it is read as a composer send.
-    expect(analytics.setStartVia.mock.invocationCallOrder[0]).toBeLessThan(onStartChat.mock.invocationCallOrder[0]);
+    // The send goes through the start label, or it is read as a composer send.
+    expect(analytics.sendWithStartVia).toHaveBeenCalledWith('checklist', expect.any(Function));
+    expect(onStartChat).toHaveBeenCalledTimes(1);
     expect(analytics.trackOnboardingStepCompleted).toHaveBeenCalledWith('bring-your-work', 'checklist');
   });
 
@@ -243,7 +244,7 @@ describe('OnboardingChecklist', () => {
     await user.click(screen.getByText('Try an example'));
 
     expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('see-it-work');
-    expect(analytics.setStartVia).not.toHaveBeenCalled();
+    expect(analytics.sendWithStartVia).not.toHaveBeenCalled();
     expect(analytics.trackOnboardingStepCompleted).not.toHaveBeenCalled();
   });
 

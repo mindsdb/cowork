@@ -4,7 +4,7 @@ import OnboardingItem from './OnboardingItem';
 import OnboardingComplete from './OnboardingComplete';
 import Ico from '../Icons';
 import { useToastManager } from '../ui/Toast';
-import { trackOnboardingRowClicked, setStartVia } from '../../lib/analytics';
+import { trackOnboardingRowClicked, sendWithStartVia } from '../../lib/analytics';
 import { completeStepTracked } from './track';
 
 // "Get to know Cowork" checklist — docked in the sidebar above the
@@ -50,8 +50,9 @@ export default function OnboardingChecklist({ onStartChat, onOpenExamples }) {
     }
     startingSteps.current.add(step.id);
     try {
-      setStartVia('checklist');
-      if (await onStartChat(step.prompt)) completeStepTracked(step.id, 'checklist');
+      if (await sendWithStartVia('checklist', () => onStartChat(step.prompt))) {
+        completeStepTracked(step.id, 'checklist');
+      }
     } catch {
       toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
     } finally {

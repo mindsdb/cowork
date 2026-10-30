@@ -1685,6 +1685,43 @@ describe('onboarding and start events', () => {
     expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('composer');
   });
 
+  it('reads a link with a www. host and not a number or a file name', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+    const texts = ['see www.acme.com/report', 'about 1.5/2 of it', 'in report.v2/final'];
+    texts.forEach((text) => trackNewTaskMessageSent({ text, start: undefined }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const links = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.has_link);
+    expect(links).toEqual([true, false, false]);
+  });
+
+  it('labels a send that goes out, and says so for one the app starts itself', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await sendWithStartVia('app', async () => {
+      trackNewTaskMessageSent({ text: 'Connect Gmail', start: undefined });
+      return true;
+    });
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('app');
+  });
+
+  it('does not leave its label for the next message when a send is refused or throws', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await expect(sendWithStartVia('checklist', async () => false)).resolves.toBe(false);
+    trackNewTaskMessageSent({ text: 'after a refusal', start: undefined });
+    await expect(sendWithStartVia('app', async () => { throw new Error('owner only'); })).rejects.toThrow('owner only');
+    trackNewTaskMessageSent({ text: 'after a throw', start: undefined });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['composer', 'composer']);
+  });
+
   it('uses a checklist start once, so the next message is from the composer', async () => {
     const fetchMock = mockFetch();
     const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
