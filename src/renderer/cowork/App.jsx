@@ -111,7 +111,8 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
@@ -718,6 +719,8 @@ function AppCore() {
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
+  // Set by the checklist's "Try an example" row; Home answers it and clears it.
+  const [examplesRequest, setExamplesRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -2876,7 +2879,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -3074,7 +3077,7 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
-      Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
+      Promise.resolve().then(() => sendFromApp(`Connect ${label}`));
     }
     return tempId;
   };
@@ -3699,6 +3702,8 @@ function AppCore() {
       activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
+    // Before the session-start event, which clears the console attribution this reads.
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -3848,6 +3853,10 @@ function AppCore() {
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
     return true;
   };
+
+  // A task the app starts for the person (a connector button, an artifact
+  // repair), so analytics can tell it from one they typed.
+  const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
   // Send inside an existing task
   //
@@ -4405,7 +4414,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -5828,6 +5837,12 @@ function AppCore() {
             if (sidebarPopout) setNavPopoutOpen(false);
             return handleSendFromHome(text);
           }}
+          // The example row sends nothing: it opens Home with the examples
+          // showing. newTask also closes the popout drawer.
+          onOpenExamples={() => {
+            newTask();
+            setExamplesRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -5925,6 +5940,8 @@ function AppCore() {
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
             onPrefillConsumed={() => setComposerPrefill(null)}
+            examplesRequest={examplesRequest}
+            onExamplesRequestConsumed={() => setExamplesRequest(0)}
             codingModeEnabled={false}
           />
         )}
@@ -6425,7 +6442,7 @@ function AppCore() {
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
-          handleSendFromHome(buildCustomConnectorRequest(query));
+          sendFromApp(buildCustomConnectorRequest(query));
         }}
       />
 

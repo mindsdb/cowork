@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { captureConsoleHandoff, takeConsoleHandoff, findSample, sampleId } from './consoleHandoff';
+import {
+  captureConsoleHandoff, takeConsoleHandoff, findSample, sampleId, isUntouchedSample,
+} from './consoleHandoff';
+import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 
 const at = (search, pathname = '/') => ({ search, pathname, hash: '' });
 
@@ -43,7 +46,38 @@ describe('console handoff', () => {
   it('degrades an unknown sample to an empty composer instead of storing it', () => {
     captureConsoleHandoff(at('?from=console&mode=games&sample=<script>'));
     expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null });
+  });
+
+  it('carries the own-work start, which names the first onboarding step and no text', () => {
+    captureConsoleHandoff(at('?from=console&start=own-work'));
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: 'own-work' });
+  });
+
+  it('drops a start it does not know instead of storing it', () => {
+    captureConsoleHandoff(at('?from=console&start=<script>'));
+    expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
+    expect(takeConsoleHandoff().start).toBeNull();
+  });
+
+  it('prefers a sample over a start when a link names both', () => {
+    captureConsoleHandoff(at('?from=console&mode=games&sample=classic-snake-game&start=own-work'));
+    const handoff = takeConsoleHandoff();
+    expect(sampleId(handoff.sample.label)).toBe('classic-snake-game');
+    expect(handoff.start).toBeNull();
+  });
+
+  it('strips the start param from the address bar too', () => {
+    window.history.replaceState(null, '', '/?from=console&start=own-work&ci=1');
+    captureConsoleHandoff(at('?from=console&start=own-work&ci=1'));
+    expect(window.location.search).toBe('?ci=1');
+  });
+
+  it('reads a handoff stored without a start, as older tabs wrote it', () => {
+    window.sessionStorage.setItem('anton.consoleHandoff', JSON.stringify({
+      entrySource: 'console', modeId: null, sampleId: null, at: Date.now(),
+    }));
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null });
   });
 
   it('ignores links that are not from the console', () => {
@@ -54,5 +88,10 @@ describe('console handoff', () => {
   it('expires a handoff abandoned mid-login', () => {
     captureConsoleHandoff(at('?from=console&mode=games&sample=classic-snake-game'));
     expect(takeConsoleHandoff(window.sessionStorage, Date.now() + 11 * 60 * 1000)).toBeNull();
+  });
+
+  it('treats the own-work prompt as text the app placed, not the person\'s own', () => {
+    expect(isUntouchedSample(OWN_WORK_PROMPT)).toBe(true);
+    expect(isUntouchedSample(`${OWN_WORK_PROMPT} Also my notes.`)).toBe(false);
   });
 });

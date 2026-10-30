@@ -291,6 +291,8 @@ export default function Sidebar({
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
   onStartChat = null,
+  // Takes the "Try an example" row to Home, where the examples are.
+  onOpenExamples = null,
   // First-artifact tip — App arms it (0 → 1 artifacts transition) and
   // owns the persistent dismissal; the sidebar anchors it to the Live
   // Artifacts nav row and adds the "clicking the row dismisses" path.
@@ -862,7 +864,7 @@ export default function Sidebar({
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
-        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}

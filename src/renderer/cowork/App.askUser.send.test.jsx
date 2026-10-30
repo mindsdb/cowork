@@ -139,6 +139,8 @@ vi.mock('./lib/analytics', () => ({
   trackDataSourceConnected: vi.fn(),
   trackArtifactBuilt: vi.fn(),
   trackAgentSessionStarted: vi.fn(),
+  trackNewTaskMessageSent: vi.fn(),
+  sendWithStartVia: vi.fn((via, send) => send()),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
@@ -147,7 +149,8 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
-import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
+import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
+import { OWN_WORK_PROMPT } from './components/onboarding/steps';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -1438,6 +1441,61 @@ describe('new-session stream (send from home)', () => {
 
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+  });
+});
+
+describe('the first message of a new task (analytics)', () => {
+  // This file does not clear its mocks between tests, and a failed assertion
+  // here must not leave upload calls or a queued result for the next one.
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('is described to analytics once, before the session event, as the kind of start it was', async () => {
+    // This file does not clear its mocks between tests, so count from here.
+    trackNewTaskMessageSent.mockClear();
+    trackAgentSessionStarted.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    await send(user, composer, OWN_WORK_PROMPT);
+    await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith({
+      text: OWN_WORK_PROMPT,
+      attachments: 0,
+      start: { start_kind: 'own_work', added_chars: 0 },
+    });
+    // It reads the console attribution that the session event clears, so it goes first.
+    expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])
+      .toBeLessThan(trackAgentSessionStarted.mock.invocationCallOrder[0]);
+  });
+
+  it('counts the files that went with it', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'report.txt' }]);
+    await attach(user, 'report.txt');
+    await send(user, composer, 'summarize this file');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
   });
 });
 
